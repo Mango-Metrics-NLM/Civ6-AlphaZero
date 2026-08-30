@@ -69,6 +69,13 @@ class TrainingConfig:
     # not provide, so it is not offered here.
     scoring_method: str = "winner_take_all"
 
+    # Base RNG seed for the whole run. ``None`` means unseeded, which is what
+    # every existing caller gets. Game ``i`` of a self-play round is seeded with
+    # ``seed + i``, matching the convention documented in
+    # ``cloud/gcp/selfplay_worker.py``, so games differ from one another while
+    # the round as a whole replays exactly.
+    seed: int | None = None
+
     # Network
     num_res_blocks: int = 6
     num_filters: int = 64
@@ -119,6 +126,13 @@ class TrainingConfig:
 
 #: Evaluation games played per checkpoint on a normal (non-dry) run.
 DEFAULT_EVAL_GAMES = 20
+
+# Evaluation's RNG streams are derived from `config.seed` plus this offset, so
+# they cannot collide with self-play's (`seed + game_idx` for game_idx <
+# num_games). A named constant rather than a literal: the value is arbitrary,
+# but the *separation* is the point, and a bare number invites someone to reuse
+# it as a per-game offset.
+EVAL_SEED_OFFSET = 1_000_000
 
 #: Config fields that dominate dry-run cost. These are the *inner* dimensions:
 #: total work scales roughly as
@@ -224,13 +238,21 @@ class GameHistoryItem(TypedDict):
 class ReplayBuffer:
     """Replay buffer for storing training examples."""
 
-    def __init__(self, max_size: int = 50000) -> None:
+    def __init__(self, max_size: int = 50000, seed: int | None = None) -> None:
         """Initialize replay buffer.
 
         Args:
             max_size: Maximum number of examples to store.
+            seed: Seed for the sampling RNG. ``None`` means unseeded, matching
+                the previous behaviour of drawing from the global numpy state.
         """
         self.buffer: deque[TrainingExample] = deque(maxlen=max_size)
+        # Which examples a batch contains determines the gradient, so an
+        # unseeded sampler makes the training half of a run unrepeatable even
+        # when self-play is fully determined. Measured: with only self-play
+        # seeded, two `--seed 42` runs agreed on all 525 lines of self-play
+        # output and differed on the very first epoch loss.
+        self._rng = np.random.default_rng(seed)
 
     def add(self, example: TrainingExample) -> None:
         """Add example to buffer."""
@@ -250,7 +272,7 @@ class ReplayBuffer:
         Returns:
             List of sampled examples.
         """
-        indices = np.random.choice(len(self.buffer), size=batch_size, replace=False)
+        indices = self._rng.choice(len(self.buffer), size=batch_size, replace=False)
         return [self.buffer[i] for i in indices]
 
     def __len__(self) -> int:
@@ -452,6 +474,7 @@ def self_play_game(
     env: MicroCivEnv,
     mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS,
     config: TrainingConfig,
+    game_seed: int | None = None,
 ) -> list[TrainingExample]:
     """Play a single self-play game.
 
@@ -459,12 +482,14 @@ def self_play_game(
         env: Game environment.
         mcts: MCTS instance.
         config: Training configuration.
+        game_seed: Seed for this game's environment. ``None`` leaves the
+            environment's existing RNG alone, which is the historical behaviour.
 
     Returns:
         List of training examples from the game.
     """
     examples = []
-    obs, _ = env.reset()
+    obs, _ = env.reset(seed=game_seed)
 
     game_history: list[GameHistoryItem] = []
 
@@ -572,7 +597,12 @@ def run_self_play(
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
+        seed=config.seed,
     )
+
+    # The search is seeded past the per-game environment range (`seed + i` for
+    # i < num_games) so it does not share a stream with any environment.
+    search_seed = None if config.seed is None else config.seed + num_games
 
     if use_simple_mcts:
         # SimpleMCTS ignores the network entirely (random rollouts), so skip
@@ -580,6 +610,7 @@ def run_self_play(
         mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS = SimpleMCTS(
             num_simulations=config.num_simulations,
             c_puct=config.c_puct,
+            seed=search_seed,
         )
     elif config.use_gumbel_mcts:
         # Use Gumbel MuZero MCTS for efficient search with few simulations.
@@ -591,6 +622,7 @@ def run_self_play(
             use_sequential_halving=config.gumbel_use_sequential_halving,
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
+            seed=search_seed,
         )
         mcts = GumbelMCTS(_mcts_network(network, config), gumbel_config, device=config.device)  # type: ignore[arg-type]
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
@@ -603,14 +635,20 @@ def run_self_play(
             dirichlet_epsilon=config.dirichlet_epsilon,
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
+            seed=search_seed,
         )
         mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
     # MCTS evaluates one position at a time, so this whole phase is batch-of-1
     # inference. See alpha_zero.utils.device for why that needs a thread cap.
     with inference_thread_limit():
-        for _ in tqdm(range(num_games), desc="Self-play"):
-            game_examples = self_play_game(env, mcts, config)
+        for game_idx in tqdm(range(num_games), desc="Self-play"):
+            game_examples = self_play_game(
+                env,
+                mcts,
+                config,
+                game_seed=None if config.seed is None else config.seed + game_idx,
+            )
             examples.extend(game_examples)
 
     return examples
@@ -750,23 +788,34 @@ def evaluate_against_random(
         the draw-aware score rate are logged so the figure can be interpreted
         rather than guessed at.
     """
+    # Offsets keep the evaluation's three streams (environment, search, random
+    # opponent) distinct from each other and from self-play's, so a seeded run
+    # replays exactly without any two of them sharing a sequence.
+    eval_seed = None if config.seed is None else config.seed + EVAL_SEED_OFFSET
     env = MicroCivEnv(
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
+        seed=eval_seed,
     )
-    mcts_config = MCTSConfig(num_simulations=config.num_simulations // 2)
+    mcts_config = MCTSConfig(
+        num_simulations=config.num_simulations // 2,
+        seed=None if eval_seed is None else eval_seed + num_games,
+    )
     # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
     mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
 
     wins = 0
     draws = 0
-    rng = np.random.default_rng()
+    # The random opponent. Unseeded, this alone was enough to make a 20-game
+    # probe unrepeatable -- five probes of one checkpoint spanned 0.25 to 0.40
+    # (docs/evidence/validation_iteration_zero/).
+    rng = np.random.default_rng(None if eval_seed is None else eval_seed + 2 * num_games)
 
     # Batch-of-1 inference, same as self-play; see run_self_play.
     with inference_thread_limit():
         for game_idx in range(num_games):
-            _obs, _info = env.reset()
+            _obs, _info = env.reset(seed=None if eval_seed is None else eval_seed + game_idx)
             # Rotate which seat the network occupies across all players.
             network_player = game_idx % config.num_players
 
@@ -832,10 +881,19 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
+        seed=config.seed,
     )
     action_space_size = env.action_space.n
-    sample_obs, _ = env.reset()
+    sample_obs, _ = env.reset(seed=config.seed)
     spatial_channels = int(sample_obs["spatial"].shape[0])
+
+    # Seed torch before constructing the network: weight initialisation is a
+    # draw like any other, so an unseeded one makes every downstream number
+    # unrepeatable even when the environments and searches are seeded. This is
+    # process-global by necessity -- torch has no per-module generator for
+    # parameter init -- and is therefore done once, here, rather than threaded.
+    if config.seed is not None:
+        torch.manual_seed(config.seed)
 
     # Initialize network. When num_players > 2, MicroCivNetwork swaps in an
     # NPlayerValueHead that outputs a per-player value vector.
@@ -867,7 +925,12 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     )
 
     # Initialize replay buffer
-    replay_buffer = ReplayBuffer(max_size=config.replay_buffer_size)
+    replay_buffer = ReplayBuffer(
+        max_size=config.replay_buffer_size,
+        # Offset past self-play's and evaluation's ranges so no two streams in
+        # the run share a sequence.
+        seed=None if config.seed is None else config.seed + 2 * EVAL_SEED_OFFSET,
+    )
 
     # Training loop
     num_iterations = DRY_RUN_PROFILE.num_iterations if dry_run else config.num_iterations
@@ -905,11 +968,21 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
 
             # Create dataloader
             dataset = ReplayDataset(train_examples)
+            # An explicit generator rather than the global torch RNG: batch
+            # order changes the gradient, and relying on global state makes the
+            # shuffle depend on however many draws happened to precede it.
+            # Re-derived per iteration so successive iterations shuffle
+            # differently while the run as a whole replays.
+            loader_generator: torch.Generator | None = None
+            if config.seed is not None:
+                loader_generator = torch.Generator()
+                loader_generator.manual_seed(config.seed + iteration)
             dataloader = DataLoader(
                 dataset,
                 batch_size=config.batch_size,
                 shuffle=True,
                 num_workers=0,
+                generator=loader_generator,
             )
 
             # Train for multiple epochs
@@ -997,6 +1070,16 @@ def main() -> None:
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/civ6")
     parser.add_argument("--dry_run", action="store_true", help="Quick test run")
     parser.add_argument("--device", type=str, default=None)
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Base RNG seed. Determines the environments, every search, the "
+            "random evaluation opponent and network initialisation, so two runs "
+            "at the same seed replay exactly. Omitted means unseeded."
+        ),
+    )
     args = parser.parse_args()
 
     config = TrainingConfig(
@@ -1015,6 +1098,7 @@ def main() -> None:
         max_turns=args.max_turns,
         save_interval=args.save_interval,
         device=args.device or "auto",
+        seed=args.seed,
     )
 
     train(config, dry_run=args.dry_run)
