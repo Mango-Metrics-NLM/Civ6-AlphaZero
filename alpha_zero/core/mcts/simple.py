@@ -24,6 +24,7 @@ class SimpleMCTS:
         num_simulations: int = 50,
         c_puct: float = 1.5,
         rollout_depth: int = DEFAULT_ROLLOUT_DEPTH,
+        seed: int | None = None,
     ) -> None:
         """Initialize simple MCTS.
 
@@ -31,11 +32,19 @@ class SimpleMCTS:
             num_simulations: Number of MCTS simulations.
             c_puct: Exploration constant.
             rollout_depth: Maximum rollout depth.
+            seed: Seed for this search's RNG. ``None`` means unseeded, matching
+                the previous behaviour. A parameter rather than a config field
+                because ``SimpleMCTS`` is the one variant that takes no config
+                object.
         """
         self.num_simulations = num_simulations
         self.c_puct = c_puct
         self.rollout_depth = rollout_depth
-        self._rng = np.random.default_rng()
+        # One generator for the whole class. It previously had this attribute
+        # *and* reached for the global `np.random` in `select_action`, so the
+        # same object drew from two different sources and seeding it determined
+        # only half its behaviour.
+        self._rng = np.random.default_rng(seed)
         self._search_count = 0
         logger.debug(
             "SimpleMCTS initialized",
@@ -187,4 +196,4 @@ class SimpleMCTS:
         else:
             probs = action_probs
 
-        return int(np.random.choice(len(probs), p=probs))
+        return int(self._rng.choice(len(probs), p=probs))

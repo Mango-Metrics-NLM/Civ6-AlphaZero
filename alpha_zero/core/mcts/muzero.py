@@ -55,6 +55,12 @@ class MuZeroMCTSConfig:
     discount: float = MCTS.MUZERO_DISCOUNT
     use_categorical_reward: bool = True
     reward_support_size: int = MCTS.MUZERO_REWARD_SUPPORT_SIZE
+    # Seed for this search's own RNG. ``None`` means unseeded, which is what
+    # every existing caller gets, so behaviour is unchanged unless a seed is
+    # passed. `create_mcts` filters kwargs against this dataclass's fields, so
+    # adding it here makes `create_mcts(..., seed=42)` work with no factory
+    # change.
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
@@ -224,6 +230,11 @@ class MuZeroMCTS:
         # unresolved "cuda" here while the network sat on cpu was a real
         # source of mixed-device RuntimeErrors.
         self.device = place_network(network, device)
+        # This search owns its randomness. Drawing from the global `np.random`
+        # state meant a caller could seed its environments and still get a
+        # different search on every run -- the defect that made a "seeded"
+        # self-play run only half determined.
+        self._rng = np.random.default_rng(self.config.seed)
 
     @classmethod
     def from_network(
@@ -474,6 +485,7 @@ class MuZeroMCTS:
             policy,
             action_mask,
             min(self.config.num_sampled_actions, len(valid_actions)),
+            rng=self._rng,
         )
 
         if len(sampled_actions) == 0:
@@ -801,7 +813,7 @@ class MuZeroMCTS:
         if len(actions) == 0:
             return
 
-        noise = np.random.dirichlet([self.config.dirichlet_alpha] * len(actions))
+        noise = self._rng.dirichlet([self.config.dirichlet_alpha] * len(actions))
 
         eps = self.config.dirichlet_epsilon
         for i, action in enumerate(actions):
@@ -854,7 +866,7 @@ class MuZeroMCTS:
         probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
-        return int(np.random.choice(len(probs), p=probs))
+        return int(self._rng.choice(len(probs), p=probs))
 
     def search_from_env(
         self,

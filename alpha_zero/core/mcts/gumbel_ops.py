@@ -17,6 +17,7 @@ def gumbel_sample_actions(
     action_mask: np.ndarray,
     num_actions: int,
     temperature: float = 1.0,
+    rng: np.random.Generator | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sample actions using Gumbel-Top-k trick.
 
@@ -29,12 +30,25 @@ def gumbel_sample_actions(
         action_mask: Mask of valid actions (A,).
         num_actions: Number of actions to sample (k).
         temperature: Temperature for sampling (higher = more exploration).
+        rng: Generator for the Gumbel noise. ``None`` draws from a fresh
+            unseeded generator, matching the historical behaviour of drawing
+            from the global ``np.random`` state.
+
+            This is a *parameter* rather than module state because all three
+            searches that call this function -- ``GumbelMCTS``, ``MuZeroMCTS``
+            and ``BatchGumbelMCTS`` -- own their own generator, and a caller
+            that seeds its search must have that seed reach the noise drawn
+            here. It previously did not: ``run_batch_selfplay(seed=...)`` seeded
+            the environments while this line drew from the global RNG, so a
+            "seeded" self-play run was only half determined.
 
     Returns:
         Tuple of (selected_actions, gumbel_scores).
         - selected_actions: Indices of selected actions (k,).
         - gumbel_scores: Gumbel scores for selected actions (k,).
     """
+    if rng is None:
+        rng = np.random.default_rng()
     valid_actions = np.where(action_mask > 0)[0]
 
     if len(valid_actions) == 0:
@@ -48,7 +62,7 @@ def gumbel_sample_actions(
 
     # Sample Gumbel noise: g ~ Gumbel(0, 1)
     # Gumbel(0,1) = -log(-log(U)) where U ~ Uniform(0,1)
-    uniform = np.random.uniform(size=len(valid_actions))
+    uniform = rng.uniform(size=len(valid_actions))
     gumbel_noise = -np.log(-np.log(np.clip(uniform, EPSILON, 1 - EPSILON)))
 
     # Gumbel-Top-k: score = log(pi) / temperature + g

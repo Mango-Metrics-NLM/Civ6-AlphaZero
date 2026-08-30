@@ -58,6 +58,11 @@ class Civ6MCTS:
         # unresolved "cuda" here while the network sat on cpu was a real
         # source of mixed-device RuntimeErrors.
         self.device = place_network(network, device)
+        # This search owns its randomness. Drawing from the global `np.random`
+        # state meant a caller could seed its environments and still get a
+        # different search on every run -- the defect that made a "seeded"
+        # self-play run only half determined.
+        self._rng = np.random.default_rng(self.config.seed)
         self._reflection_memory = reflection_memory
         if not 0.0 <= llm_prior_weight <= 1.0:
             raise ValueError(f"llm_prior_weight must be in [0, 1]; got {llm_prior_weight}")
@@ -264,7 +269,7 @@ class Civ6MCTS:
             node: Root node.
         """
         actions = list(node.children.keys())
-        noise = np.random.dirichlet([self.config.dirichlet_alpha] * len(actions))
+        noise = self._rng.dirichlet([self.config.dirichlet_alpha] * len(actions))
 
         eps = self.config.dirichlet_epsilon
         for i, action in enumerate(actions):
@@ -393,4 +398,4 @@ class Civ6MCTS:
             probs = action_probs
 
         # Sample action
-        return int(np.random.choice(len(probs), p=probs))
+        return int(self._rng.choice(len(probs), p=probs))

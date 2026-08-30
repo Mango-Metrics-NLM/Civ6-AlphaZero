@@ -52,6 +52,12 @@ class GumbelMCTSConfig:
     min_actions_after_halving: int = MCTS.GUMBEL_MIN_ACTIONS_AFTER_HALVING
     temperature: float = MCTS.DEFAULT_TEMPERATURE
     temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+    # Seed for this search's own RNG. ``None`` means unseeded, which is what
+    # every existing caller gets, so behaviour is unchanged unless a seed is
+    # passed. `create_mcts` filters kwargs against this dataclass's fields, so
+    # adding it here makes `create_mcts(..., seed=42)` work with no factory
+    # change.
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
@@ -211,6 +217,11 @@ class GumbelMCTS:
         # unresolved "cuda" here while the network sat on cpu was a real
         # source of mixed-device RuntimeErrors.
         self.device = place_network(network, device)
+        # This search owns its randomness. Drawing from the global `np.random`
+        # state meant a caller could seed its environments and still get a
+        # different search on every run -- the defect that made a "seeded"
+        # self-play run only half determined.
+        self._rng = np.random.default_rng(self.config.seed)
 
     def search(
         self,
@@ -253,6 +264,7 @@ class GumbelMCTS:
             policy,
             action_mask,
             self.config.num_sampled_actions,
+            rng=self._rng,
             temperature=self.config.temperature,
         )
 
@@ -557,4 +569,4 @@ class GumbelMCTS:
         probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
-        return int(np.random.choice(len(probs), p=probs))
+        return int(self._rng.choice(len(probs), p=probs))

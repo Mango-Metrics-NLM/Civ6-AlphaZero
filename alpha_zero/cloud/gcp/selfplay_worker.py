@@ -1093,11 +1093,15 @@ def run_batch_selfplay(
         temperature: Base temperature for action selection.
         temperature_threshold: Turn for temperature=0 (threshold schedule).
         gameplay_preset: Gameplay preset name.
-        seed: Base RNG seed. Environment ``i`` is seeded with ``seed + i``,
-            matching the sequential path's ``seed + game_idx`` convention;
-            ``None`` leaves them unseeded. This seeds the environments only --
-            see the note at the config construction below about the global RNG
-            that Gumbel action sampling draws from.
+        seed: Base RNG seed, determining the whole run. Environment ``i`` is
+            seeded with ``seed + i``, matching the sequential path's
+            ``seed + game_idx`` convention, and the search is seeded from the
+            same value; ``None`` leaves both unseeded.
+
+            This used to seed the environments *only*, because Gumbel action
+            sampling drew from the global numpy RNG — so a caller who passed a
+            seed and nothing else got a run that looked reproducible and was
+            not. Callers no longer need to seed numpy themselves.
 
     Returns:
         List of trajectory dictionaries (same format as run_selfplay).
@@ -1120,10 +1124,14 @@ def run_batch_selfplay(
     # Seed the environments so a batch run is reproducible, matching the
     # sequential path's `seed + game_idx` convention (env i gets seed + i).
     #
-    # Two caveats worth knowing: VectorizedEnvConfig treats seed_offset == 0 as
-    # "unseeded", so --seed 0 means no seed; and the environments are only half
-    # the randomness -- gumbel_sample_actions draws from the *global* numpy RNG,
-    # so a caller wanting full reproducibility must seed that too.
+    # One caveat worth knowing: VectorizedEnvConfig treats seed_offset == 0 as
+    # "unseeded", so --seed 0 means no seed.
+    #
+    # `seed` used to cover the environments only -- gumbel_sample_actions drew
+    # from the *global* numpy RNG, so a caller wanting a reproducible run had to
+    # seed that separately, and one that did not got a half-determined run that
+    # looked seeded. The search now owns its RNG and is seeded below from the
+    # same value, so this parameter determines the whole run.
     env_config = VectorizedEnvConfig(
         num_envs=num_parallel_games,
         board_size=board_size,
@@ -1139,6 +1147,9 @@ def run_batch_selfplay(
         num_sampled_actions=gumbel_num_actions,
         max_batch_size=max_batch_size,
         num_parallel_envs=num_parallel_games,
+        # Offset so the search does not share a stream with env 0, which is
+        # seeded with `seed + 0` by the convention above.
+        seed=None if seed is None else seed + num_parallel_games,
     )
     batch_mcts = BatchGumbelMCTS(
         # ``model`` is typed as a generic nn.Module; the concrete networks

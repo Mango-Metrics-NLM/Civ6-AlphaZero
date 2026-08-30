@@ -44,7 +44,6 @@ _NUM_GAMES = 2
 _MODEL_SEED = 1337
 _ENV_SEED = 11
 _GLOBAL_SEED = 17
-_OTHER_GLOBAL_SEED = 99
 
 # The per-step fields that together describe what the search did. `rewards` is
 # the value target the degenerate-target test asserts on; `policies` is the
@@ -113,6 +112,27 @@ def _play(*, env_seed: int, global_seed: int) -> list[dict]:
         )
 
 
+def _play_unseeded_globals(*, env_seed: int) -> list[dict]:
+    """Self-play with ONLY ``seed=`` set -- no global seeding at all.
+
+    The counterpart to :func:`_play`: it proves the parameter carries the run on
+    its own, which is the property that replaced the half-seeded contract.
+    """
+    from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
+
+    return run_batch_selfplay(
+        model=_build_model(),
+        num_games=_NUM_GAMES,
+        mcts_sims=_MCTS_SIMS,
+        board_size=_BOARD_SIZE,
+        max_turns=_MAX_TURNS,
+        num_parallel_games=_NUM_GAMES,
+        gumbel_num_actions=_GUMBEL_ACTIONS,
+        device="cpu",
+        seed=env_seed,
+    )
+
+
 def _fingerprint(trajectories: list[dict]) -> list[dict[str, list]]:
     """A comparable, field-by-field summary of a batch of trajectories."""
     return [
@@ -131,12 +151,6 @@ def baseline_run() -> list[dict]:
 def repeat_run() -> list[dict]:
     """Same environment seed, same global seed, freshly seeded network."""
     return _play(env_seed=_ENV_SEED, global_seed=_GLOBAL_SEED)
-
-
-@pytest.fixture(scope="module")
-def other_global_seed_run() -> list[dict]:
-    """Same environment seed; only the global RNG differs."""
-    return _play(env_seed=_ENV_SEED, global_seed=_OTHER_GLOBAL_SEED)
 
 
 class TestFullSeedingIsReproducible:
@@ -165,50 +179,64 @@ class TestFullSeedingIsReproducible:
         )
 
 
-class TestTheEnvSeedIsOnlyHalfTheRandomness:
-    """Why seeding ``seed=`` alone was not enough -- the defect itself.
+class TestTheSeedNowCoversTheWholeRun:
+    """The contract that replaced the half-seeded one.
 
-    Both branches are fully seeded, so this is deterministic; it pins an observed
-    coupling rather than sampling one. If it ever fails, the honest reading is
-    that Gumbel sampling stopped drawing from the global numpy RNG -- at which
-    point ``run_batch_selfplay``'s docstring and the callers that seed globally
-    should be revisited, not this assertion deleted.
+    This class used to assert the *defect*: that ``run_batch_selfplay(seed=...)``
+    covered the environments only, and that the global numpy RNG still moved the
+    play. Its own comment said what to do if that ever stopped being true --
+    "revisit ``run_batch_selfplay``'s docstring and the callers that seed
+    globally, not this assertion". That is what happened: each search now owns a
+    generator seeded from the same value, so the coupling is gone by design.
+
+    Inverted rather than deleted, because the new property is the stronger one
+    and is worth pinning: ``seed=`` alone is now sufficient.
     """
 
-    def test_global_rng_changes_play_at_a_fixed_env_seed(
-        self, baseline_run, other_global_seed_run
-    ) -> None:
-        assert _fingerprint(baseline_run) != _fingerprint(other_global_seed_run), (
-            "the global RNG no longer affects play at a fixed environment seed. "
-            "That would make `seed=` sufficient for reproducibility -- good news, "
-            "but it invalidates the documented contract that callers must seed "
-            "numpy themselves"
+    def test_seed_alone_reproduces_play_without_seeding_numpy(self) -> None:
+        """No global seeding anywhere -- the parameter must carry the whole run.
+
+        Deliberately does *not* use ``_seed_global_rngs``: if this passes while
+        the global RNGs are left wherever the previous test left them, the seed
+        genuinely determines the run on its own.
+        """
+        first = _play_unseeded_globals(env_seed=_ENV_SEED)
+        np.random.random(1000)  # disturb the global state between the two runs
+        torch.rand(1000)
+        second = _play_unseeded_globals(env_seed=_ENV_SEED)
+        assert _fingerprint(first) == _fingerprint(second), (
+            "run_batch_selfplay(seed=...) no longer determines the run by itself. "
+            "It used to cover the environments only, which is the defect this "
+            "file was written for; if that has returned, the search is drawing "
+            "from a generator the seed does not reach."
         )
 
-    def test_docstring_still_warns_that_seed_covers_environments_only(self) -> None:
-        """The contract is documented; keep it documented.
+    def test_different_seeds_still_differ(self) -> None:
+        """The positive half -- a stuck RNG would satisfy the test above."""
+        first = _play_unseeded_globals(env_seed=_ENV_SEED)
+        other = _play_unseeded_globals(env_seed=_ENV_SEED + 500)
+        assert _fingerprint(first) != _fingerprint(other), (
+            "two different seeds produced identical play; the seed is being "
+            "ignored rather than honoured"
+        )
 
-        The integration test was written against an assumption the code
-        contradicts in its own docstring. If that warning is dropped, the next
-        caller repeats the mistake.
+    def test_docstring_no_longer_tells_callers_to_seed_numpy(self) -> None:
+        """The old docstring instructed callers to seed numpy themselves.
+
+        Leaving that text in place after the fix would keep sending readers to a
+        workaround that is now both unnecessary and misleading -- global seeding
+        no longer reaches the search at all.
         """
         from alpha_zero.cloud.gcp import selfplay_worker
 
         doc = selfplay_worker.run_batch_selfplay.__doc__ or ""
-        assert "environments only" in doc, (
-            "run_batch_selfplay's `seed` docstring no longer states that it seeds "
-            "the environments only; that omission is what the half-seeded "
-            "integration test was built on"
+        assert "determining the whole run" in doc, (
+            "run_batch_selfplay's `seed` docstring should state that it determines the whole run"
         )
-
-
-@pytest.fixture(scope="module")
-def integration_source() -> str:
-    """Source of the integration file where the half-seeding defect surfaced."""
-    path = (
-        Path(__file__).resolve().parents[1] / "integration" / "test_batch_selfplay_integration.py"
-    )
-    return path.read_text(encoding="utf-8")
+        assert "must seed that too" not in doc, (
+            "the docstring still tells callers to seed the global numpy RNG; that "
+            "advice no longer works, because the search owns its own generator"
+        )
 
 
 class TestSeedingDoesNotLeakIntoOtherTests:
@@ -251,6 +279,15 @@ class TestSeedingDoesNotLeakIntoOtherTests:
         with _seed_global_rngs(7):
             second = np.random.random(5).tolist()
         assert first == second, "_seed_global_rngs is not actually seeding"
+
+
+@pytest.fixture(scope="module")
+def integration_source() -> str:
+    """Source of the integration file where the half-seeding defect surfaced."""
+    path = (
+        Path(__file__).resolve().parents[1] / "integration" / "test_batch_selfplay_integration.py"
+    )
+    return path.read_text(encoding="utf-8")
 
 
 class TestTheIntegrationTestSeedsBothSources:

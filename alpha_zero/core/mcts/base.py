@@ -24,6 +24,12 @@ class MCTSConfig:
     dirichlet_epsilon: float = MCTS.DEFAULT_DIRICHLET_EPSILON
     temperature: float = MCTS.DEFAULT_TEMPERATURE
     temperature_threshold: int = MCTS.DEFAULT_TEMPERATURE_THRESHOLD
+    # Seed for this search's own RNG. ``None`` means unseeded, which is what
+    # every existing caller gets, so behaviour is unchanged unless a seed is
+    # passed. `create_mcts` filters kwargs against this dataclass's fields, so
+    # adding it here makes `create_mcts(..., seed=42)` work with no factory
+    # change.
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
