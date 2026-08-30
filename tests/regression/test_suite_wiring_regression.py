@@ -164,6 +164,29 @@ def _make_recipe(target: str) -> str:
     return match.group(1) if match else ""
 
 
+_MIN_REASON_CHARS = 20
+
+
+def _not_gated_problems(entries: dict[str, str], on_disk: set[str]) -> list[str]:
+    """Why each ``NOT_GATED`` entry is unacceptable, if any.
+
+    Two rules. The suite must exist -- a stale exemption silently covers for a
+    suite that no longer has that name, and hides the ones really ungated. And
+    the reason must be a real sentence: an exemption whose justification is
+    ``"todo"`` is a wired-off gate with a comment on it.
+    """
+    problems = []
+    for suite, reason in sorted(entries.items()):
+        if suite not in on_disk:
+            problems.append(
+                f"NOT_GATED names {suite!r}, which holds no test modules -- "
+                "stale exemptions hide the suites that really are ungated"
+            )
+        if len(reason.strip()) < _MIN_REASON_CHARS:
+            problems.append(f"NOT_GATED[{suite!r}] needs a real reason, not {reason!r}")
+    return problems
+
+
 def _covers(gated: set[str], suite: str) -> bool:
     """Is ``suite`` run by any of the ``gated`` path arguments?"""
     return any(suite == path or suite.startswith(f"{path}/") for path in gated)
@@ -187,16 +210,16 @@ class TestEverySuiteIsGated:
         )
 
     def test_not_gated_entries_are_real_and_justified(self) -> None:
-        """An exemption must name a suite that exists and say why."""
-        on_disk = _suites_on_disk()
-        for suite, reason in NOT_GATED.items():
-            assert suite in on_disk, (
-                f"NOT_GATED names {suite!r}, which holds no test modules -- "
-                "stale exemptions hide the suites that really are ungated"
-            )
-            assert len(reason.strip()) >= 20, (
-                f"NOT_GATED[{suite!r}] needs a real reason, not {reason!r}"
-            )
+        """An exemption must name a suite that exists and say why.
+
+        ``NOT_GATED`` is empty today, so this loop runs zero times and passes
+        vacuously -- which is the exact defect this file exists to catch. The
+        rule is therefore extracted into :func:`_not_gated_problems` and
+        exercised on synthetic entries in ``TestTheGateItselfDiscriminates``,
+        so it is proven to discriminate before anyone relies on it.
+        """
+        problems = _not_gated_problems(NOT_GATED, _suites_on_disk())
+        assert not problems, "\n".join(problems)
 
     def test_make_test_mirrors_the_ci_jobs_it_claims_to(self) -> None:
         """`make test` says it runs "the suites CI runs" -- hold it to that."""
@@ -253,6 +276,28 @@ class TestTheGateItselfDiscriminates:
         """How the governance job selects its suite: ``-c <dir>/pytest.ini``."""
         script = "pytest -c tests/governance/pytest.ini"
         assert "tests/governance" in _test_paths_in(script)
+
+    def test_a_stale_exemption_is_rejected(self) -> None:
+        """``NOT_GATED`` is empty, so its own check would pass on anything."""
+        problems = _not_gated_problems(
+            {"tests/deleted-long-ago": "a perfectly adequate sentence of reasoning"},
+            _suites_on_disk(),
+        )
+        assert problems, "an exemption naming a nonexistent suite must be rejected"
+
+    def test_an_unjustified_exemption_is_rejected(self) -> None:
+        real_suite = next(iter(sorted(_suites_on_disk())))
+        problems = _not_gated_problems({real_suite: "todo"}, _suites_on_disk())
+        assert problems, "an exemption with a placeholder reason must be rejected"
+
+    def test_a_well_formed_exemption_is_accepted(self) -> None:
+        """The positive half: the rule must not reject everything either."""
+        real_suite = next(iter(sorted(_suites_on_disk())))
+        problems = _not_gated_problems(
+            {real_suite: "deliberately not gated because it needs live GCP credentials"},
+            _suites_on_disk(),
+        )
+        assert not problems, f"a valid exemption was rejected: {problems}"
 
 
 class TestOptionalDependencyImportsAreGuarded:
