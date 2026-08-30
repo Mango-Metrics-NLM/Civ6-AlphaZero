@@ -134,6 +134,16 @@ Examples:
         help="PyTorch device (default: cpu)",
     )
     p.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Base RNG seed for the evaluation. Without it a probe cannot be "
+            "repeated: five 20-game probes of one checkpoint scored 0.25, 0.35, "
+            "0.375, 0.375 and 0.40 (docs/evidence/validation_iteration_zero/)."
+        ),
+    )
+    p.add_argument(
         "--log_level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -370,7 +380,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         from alpha_zero.core.civ6_mcts import Civ6MCTS, MCTSConfig
 
-        mcts_cfg = MCTSConfig(num_simulations=args.mcts_sims)
+        mcts_cfg = MCTSConfig(
+            num_simulations=args.mcts_sims,
+            # Offset past the pipeline's per-game env range (`seed + i`), so the
+            # evaluated agent's search does not share a stream with the games.
+            seed=None if args.seed is None else args.seed + args.n_games,
+        )
         _network: Any = model  # nn.Module satisfies MCTSNetwork at runtime; cast for mypy
         mcts_agent = Civ6MCTS(network=_network, config=mcts_cfg, device=args.device)
 
@@ -381,14 +396,19 @@ def main(argv: list[str] | None = None) -> int:
 
     # --- Build evaluation pipeline ---
     logger.info(
-        "EvaluationPipeline(board_size=%d, max_turns=%d)",
+        "EvaluationPipeline(board_size=%d, max_turns=%d, seed=%s)",
         args.board_size,
         args.max_turns,
+        args.seed,
     )
     try:
         from alpha_zero.evaluation.evaluation_pipeline import EvaluationPipeline
 
-        pipeline = EvaluationPipeline(board_size=args.board_size, max_turns=args.max_turns)
+        pipeline = EvaluationPipeline(
+            board_size=args.board_size,
+            max_turns=args.max_turns,
+            seed=args.seed,
+        )
     except Exception as exc:
         logger.error("Failed to build EvaluationPipeline: %s", exc, exc_info=True)
         return 1

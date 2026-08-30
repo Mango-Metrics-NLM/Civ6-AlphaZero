@@ -16,6 +16,8 @@ Run with:
 
 from __future__ import annotations
 
+import contextlib
+
 import numpy as np
 import pytest
 
@@ -35,9 +37,61 @@ _MAX_TURNS = 15
 # ============================================================================
 
 
+# Weight seed for `small_model`. The tests below seed `run_batch_selfplay`
+# because they assert on game *outcomes* -- but the network driving the search
+# was left unseeded, so the policy differed on every run and the outcomes with
+# it. `test_value_targets_are_not_uniformly_degenerate` failed in CI on exactly
+# that: it asserts at least one game reaches a decisive result, and with a
+# documented ~73.5% draw rate an unlucky random policy can draw all six games
+# across all three env seeds. Seeding the environment but not the policy makes a
+# test only half-deterministic, which reads as a flake.
+_MODEL_SEED = 1337
+
+
+@contextlib.contextmanager
+def _seed_global_rngs(seed: int):
+    """Seed the RNGs `run_batch_selfplay(seed=...)` does not, then restore them.
+
+    That parameter seeds the *environments* only. `selfplay_worker` says so at
+    the config construction: "the environments are only half the randomness --
+    gumbel_sample_actions draws from the *global* numpy RNG, so a caller wanting
+    full reproducibility must seed that too."
+
+    These tests assert on game outcomes, so half-seeding left them depending on
+    how the dice fell -- which is what made
+    `test_value_targets_are_not_uniformly_degenerate` fail intermittently in CI
+    while passing locally.
+
+    Restoring matters as much as seeding. The first version of this helper
+    seeded the process-global RNGs and left them there, so every test collected
+    afterwards in the same worker inherited state from this file -- exactly the
+    hidden coupling the `small_model` fixture uses `fork_rng` to avoid,
+    reintroduced two functions below it. Seed inside the block, unchanged
+    outside it.
+    """
+    import numpy as np
+    import torch
+
+    np_state = np.random.get_state()
+    with torch.random.fork_rng(devices=[]):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        try:
+            yield
+        finally:
+            np.random.set_state(np_state)
+
+
 @pytest.fixture
 def small_model():
-    """Create a small transformer model for batch self-play testing."""
+    """A small transformer with deterministic weights.
+
+    Weights come from a forked RNG so the seed cannot leak into any other test's
+    randomness -- the fixture is deterministic without making the rest of the
+    suite implicitly depend on this seed.
+    """
+    import torch
+
     from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
 
     config = TransformerConfig(
@@ -48,7 +102,9 @@ def small_model():
         num_layers=1,
         embed_dim=32,
     )
-    model = Civ6TransformerNetwork(config=config)
+    with torch.random.fork_rng(devices=[]):
+        torch.manual_seed(_MODEL_SEED)
+        model = Civ6TransformerNetwork(config=config)
     model.eval()
     return model
 
@@ -453,18 +509,19 @@ class TestBatchGamesReachTheirOwnEnd:
         from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
 
         max_turns = 12
-        trajectories = run_batch_selfplay(
-            model=small_model,
-            num_games=2,
-            mcts_sims=2,
-            board_size=_BOARD_SIZE,
-            max_turns=max_turns,
-            num_parallel_games=2,
-            max_batch_size=_MAX_BATCH_SIZE,
-            gumbel_num_actions=2,
-            device="cpu",
-            seed=17,
-        )
+        with _seed_global_rngs(17):
+            trajectories = run_batch_selfplay(
+                model=small_model,
+                num_games=2,
+                mcts_sims=2,
+                board_size=_BOARD_SIZE,
+                max_turns=max_turns,
+                num_parallel_games=2,
+                max_batch_size=_MAX_BATCH_SIZE,
+                gumbel_num_actions=2,
+                device="cpu",
+                seed=17,
+            )
 
         assert trajectories, "batch self-play produced no trajectories"
         lengths = [len(t["spatial"]) for t in trajectories]
@@ -486,24 +543,28 @@ class TestBatchGamesReachTheirOwnEnd:
         """
         from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
 
-        # Seeded: this asserts on game *outcomes*, so an unseeded version would
-        # be a test whose pass depends on how the dice fell. Several seeds are
-        # tried because a single seed can legitimately produce an all-draw
+        # Fully seeded: the model fixture, the environments, and the global
+        # RNGs the Gumbel action sampling draws from. Seeding only the
+        # environments -- which is all `run_batch_selfplay(seed=...)` does --
+        # left this asserting on outcomes it could not reproduce. Several seeds
+        # are tried because a single seed can legitimately produce an all-draw
         # batch; what must not happen is every game of every batch drawing.
         rewards: set[float] = set()
         for seed in (11, 23, 42):
-            for traj in run_batch_selfplay(
-                model=small_model,
-                num_games=2,
-                mcts_sims=2,
-                board_size=_BOARD_SIZE,
-                max_turns=12,
-                num_parallel_games=2,
-                max_batch_size=_MAX_BATCH_SIZE,
-                gumbel_num_actions=2,
-                device="cpu",
-                seed=seed,
-            ):
+            with _seed_global_rngs(seed):
+                trajectories = run_batch_selfplay(
+                    model=small_model,
+                    num_games=2,
+                    mcts_sims=2,
+                    board_size=_BOARD_SIZE,
+                    max_turns=12,
+                    num_parallel_games=2,
+                    max_batch_size=_MAX_BATCH_SIZE,
+                    gumbel_num_actions=2,
+                    device="cpu",
+                    seed=seed,
+                )
+            for traj in trajectories:
                 rewards.update(traj["rewards"])
             if rewards - {0.0}:
                 break

@@ -92,6 +92,12 @@ class BatchMCTSConfig:
     min_actions_after_halving: int = 1
     temperature: float = 1.0
     temperature_threshold: int = 30
+    # Seed for this search's own RNG. ``None`` means unseeded, which is what
+    # every existing caller gets, so behaviour is unchanged unless a seed is
+    # passed. `create_mcts` filters kwargs against this dataclass's fields, so
+    # adding it here makes `create_mcts(..., seed=42)` work with no factory
+    # change.
+    seed: int | None = None
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -160,6 +166,11 @@ class BatchGumbelMCTS:
         # unresolved "cuda" here while the network sat on cpu was a real
         # source of mixed-device RuntimeErrors.
         self.device = place_network(network, device)
+        # This search owns its randomness. Drawing from the global `np.random`
+        # state meant a caller could seed its environments and still get a
+        # different search on every run -- the defect that made a "seeded"
+        # self-play run only half determined.
+        self._rng = np.random.default_rng(self.config.seed)
 
         # Metrics tracking for W&B logging
         self._search_count = 0
@@ -247,6 +258,7 @@ class BatchGumbelMCTS:
                 action_mask,
                 self.config.num_sampled_actions,
                 temperature=self.config.temperature,
+                rng=self._rng,
             )
 
             # Store gumbel scores in children
@@ -656,4 +668,4 @@ class BatchGumbelMCTS:
         probs = np.power(action_probs + EPSILON, 1.0 / temperature)
         probs = probs / probs.sum()
 
-        return int(np.random.choice(len(probs), p=probs))
+        return int(self._rng.choice(len(probs), p=probs))

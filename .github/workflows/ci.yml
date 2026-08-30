@@ -88,8 +88,31 @@ jobs:
       - name: Run sanity tests
         run: pytest tests/sanity/ -v --tb=short
 
+      # Repository-hygiene and known-bug reproductions. This suite existed but was
+      # wired into nothing -- no CI job and no make target ran it -- so its
+      # invariants could regress with CI green.
+      - name: Run regression tests
+        run: pytest tests/regression/ -v --tb=short
+
       - name: Run integration tests (non-slow)
         run: pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
+
+      # The four suites below were in the same position tests/regression/ was:
+      # present, passing when run by hand, and enumerated by no job and no make
+      # target. tests/scripts/ was hiding three real failures because of it.
+      # tests/inference/ rides along with tests/smoke/ rather than getting its
+      # own step: every module in it is `pytest.importorskip`-guarded on the
+      # `web` extra, so alone it collects nothing and pytest exits 5 ("no tests
+      # collected") -- a red build for a suite behaving exactly as designed.
+      # Paired, it still gates: a failure in it fails this step.
+      - name: Run smoke and inference tests
+        run: pytest tests/smoke/ tests/inference/ -v --tb=short
+
+      - name: Run script tests
+        run: pytest tests/scripts/ -v --tb=short -m "not requires_env"
+
+      - name: Run end-to-end tests
+        run: pytest tests/e2e/ -v --tb=short -m "not slow and not requires_env"
 
   cloud-tests:
     name: Cloud Unit Tests
@@ -119,12 +142,19 @@ jobs:
       - name: Run cloud unit tests
         run: pytest tests/cloud/unit/ -v --tb=short -x
 
+      - name: Run cloud smoke tests
+        run: pytest tests/cloud/smoke/ -v --tb=short
+
   security:
     name: Security Scan
     timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: `gitleaks git` scans every commit, and a secret removed
+          # in a later commit is still published in the one that added it.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -138,6 +168,15 @@ jobs:
 
       - name: Run security sanity tests
         run: pytest tests/security/ -v --tb=short
+
+      # One definition of the secret gate, in the Makefile, invoked identically
+      # here. This job used to restate the install and both scan commands, which
+      # is how it came to run `gitleaks dir .` -- reading gitignored files --
+      # while the Makefile comment beside it claimed a tracked-tree scan. The
+      # target installs its own version-pinned binary; scoping to HEAD's lineage
+      # and staging the committable file set are documented there.
+      - name: Scan for secrets (tracked tree + this branch's history)
+        run: make security-secrets
 
       - name: Run bandit security scan
         run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json
@@ -172,7 +211,8 @@ jobs:
         run: >-
           ruff check
           scripts/validate_openspec.py scripts/validate_kb.py
-          scripts/validate_skills.py scripts/check_doc_sync.py
+          scripts/validate_skills.py scripts/validate_agents.py
+          scripts/check_doc_sync.py
           tests/governance/
 
       - name: Validate OpenSpec structure
@@ -183,6 +223,9 @@ jobs:
 
       - name: Validate skills
         run: python scripts/validate_skills.py
+
+      - name: Validate Agent.md persona docs
+        run: python scripts/validate_agents.py
 
       - name: Check documentation sync
         run: python scripts/check_doc_sync.py
@@ -256,7 +299,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+          pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ tests/regression/ \
             --cov=alpha_zero \
             --cov-report=xml \
             --cov-report=term-missing \

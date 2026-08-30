@@ -21,6 +21,9 @@ case "$rel" in
   kb/*)
     python3 scripts/validate_kb.py --path "$rel" --quiet || exit 2
     ;;
+  */Agent.md|Agent.md)
+    python3 scripts/validate_agents.py --path "$rel" --quiet || exit 2
+    ;;
   .claude/skills/*|.agents/skills/*)
     python3 scripts/validate_skills.py --path "$rel" --quiet || exit 2
     ;;

@@ -18,7 +18,11 @@ import time
 PHASE_MODULES: dict[str, list[str]] = {
     "Phase 1-3 (Core)": [
         "alpha_zero.core.civ6_network",
+        # Both the shim and the package it re-exports: the shim proves the
+        # historical import path still resolves, the package proves the
+        # implementation is importable in the container.
         "alpha_zero.core.civ6_mcts",
+        "alpha_zero.core.mcts",
         "alpha_zero.core.mcts_factory",
         "alpha_zero.envs.microciv",
     ],

@@ -7,6 +7,283 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — A seed now determines the whole run (2026-08-30)
+
+The project could not replay its own runs. Its only recorded training run says
+so, and quantifies it: five 20-game probes of **one checkpoint** scored 0.25 /
+0.35 / 0.375 / 0.375 / 0.40 (`docs/evidence/validation_iteration_zero/`). Every
+judgement downstream inherited that spread — the promotion threshold, the encoder
+A/B, any per-iteration trend claim.
+
+`--seed` on `training_civ6.py` and the evaluation entry points now reaches every
+source of randomness: environments, all five search variants, the random
+opponent, replay sampling, batch order and network initialisation. Offsets keep
+the streams disjoint; every new parameter defaults to `None`, so unseeded callers
+are unaffected.
+
+**Four unseeded sources, and only the first was found by reading the code:**
+
+- Eight global `np.random.*` draws across `core/mcts/` and `core/batch_mcts.py`,
+  reachable from no config. `gumbel_sample_actions` now takes an `rng`, threaded
+  from all three of its callers.
+- **`MicroCivEnv.clone()` dropped the RNG.** It built a fresh environment with no
+  seed — and cloning is how MCTS simulates, while `step` itself draws (combat,
+  settler auto-found). A seeded environment therefore produced unseeded rollouts
+  in *every* variant, which no seed further up could correct. Found because
+  `SimpleMCTS` stayed nondeterministic after its own fix.
+- **`ReplayBuffer.sample` and `DataLoader(shuffle=True)`**, which decide what a
+  batch contains and therefore the gradient. Found by diffing two `--seed 42`
+  runs: they agreed on all 525 lines of self-play output and differed on the
+  first epoch loss.
+- **`NeuralNetworkPlayer`** — the *evaluated agent* — sampling globally while its
+  siblings `RandomPlayer` and `HeuristicPlayer` in the same module each took a
+  seed and owned a generator. This is why the probe spread survived environments
+  that were already seeded.
+
+**Measured, as a control rather than a demonstration**
+(`docs/evidence/seeded_probe_reproducibility/`): one checkpoint, ten probes.
+
+| | Score rates | Distinct | Range |
+|---|---|---:|---:|
+| Seeded | 0.325 × 5 | **1** | **0.000** |
+| Unseeded | 0.45, 0.40, 0.30, 0.45, 0.40 | 3 | 0.150 |
+
+Withholding the seed still produces the original spread, so the collapse is
+attributable to the seed.
+
+Gated by `tests/regression/test_training_determinism_regression.py` (10
+assertions, ~7 s), which exercises the real `train()` entry point rather than a
+stand-in — the first draft used its own network and stayed green when
+`torch.manual_seed` was deleted from `train()`.
+
+Behaviour note: seeded runs draw from a `numpy.random.Generator` rather than the
+legacy global functions, so action sequences differ from an unseeded run today.
+Nothing depended on the previous sequences.
+
+This does **not** address the ~73.5% draw rate that
+`docs/runbooks/promotion-gate.md` identifies as the upstream problem.
+Reproducibility narrows a measurement's variance; it does not move the
+measurement.
+
+
+### Fixed — Second review round: three defects inside this PR's own fixes (2026-08-30)
+
+Copilot returned 8 more comments; all 8 were correct. Three of them are defects in
+fixes made earlier in the same PR, which is the honest case for the round:
+
+- **`validate_skills.py --path <existing non-SKILL.md>` exited 0.** An `if/elif`
+  with no `else` recorded nothing. `validate_agents.py` had been fixed for exactly
+  this; its sibling was left with the hole. The `--path` contract is now asserted
+  across every validator that accepts the flag, for both the missing and the
+  misnamed case, with the positive half (a valid target still validates) so a
+  validator that rejected everything could not pass.
+- **The secret gate read gitignored files.** `gitleaks dir .` scans the working
+  directory, and this project *requires* a gitignored `.env` holding real API keys
+  — so a correctly configured developer would have had `make verify` fail on a file
+  that cannot be committed, while the comment beside it claimed a "tracked tree"
+  scan. It now stages `git ls-files -co --exclude-standard`. Allowlisting `.env`
+  would have been the wrong fix: an accidentally *tracked* `.env` is in that set and
+  must still fail. Both directions verified. Side effect: the tree scan went from
+  121.8 MB / 21.3 s to 16.9 MB / 1.1 s.
+- **The gitleaks pin could still be defeated.** `gitleaks-install` only fetched when
+  the target was missing, so a `.tools/gitleaks` left from an earlier pin was reused
+  for ever — the PATH-default bug one step further along. The version is now in the
+  binary's *path*, making a pin change a cache miss.
+
+Also: the allowlist parser recognised only triple-single-quoted TOML strings, so a
+catch-all written `"^.*$"` was invisible to it while the other entries kept
+`assert patterns` green — and the negative control compiled the regex directly,
+bypassing the parser, so it proved the predicate discriminates and nothing about the
+extraction. Measured: the old parser missed **4 of 5** ways to write a catch-all.
+Replaced with `tomllib` (stdlib since 3.11, so the "stdlib-only" constraint the hand
+parser existed for is met without hand-parsing), and the controls now run through the
+real parser in every quoting style plus the `[[rules.allowlists]]` form.
+
+And the RNG-hygiene inconsistency: `_seed_global_rngs` seeded the process-global
+numpy and torch RNGs and left them there, so later tests in the same worker inherited
+state — the coupling the `small_model` fixture uses `fork_rng` to avoid, reintroduced
+two functions below it. Both helpers are now restoring context managers, with tests
+that the state comes back *and* that seeding still takes effect inside the block.
+
+The CI `security` job now calls `make security-secrets` rather than restating the
+install and both scan commands. Restating them is how it came to run a scan that
+contradicted the comment beside it.
+
+
+### Added — AQA: a test suite that nothing runs is not a gate (2026-08-30)
+
+The review finding that `tests/regression/` was enumerated by no CI job and no
+make target was fixed for that one directory. The *category* was not, and five
+more suites were in exactly the same position — present, passing by hand, gating
+nothing:
+
+| Suite | What running it revealed |
+|---|---|
+| `tests/scripts/` | **3 real failures.** `pandas` and `mlflow` imported directly rather than through `pytest.importorskip`, so absent optional extras were errors, not skips |
+| `tests/e2e/` | 70 passing tests |
+| `tests/cloud/smoke/` | 36 passing tests |
+| `tests/smoke/` | 30 passing tests |
+| `tests/inference/` | skip-guarded, never invoked |
+
+All five are now wired into CI and `make test`, and the three `tests/scripts/`
+failures are guarded. `tests/inference/` runs paired with `tests/smoke/` rather
+than in its own step: every module in it is `pytest.importorskip`-guarded on the
+`web` extra, so alone it collects nothing and pytest exits **5** — a red build
+for a suite behaving exactly as designed. That was caught by CI, not locally,
+because the local output read `1 skipped` and looked fine; the failure lived in
+the exit code, which is the only part CI reads. The meta-gate now also refuses a
+CI step whose every suite is fully skip-guarded, so the next one cannot repeat
+it. `tests/test_sanity.py` — an unreferenced two-line
+`assert True` at the tests root — was removed rather than wired; a test that
+cannot fail cannot gate anything.
+
+**`tests/regression/test_suite_wiring_regression.py`** turns the finding into a
+standing invariant: every directory under `tests/` holding collectible tests must
+be named by some CI pytest invocation, or listed in `NOT_GATED` with a reason.
+It also holds `make test` to the CI jobs it claims to mirror. The workflow is
+parsed with `yaml`, not regex — a hand parser over YAML is exactly how the skills
+validator came to validate a folded block scalar vacuously. Enumeration mirrors
+pytest's own collection rule (a `test_*` function, or a `Test*` class with a
+`test_*` method) rather than the filename glob, so `tests/test_constants.py` —
+a constants module holding `class TestDefaults` and no tests — does not demand a
+CI wiring for a suite that does not exist.
+
+**`tests/regression/test_selfplay_determinism_regression.py`** pins the CI
+failure that prompted this: identical environment seed, global RNG seed and
+network weights must reproduce identical play, and the global-RNG coupling that
+made `run_batch_selfplay(seed=...)` insufficient stays asserted in both
+directions.
+
+**`tests/regression/test_validator_cli_regression.py`** generalises the
+`--path` hole from the one validator that had it to every validator that accepts
+the flag, and adds the regression cover that the `GITLEAKS_BIN` default and the
+cross-platform installer shipped without.
+
+### Fixed — `validate_agents.py` crashed while reporting a bad `--path` (2026-08-30)
+
+Reporting `A0` for a path outside the repository called
+`Path.relative_to(REPO_ROOT)` unguarded and died with a `ValueError` traceback
+instead of printing its own diagnostic. The exit code was non-zero either way,
+so a check that only asserted "exits non-zero" — the obvious test to write for
+the original finding — would have called it fixed. The new CLI regression tests
+assert the diagnostic, not just the code.
+
+
+### Fixed — The governance gates now actually gate (2026-08-30)
+
+Review of the previous commit returned 13 findings; all were correct. Four were the
+same failure — something described as a gate that gated nothing:
+
+- **`tests/regression/` was run by no CI job and no make target.** The ten
+  repository-hygiene invariants added in that commit, and the pre-existing
+  `test_hex_encoder_regression.py`, had never gated a pull request. Wired into the CI
+  `test` and `coverage` jobs and into `make test` / `make test-all`.
+- **`validate_agents.py --path <missing>` exited 0**, so a stale path from the
+  PostToolUse hook read as a clean validation. Now reports `A0`, matching
+  `validate_skills.py`.
+- **The catch-all allowlist test checked four exact spellings.** `^.*$` contains none
+  of them, matches every path, and left the test green. Replaced with a behavioural
+  check that compiles the real patterns against representative source.
+- **The A5 requirement said "every importable package"; the validator checked 29 of
+  44.** Nested packages — including `alpha_zero/core/mcts/`, created by this PR — had
+  no `Agent.md` and the gate passed. Spec narrowed to top-level; `core/mcts/` gets a
+  persona document.
+
+Four more where a gate was weaker than claimed: the layering test walked only
+`tree.body`, so a function-local `from .base import …` could reintroduce the removed
+dependency invisibly; `GITLEAKS_BIN` defaulted to whatever was on `PATH`, defeating the
+pin; the installer always fetched `linux_x64`, against the cross-platform requirement in
+CLAUDE.md §2.1; and `.gitleaks.toml` path-allowlisted `docs/archive/`, which is 25
+tracked files rather than a build artifact.
+
+Also the tests those changes should have shipped with. The block-scalar parser fixed a
+*vacuous-validation* bug with no regression test — reconstructing the old parser shows
+`description: >` yielded the literal `">"`, so an **empty** folded scalar passed the
+non-empty check. And `_point_at` in the governance suite patched only `SKILLS_DIR`, so
+tmp-tree tests were silently scanning the repository's real `.agents/skills/`.
+
+### Security — Unremediated W&B credential found in git history (2026-08-30)
+
+- The new repo-wide secret audit found **a real Weights & Biases API key** (40-char
+  lowercase hex, the exact W&B format) committed on 2026-03-19 in `87cd68a2` across five
+  deployment scripts. The commit is reachable only from the unmerged
+  `feature/sprint6-validation-and-nplayer-foundation` branch — not the default branch, not
+  any current PR — and all the files were later deleted, which is why the tree scan is
+  clean. **Deletion does not remove a value from git history: the key requires rotation.**
+  Triage and required actions: `docs/runbooks/secret-scanning.md`.
+- The CI secret gate is scoped to the built branch's own lineage (`--log-opts="HEAD"`,
+  the branch's whole lineage). An unscoped scan over a `fetch-depth: 0` checkout fails on findings
+  from unmerged branches that no PR can remediate — a gate nobody can turn green.
+  `make security-secrets-audit` keeps the repo-wide view available on demand.
+
+### Added — Governance gates: secret scanning, persona validation, function-size bound (2026-08-30)
+
+- **Secret scanning (`gitleaks`)** over the tracked tree *and* history — a secret removed
+  in a later commit is still published in the one that added it. The pin lives once, in the
+  Makefile (`GITLEAKS_VERSION`); CI reads it via `make print-gitleaks-version` rather than
+  restating it. `make security-secrets` runs the blocking pair locally;
+  `make security-secrets-audit` runs the repo-wide sweep. **The "0 findings across 525
+  commits" baseline this originally cited was measured before `git fetch --all`, and was
+  wrong** — see the Security entry above; the repo-wide audit has an open finding. What is
+  measured, 2026-08-30: 0 findings on the tracked tree, and 0 across this branch's entire
+  `HEAD` lineage (532 commits), which is the scope the blocking gate covers.
+- **`scripts/validate_agents.py`** — a fifth deterministic validator (A1–A6) for the 30
+  `Agent.md` persona documents, which had **no gate, no hook and no test** until now. It
+  immediately found real drift: `monitoring/Agent.md` had no persona section and asserted
+  that Weights & Biases "remains in place" (retired 2026-07-13), `alpha_zero/hub/` had no
+  `Agent.md` at all, and several docs referenced files that no longer exist. All fixed.
+- **`validate_skills.py` now scans `.agents/skills/` too.** That tree was routed to the
+  validator by the PostToolUse hook but scanned by neither pre-commit nor CI, so it carried
+  live violations including a coverage literal 5 points below the gate. Also gains S5
+  (skill directory with no `SKILL.md`) and a frontmatter parser that understands YAML block
+  scalars — a folded `description: >` previously validated as the literal `">"`.
+- **`tests/regression/test_repo_hygiene_regression.py`** — pins that no tracked file is
+  gitignored, that `.gitignore` has no duplicates, and that the secret-scan allowlist
+  cannot become a catch-all.
+
+### Fixed — Repository hygiene (2026-08-30)
+
+- **Five files were tracked *and* gitignored**: `docker-compose.yml` and the four
+  `kb/sessions/*.state.json` role-state files, which CLAUDE.md §14.5 calls "the ONLY
+  mutable state per role". Git applies ignore rules only to untracked paths, so the
+  contradiction was silent — until someone added a sibling file, which would have failed
+  to stage. Fixed with targeted negations.
+- **`.gitignore` had 83 duplicate entries and `.dockerignore` a 110-line verbatim
+  duplicate** (~48% of the file). Both deduped, each verified behaviour-identical
+  beforehand — 1,963 sample paths for `.gitignore`, 714 excluded files for `.dockerignore`.
+  `.dockerignore` also now excludes `.claude/`, `kb/`, `openspec/`, `.github/` and
+  `uv.lock`, which were being shipped into the build context and invalidating the layer
+  cache on every documentation edit.
+- **A percent-matching bug in two validators**: `(\d{2,3})\s*%` matched the decimal tail
+  of `89.30%` as a bare `30%`, so a correct coverage figure read as a gate violation.
+- **`.claude/settings.json` permissions**, broken by routing the Makefile through
+  `$(PYTHON) -m`: the `Bash(ruff:*)` / `Bash(mypy:*)` / `Bash(pytest:*)` prefixes no longer
+  matched, and `make verify` — the documented pre-PR gate — was never on the allow list.
+
+
+### Changed — `core/civ6_mcts.py` decomposed; a statement-count guard replaces nothing (2026-08-30)
+
+- **`alpha_zero/core/civ6_mcts.py` (2,443 lines) split into `alpha_zero/core/mcts/`**, one
+  module per search variant: `mcts_protocols` (contracts), `gumbel_ops` (Gumbel-Top-k
+  primitives), `base` (`MCTSConfig`, `MCTSNode`), `puct` (`Civ6MCTS`), `simple`
+  (`SimpleMCTS`), `gumbel`, `muzero`. Largest is now 876 lines. Pure relocation — the diff
+  outside the moved blocks is the shim and the docs; `mcts_factory.py` is untouched.
+  `civ6_mcts` remains a re-export shim with an explicit `__all__`, so every historical
+  import path resolves to the *same object*.
+- **The layering is now enforced, not just intended.** `gumbel` and `muzero` carry their own
+  node and configuration types and do not import `base`; the Gumbel-Top-k helpers live in
+  `gumbel_ops` specifically so `muzero` need not import the `gumbel` search module.
+  `tests/unit/test_mcts_split_backcompat.py` pins all of it.
+- **That suite also pins patchability**, which an identity test cannot: a re-export shim
+  trivially satisfies `old is new` while `mock.patch` on it becomes a silent no-op if the
+  patched symbol's consumer also moves. `MuZeroTrainingBridge.create_mcts` imports from the
+  shim at call time, and a test asserts the patch still reaches it.
+- **ruff `PLR0915` enabled** (`max-statements = 100`) — statements per function, which is the
+  pathology this repo actually has; module line count is only a proxy for it. Three `main`
+  functions exceed it (248 / 168 / 134 statements) and are listed in `per-file-ignores` as an
+  explicit burndown list rather than being silently accommodated by a higher threshold.
+
+
 ### Fixed — Self-play data correctness, promotion decisions, and honest gates (2026-08-27/28)
 
 - **Batch self-play labelled every position 0.0.** The loop counted MCTS *action*

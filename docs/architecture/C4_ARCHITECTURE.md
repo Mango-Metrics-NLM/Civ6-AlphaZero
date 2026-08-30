@@ -169,6 +169,78 @@ flowchart LR
 
 ---
 
+## Level 3 — Component Diagram (MCTS Search Family)
+
+`alpha_zero/core/civ6_mcts.py` held five search variants, four protocols and three
+configuration dataclasses in 2,443 lines until 2026-08-30. It is now
+`alpha_zero/core/mcts/`, one module per variant, with `civ6_mcts.py` retained as a
+re-export shim so every historical import path resolves to the same objects.
+
+The layering below is **enforced, not aspirational**: `tests/unit/test_mcts_split_backcompat.py`
+parses module-scope imports and fails if `gumbel` or `muzero` ever import `base`, or if
+`muzero` imports the `gumbel` search module. That is why the shared Gumbel-Top-k helpers
+live in their own leaf module — `MuZeroMCTS` calls them, and putting them in `gumbel.py`
+would have coupled the MuZero variant to the Gumbel variant.
+
+```mermaid
+flowchart TD
+    classDef leaf fill:#e8f4ea,stroke:#2d6a4f,color:#1b4332
+    classDef variant fill:#e7eefc,stroke:#1d4ed8,color:#1e3a8a
+    classDef shim fill:#fdf3e3,stroke:#b45309,color:#7c2d12
+    classDef ext fill:#f3f4f6,stroke:#6b7280,color:#374151,stroke-dasharray: 4 3
+
+    subgraph Leaves["Leaves — no sibling imports"]
+        Protocols["mcts_protocols.py<br/>MCTSNetwork · MCTSEnvironment<br/>ActionSpace · MuZeroNetworkProtocol"]:::leaf
+        GumbelOps["gumbel_ops.py<br/>gumbel_sample_actions<br/>compute_completed_q"]:::leaf
+        Base["base.py<br/>MCTSConfig · MCTSNode<br/>_env_current_player"]:::leaf
+    end
+
+    subgraph Variants["Search variants"]
+        Puct["puct.py<br/>Civ6MCTS"]:::variant
+        Simple["simple.py<br/>SimpleMCTS"]:::variant
+        Gumbel["gumbel.py<br/>GumbelMCTS · GumbelMCTSNode<br/>GumbelMCTSConfig"]:::variant
+        MuZero["muzero.py<br/>MuZeroMCTS · MuZeroNode<br/>MuZeroMCTSConfig"]:::variant
+    end
+
+    Factory["mcts_factory.py<br/>create_mcts() · _MCTS_REGISTRY<br/><i>unchanged by the split</i>"]:::ext
+    Shim["civ6_mcts.py<br/>re-export shim, explicit __all__"]:::shim
+
+    Base --> Puct
+    Base --> Simple
+    Protocols --> Puct
+    Protocols --> Gumbel
+    Protocols --> MuZero
+    GumbelOps --> Gumbel
+    GumbelOps --> MuZero
+
+    Puct --> Shim
+    Simple --> Shim
+    Gumbel --> Shim
+    MuZero --> Shim
+    Base --> Shim
+    Protocols --> Shim
+    GumbelOps --> Shim
+
+    Shim -.->|"lazy import inside create_mcts()"| Factory
+```
+
+| Module | Lines | Contents | Depends on |
+|---|---:|---|---|
+| `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
+| `gumbel_ops.py` | 98 | `gumbel_sample_actions`, `compute_completed_q` | — |
+| `base.py` | 217 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | — |
+| `puct.py` | 396 | `Civ6MCTS` | `base`, `mcts_protocols` |
+| `simple.py` | 190 | `SimpleMCTS` | `base`, `mcts_protocols` |
+| `gumbel.py` | 560 | `GumbelMCTS`, `GumbelMCTSNode`, `GumbelMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
+| `muzero.py` | 876 | `MuZeroMCTS`, `MuZeroNode`, `MuZeroMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
+
+**Extension seam.** New variants are added through `create_mcts(...)`'s `_MCTS_REGISTRY`
+(charter Invariant 1); callers never branch on a concrete MCTS type. The split left that
+factory untouched — its lazy import resolves through the shim — so the diff outside the
+moved code is the shim and the documentation.
+
+---
+
 ## Data Flow Diagram — 50-Iteration Training Run
 
 > **Scope:** End-to-end data flow for a full 50-iteration GCS-backed training run (v042–v091), including how evaluation results reach MLflow.
@@ -267,5 +339,5 @@ flowchart TD
 
 ---
 
-*Generated: 2026-08-11*
-*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations)*
+*Generated: 2026-08-30*
+*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition*

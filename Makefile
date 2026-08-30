@@ -34,6 +34,23 @@ LOCAL_EVALUATOR_IMAGE ?= civ6-evaluator:$(VERSION)
 PYTHON ?= python3
 PIP ?= pip3
 
+# Secret scanning. Pinned so a local run and CI detect the same things; override
+# with `make security-secrets GITLEAKS_VERSION=x.y.z`. GITLEAKS_BIN lets a machine
+# with gitleaks already on PATH skip the download entirely.
+GITLEAKS_VERSION ?= 8.30.0
+# Default to the managed, version-pinned binary. Defaulting to whatever `gitleaks`
+# happens to be on PATH would silently run a different ruleset from CI and defeat
+# the pin two lines above. Override explicitly to opt out:
+#   make security-secrets GITLEAKS_BIN=/usr/local/bin/gitleaks
+#
+# The version is IN THE PATH, not just in the download URL. The installer only
+# fetches when the target is missing, so a bare `.tools/gitleaks` left over from
+# an earlier pin would be reused for ever -- the same defeat-the-pin bug as the
+# PATH default, one step further along. Stamping the name makes a pin change a
+# cache miss, which is the only way that check can be got wrong.
+GITLEAKS_BIN ?= $(CURDIR)/.tools/gitleaks-$(GITLEAKS_VERSION)
+GITLEAKS_CONFIG ?= .gitleaks.toml
+
 # ============================================================================
 # Help
 # ============================================================================
@@ -51,7 +68,7 @@ help:
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
 	@echo "  make test-all          Run all tests with coverage"
-	@echo "  make validate          Run governance validators (openspec, kb, skills, doc-sync)"
+	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -97,13 +114,13 @@ install-cloud: install
 
 .PHONY: lint
 lint:
-	ruff check . --fix
-	ruff format .
+	$(PYTHON) -m ruff check . --fix
+	$(PYTHON) -m ruff format .
 
 .PHONY: lint-check
 lint-check:
-	ruff check .
-	ruff format --check .
+	$(PYTHON) -m ruff check .
+	$(PYTHON) -m ruff format --check .
 
 # Matches the CI `lint` job exactly. Use `typecheck-strict` for the harsher
 # local pass -- CI does NOT run --strict, so a --strict failure is not a gate.
@@ -119,18 +136,18 @@ typecheck-strict:
 
 .PHONY: test-unit
 test-unit:
-	pytest tests/unit/ -v --tb=short
+	$(PYTHON) -m pytest tests/unit/ -v --tb=short
 
 .PHONY: test-integration
 test-integration:
-	pytest tests/integration/ -v --tb=short
+	$(PYTHON) -m pytest tests/integration/ -v --tb=short
 
 # Mirrors the CI `coverage` job: same suites, same marker filter, same gate.
 # It previously ran the whole tests/ tree at --cov-fail-under=80 while CI used
 # 85 over a narrower set, so passing locally proved nothing about CI.
 .PHONY: test-all
 test-all:
-	pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ \
+	$(PYTHON) -m pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ tests/regression/ \
 		-m "not slow and not requires_env" \
 		--ignore=tests/unit/test_distributed \
 		--cov=alpha_zero --cov-report=term-missing --cov-report=html \
@@ -138,41 +155,135 @@ test-all:
 
 .PHONY: test-storage
 test-storage:
-	pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
+	$(PYTHON) -m pytest tests/unit/test_storage_backend.py tests/unit/test_replay_buffer.py -v
 
 .PHONY: test-sanity
 test-sanity:
-	pytest tests/sanity/ -v --tb=short
+	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
 
 .PHONY: test-cloud
 test-cloud:
-	pytest tests/cloud/unit/ -v --tb=short
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short
 
 # Mirrors CI's `security` job, which runs BOTH the pytest suite and a bandit
 # scan. The bandit half was missing entirely, so `make verify` could pass while
 # CI's security job failed.
 .PHONY: test-security
 test-security:
-	pytest tests/security/ -v --tb=short
-	bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
+	$(PYTHON) -m pytest tests/security/ -v --tb=short
+	$(PYTHON) -m bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
+
+# Fetch the pinned gitleaks binary only when it is not already available.
+# Print the pinned gitleaks version so CI reads it from here rather than
+# restating it. One definition, two consumers.
+.PHONY: print-gitleaks-version
+print-gitleaks-version:
+	@echo $(GITLEAKS_VERSION)
+
+# Fetch the pinned gitleaks binary only when it is not already available.
+# Resolves the release artifact for THIS platform: CLAUDE.md 2.1 requires
+# cross-platform support, and always fetching linux_x64 installed an unusable
+# binary on macOS and ARM -- silently, since `make verify` would then fail on a
+# confusing exec error rather than on the missing tool.
+# Artifact names verified against the v8.30.0 release.
+.PHONY: gitleaks-install
+gitleaks-install:
+	@if [ ! -x "$(GITLEAKS_BIN)" ]; then \
+		os=$$(uname -s); arch=$$(uname -m); \
+		case "$$os" in \
+			Linux)   plat=linux ;; \
+			Darwin)  plat=darwin ;; \
+			MINGW*|MSYS*|CYGWIN*) plat=windows ;; \
+			*) echo "gitleaks: unsupported OS '$$os'. Install it yourself and set GITLEAKS_BIN." >&2; exit 1 ;; \
+		esac; \
+		case "$$arch" in \
+			x86_64|amd64)  cpu=x64 ;; \
+			arm64|aarch64) cpu=arm64 ;; \
+			*) echo "gitleaks: unsupported arch '$$arch'. Install it yourself and set GITLEAKS_BIN." >&2; exit 1 ;; \
+		esac; \
+		if [ "$$plat" = "windows" ]; then ext=zip; else ext=tar.gz; fi; \
+		url="https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_$${plat}_$${cpu}.$${ext}"; \
+		echo "Installing gitleaks $(GITLEAKS_VERSION) ($${plat}_$${cpu}) -> $(CURDIR)/.tools"; \
+		mkdir -p $(CURDIR)/.tools; \
+		if [ "$$ext" = "zip" ]; then \
+			curl -sSfL "$$url" -o $(CURDIR)/.tools/gitleaks.zip && \
+			unzip -oq $(CURDIR)/.tools/gitleaks.zip -d $(CURDIR)/.tools && \
+			rm -f $(CURDIR)/.tools/gitleaks.zip; \
+		else \
+			curl -sSfL "$$url" | tar -xz -C $(CURDIR)/.tools gitleaks; \
+		fi; \
+		mv -f $(CURDIR)/.tools/gitleaks $(GITLEAKS_BIN); \
+	fi
+
+# Secret scan: the tracked tree AND the built branch's own history. History
+# matters because a secret removed in a later commit is still published in the
+# one that added it.
+#
+# Scoped to `HEAD` deliberately. Without --log-opts, gitleaks walks *every* ref
+# the clone has, so on a CI checkout with fetch-depth: 0 the gate reports findings
+# from unmerged branches that the PR does not contain and cannot fix. A PR gate
+# should assert what this branch contributes; auditing every stale ref is a
+# separate activity -- see `security-secrets-audit`.
+#
+# Still a real gate: it covers this branch's entire HEAD lineage, 0 findings.
+#
+# The tree half scans the *committable* file set -- tracked plus untracked-and-
+# not-ignored -- rather than the working directory. `gitleaks dir .` reads
+# gitignored files too, and this project requires a gitignored `.env` holding
+# real API keys (CLAUDE.md 2.1, 3.1), so a correctly set-up developer would have
+# had `make verify` fail on a file that cannot be committed. Verified: gitleaks
+# does flag a secret in a gitignored file, and has no flag to stop it.
+#
+# `git ls-files -co --exclude-standard` is the right set precisely because an
+# accidentally *tracked* `.env` is in it, and still fails. Allowlisting `.env`
+# would have hidden exactly the case worth catching.
+#
+# Findings are reported against the staging path; the sed rewrites them back to
+# repo-relative so a failure names a file you can actually open.
+.PHONY: security-secrets
+security-secrets: gitleaks-install
+	@stage=$$(mktemp -d); out=$$(mktemp); \
+	git ls-files -z -co --exclude-standard | tar --null -T - -cf - | tar -x -C "$$stage"; \
+	$(GITLEAKS_BIN) dir "$$stage" --config $(GITLEAKS_CONFIG) --redact --no-banner \
+		> "$$out" 2>&1; \
+	status=$$?; \
+	sed "s#$$stage/##g" "$$out"; \
+	rm -rf "$$stage" "$$out"; \
+	exit $$status
+	$(GITLEAKS_BIN) git . --config $(GITLEAKS_CONFIG) --redact --no-banner --log-opts="HEAD"
+
+# Repo-wide audit across every ref, including unmerged and stale branches. NOT a
+# PR gate -- it reports history that no single PR can remediate, because purging
+# a secret from a published branch requires rotation plus coordinated history
+# surgery. Run it deliberately; see docs/runbooks/secret-scanning.md.
+.PHONY: security-secrets-audit
+security-secrets-audit: gitleaks-install
+	@echo "Repo-wide audit across all refs. Findings here are incidents, not PR blockers."
+	$(GITLEAKS_BIN) git . --config $(GITLEAKS_CONFIG) --redact --no-banner || true
 
 .PHONY: test-governance
 test-governance:
-	pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
+	$(PYTHON) -m pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
 
 # The suites CI runs, in CI's order and with CI's marker filters.
 .PHONY: test
 test:
-	pytest tests/unit/ -v --tb=short -x -m "not slow"
-	pytest tests/sanity/ -v --tb=short
-	pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
-	pytest tests/cloud/unit/ -v --tb=short -x
+	$(PYTHON) -m pytest tests/unit/ -v --tb=short -x -m "not slow"
+	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
+	$(PYTHON) -m pytest tests/regression/ -v --tb=short
+	$(PYTHON) -m pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
+	$(PYTHON) -m pytest tests/smoke/ tests/inference/ -v --tb=short
+	$(PYTHON) -m pytest tests/scripts/ -v --tb=short -m "not requires_env"
+	$(PYTHON) -m pytest tests/e2e/ -v --tb=short -m "not slow and not requires_env"
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x
+	$(PYTHON) -m pytest tests/cloud/smoke/ -v --tb=short
 
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
+	$(PYTHON) scripts/validate_agents.py
 	$(PYTHON) scripts/check_doc_sync.py
 
 # Self-installing: pre-commit is not a declared dependency, so the bare
@@ -193,7 +304,7 @@ hooks-install:
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
 .PHONY: verify
-verify: lint-check typecheck test test-security test-governance validate test-all eval-llm
+verify: lint-check typecheck test test-security security-secrets test-governance validate test-all eval-llm
 	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage and eval gates"
 
 .PHONY: eval-llm
@@ -202,7 +313,7 @@ eval-llm:
 
 .PHONY: test-hub
 test-hub:
-	pytest tests/unit/test_hub_*.py tests/unit/test_transformer_hub_mixin.py tests/unit/test_muzero_hub_mixin.py tests/integration/test_hub_publish_pipeline.py -v
+	$(PYTHON) -m pytest tests/unit/test_hub_*.py tests/unit/test_transformer_hub_mixin.py tests/unit/test_muzero_hub_mixin.py tests/integration/test_hub_publish_pipeline.py -v
 
 .PHONY: upload-hub
 upload-hub:

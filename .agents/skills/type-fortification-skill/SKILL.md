@@ -1,10 +1,11 @@
 ---
-name: type-fortification
+name: type-fortification-skill
 description: >
   Guides the 'Type-Driven Fortification' methodology for Python codebases.
   Covers strict mypy compliance (mypy --strict), incremental cache recovery,
-  logic preservation, and exhaustive unit test verification (80%+ coverage)
+  logic preservation, and exhaustive unit test verification (85%+ coverage)
   to ensure reliability during major architectural migrations.
+allowed-tools: Read, Edit, Bash
 ---
 
 # Type-Driven Fortification Skill
@@ -33,7 +34,8 @@ Type annotations must *never* change the runtime behavior of the code unless exp
 ### 3. Exhaustive Unit Test Verification
 
 Type safety is only half the battle. You must prove the logic holds via tests.
-- Maintain at least 80% line coverage (`pytest --cov=your_module --cov-fail-under=80`).
+- Maintain at least 85% line coverage, the repository gate
+  (`pytest --cov=your_module --cov-fail-under=85`).
 - Ensure all unit tests pass after type fortification.
 - If type changes require test changes, modify the tests carefully without altering their fundamental assertions.
 

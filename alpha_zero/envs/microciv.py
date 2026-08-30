@@ -957,4 +957,14 @@ class MicroCivEnv(gym.Env):
         new_env.visited = copy.deepcopy(self.visited)
         if self.fog_manager is not None:
             new_env.fog_manager = copy.deepcopy(self.fog_manager)
+        # Carry the RNG. `MicroCivEnv(...)` above takes no seed, so without this
+        # every clone got a fresh *unseeded* generator -- and clones are how MCTS
+        # simulates, while `step` itself draws (combat resolution, settler
+        # auto-found). A seeded environment therefore produced unseeded rollouts
+        # in every search variant, which no seed further up could correct.
+        #
+        # Deep-copied rather than shared: the clone continues the parent's stream
+        # from this point and then diverges independently, so a simulation cannot
+        # advance the real game's RNG.
+        new_env._rng = copy.deepcopy(self._rng)
         return new_env

@@ -5,6 +5,7 @@ description: >
   before every upload_model_to_hub() call, and can be invoked standalone.
   Checks safetensors present, config.json parseable, README not a placeholder,
   no credentials in content, and repo_id is well-formed.
+allowed-tools: Read, Bash
 ---
 
 # Hub Publish Validator

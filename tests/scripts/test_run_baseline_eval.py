@@ -368,7 +368,9 @@ class TestResolveRunId:
 
     def test_auto_detects_latest_run(self) -> None:
         """When run_id is None, should search the experiment for latest run."""
-        import pandas as pd
+        # pandas ships with mlflow, not with `[dev]`. Left as a bare import this
+        # failed rather than skipped -- invisible while nothing ran this suite.
+        pd = pytest.importorskip("pandas", reason="pandas not installed (mlflow extra)")
 
         mock_mlflow = MagicMock()
         mock_mlflow.get_experiment_by_name.return_value = MagicMock(experiment_id="1")
@@ -386,7 +388,7 @@ class TestResolveRunId:
 
     def test_raises_when_no_runs(self) -> None:
         """Should raise RuntimeError if experiment has no runs."""
-        import pandas as pd
+        pd = pytest.importorskip("pandas", reason="pandas not installed (mlflow extra)")
 
         mock_mlflow = MagicMock()
         mock_mlflow.get_experiment_by_name.return_value = MagicMock(experiment_id="1")
@@ -405,6 +407,10 @@ class TestMain:
 
     def test_main_returns_1_without_gcp_creds(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """main() should return 1 if GCS model loading fails."""
+        # `patch("mlflow.…")` imports mlflow to resolve the target, so an absent
+        # optional extra surfaced as a failure here rather than a skip.
+        pytest.importorskip("mlflow", reason="mlflow not installed (monitoring extra)")
+
         import scripts.run_baseline_eval as sut
 
         with patch("alpha_zero.utils.env_loader.load_civ6az_env", return_value={}):
