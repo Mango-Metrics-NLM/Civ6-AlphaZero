@@ -88,6 +88,12 @@ Selection goes through `create_mcts(...)` in `alpha_zero/core/mcts_factory.py` â
 6. Visit counts are non-negative and sum correctly
 7. `torch.no_grad()` wraps every inference path
 8. Deferred imports are preserved where they exist to break a cycle, never added to reach across the layering
+9. **Every variant draws from `self._rng`, never from a global `np.random.*` function.** A global draw is
+   unreachable by any seed, so a caller that seeds the search still gets a different run â€” which looks
+   reproducible and is not. `gumbel_ops` holds free functions rather than a class, so
+   `gumbel_sample_actions` takes an `rng` parameter instead. Gated by
+   `tests/regression/test_training_determinism_regression.py`, which includes a static check precisely
+   because `muzero` and `batch_mcts` sit off the path any behavioural self-play test exercises
 
 ---
 

@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — A seed now determines the whole run (2026-08-30)
+
+The project could not replay its own runs. Its only recorded training run says
+so, and quantifies it: five 20-game probes of **one checkpoint** scored 0.25 /
+0.35 / 0.375 / 0.375 / 0.40 (`docs/evidence/validation_iteration_zero/`). Every
+judgement downstream inherited that spread — the promotion threshold, the encoder
+A/B, any per-iteration trend claim.
+
+`--seed` on `training_civ6.py` and the evaluation entry points now reaches every
+source of randomness: environments, all five search variants, the random
+opponent, replay sampling, batch order and network initialisation. Offsets keep
+the streams disjoint; every new parameter defaults to `None`, so unseeded callers
+are unaffected.
+
+**Four unseeded sources, and only the first was found by reading the code:**
+
+- Eight global `np.random.*` draws across `core/mcts/` and `core/batch_mcts.py`,
+  reachable from no config. `gumbel_sample_actions` now takes an `rng`, threaded
+  from all three of its callers.
+- **`MicroCivEnv.clone()` dropped the RNG.** It built a fresh environment with no
+  seed — and cloning is how MCTS simulates, while `step` itself draws (combat,
+  settler auto-found). A seeded environment therefore produced unseeded rollouts
+  in *every* variant, which no seed further up could correct. Found because
+  `SimpleMCTS` stayed nondeterministic after its own fix.
+- **`ReplayBuffer.sample` and `DataLoader(shuffle=True)`**, which decide what a
+  batch contains and therefore the gradient. Found by diffing two `--seed 42`
+  runs: they agreed on all 525 lines of self-play output and differed on the
+  first epoch loss.
+- **`NeuralNetworkPlayer`** — the *evaluated agent* — sampling globally while its
+  siblings `RandomPlayer` and `HeuristicPlayer` in the same module each took a
+  seed and owned a generator. This is why the probe spread survived environments
+  that were already seeded.
+
+**Measured, as a control rather than a demonstration**
+(`docs/evidence/seeded_probe_reproducibility/`): one checkpoint, ten probes.
+
+| | Score rates | Distinct | Range |
+|---|---|---:|---:|
+| Seeded | 0.325 × 5 | **1** | **0.000** |
+| Unseeded | 0.45, 0.40, 0.30, 0.45, 0.40 | 3 | 0.150 |
+
+Withholding the seed still produces the original spread, so the collapse is
+attributable to the seed.
+
+Gated by `tests/regression/test_training_determinism_regression.py` (10
+assertions, ~7 s), which exercises the real `train()` entry point rather than a
+stand-in — the first draft used its own network and stayed green when
+`torch.manual_seed` was deleted from `train()`.
+
+Behaviour note: seeded runs draw from a `numpy.random.Generator` rather than the
+legacy global functions, so action sequences differ from an unseeded run today.
+Nothing depended on the previous sequences.
+
+This does **not** address the ~73.5% draw rate that
+`docs/runbooks/promotion-gate.md` identifies as the upstream problem.
+Reproducibility narrows a measurement's variance; it does not move the
+measurement.
+
+
 ### Fixed — Second review round: three defects inside this PR's own fixes (2026-08-30)
 
 Copilot returned 8 more comments; all 8 were correct. Three of them are defects in

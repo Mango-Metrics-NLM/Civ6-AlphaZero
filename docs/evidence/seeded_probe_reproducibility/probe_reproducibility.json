@@ -1,0 +1,86 @@
+{
+  "generated": "2026-08-30",
+  "config": {
+    "board_size": 8,
+    "max_turns": 20,
+    "mcts_simulations": 12,
+    "games_per_probe": 20,
+    "probes": 5,
+    "train_seed": 2026,
+    "probe_seed": 4242
+  },
+  "train_seconds": 39.3,
+  "probe_seconds": 241.1,
+  "seeded_probes": [
+    {
+      "wins": 1,
+      "draws": 11,
+      "losses": 8,
+      "score_rate": 0.325
+    },
+    {
+      "wins": 1,
+      "draws": 11,
+      "losses": 8,
+      "score_rate": 0.325
+    },
+    {
+      "wins": 1,
+      "draws": 11,
+      "losses": 8,
+      "score_rate": 0.325
+    },
+    {
+      "wins": 1,
+      "draws": 11,
+      "losses": 8,
+      "score_rate": 0.325
+    },
+    {
+      "wins": 1,
+      "draws": 11,
+      "losses": 8,
+      "score_rate": 0.325
+    }
+  ],
+  "unseeded_probes": [
+    {
+      "wins": 2,
+      "draws": 14,
+      "losses": 4,
+      "score_rate": 0.45
+    },
+    {
+      "wins": 2,
+      "draws": 12,
+      "losses": 6,
+      "score_rate": 0.4
+    },
+    {
+      "wins": 1,
+      "draws": 10,
+      "losses": 9,
+      "score_rate": 0.3
+    },
+    {
+      "wins": 2,
+      "draws": 14,
+      "losses": 4,
+      "score_rate": 0.45
+    },
+    {
+      "wins": 2,
+      "draws": 12,
+      "losses": 6,
+      "score_rate": 0.4
+    }
+  ],
+  "seeded_score_rates": [
+    0.325
+  ],
+  "unseeded_score_rates": [
+    0.3,
+    0.4,
+    0.45
+  ]
+}
