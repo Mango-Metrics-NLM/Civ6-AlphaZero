@@ -1,5 +1,20 @@
 # DEV-SQE Session Log
 
+## 2026-08-30 - Review found the gates did not gate; all 13 findings fixed (PR #115)
+
+- **Session:** session_0161DvFczCzPQqumjKqYdrXy
+- **Task:** Remediate a review of the governance commit. 11 comments plus 2 suppressed; I verified each against the repo before touching anything. **All 13 were correct.**
+- **The headline defect is a category, not an instance.** Four findings were the same failure: something described as a gate that gates nothing. `tests/regression/` was referenced by **no** CI job and **no** make target — the ten hygiene invariants I had just added, and the pre-existing `test_hex_encoder_regression.py`, had never gated a pull request. I reported "10 passed" as evidence they were guarded; the tests passed when invoked by hand and would never have run again. Siblings: `validate_agents --path <missing>` exited 0 (the PostToolUse hook calls `--path`, so a stale path read as validated), the catch-all allowlist test matched four literal spellings and missed `^.*$`, and the A5 requirement claimed "every importable package" against a validator checking 29 of 44 — `alpha_zero/core/mcts/`, created by this same PR, had no doc and the gate passed.
+- **Four more where a gate was weaker than claimed:** the layering test walked only `tree.body`, so a function-local `from .base import` could reintroduce the removed dependency invisibly; `GITLEAKS_BIN` defaulted to whatever was on `PATH`, defeating the pin two lines above it; the installer always fetched `linux_x64` against CLAUDE.md §2.1's cross-platform requirement, so `make verify` on macOS or ARM installed an unrunnable binary; and `.gitleaks.toml` path-allowlisted `docs/archive/` — 25 tracked files, not a build artifact. Removing that exemption changed nothing, so it was pure unnecessary risk.
+- **Two missing test suites, both for bugs I had just fixed.** The block-scalar parser closed a *vacuous-validation* bug with no regression test; reconstructing the old parser shows `description: >` returned the literal `">"` for both a populated and an **empty** scalar, so the non-empty check passed in both. And `_point_at` patched only `SKILLS_DIR`, so every tmp-tree governance test had been silently scanning the repo's real `.agents/skills/`.
+- **Recorded as a decision, because the pattern will recur:** prove a new gate fails when the thing it guards is broken, *and* prove something actually invokes it. CLAUDE.md §5.2.
+- **Handoff correction:** the earlier handoff of the same date is immutable (K7), so a superseding document states what was actually true rather than editing it.
+- **Files Changed:** 12 code/config/doc + 3 KB
+- **Tests Added:** A0 path handling (2), block-scalar folded/literal/empty (3), `.agents/skills/` + S5 (4), behavioural allowlist (2)
+- **Tests:** coverage **89.29%** (gate 85) with 12,365 passed / 0 failed; governance **73** (was 64); regression 38; ruff clean over 937; mypy clean over 367; gitleaks 0 across tree and 528-commit lineage
+- **Status:** complete — 9 of 11 round-2 threads resolved, 3 round-1 threads left open by intent
+- **Next:** confirm CI on `f4cea7a` (the regression step and the coverage-suite addition have never run in CI); then the `PLR0915` burndown
+
 ## 2026-08-30 - MCTS package split + three governance gates that did not exist (PR #115)
 
 - **Session:** session_0161DvFczCzPQqumjKqYdrXy
@@ -16,7 +31,6 @@
 - **Tests:** 12,381 passed / 0 failed; coverage **89.30%** (gate 85); ruff clean over 937 files; mypy clean over 367; five validators exit 0; gitleaks 0 findings
 - **Status:** complete — PR #115 draft, 7/8 CI green at `5b41ca4`, one Copilot finding fixed and resolved, three replied to as pre-existing
 - **Next:** the three oversized `main` functions on the `PLR0915` burndown; the cloud trio once the `mock.patch` remapping strategy exists
-
 ## 2026-08-28 - Smoke test made to complete; first recorded training run (PR #114)
 - **Session:** session_01D2xbKx2mGWNXXHnE5Eoohv
 - **Task:** Post-#113 follow-ups per the peer-reviewed plan (hang guard, promotion runbook, OpenSpec archive, honest `make verify`), then PR C: Validation Iteration Zero.
@@ -31,8 +45,7 @@
 - **Tests Added:** tests/unit/test_dry_run_profile.py (14), tests/unit/test_inference_threads.py (15), tests/scripts/test_summarize_training_log.py (13), one governance test
 - **Tests:** 42 new pass; touched suites 89 passed; mypy clean (359 files); ruff clean repo-wide; all governance gates green; CI green on all seven core jobs
 - **Status:** complete
-- **Next:** confirm CI on 8380698; then the fog-of-war mask leak (still blocked on NPlayerMCTS having zero call sites) or the coverage omit-list shrink as a draft PR that lets CI print the real number
-## 2026-08-27 - Self-play trajectory + promotion correctness fixes (PR #113)
+- **Next:** confirm CI on 8380698; then the fog-of-war mask leak (still blocked on NPlayerMCTS having zero call sites) or the coverage omit-list shrink as a draft PR that lets CI print the real number## 2026-08-27 - Self-play trajectory + promotion correctness fixes (PR #113)
 - **Session:** session_01D2xbKx2mGWNXXHnE5Eoohv
 - **Task:** Phase 1 of the next-steps case (docs/NEXT_STEPS_CASE_2026-08.md, written and peer-reviewed earlier in the same session). Three verification agents scanned the repo, an adversarial reviewer fact-checked the resulting case doc, and two more agents (SQE test-adequacy + architecture) reviewed the fix plan before any code was written. Both reviews changed the plan materially.
 - **Root defect:** `run_batch_selfplay` never stored `action_masks`, and `prepare_dataset` substitutes an all-ones mask when the key is absent -- so every batch-generated sample trained with masked policy loss effectively disabled. Cause was duplication: three self-play paths each built the trajectory inline, and the batch path split its appends across two loops and dropped the mask.
@@ -44,8 +57,7 @@
 - **Tests Added:** tests/cloud/unit/test_evaluator_promotion.py (new, 14 tests); new cases in test_batch_selfplay_integration.py (mask informativeness, ragged-trajectory guard), test_training_worker.py (GCS pickle round-trip, mixed legacy/current, empty-mask fallback), test_selfplay_worker.py (behavioral replacements for the source grep); rewrites in test_selfplay_worker_batch.py
 - **Tests:** 10,548 unit + 601 integration + 1,035 sanity/cloud/security + 50 governance pass. ruff clean (920 files formatted), mypy clean (359 files). make validate green.
 - **Status:** complete -- pushed to claude/next-steps-codebase-review-ir7b0e, PR #113 updated from docs-only to code+docs
-- **Next:** Fog-of-war mask leak as its own PR (it is over-permissive for found_city, needs its own OpenSpec change); then Validation Iteration Zero, which needs explicit NG-7 sign-off.
-## 2026-08-09 - Hex-crystalline encoder packaged for standalone reuse + HF publication (PR #107)
+- **Next:** Fog-of-war mask leak as its own PR (it is over-permissive for found_city, needs its own OpenSpec change); then Validation Iteration Zero, which needs explicit NG-7 sign-off.## 2026-08-09 - Hex-crystalline encoder packaged for standalone reuse + HF publication (PR #107)
 - **Session:** session_011aLW3xW6HK5PeY8q4YFtZS
 - **Task:** Make the hex encoder reusable outside this repo, give it from_pretrained(), and produce the A/B evidence the repo has never had. Planned in-session, then peer-reviewed by two independent agents (adversarial-technical + completeness/SQE) before any code was written; both reviews are folded into the plan and this work.
 - **Root defect:** the four encoder modules import only torch and the stdlib, yet `python -c "import alpha_zero.core.hex_conv"` raised `ModuleNotFoundError: No module named 'numpy'` -- the root package's eager chain (`__init__:32` -> `core/__init__:3` -> `civ6_actions:20`) pulled in numpy, and `envs.microciv` pulled gymnasium. The most reusable code in the repo was unreachable.
@@ -58,8 +70,7 @@
 - **mypy:** 101 pre-existing errors locally before AND after -- none introduced. CI's blocking Lint & Type Check job (pinned 1.19.1, with the stubs this sandbox lacks) went GREEN, which is the real answer.
 - **Coverage:** NOT verified locally -- numpy 2.4 + coverage C-tracer crash (CLAUDE.md 5.3). CI is the gate. Do not claim green.
 - **Status:** PR #107 open as draft; CI 5/7 green at handoff (Governance, LLM Eval, Security, Lint & Type Check, Cloud Unit), both Test matrix jobs still running. Nothing published to the Hub -- --publish is a deliberate human step per 3.2.
-- **Next:** finish the 150-game arena (`run_encoder_ab.py arena` then `report`), commit the evidence, then decide on publication. At 150 games the interval is ~+/-8 points, so expect "does not distinguish"; 800 games is where a 5-point edge becomes resolvable.
-## 2026-07-26 - Roadmap review + train->evaluate->play loop (PR #105)
+- **Next:** finish the 150-game arena (`run_encoder_ab.py arena` then `report`), commit the evidence, then decide on publication. At 150 games the interval is ~+/-8 points, so expect "does not distinguish"; 800 games is where a 5-point edge becomes resolvable.## 2026-07-26 - Roadmap review + train->evaluate->play loop (PR #105)
 - **Session:** session_01TKcb8crWZ1n1aB4XfvCnfn
 - **Task:** Review CLAUDE.md 13 "Genuine Next Steps" against the code, then fix what the review exposed. Two of six items were untrue (N-player landed 2026-07-05; the "12 xfailed DDP tests in tests/unit/test_distributed" directory does not exist) and 13 had been contradicting 5.3 in the same file.
 - **Defects fixed (each invisible because the covering test asserted the wrong thing):** web neural opponent loaded no weights (`result.state_dict` vs the dataclass's `.data`; the two tests patched safe_load_checkpoint to return a plain dict, a type it never returns); key mismatch `model_state_dict` vs `state_dict` plus hardcoded 6/64 architecture; N-player checkpoints unloadable (NetworkConfig had no num_players -> scalar head -> size mismatch on value_head.fc2.weight); `map_location=None` default made a GPU checkpoint unloadable on a CPU host (NG-4); no shared device resolver (~30 sites, 3 idioms) and the bridge warned "falling back to cpu" without changing self.device; web turn ownership (controller flipped every ply while MicroCiv rotates only on end_turn - 3/6 plies disagreed on a seeded game) plus the route's mirror bug of one AI ply per human move; action list truncated by index so found_city (341-360) and produce (361-375) were unreachable behind a dead "+N more" label; MCTS flipped the value sign every ply, corrupting policy targets and the search.
@@ -69,23 +80,20 @@
 - **Coverage:** NOT verified locally - numpy 2.4 + coverage C-tracer crash (CLAUDE.md:420). CI is the gate. Do not claim green.
 - **Measured quickstart** (board 8, max_turns 20, 10 sims, 6 iters, 10 games, 2x16 net, CPU): iteration 1 ~6 min (random-rollout SimpleMCTS), iterations 2+ ~1 min. Win rate vs random 10%, 5%, 5% - a short run does **not** produce a model that beats random. Do not advertise otherwise.
 - **Status:** in-progress - 6 of 10 planned phases done; PR #105 open as draft, CI green on the pushed commits so far
-- **Next:** local eval with a random-init CONTROL arm (a random net under MCTS also beats a random agent, so "beats random" proves nothing), measure the MCTS fix before/after on a frozen checkpoint, delete run_civ6_ai.py with its 4 coupled edits, README quickstart with the measured numbers, scaffold the umbrella OpenSpec change
-## 2026-07-13 - Optuna Sweep Port + Secrets Cleanup (PR #92 follow-ups)
+- **Next:** local eval with a random-init CONTROL arm (a random net under MCTS also beats a random agent, so "beats random" proves nothing), measure the MCTS fix before/after on a frozen checkpoint, delete run_civ6_ai.py with its 4 coupled edits, README quickstart with the measured numbers, scaffold the umbrella OpenSpec change## 2026-07-13 - Optuna Sweep Port + Secrets Cleanup (PR #92 follow-ups)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (fourth batch)
 - **Task:** Port run_sweep.py off the W&B sweep API: new reusable alpha_zero/optimizations/hyperparameter_search.py (SweepConfig YAML + CIV6AZ_SWEEP_* env overrides w/ legacy SWEEP_TIMEOUT_SECONDS, declarative search space, injectable objective/tracker, MLflow per-trial logging, SubprocessTrainingObjective w/ timeout+prune). run_sweep.py = thin CLI; configs/sweep_muzero.yaml seeded from historical W&B results; SWEEP_METRICS_JSON marker in run_muzero_training.py; [tuning] extra (optuna). setup_secrets.sh generalized (CIV6AZ_SECRET_NAME/VALUE, wandb default gone).
 - **Tests:** 35 new (search-space contract, env precedence, deterministic quadratic search, tracker logging, subprocess objective incl. timeout/prune paths, CLI); ruff clean both versions incl. CI 0.8.0 format gate
 - **Honest scope note:** two read-only analysis scripts keep lazy wandb.Api() readers for W&B-hosted HISTORICAL runs (data MLflow cannot serve) — documented as deprecated, not instrumentation.
 - **Status:** complete pending full-suite verification — extends PR #92
-- **Next:** confirm CI green on PR #92
-## 2026-07-13 - W&B Retirement Sweep (MLflow-only tracking)
+- **Next:** confirm CI green on PR #92## 2026-07-13 - W&B Retirement Sweep (MLflow-only tracking)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (third batch)
 - **Task:** Complete W&B→MLflow migration: toggle unification (resolve_tracker_enabled, legacy WANDB_ENABLED honored+warned), WandbConfig→MLflowConfig bridge, single-tracker orchestrator init, shim + dead-suite deletions (user-approved), 66 gap-filling tests landed before deletions
 - **Live bugs fixed:** run_*.py --wandb TypeError; adapter.log() dropped numpy metrics; MLflow run-group propagation never worked (.name/.id vs .info.*); create_wandb_logger mangled list tags
 - **Files Changed:** 50 (+1,070/−2,674)
 - **Tests:** 66 new/ported; targeted suites green; full CI-equivalent suite + 85% coverage gate run at ship time
 - **Status:** complete — new PR from restarted branch `claude/project-charter-template-b4n9fu`
-- **Next:** Pre-PR: confirm CI green; follow-ups: run_sweep.py Optuna port, setup_secrets.sh cleanup
-## 2026-07-13 - Gap Analysis + Tech-Debt Sweep (coverage 85% gate, ruff-to-zero, mypy semantic fixes)
+- **Next:** Pre-PR: confirm CI green; follow-ups: run_sweep.py Optuna port, setup_secrets.sh cleanup## 2026-07-13 - Gap Analysis + Tech-Debt Sweep (coverage 85% gate, ruff-to-zero, mypy semantic fixes)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (same session as charter, second batch)
 - **Task:** Branch-wide gap analysis and tech-debt enforcement: coverage gate 80→85 (CI measured 89.69%, local re-verified 88.88%), ruff 292→0 across alpha_zero/tests/scripts/infra, all semantic mypy errors fixed (180→157; rest is version noise), PR #91 review findings addressed
 - **Real bugs found & fixed:** (1) `Civ6MctsPolicy.select_action` unpacked `GumbelMCTS.search` as `(action, stats_dict)` but real contract is `(policy_probs, root_value)` — guaranteed AttributeError on the live `--mcts` bridge path; both test files had drifted mocks hiding it. (2) `tests/unit/test_bridge_file_bridge.py` duplicate `TestSendCommandWithRetry` class shadowed 14 tests (never ran; all pass revived). (3) `train_epoch` profiler annotated as `TrainingProfiler` but real API is `PerformanceProfiler`. (4) 7 dangling asyncio tasks in bridge tests.
@@ -94,15 +102,13 @@
 - **Tests:** 11,690 passed, 159 skipped, 1 xfailed, coverage 88.88% (85% gate green); 1 failure found in drifted mock, fixed, re-verified
 - **Lint/format:** ruff 0 errors (both 0.15.8 local and CI-pinned 0.8.0); `ruff format --check alpha_zero/` green under 0.8.0 (do NOT format file_bridge.py/transformer_network.py with newer ruff — version skew)
 - **Status:** complete — on branch `claude/project-charter-template-b4n9fu` (PR #91, now ready-for-review)
-- **Next:** monitor PR #91 CI; remaining debt: W&B→MLflow sweep, omit-list shrink, unused-ignore noise under newer mypy
-## 2026-07-13 - Project Charter Instantiation (docs-only)
+- **Next:** monitor PR #91 CI; remaining debt: W&B→MLflow sweep, omit-list shrink, unused-ignore noise under newer mypy## 2026-07-13 - Project Charter Instantiation (docs-only)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft
 - **Task:** Instantiate PROJECT_CHARTER.md (7 non-goals NG-1..NG-7, 7 enforced invariants, carve-out amendment protocol), add templates/PROJECT_CHARTER_TEMPLATE.md and ROADMAP.md (M1–M5 themes), pointer edits to CLAUDE.md (§6.1, §13) and README.md
 - **Files Changed:** PROJECT_CHARTER.md (new), templates/PROJECT_CHARTER_TEMPLATE.md (new), ROADMAP.md (new), CLAUDE.md, README.md, kb/specs/20260713-project-charter.md (new)
 - **Tests:** none touched (docs-only); pytest/torch unavailable in this restricted session — CI is the gate; `ruff check alpha_zero/` = 1 pre-existing C420 (multiplayer/mcts.py:310), identical on clean HEAD
 - **Status:** complete — on branch `claude/project-charter-template-b4n9fu`
-- **Next:** Pre-PR validation; follow-ups noted in PR: CLAUDE.md v1.7.0 footer drift, pre-existing C420
-## 2026-04-02 - Phase 8 Entry Point + Test Suite Fixes
+- **Next:** Pre-PR validation; follow-ups noted in PR: CLAUDE.md v1.7.0 footer drift, pre-existing C420## 2026-04-02 - Phase 8 Entry Point + Test Suite Fixes
 - **Session:** 48dca8d8-7e46-41dc-b7f5-1ecb487c8400
 - **Task:** Implement `alpha_zero/civ6_local.py` unified local gameplay entry point (Phase 8); fix test regressions for Atari CLI, hierarchical controller, DDP fixtures
 - **Files Changed:**
@@ -115,8 +121,7 @@
   - `kb/handoffs/20260402-planning-to-devsqe-full-civ6-local.md` (new)
 - **Tests:** 428 pass, 2 skip (civ6_local: 109/109, atari: 186/186, DDP: 33/33 + 2 skip); ruff: 1 pre-existing error in hex_encoder.py (not in changed files)
 - **Status:** complete — Phase 8 done; Phases 0–7 verified already implemented
-- **Next:** Run Pre-PR validation; confirm convergence validation (Phase 0) with `scripts/validate_v130_training.py`
-## 2026-03-01 (v1.3.0 Convergence Validation + Doc Reconciliation)
+- **Next:** Run Pre-PR validation; confirm convergence validation (Phase 0) with `scripts/validate_v130_training.py`## 2026-03-01 (v1.3.0 Convergence Validation + Doc Reconciliation)
 
 - Created `scripts/validate_v130_training.py` — local training convergence validator
 - Added 4 regression tests in `tests/cloud/unit/test_training_worker.py` for weight loading
@@ -125,8 +130,7 @@
 - Updated KB session state files (planning, dev-sqe, phase-6)
 - Key finding: Many "planned" features already implemented (PBT, tournament, web, bridge, hierarchical)
 - Key finding: v1.2.0 prod run had 0 promotions; v1.3.0 fix untested in production
-- Status: **DEV-COMPLETE** (validation script ready for execution)
-## 2026-02-08 (Phase 5 - Cost Optimization)
+- Status: **DEV-COMPLETE** (validation script ready for execution)## 2026-02-08 (Phase 5 - Cost Optimization)
 
 - Implemented `CostEstimator` in `alpha_zero/cloud/gcp/cost.py`.
 - Verified preemption handling in `training_worker.py` (added `SignalHandler`).

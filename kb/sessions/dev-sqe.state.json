@@ -1,18 +1,18 @@
 {
     "last_session_id": "session_0161DvFczCzPQqumjKqYdrXy",
-    "last_timestamp": "2026-08-30T01:30:00Z",
+    "last_timestamp": "2026-08-30T02:20:00Z",
     "active_branch": "claude/god-files-decomposition-gojlo3",
-    "current_focus": "PR #115 (draft): civ6_mcts split into alpha_zero/core/mcts/ + three new governance gates (gitleaks, validate_agents, .agents/skills coverage) + the Makefile interpreter fix that made local coverage measurable (89.30%).",
+    "current_focus": "PR #115 (draft) at f4cea7a: MCTS split + governance gates, with all 13 review findings remediated. Four of them were gates that gated nothing -- headlined by tests/regression/ being run by no CI job or make target.",
     "resume_pointers": {
-        "current_task": "Confirm CI green on 35ff6db, then start the PLR0915 burndown",
+        "current_task": "Confirm CI on f4cea7a -- the regression step in the test job and the regression directory in the coverage job are both new and have never run in CI",
         "blocked_on": [],
         "next_steps": [
-            "Verify CI on 35ff6db -- the governance commit adds a gitleaks step to the security job and a validate_agents step to governance; both are new and unproven in CI",
-            "PLR0915 burndown: split vertex_orchestrator.main (248 stmts), training_worker.main (168), run_enhanced_training.main (134). Delete the per-file-ignores entry as each lands; never raise the threshold",
-            "Cloud trio decomposition is BLOCKED on two prerequisites: (a) a patch-target remapping strategy with a test that detects dead mock.patch targets -- an identity test cannot -- and (b) a decision on the cloud/gcp/__init__.py eager-import chain that pulls numpy into every submodule",
-            "Coverage omit-list shrink is a SEPARATE workstream and the right one if coverage is the goal: quota_manager.py (309 stmts, zero test files), lifecycle.py (297), pipeline_cache.py (319). Decomposition moves that number by ~0.02 points and is the wrong instrument",
-            "Three pre-existing defects filed from Copilot review: gumbel_ops temperature=0 (-inf, degrades Gumbel-Top-k to uniform sampling), SimpleMCTS global RNG vs self._rng, gumbel.py docstring describing an unimplemented heuristic",
-            "MuZeroNetworkProtocol is defined twice (mcts/mcts_protocols.py and core/losses.py) and core/__init__.py re-exports both -- one silently shadows the other"
+            "Verify CI on f4cea7a: new regression step (test job), regression dir (coverage job), gitleaks steps (security job), validate_agents step (governance job)",
+            "PLR0915 burndown: split vertex_orchestrator.main (248 stmts), training_worker.main (168), run_enhanced_training.main (134). Delete each per-file-ignores entry as it lands; never raise the threshold",
+            "Cloud trio remains BLOCKED on a patch-target remapping strategy: 38 mock.patch string targets, and an identity test cannot detect a dead patch",
+            "Coverage omit-list shrink is the right instrument if coverage is the goal, not decomposition: quota_manager.py (309 stmts, zero test files), lifecycle.py (297), pipeline_cache.py (319)",
+            "Three pre-existing MCTS defects filed from review, threads left open for the author: gumbel_ops temperature=0 (-inf, degrades Gumbel-Top-k to uniform sampling), SimpleMCTS global RNG vs self._rng, gumbel.py docstring describing an unimplemented heuristic",
+            "ROTATE the W&B API key in 87cd68a2 -- no code change remediates it"
         ]
     },
     "context_files": [
@@ -24,10 +24,12 @@
         "docs/architecture/C4_ARCHITECTURE.md"
     ],
     "known_issues": [
-        "The cloud trio carries 38 mock.patch string targets; a re-export shim keeps `old is new` true while silently killing the patch. An identity test cannot detect this -- test_mcts_split_backcompat.py pins patchability separately.",
-        "22 A3 warnings remain: five Agent.md files missing conventional sections. Non-blocking by design; a visible burndown.",
-        "89.30% coverage was measured at 5b41ca4, before the governance commit. That commit adds only tests/docs/config, so the number should not move, but it was not re-measured.",
-        "`.[dev]` fails on `chess` where pip resolves a wheel-less version. Environment artifact, NOT a repo defect: `pip install --only-binary=:all: chess` first.",
-        "Local coverage IS possible -- the previous 'wedged' reports were the bare-`pytest` PATH bug, now fixed. 12m14s for the full coverage run."
+        "A gate is not a gate until something runs it. tests/regression/ passed for a week while being invoked by nothing. Check both halves for any new gate: does it fail when the guarded thing breaks, and does anything call it?",
+        "UNREMEDIATED: a real 40-hex W&B API key is in git history (87cd68a2, feature/sprint6-...). Requires rotation. docs/runbooks/secret-scanning.md.",
+        "The blocking secret gate scans HEAD's lineage (528 commits, 0 findings). The repo-wide audit (make security-secrets-audit) is NOT clean and is deliberately non-blocking.",
+        "22 A3 warnings: five Agent.md files missing conventional sections. Non-blocking by design.",
+        "MuZeroNetworkProtocol is defined twice (mcts/mcts_protocols.py and core/losses.py); core/__init__.py re-exports both, so one silently shadows the other.",
+        "`.[dev]` fails on `chess` where pip resolves a wheel-less version. Environment artifact, not a repo defect: pip install --only-binary=:all: chess first.",
+        "Local coverage works (89.29%, ~11.5 min). Earlier 'wedged' reports were the bare-pytest PATH bug."
     ]
 }

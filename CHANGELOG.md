@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — The governance gates now actually gate (2026-08-30)
+
+Review of the previous commit returned 13 findings; all were correct. Four were the
+same failure — something described as a gate that gated nothing:
+
+- **`tests/regression/` was run by no CI job and no make target.** The ten
+  repository-hygiene invariants added in that commit, and the pre-existing
+  `test_hex_encoder_regression.py`, had never gated a pull request. Wired into the CI
+  `test` and `coverage` jobs and into `make test` / `make test-all`.
+- **`validate_agents.py --path <missing>` exited 0**, so a stale path from the
+  PostToolUse hook read as a clean validation. Now reports `A0`, matching
+  `validate_skills.py`.
+- **The catch-all allowlist test checked four exact spellings.** `^.*$` contains none
+  of them, matches every path, and left the test green. Replaced with a behavioural
+  check that compiles the real patterns against representative source.
+- **The A5 requirement said "every importable package"; the validator checked 29 of
+  44.** Nested packages — including `alpha_zero/core/mcts/`, created by this PR — had
+  no `Agent.md` and the gate passed. Spec narrowed to top-level; `core/mcts/` gets a
+  persona document.
+
+Four more where a gate was weaker than claimed: the layering test walked only
+`tree.body`, so a function-local `from .base import …` could reintroduce the removed
+dependency invisibly; `GITLEAKS_BIN` defaulted to whatever was on `PATH`, defeating the
+pin; the installer always fetched `linux_x64`, against the cross-platform requirement in
+CLAUDE.md §2.1; and `.gitleaks.toml` path-allowlisted `docs/archive/`, which is 25
+tracked files rather than a build artifact.
+
+Also the tests those changes should have shipped with. The block-scalar parser fixed a
+*vacuous-validation* bug with no regression test — reconstructing the old parser shows
+`description: >` yielded the literal `">"`, so an **empty** folded scalar passed the
+non-empty check. And `_point_at` in the governance suite patched only `SKILLS_DIR`, so
+tmp-tree tests were silently scanning the repository's real `.agents/skills/`.
+
 ### Security — Unremediated W&B credential found in git history (2026-08-30)
 
 - The new repo-wide secret audit found **a real Weights & Biases API key** (40-char
