@@ -1,5 +1,22 @@
 # DEV-SQE Session Log
 
+## 2026-08-30 - MCTS package split + three governance gates that did not exist (PR #115)
+
+- **Session:** session_0161DvFczCzPQqumjKqYdrXy
+- **Task:** Plan and execute god-file decomposition. Two rounds of adversarial peer review reshaped the scope before any code was written.
+- **Review killed the original framing.** The plan argued decomposition was the lever for shrinking the coverage omit list. Measured: the "pure logic" worth extracting is ~112 statements, 11 of 12 functions already have direct tests, and un-omitting them moves global coverage by **~0.02 points**. The repo's own documented path (CLAUDE.md:444) is `quota_manager.py` — verified 309 statements, **zero test files**. Coverage and god files are different problems; the plan now says so.
+- **Round 2 cut the scope by two thirds.** The three cloud workers carry **38 `mock.patch` string targets**; a re-export shim satisfies `old is new` while a patch on it becomes a **silent no-op** once the patched symbol's consumer also moves. The `_SHIM_MAP` identity test proposed in v1 is green in exactly that failure mode. Also: `cloud/gcp/__init__.py` eagerly pulls numpy, so the "torch-free module" premise was false and the proposed verification command could never have run. Cloud trio deferred with named prerequisites.
+- **Shipped: `civ6_mcts.py` 2,443 lines → `alpha_zero/core/mcts/`**, 7 modules, largest 876. `mcts_factory.py` untouched (its lazy import resolves through the shim), so the diff outside moved blocks is the shim and docs. Corrected my own layout by reading call sites: `MuZeroMCTS` calls the Gumbel helpers, so they went to a leaf `gumbel_ops` rather than into `gumbel.py`; `GumbelMCTS` uses neither `MCTSNode` nor `MCTSConfig`, so it does not depend on `base` at all. Layering is AST-enforced, not documented-and-hoped.
+- **Shipped: three gates the repo did not have.** (1) No secret scanning at all — gitleaks now covers tree + 525 commits, pin single-sourced in the Makefile and read by CI, baseline 0 findings so it is blocking with no burndown. (2) The 30 `Agent.md` persona docs had **zero** validator coverage — new `validate_agents.py` (A1–A6) found 16 real errors on first run, including a `monitoring/Agent.md` with no persona section asserting that W&B "remains in place" (retired 2026-07-13) and a package with no `Agent.md` at all. (3) `.agents/skills/` was routed to the skills validator by the hook but scanned by neither pre-commit nor CI, so it carried live violations; its folded YAML `description: >` had been validating as the literal `">"`.
+- **Found by accident, and larger than it looks:** `make test-all` failed with `ModuleNotFoundError: numpy` on a fully-installed env. The recipes called a bare `pytest`, resolving to a uv tool venv that cannot see the project — the same hazard CLAUDE.md §15.3 already records for mypy. **Local coverage had been written off as impossible on the strength of a failure whose real cause was PATH resolution.** With 18 recipe lines routed through `$(PYTHON) -m`, the gate runs: **89.30% measured**, corroborating the previously-unverified 89.69% anchor.
+- **Repo hygiene:** five files were tracked *and* gitignored (incl. the four `kb/sessions/*.state.json` that CLAUDE.md §14.5 calls the only mutable state per role); `.gitignore` had 83 duplicates and `.dockerignore` a 110-line verbatim duplicate; a percent-regex matched the decimal tail of `89.30%` as a bare `30%`; and my own `$(PYTHON) -m` change had broken the `Bash(ruff:*)` permission prefixes.
+- **Negative controls:** 11 injected defects, each reproduced as a failure first. One control *failed and taught something* — the first gitleaks probe used AWS's documentation example keys, which gitleaks allowlists upstream, so the config was only proven after retesting with random values.
+- **Files Changed:** 32 (see handoff doc)
+- **Tests Added:** `test_mcts_split_backcompat.py` (41), `test_validate_agents.py` (13), `test_repo_hygiene_regression.py` (10)
+- **Tests:** 12,381 passed / 0 failed; coverage **89.30%** (gate 85); ruff clean over 937 files; mypy clean over 367; five validators exit 0; gitleaks 0 findings
+- **Status:** complete — PR #115 draft, 7/8 CI green at `5b41ca4`, one Copilot finding fixed and resolved, three replied to as pre-existing
+- **Next:** the three oversized `main` functions on the `PLR0915` burndown; the cloud trio once the `mock.patch` remapping strategy exists
+
 ## 2026-08-28 - Smoke test made to complete; first recorded training run (PR #114)
 - **Session:** session_01D2xbKx2mGWNXXHnE5Eoohv
 - **Task:** Post-#113 follow-ups per the peer-reviewed plan (hang guard, promotion runbook, OpenSpec archive, honest `make verify`), then PR C: Validation Iteration Zero.
@@ -15,7 +32,6 @@
 - **Tests:** 42 new pass; touched suites 89 passed; mypy clean (359 files); ruff clean repo-wide; all governance gates green; CI green on all seven core jobs
 - **Status:** complete
 - **Next:** confirm CI on 8380698; then the fog-of-war mask leak (still blocked on NPlayerMCTS having zero call sites) or the coverage omit-list shrink as a draft PR that lets CI print the real number
-
 ## 2026-08-27 - Self-play trajectory + promotion correctness fixes (PR #113)
 - **Session:** session_01D2xbKx2mGWNXXHnE5Eoohv
 - **Task:** Phase 1 of the next-steps case (docs/NEXT_STEPS_CASE_2026-08.md, written and peer-reviewed earlier in the same session). Three verification agents scanned the repo, an adversarial reviewer fact-checked the resulting case doc, and two more agents (SQE test-adequacy + architecture) reviewed the fix plan before any code was written. Both reviews changed the plan materially.
@@ -29,7 +45,6 @@
 - **Tests:** 10,548 unit + 601 integration + 1,035 sanity/cloud/security + 50 governance pass. ruff clean (920 files formatted), mypy clean (359 files). make validate green.
 - **Status:** complete -- pushed to claude/next-steps-codebase-review-ir7b0e, PR #113 updated from docs-only to code+docs
 - **Next:** Fog-of-war mask leak as its own PR (it is over-permissive for found_city, needs its own OpenSpec change); then Validation Iteration Zero, which needs explicit NG-7 sign-off.
-
 ## 2026-08-09 - Hex-crystalline encoder packaged for standalone reuse + HF publication (PR #107)
 - **Session:** session_011aLW3xW6HK5PeY8q4YFtZS
 - **Task:** Make the hex encoder reusable outside this repo, give it from_pretrained(), and produce the A/B evidence the repo has never had. Planned in-session, then peer-reviewed by two independent agents (adversarial-technical + completeness/SQE) before any code was written; both reviews are folded into the plan and this work.
@@ -44,7 +59,6 @@
 - **Coverage:** NOT verified locally -- numpy 2.4 + coverage C-tracer crash (CLAUDE.md 5.3). CI is the gate. Do not claim green.
 - **Status:** PR #107 open as draft; CI 5/7 green at handoff (Governance, LLM Eval, Security, Lint & Type Check, Cloud Unit), both Test matrix jobs still running. Nothing published to the Hub -- --publish is a deliberate human step per 3.2.
 - **Next:** finish the 150-game arena (`run_encoder_ab.py arena` then `report`), commit the evidence, then decide on publication. At 150 games the interval is ~+/-8 points, so expect "does not distinguish"; 800 games is where a 5-point edge becomes resolvable.
-
 ## 2026-07-26 - Roadmap review + train->evaluate->play loop (PR #105)
 - **Session:** session_01TKcb8crWZ1n1aB4XfvCnfn
 - **Task:** Review CLAUDE.md 13 "Genuine Next Steps" against the code, then fix what the review exposed. Two of six items were untrue (N-player landed 2026-07-05; the "12 xfailed DDP tests in tests/unit/test_distributed" directory does not exist) and 13 had been contradicting 5.3 in the same file.
@@ -56,7 +70,6 @@
 - **Measured quickstart** (board 8, max_turns 20, 10 sims, 6 iters, 10 games, 2x16 net, CPU): iteration 1 ~6 min (random-rollout SimpleMCTS), iterations 2+ ~1 min. Win rate vs random 10%, 5%, 5% - a short run does **not** produce a model that beats random. Do not advertise otherwise.
 - **Status:** in-progress - 6 of 10 planned phases done; PR #105 open as draft, CI green on the pushed commits so far
 - **Next:** local eval with a random-init CONTROL arm (a random net under MCTS also beats a random agent, so "beats random" proves nothing), measure the MCTS fix before/after on a frozen checkpoint, delete run_civ6_ai.py with its 4 coupled edits, README quickstart with the measured numbers, scaffold the umbrella OpenSpec change
-
 ## 2026-07-13 - Optuna Sweep Port + Secrets Cleanup (PR #92 follow-ups)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (fourth batch)
 - **Task:** Port run_sweep.py off the W&B sweep API: new reusable alpha_zero/optimizations/hyperparameter_search.py (SweepConfig YAML + CIV6AZ_SWEEP_* env overrides w/ legacy SWEEP_TIMEOUT_SECONDS, declarative search space, injectable objective/tracker, MLflow per-trial logging, SubprocessTrainingObjective w/ timeout+prune). run_sweep.py = thin CLI; configs/sweep_muzero.yaml seeded from historical W&B results; SWEEP_METRICS_JSON marker in run_muzero_training.py; [tuning] extra (optuna). setup_secrets.sh generalized (CIV6AZ_SECRET_NAME/VALUE, wandb default gone).
@@ -64,7 +77,6 @@
 - **Honest scope note:** two read-only analysis scripts keep lazy wandb.Api() readers for W&B-hosted HISTORICAL runs (data MLflow cannot serve) — documented as deprecated, not instrumentation.
 - **Status:** complete pending full-suite verification — extends PR #92
 - **Next:** confirm CI green on PR #92
-
 ## 2026-07-13 - W&B Retirement Sweep (MLflow-only tracking)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (third batch)
 - **Task:** Complete W&B→MLflow migration: toggle unification (resolve_tracker_enabled, legacy WANDB_ENABLED honored+warned), WandbConfig→MLflowConfig bridge, single-tracker orchestrator init, shim + dead-suite deletions (user-approved), 66 gap-filling tests landed before deletions
@@ -73,7 +85,6 @@
 - **Tests:** 66 new/ported; targeted suites green; full CI-equivalent suite + 85% coverage gate run at ship time
 - **Status:** complete — new PR from restarted branch `claude/project-charter-template-b4n9fu`
 - **Next:** Pre-PR: confirm CI green; follow-ups: run_sweep.py Optuna port, setup_secrets.sh cleanup
-
 ## 2026-07-13 - Gap Analysis + Tech-Debt Sweep (coverage 85% gate, ruff-to-zero, mypy semantic fixes)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft (same session as charter, second batch)
 - **Task:** Branch-wide gap analysis and tech-debt enforcement: coverage gate 80→85 (CI measured 89.69%, local re-verified 88.88%), ruff 292→0 across alpha_zero/tests/scripts/infra, all semantic mypy errors fixed (180→157; rest is version noise), PR #91 review findings addressed
@@ -84,7 +95,6 @@
 - **Lint/format:** ruff 0 errors (both 0.15.8 local and CI-pinned 0.8.0); `ruff format --check alpha_zero/` green under 0.8.0 (do NOT format file_bridge.py/transformer_network.py with newer ruff — version skew)
 - **Status:** complete — on branch `claude/project-charter-template-b4n9fu` (PR #91, now ready-for-review)
 - **Next:** monitor PR #91 CI; remaining debt: W&B→MLflow sweep, omit-list shrink, unused-ignore noise under newer mypy
-
 ## 2026-07-13 - Project Charter Instantiation (docs-only)
 - **Session:** session_01AAR7bMpmkZtman9kFaeqft
 - **Task:** Instantiate PROJECT_CHARTER.md (7 non-goals NG-1..NG-7, 7 enforced invariants, carve-out amendment protocol), add templates/PROJECT_CHARTER_TEMPLATE.md and ROADMAP.md (M1–M5 themes), pointer edits to CLAUDE.md (§6.1, §13) and README.md
@@ -92,7 +102,6 @@
 - **Tests:** none touched (docs-only); pytest/torch unavailable in this restricted session — CI is the gate; `ruff check alpha_zero/` = 1 pre-existing C420 (multiplayer/mcts.py:310), identical on clean HEAD
 - **Status:** complete — on branch `claude/project-charter-template-b4n9fu`
 - **Next:** Pre-PR validation; follow-ups noted in PR: CLAUDE.md v1.7.0 footer drift, pre-existing C420
-
 ## 2026-04-02 - Phase 8 Entry Point + Test Suite Fixes
 - **Session:** 48dca8d8-7e46-41dc-b7f5-1ecb487c8400
 - **Task:** Implement `alpha_zero/civ6_local.py` unified local gameplay entry point (Phase 8); fix test regressions for Atari CLI, hierarchical controller, DDP fixtures
@@ -107,7 +116,6 @@
 - **Tests:** 428 pass, 2 skip (civ6_local: 109/109, atari: 186/186, DDP: 33/33 + 2 skip); ruff: 1 pre-existing error in hex_encoder.py (not in changed files)
 - **Status:** complete — Phase 8 done; Phases 0–7 verified already implemented
 - **Next:** Run Pre-PR validation; confirm convergence validation (Phase 0) with `scripts/validate_v130_training.py`
-
 ## 2026-03-01 (v1.3.0 Convergence Validation + Doc Reconciliation)
 
 - Created `scripts/validate_v130_training.py` — local training convergence validator
@@ -118,7 +126,6 @@
 - Key finding: Many "planned" features already implemented (PBT, tournament, web, bridge, hierarchical)
 - Key finding: v1.2.0 prod run had 0 promotions; v1.3.0 fix untested in production
 - Status: **DEV-COMPLETE** (validation script ready for execution)
-
 ## 2026-02-08 (Phase 5 - Cost Optimization)
 
 - Implemented `CostEstimator` in `alpha_zero/cloud/gcp/cost.py`.

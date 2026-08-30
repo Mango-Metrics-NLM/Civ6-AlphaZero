@@ -1,34 +1,33 @@
 {
-    "last_session_id": "session_01D2xbKx2mGWNXXHnE5Eoohv",
-    "last_timestamp": "2026-08-28T02:50:00Z",
-    "active_branch": "claude/next-steps-codebase-review-ir7b0e",
-    "current_focus": "PR #114 (draft): post-#113 follow-ups plus the smoke-test/thread fixes and Validation Iteration Zero, the project's first recorded run. CI green on all seven core jobs at 0c394f9; 8380698 pushed after.",
+    "last_session_id": "session_0161DvFczCzPQqumjKqYdrXy",
+    "last_timestamp": "2026-08-30T01:30:00Z",
+    "active_branch": "claude/god-files-decomposition-gojlo3",
+    "current_focus": "PR #115 (draft): civ6_mcts split into alpha_zero/core/mcts/ + three new governance gates (gitleaks, validate_agents, .agents/skills coverage) + the Makefile interpreter fix that made local coverage measurable (89.30%).",
     "resume_pointers": {
-        "current_task": "Confirm CI green on 8380698, then pick up fog-of-war or the coverage omit-list shrink",
+        "current_task": "Confirm CI green on 35ff6db, then start the PLR0915 burndown",
         "blocked_on": [],
         "next_steps": [
-            "Verify CI on head 8380698 (evidence + ledger + evaluate_against_random logging)",
-            "Coverage omit-list shrink as a DRAFT PR: cloud/gcp imports fine without the GCP SDK and CI already runs 1,025 of its tests then discards the data, but it measures 60.0% against the 66.1% needed -- land it as draft and read the real global number off CI before retuning the threshold (the ~85.3% recovery figure is arithmetic on an unverified anchor, inside its own error bar)",
-            "Fog-of-war mask leak: extract _get_observable_state() used by BOTH get_observation and get_valid_actions; still blocked in practice because DeterminizedMCTS and NPlayerMCTS both have zero call sites",
-            "Add a --seed flag to training_civ6.py and seed MicroCivEnv.reset() in the eval path -- the five-probe spread (0.25-0.40 on one checkpoint) is the evidence that this blocks any before/after comparison",
-            "Consider making evaluate_against_random return a draw-aware statistic; only the logging changed, the return value is still wins/num_games for compatibility"
+            "Verify CI on 35ff6db -- the governance commit adds a gitleaks step to the security job and a validate_agents step to governance; both are new and unproven in CI",
+            "PLR0915 burndown: split vertex_orchestrator.main (248 stmts), training_worker.main (168), run_enhanced_training.main (134). Delete the per-file-ignores entry as each lands; never raise the threshold",
+            "Cloud trio decomposition is BLOCKED on two prerequisites: (a) a patch-target remapping strategy with a test that detects dead mock.patch targets -- an identity test cannot -- and (b) a decision on the cloud/gcp/__init__.py eager-import chain that pulls numpy into every submodule",
+            "Coverage omit-list shrink is a SEPARATE workstream and the right one if coverage is the goal: quota_manager.py (309 stmts, zero test files), lifecycle.py (297), pipeline_cache.py (319). Decomposition moves that number by ~0.02 points and is the wrong instrument",
+            "Three pre-existing defects filed from Copilot review: gumbel_ops temperature=0 (-inf, degrades Gumbel-Top-k to uniform sampling), SimpleMCTS global RNG vs self._rng, gumbel.py docstring describing an unimplemented heuristic",
+            "MuZeroNetworkProtocol is defined twice (mcts/mcts_protocols.py and core/losses.py) and core/__init__.py re-exports both -- one silently shadows the other"
         ]
     },
     "context_files": [
-        "docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md",
-        "docs/runbooks/promotion-gate.md",
-        "alpha_zero/utils/device.py",
-        "alpha_zero/training_civ6.py",
-        "kb/handoffs/20260827-devsqe-to-prepr-selfplay-promotion-correctness.md"
+        "kb/handoffs/20260830-devsqe-to-prepr-mcts-split-and-governance-gates.md",
+        "openspec/changes/harden-governance-gates/proposal.md",
+        "alpha_zero/core/mcts/__init__.py",
+        "tests/unit/test_mcts_split_backcompat.py",
+        "scripts/validate_agents.py",
+        "docs/architecture/C4_ARCHITECTURE.md"
     ],
     "known_issues": [
-        "cloud/evaluator.py and cloud/selfplay_worker.py are NOT deployed (cloudbuild builds only Dockerfile.vertex); both carry LEGACY banners.",
-        "alpha_zero/cloud/ is entirely coverage-omitted, so fixes there do not move the coverage number -- do not cite coverage as evidence they are tested.",
-        "RESOLVED 2026-08-28: 'dry runs exceed practical local timeouts' was a symptom of the --dry_run inner-dimension bug and the torch thread pathology. --dry_run now completes in 16.4s. distributed.coordinator --dry_run is still unverified.",
-        "CORRECTED 2026-08-28: Validation Iteration Zero did NOT need NG-7 sign-off; NG-7 governs cloud spend and >1000-game runs. It ran locally on 100 games.",
-        "Batched CPU training still runs at torch's default thread count, ~17x slower than optimal on an oversubscribed VM. Deliberate (real hardware benefits); use OMP_NUM_THREADS=2 per run.",
-        "training_civ6.py has no --seed flag and MicroCivEnv.reset() is unseeded in the eval path, so no run or probe is exactly reproducible.",
-        "run_batch_selfplay now accepts a seed; run_selfplay (training_civ6) still does not.",
-        "Encoder transfer gap (carried forward): the Civ6 bridge builds at 84 channels while all training produces 13, so no checkpoint this repo produces will drive the bridge."
+        "The cloud trio carries 38 mock.patch string targets; a re-export shim keeps `old is new` true while silently killing the patch. An identity test cannot detect this -- test_mcts_split_backcompat.py pins patchability separately.",
+        "22 A3 warnings remain: five Agent.md files missing conventional sections. Non-blocking by design; a visible burndown.",
+        "89.30% coverage was measured at 5b41ca4, before the governance commit. That commit adds only tests/docs/config, so the number should not move, but it was not re-measured.",
+        "`.[dev]` fails on `chess` where pip resolves a wheel-less version. Environment artifact, NOT a repo defect: `pip install --only-binary=:all: chess` first.",
+        "Local coverage IS possible -- the previous 'wedged' reports were the bare-`pytest` PATH bug, now fixed. 12m14s for the full coverage run."
     ]
 }
