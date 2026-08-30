@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — `core/civ6_mcts.py` decomposed; a statement-count guard replaces nothing (2026-08-30)
+
+- **`alpha_zero/core/civ6_mcts.py` (2,443 lines) split into `alpha_zero/core/mcts/`**, one
+  module per search variant: `mcts_protocols` (contracts), `gumbel_ops` (Gumbel-Top-k
+  primitives), `base` (`MCTSConfig`, `MCTSNode`), `puct` (`Civ6MCTS`), `simple`
+  (`SimpleMCTS`), `gumbel`, `muzero`. Largest is now 876 lines. Pure relocation — the diff
+  outside the moved blocks is the shim and the docs; `mcts_factory.py` is untouched.
+  `civ6_mcts` remains a re-export shim with an explicit `__all__`, so every historical
+  import path resolves to the *same object*.
+- **The layering is now enforced, not just intended.** `gumbel` and `muzero` carry their own
+  node and configuration types and do not import `base`; the Gumbel-Top-k helpers live in
+  `gumbel_ops` specifically so `muzero` need not import the `gumbel` search module.
+  `tests/unit/test_mcts_split_backcompat.py` pins all of it.
+- **That suite also pins patchability**, which an identity test cannot: a re-export shim
+  trivially satisfies `old is new` while `mock.patch` on it becomes a silent no-op if the
+  patched symbol's consumer also moves. `MuZeroTrainingBridge.create_mcts` imports from the
+  shim at call time, and a test asserts the patch still reaches it.
+- **ruff `PLR0915` enabled** (`max-statements = 100`) — statements per function, which is the
+  pathology this repo actually has; module line count is only a proxy for it. Three `main`
+  functions exceed it (248 / 168 / 134 statements) and are listed in `per-file-ignores` as an
+  explicit burndown list rather than being silently accommodated by a higher threshold.
+
+
 ### Fixed — Self-play data correctness, promotion decisions, and honest gates (2026-08-27/28)
 
 - **Batch self-play labelled every position 0.0.** The loop counted MCTS *action*

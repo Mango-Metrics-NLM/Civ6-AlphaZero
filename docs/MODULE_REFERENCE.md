@@ -4,14 +4,14 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.8.0, 2026-08-10
+- **As of:** v1.8.0, 2026-08-30
 - **Submodule count:** 29
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
 
 | Module | Files | Responsibility |
 |--------|------:|----------------|
-| `core` | 32 | Neural networks (ResNet/transformer), MCTS variants (Gumbel/DUCT/MuZero), action space |
+| `core` | 40 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero), action space |
 | `utils` | 27 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |

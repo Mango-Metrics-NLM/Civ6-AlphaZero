@@ -170,7 +170,7 @@ extend-exclude = [
 force-exclude = true
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "C4", "UP", "N", "ANN", "S", "RUF"]
+select = ["E", "F", "W", "I", "B", "C4", "UP", "N", "ANN", "S", "RUF", "PLR0915"]
 ignore = [
     "E501",    # Line length handled separately
     "ANN401",  # Any type allowed for duck typing with cloud SDKs
@@ -178,11 +178,25 @@ ignore = [
     "UP042",   # Prefer StrEnum over (str, Enum) — deferred refactor
 ]
 
+[tool.ruff.lint.pylint]
+# Statements per function, not lines per module. The pathology this repo actually has
+# is the 600-line `main`, and module line count is only a proxy for it. 100 is set just
+# above the largest function that is not already on the burndown list, so the rule
+# ratchets: it blocks new growth without demanding an immediate rewrite.
+max-statements = 100
+
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
 "**/tests/*" = ["S101", "ANN", "N803", "S108", "S603", "S607", "S310", "N806", "N812", "RUF012", "S110", "S104", "B017", "RUF003"]
 "tests/unit/test_hexcrystal_hub_mixin.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
+# PLR0915 burndown (max-statements = 100). Three `main` functions exceed it, at 248,
+# 168 and 134 statements; all are known decomposition targets, deferred with the rest
+# of the cloud-worker work. Delete an entry -- do not raise the threshold -- when its
+# function is split.
+"alpha_zero/cloud/gcp/vertex_orchestrator.py" = ["PLR0915"]  # main(): 248 statements
+"alpha_zero/cloud/gcp/training_worker.py" = ["PLR0915"]  # main(): 168 statements
+"run_enhanced_training.py" = ["PLR0915"]  # main(): 134 statements
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "alpha_zero/cloud/gcp/preemption.py" = ["S310"]  # GCP preemption handler metadata URL is intentional
