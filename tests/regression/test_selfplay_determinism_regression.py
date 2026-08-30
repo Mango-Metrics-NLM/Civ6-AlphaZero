@@ -28,6 +28,7 @@ across the module so the suite stays cheap enough to gate every PR.
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 import pytest
@@ -51,10 +52,24 @@ _OTHER_GLOBAL_SEED = 99
 _REPLAYED_FIELDS = ("actions", "policies", "rewards")
 
 
-def _seed_global_rngs(seed: int) -> None:
-    """Seed the RNGs that ``run_batch_selfplay(seed=...)`` does not reach."""
-    np.random.seed(seed)
-    torch.manual_seed(seed)
+@contextlib.contextmanager
+def _seed_global_rngs(seed: int):
+    """Seed the RNGs ``run_batch_selfplay(seed=...)`` does not reach, then restore.
+
+    Restoring is the half that is easy to forget. Seeding the process-global
+    numpy and torch RNGs and leaving them there would hand every subsequently
+    collected test the state this file's self-play happened to end on -- hidden
+    test-order coupling, and exactly what :func:`_build_model` uses ``fork_rng``
+    to avoid two functions above. A file arguing for RNG hygiene has to keep it.
+    """
+    np_state = np.random.get_state()
+    with torch.random.fork_rng(devices=[]):
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        try:
+            yield
+        finally:
+            np.random.set_state(np_state)
 
 
 def _build_model():
@@ -84,18 +99,18 @@ def _build_model():
 def _play(*, env_seed: int, global_seed: int) -> list[dict]:
     from alpha_zero.cloud.gcp.selfplay_worker import run_batch_selfplay
 
-    _seed_global_rngs(global_seed)
-    return run_batch_selfplay(
-        model=_build_model(),
-        num_games=_NUM_GAMES,
-        mcts_sims=_MCTS_SIMS,
-        board_size=_BOARD_SIZE,
-        max_turns=_MAX_TURNS,
-        num_parallel_games=_NUM_GAMES,
-        gumbel_num_actions=_GUMBEL_ACTIONS,
-        device="cpu",
-        seed=env_seed,
-    )
+    with _seed_global_rngs(global_seed):
+        return run_batch_selfplay(
+            model=_build_model(),
+            num_games=_NUM_GAMES,
+            mcts_sims=_MCTS_SIMS,
+            board_size=_BOARD_SIZE,
+            max_turns=_MAX_TURNS,
+            num_parallel_games=_NUM_GAMES,
+            gumbel_num_actions=_GUMBEL_ACTIONS,
+            device="cpu",
+            seed=env_seed,
+        )
 
 
 def _fingerprint(trajectories: list[dict]) -> list[dict[str, list]]:
@@ -194,6 +209,48 @@ def integration_source() -> str:
         Path(__file__).resolve().parents[1] / "integration" / "test_batch_selfplay_integration.py"
     )
     return path.read_text(encoding="utf-8")
+
+
+class TestSeedingDoesNotLeakIntoOtherTests:
+    """Seeding is scoped; the process-global RNGs come back unchanged.
+
+    Review caught the first version of this file leaving numpy and torch seeded
+    at whatever state self-play ended on, so every test collected afterwards in
+    the same worker inherited it. That is the coupling ``_build_model`` uses
+    ``fork_rng`` to avoid -- argued for in a docstring and then broken by the
+    helper beside it.
+    """
+
+    def test_numpy_state_is_restored(self) -> None:
+        np.random.seed(4242)
+        before = np.random.get_state()
+        with _seed_global_rngs(7):
+            np.random.random(10)
+        after = np.random.get_state()
+        assert before[0] == after[0]
+        assert np.array_equal(before[1], after[1]), (
+            "_seed_global_rngs left numpy's global RNG reseeded; later tests in "
+            "this worker would inherit state from this file"
+        )
+        assert before[2:] == after[2:]
+
+    def test_torch_state_is_restored(self) -> None:
+        torch.manual_seed(4242)
+        before = torch.get_rng_state()
+        with _seed_global_rngs(7):
+            torch.rand(10)
+        assert torch.equal(before, torch.get_rng_state()), (
+            "_seed_global_rngs left torch's global RNG reseeded"
+        )
+
+    def test_the_seed_still_takes_effect_inside_the_block(self) -> None:
+        """The positive half: a helper that restored but never seeded would
+        also pass the two tests above."""
+        with _seed_global_rngs(7):
+            first = np.random.random(5).tolist()
+        with _seed_global_rngs(7):
+            second = np.random.random(5).tolist()
+        assert first == second, "_seed_global_rngs is not actually seeding"
 
 
 class TestTheIntegrationTestSeedsBothSources:

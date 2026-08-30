@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Second review round: three defects inside this PR's own fixes (2026-08-30)
+
+Copilot returned 8 more comments; all 8 were correct. Three of them are defects in
+fixes made earlier in the same PR, which is the honest case for the round:
+
+- **`validate_skills.py --path <existing non-SKILL.md>` exited 0.** An `if/elif`
+  with no `else` recorded nothing. `validate_agents.py` had been fixed for exactly
+  this; its sibling was left with the hole. The `--path` contract is now asserted
+  across every validator that accepts the flag, for both the missing and the
+  misnamed case, with the positive half (a valid target still validates) so a
+  validator that rejected everything could not pass.
+- **The secret gate read gitignored files.** `gitleaks dir .` scans the working
+  directory, and this project *requires* a gitignored `.env` holding real API keys
+  — so a correctly configured developer would have had `make verify` fail on a file
+  that cannot be committed, while the comment beside it claimed a "tracked tree"
+  scan. It now stages `git ls-files -co --exclude-standard`. Allowlisting `.env`
+  would have been the wrong fix: an accidentally *tracked* `.env` is in that set and
+  must still fail. Both directions verified. Side effect: the tree scan went from
+  121.8 MB / 21.3 s to 16.9 MB / 1.1 s.
+- **The gitleaks pin could still be defeated.** `gitleaks-install` only fetched when
+  the target was missing, so a `.tools/gitleaks` left from an earlier pin was reused
+  for ever — the PATH-default bug one step further along. The version is now in the
+  binary's *path*, making a pin change a cache miss.
+
+Also: the allowlist parser recognised only triple-single-quoted TOML strings, so a
+catch-all written `"^.*$"` was invisible to it while the other entries kept
+`assert patterns` green — and the negative control compiled the regex directly,
+bypassing the parser, so it proved the predicate discriminates and nothing about the
+extraction. Measured: the old parser missed **4 of 5** ways to write a catch-all.
+Replaced with `tomllib` (stdlib since 3.11, so the "stdlib-only" constraint the hand
+parser existed for is met without hand-parsing), and the controls now run through the
+real parser in every quoting style plus the `[[rules.allowlists]]` form.
+
+And the RNG-hygiene inconsistency: `_seed_global_rngs` seeded the process-global
+numpy and torch RNGs and left them there, so later tests in the same worker inherited
+state — the coupling the `small_model` fixture uses `fork_rng` to avoid, reintroduced
+two functions below it. Both helpers are now restoring context managers, with tests
+that the state comes back *and* that seeding still takes effect inside the block.
+
+The CI `security` job now calls `make security-secrets` rather than restating the
+install and both scan commands. Restating them is how it came to run a scan that
+contradicted the comment beside it.
+
+
 ### Added — AQA: a test suite that nothing runs is not a gate (2026-08-30)
 
 The review finding that `tests/regression/` was enumerated by no CI job and no

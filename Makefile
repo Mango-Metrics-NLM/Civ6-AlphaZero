@@ -42,7 +42,13 @@ GITLEAKS_VERSION ?= 8.30.0
 # happens to be on PATH would silently run a different ruleset from CI and defeat
 # the pin two lines above. Override explicitly to opt out:
 #   make security-secrets GITLEAKS_BIN=/usr/local/bin/gitleaks
-GITLEAKS_BIN ?= $(CURDIR)/.tools/gitleaks
+#
+# The version is IN THE PATH, not just in the download URL. The installer only
+# fetches when the target is missing, so a bare `.tools/gitleaks` left over from
+# an earlier pin would be reused for ever -- the same defeat-the-pin bug as the
+# PATH default, one step further along. Stamping the name makes a pin change a
+# cache miss, which is the only way that check can be got wrong.
+GITLEAKS_BIN ?= $(CURDIR)/.tools/gitleaks-$(GITLEAKS_VERSION)
 GITLEAKS_CONFIG ?= .gitleaks.toml
 
 # ============================================================================
@@ -206,6 +212,7 @@ gitleaks-install:
 		else \
 			curl -sSfL "$$url" | tar -xz -C $(CURDIR)/.tools gitleaks; \
 		fi; \
+		mv -f $(CURDIR)/.tools/gitleaks $(GITLEAKS_BIN); \
 	fi
 
 # Secret scan: the tracked tree AND the built branch's own history. History
@@ -218,10 +225,31 @@ gitleaks-install:
 # should assert what this branch contributes; auditing every stale ref is a
 # separate activity -- see `security-secrets-audit`.
 #
-# Still a real gate: HEAD's lineage is 527 commits here, and 0 findings.
+# Still a real gate: it covers this branch's entire HEAD lineage, 0 findings.
+#
+# The tree half scans the *committable* file set -- tracked plus untracked-and-
+# not-ignored -- rather than the working directory. `gitleaks dir .` reads
+# gitignored files too, and this project requires a gitignored `.env` holding
+# real API keys (CLAUDE.md 2.1, 3.1), so a correctly set-up developer would have
+# had `make verify` fail on a file that cannot be committed. Verified: gitleaks
+# does flag a secret in a gitignored file, and has no flag to stop it.
+#
+# `git ls-files -co --exclude-standard` is the right set precisely because an
+# accidentally *tracked* `.env` is in it, and still fails. Allowlisting `.env`
+# would have hidden exactly the case worth catching.
+#
+# Findings are reported against the staging path; the sed rewrites them back to
+# repo-relative so a failure names a file you can actually open.
 .PHONY: security-secrets
 security-secrets: gitleaks-install
-	$(GITLEAKS_BIN) dir . --config $(GITLEAKS_CONFIG) --redact --no-banner
+	@stage=$$(mktemp -d); out=$$(mktemp); \
+	git ls-files -z -co --exclude-standard | tar --null -T - -cf - | tar -x -C "$$stage"; \
+	$(GITLEAKS_BIN) dir "$$stage" --config $(GITLEAKS_CONFIG) --redact --no-banner \
+		> "$$out" 2>&1; \
+	status=$$?; \
+	sed "s#$$stage/##g" "$$out"; \
+	rm -rf "$$stage" "$$out"; \
+	exit $$status
 	$(GITLEAKS_BIN) git . --config $(GITLEAKS_CONFIG) --redact --no-banner --log-opts="HEAD"
 
 # Repo-wide audit across every ref, including unmerged and stale branches. NOT a

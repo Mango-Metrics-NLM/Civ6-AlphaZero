@@ -169,25 +169,14 @@ jobs:
       - name: Run security sanity tests
         run: pytest tests/security/ -v --tb=short
 
-      - name: Install gitleaks
-        run: |
-          # Read the pin from the Makefile so the version has exactly one
-          # definition and a local `make security-secrets` cannot drift from CI.
-          VERSION="$(make -s print-gitleaks-version)"
-          echo "gitleaks pin from Makefile: ${VERSION}"
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
-
-      - name: Scan tracked tree for secrets
-        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
-
-      - name: Scan this branch's history for secrets
-        # Scoped to HEAD: without --log-opts gitleaks walks every ref the
-        # fetch-depth: 0 checkout pulled in, so the gate would fail on secrets
-        # committed to unmerged branches that this PR neither contains nor can
-        # fix. `make security-secrets-audit` covers the repo-wide case.
-        run: gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="HEAD"
+      # One definition of the secret gate, in the Makefile, invoked identically
+      # here. This job used to restate the install and both scan commands, which
+      # is how it came to run `gitleaks dir .` -- reading gitignored files --
+      # while the Makefile comment beside it claimed a tracked-tree scan. The
+      # target installs its own version-pinned binary; scoping to HEAD's lineage
+      # and staging the committable file set are documented there.
+      - name: Scan for secrets (tracked tree + this branch's history)
+        run: make security-secrets
 
       - name: Run bandit security scan
         run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json

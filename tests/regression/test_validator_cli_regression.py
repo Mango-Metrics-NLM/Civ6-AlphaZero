@@ -108,6 +108,53 @@ class TestMissingPathIsAnError:
         assert result.returncode != 0
 
 
+class TestMisnamedPathIsAnError:
+    """The half of the ``--path`` contract that the first fix missed.
+
+    ``validate_agents.py`` was fixed to reject a *missing* target, and
+    ``validate_skills.py`` was left with an ``if/elif`` and no ``else``: an
+    existing file that is simply not a ``SKILL.md`` recorded no issue and exited
+    0. The hook passes whatever file was just edited, so a misnamed skill
+    manifest read as validated without ever being opened -- the same defect as
+    the missing-path one, reached by a different route.
+
+    Each validator here owns a filename; hand it a real file with the wrong name
+    and it must object.
+    """
+
+    # validator -> a tracked file that exists but is not what it validates
+    WRONG_FILE = {
+        "validate_agents.py": "README.md",
+        "validate_skills.py": "README.md",
+    }
+
+    @pytest.mark.parametrize("script", sorted(WRONG_FILE))
+    def test_existing_file_with_the_wrong_name_is_rejected(self, script: str) -> None:
+        result = _run(script, "--path", self.WRONG_FILE[script])
+        combined = result.stdout + result.stderr
+        assert result.returncode != 0, (
+            f"{script} --path {self.WRONG_FILE[script]} exited 0. The file exists but is "
+            "not what this validator validates, so passing means reporting a clean "
+            "validation of something never inspected."
+        )
+        assert _DIAGNOSTIC.search(combined), (
+            f"{script} gave no structured diagnostic for a misnamed target:\n{combined}"
+        )
+
+    @pytest.mark.parametrize("script", sorted(WRONG_FILE))
+    def test_the_right_file_still_validates(self, script: str) -> None:
+        """The positive half: a validator that rejected everything would also
+        satisfy the assertions above."""
+        targets = {
+            "validate_agents.py": "tests/Agent.md",
+            "validate_skills.py": ".claude/skills/verify/SKILL.md",
+        }
+        result = _run(script, "--path", targets[script])
+        assert result.returncode == 0, (
+            f"{script} rejects its own valid target:\n{result.stdout}\n{result.stderr}"
+        )
+
+
 class TestValidatorsShareOneContract:
     """The documented exit-code contract (CLAUDE.md 5.2: exit 0/1/2)."""
 
@@ -167,6 +214,13 @@ class TestSecretScanningToolchainIsPinned:
         assert "command -v" not in default, (
             "GITLEAKS_BIN resolves from PATH again; the pin is only real if the "
             "managed binary is the default"
+        )
+        assert "$(GITLEAKS_VERSION)" in default, (
+            f"GITLEAKS_BIN is {default!r}, with no version in the path. The "
+            "installer only fetches when the target is missing, so a binary left "
+            "over from an earlier pin is reused for ever -- the pin defeated one "
+            "step further along than the PATH default. Stamping the version into "
+            "the name makes a pin change a cache miss."
         )
 
     @pytest.mark.parametrize(

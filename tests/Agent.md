@@ -18,8 +18,10 @@ This directory provides comprehensive testing:
 - **Cloud tests** (54 unit + 2 smoke): GCP component tests — these import cleanly with no
   Google SDK present, so CI runs them on `.[dev]` alone
 - **E2E tests** (8 files): Full pipeline and live GCS tests
-- **Regression tests** (2 files): Known bug reproductions (hex encoder) and repository-hygiene
-  invariants (tracked-but-ignored files, secret-scan config scoping)
+- **Regression tests** (5 files): known bug reproductions (hex encoder), repository-hygiene
+  invariants (tracked-but-ignored files, secret-scan allowlist scoping), the AQA meta-gate that
+  every suite under `tests/` is actually run by CI, self-play seeding determinism, and the
+  governance validators' CLI contract
 - **Structural / contract tests**: pin an interface rather than a behaviour — import-shim
   identity, `mock.patch` reachability through a shim, and package layering asserted by parsing
   ASTs (`tests/unit/test_mcts_split_backcompat.py`)

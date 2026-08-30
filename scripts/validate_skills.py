@@ -190,10 +190,17 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.path:
             target = Path(args.path).resolve()
-            if target.name == "SKILL.md" and target.is_file():
-                _validate_skill(target, issues, gate)
-            elif not target.is_file():
+            # A missing OR misnamed target is an error, never a silent pass. The
+            # if/elif here had no else, so an existing file that is not a
+            # SKILL.md recorded nothing and exited 0 -- the PostToolUse hook
+            # calls --path, so a misnamed skill file read as validated without
+            # ever being opened. Same hole that validate_agents.py had.
+            if not target.is_file():
                 issues.append(Issue("S1", "path does not exist", target))
+            elif target.name != "SKILL.md":
+                issues.append(Issue("S1", f"not a SKILL.md file: {target.name}", target))
+            else:
+                _validate_skill(target, issues, gate)
         else:
             _validate_all(issues, gate)
     except OSError as exc:  # pragma: no cover - defensive I/O guard

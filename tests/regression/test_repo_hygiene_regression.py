@@ -25,6 +25,7 @@ from __future__ import annotations
 import re
 import shutil
 import subprocess
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -51,17 +52,42 @@ def _git(*args: str) -> str:
     return result.stdout
 
 
-def _gitleaks_allowlist_paths() -> list[str]:
-    """Extract the `paths = [...]` regexes from the `[allowlist]` table.
+def _allowlist_paths_from(text: str) -> list[str]:
+    """Every ``paths`` regex in the config's allowlists, parsed as real TOML.
 
-    Deliberately a small hand parser rather than a TOML dependency: these
-    governance-adjacent tests stay stdlib-only, like the validators.
+    The first version of this was a regex that recognised only triple-single-
+    quoted strings. A catch-all spelled ``"^.*$"`` -- an ordinary, valid TOML
+    basic string -- was therefore invisible to it, while the other entries kept
+    ``assert patterns`` satisfied. So the behavioural check above it could be
+    bypassed by writing the exemption in a different quoting style, which is the
+    same defect one layer down: a gate reporting success on input it never saw.
+
+    ``tomllib`` is stdlib from Python 3.11 and this project requires 3.10+ with
+    CI on 3.11/3.12, so the "stay stdlib-only" constraint the hand parser was
+    written for is satisfied without hand-parsing anything. Both a top-level
+    ``[allowlist]`` and the ``[[rules.allowlists]]`` form are covered.
     """
-    text = _GITLEAKS_CONFIG.read_text(encoding="utf-8")
-    match = re.search(r"^paths\s*=\s*\[(.*?)^\]", text, re.S | re.M)
-    if match is None:
-        return []
-    return re.findall(r"\'\'\'(.*?)\'\'\'", match.group(1), re.S)
+    data = tomllib.loads(text)
+    found: list[str] = []
+
+    def _collect(node: object) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "paths" and isinstance(value, list):
+                    found.extend(str(item) for item in value)
+                else:
+                    _collect(value)
+        elif isinstance(node, list):
+            for item in node:
+                _collect(item)
+
+    _collect(data)
+    return found
+
+
+def _gitleaks_allowlist_paths() -> list[str]:
+    """The live config's allowlist path regexes."""
+    return _allowlist_paths_from(_GITLEAKS_CONFIG.read_text(encoding="utf-8"))
 
 
 def _ignore_entries() -> list[str]:
@@ -164,16 +190,35 @@ class TestSecretScanningConfig:
                 "an over-broad exemption hides real secrets"
             )
 
-    def test_catch_all_allowlist_would_be_detected(self) -> None:
-        """Negative control for the check above, exercised without editing the repo.
+    @pytest.mark.parametrize(
+        "quoting",
+        [
+            pytest.param("'''^.*$'''", id="triple-single"),
+            pytest.param('"^.*$"', id="basic-string"),
+            pytest.param("'^.*$'", id="literal-string"),
+            pytest.param('"""^.*$"""', id="triple-double"),
+        ],
+    )
+    def test_a_catch_all_is_detected_however_it_is_quoted(self, quoting: str) -> None:
+        """The control must run through the real parser, not around it.
 
-        Proves the behavioural assertion actually discriminates: a ``^.*$`` entry
-        -- which the previous string-matching version accepted -- is caught here.
+        The earlier version of this control compiled ``^.*$`` directly, so it
+        proved the *predicate* discriminates while saying nothing about the
+        *extraction*. The parser only understood triple-single-quoted strings,
+        so a catch-all written ``"^.*$"`` would have been dropped before the
+        predicate ever saw it -- and the suite stayed green.
         """
-        catch_all = re.compile(r"^.*$")
-        assert catch_all.search("alpha_zero/core/civ6_network.py"), (
-            "the probe path must be matched by a catch-all, or this control proves nothing"
+        config = f"[allowlist]\npaths = [\n    {quoting},\n]\n"
+        patterns = _allowlist_paths_from(config)
+        assert patterns, f"parser dropped a {quoting} entry entirely"
+        assert any(re.compile(raw).search("alpha_zero/core/civ6_network.py") for raw in patterns), (
+            "a catch-all written this way slips past the allowlist check"
         )
+
+    def test_parser_reads_rule_scoped_allowlists_too(self) -> None:
+        """``[[rules.allowlists]]`` is the other place a path exemption can hide."""
+        config = '[[rules]]\nid = "x"\nregex = "y"\n[[rules.allowlists]]\npaths = ["^.*$"]\n'
+        assert _allowlist_paths_from(config) == ["^.*$"]
 
     def test_pinned_version_is_single_sourced(self) -> None:
         """The tool version lives in the Makefile, not scattered across configs."""
