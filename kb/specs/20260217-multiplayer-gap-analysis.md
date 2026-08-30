@@ -20,7 +20,7 @@ This document analyzes the gaps between the current Civ6-AlphaZero system (desig
 |-----------|--------|----------|
 | MicroCiv Environment | 2-player, turn-based | `alpha_zero/envs/microciv.py` |
 | State Encoder | 13-channel, own/enemy split | `alpha_zero/envs/civ6_encoder.py` |
-| MCTS (4 variants) | Negamax backprop (2-player) | `alpha_zero/core/civ6_mcts.py` |
+| MCTS (4 variants) | Negamax backprop (2-player) | `alpha_zero/core/mcts/` |
 | Neural Network | Scalar value head | `alpha_zero/core/civ6_network.py` |
 | Self-Play Actor | Binary win/loss values | `alpha_zero/distributed/actor.py` |
 | Replay Buffer | Single value per example | `alpha_zero/distributed/shared_storage.py` |
@@ -248,7 +248,7 @@ For N>2 players, population-based training (PBT) becomes important to avoid conv
 +--------------------------------------------------+
 |              Existing Core                        |
 |  alpha_zero/core/                                 |
-|  - civ6_mcts.py (2-player, unchanged)            |
+|  - mcts/ (2-player, unchanged)            |
 |  - civ6_network.py (scalar value, unchanged)     |
 |  - civ6_actions.py (action space, unchanged)     |
 +--------------------------------------------------+

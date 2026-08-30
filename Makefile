@@ -34,6 +34,13 @@ LOCAL_EVALUATOR_IMAGE ?= civ6-evaluator:$(VERSION)
 PYTHON ?= python3
 PIP ?= pip3
 
+# Secret scanning. Pinned so a local run and CI detect the same things; override
+# with `make security-secrets GITLEAKS_VERSION=x.y.z`. GITLEAKS_BIN lets a machine
+# with gitleaks already on PATH skip the download entirely.
+GITLEAKS_VERSION ?= 8.30.0
+GITLEAKS_BIN ?= $(shell command -v gitleaks 2>/dev/null || echo $(CURDIR)/.tools/gitleaks)
+GITLEAKS_CONFIG ?= .gitleaks.toml
+
 # ============================================================================
 # Help
 # ============================================================================
@@ -51,7 +58,7 @@ help:
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
 	@echo "  make test-all          Run all tests with coverage"
-	@echo "  make validate          Run governance validators (openspec, kb, skills, doc-sync)"
+	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -156,6 +163,30 @@ test-security:
 	$(PYTHON) -m pytest tests/security/ -v --tb=short
 	$(PYTHON) -m bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
 
+# Fetch the pinned gitleaks binary only when it is not already available.
+# Print the pinned gitleaks version so CI reads it from here rather than
+# restating it. One definition, two consumers.
+.PHONY: print-gitleaks-version
+print-gitleaks-version:
+	@echo $(GITLEAKS_VERSION)
+
+.PHONY: gitleaks-install
+gitleaks-install:
+	@if [ ! -x "$(GITLEAKS_BIN)" ]; then \
+		echo "Installing gitleaks $(GITLEAKS_VERSION) -> $(CURDIR)/.tools"; \
+		mkdir -p $(CURDIR)/.tools; \
+		curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_linux_x64.tar.gz" \
+			| tar -xz -C $(CURDIR)/.tools gitleaks; \
+	fi
+
+# Secret scan: the tracked tree AND full history. History matters because a
+# secret removed in a later commit is still published in the one that added it.
+# Baseline at adoption was 0 findings over 525 commits, so this is blocking.
+.PHONY: security-secrets
+security-secrets: gitleaks-install
+	$(GITLEAKS_BIN) dir . --config $(GITLEAKS_CONFIG) --redact --no-banner
+	$(GITLEAKS_BIN) git . --config $(GITLEAKS_CONFIG) --redact --no-banner
+
 .PHONY: test-governance
 test-governance:
 	$(PYTHON) -m pytest -c tests/governance/pytest.ini --confcutdir=tests/governance tests/governance
@@ -173,6 +204,7 @@ validate:
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
+	$(PYTHON) scripts/validate_agents.py
 	$(PYTHON) scripts/check_doc_sync.py
 
 # Self-installing: pre-commit is not a declared dependency, so the bare
@@ -193,7 +225,7 @@ hooks-install:
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
 .PHONY: verify
-verify: lint-check typecheck test test-security test-governance validate test-all eval-llm
+verify: lint-check typecheck test test-security security-secrets test-governance validate test-all eval-llm
 	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage and eval gates"
 
 .PHONY: eval-llm

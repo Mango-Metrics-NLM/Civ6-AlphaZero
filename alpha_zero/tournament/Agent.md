@@ -88,12 +88,12 @@ This module provides an ELO-based tournament system:
 3. League tier boundaries are strictly ordered — no overlapping rating ranges
 4. Tournament brackets have power-of-2 participants (with byes if needed)
 5. Match history is append-only — records are never deleted or modified
-6. W&B logging is optional — tournament works fully without it
+6. MLflow logging is optional — tournament works fully without it (W&B was retired 2026-07-13)
 
 ---
 
 ## Dependencies
 
-- **Internal**: `alpha_zero.core.civ6_mcts` (opponent agents), `alpha_zero.monitoring.mlflow_logger`
+- **Internal**: `alpha_zero.core.mcts` (opponent agents), `alpha_zero.monitoring.mlflow_logger`
 - **External**: `numpy`, `mlflow` (optional)
 - **Consumed by**: `alpha_zero.evaluation` (ELO updates), `alpha_zero.cloud.gcp` (tournament workers)

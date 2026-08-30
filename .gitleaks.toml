@@ -1,0 +1,48 @@
+# Gitleaks configuration — secret scanning for Civ6-AlphaZero.
+#
+# Charter Invariant 7 requires that no secrets or machine fingerprints reach the
+# repository; credentials live only in the gitignored `.env` or the environment.
+# `tests/security/test_security_sanity.py` already asserts that policy against a
+# hand-written pattern list. This config adds an independent, rule-driven scanner
+# so the guarantee does not depend on that list staying current.
+#
+# Baseline at adoption (gitleaks 8.30.0, 2026-08-30): **0 findings across 525
+# commits of history** and 0 in the tracked tree. The gate is therefore blocking
+# from day one — there is no burndown and no grandfathered finding.
+#
+# Run locally with `make security-secrets`; CI runs the same two scans.
+
+# Inherit the upstream ruleset rather than restating it, so new detections arrive
+# with a version bump instead of a config rewrite.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Paths that are build artifacts or deliberate non-secret fixtures"
+
+# Generated trees. Not tracked by git, but `gitleaks dir` walks the working
+# directory, and a cached third-party .json can carry a high-entropy string that
+# is nobody's secret (measured: one `generic-api-key` hit inside .mypy_cache).
+paths = [
+    '''^\.mypy_cache/''',
+    '''^\.pytest_cache/''',
+    '''^\.ruff_cache/''',
+    '''^htmlcov/''',
+    '''^\.coverage''',
+    '''^mlruns/''',
+    '''^mlflow\.db$''',
+    '''^checkpoints/''',
+    '''^node_modules/''',
+    '''^\.git/''',
+    '''\.egg-info/''',
+    '''^docs/archive/''',
+]
+
+# Deliberately fake credentials used to prove redaction and rejection logic.
+# Allowlisted by *value*, not by file path: a real secret added to these same
+# test files is still a finding.
+regexTarget = "match"
+regexes = [
+    '''hf_ABCDEFghijklMNOPqrstuvwxyz12345678''',
+    '''ghp_1234567890abcdefghijklmnopqrstuvwx''',
+]

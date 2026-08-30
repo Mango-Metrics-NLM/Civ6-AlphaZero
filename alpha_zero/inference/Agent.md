@@ -23,7 +23,7 @@ This module provides the inference service split into clear layers:
 - **client**: a client SDK for calling the service.
 
 The HTTP server itself lives in `alpha_zero/serving/inference_server.py`
-(the former `api_server.py` here was an unused duplicate, removed 2026-07-25).
+(the former `api_server.py` here was an unused duplicate, removed 2026-07-25). <!-- validate-agents: allow -->
 
 Like `serving/`, it depends on optional extras and is omitted from the default
 coverage gate (see `docs/MODULE_REFERENCE.md` coverage notes).

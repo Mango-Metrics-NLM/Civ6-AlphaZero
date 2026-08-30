@@ -426,6 +426,9 @@ When making changes, update the relevant sections below:
 | 2026-08-27 | Local gates mirror CI (`make verify`) | The Makefile had drifted from CI on four axes (coverage 80 vs 85, coverage scope, `mypy --strict` vs plain, `validate_kb --git`), so passing locally proved nothing. `make verify` is now the single definition; the DEV-SQE handoff calls it. New `verify` and `negative-control` skills; the latter exists because every defect in this branch's history shipped under a green suite. |
 | 2026-08-28 | `DryRunProfile` owns every dry-run magic number | `--dry_run` bounded only the outer loop (iterations/games/epochs/eval-games) and left `board_size`/`max_turns`/`num_simulations` at production defaults, so the documented smoke test was 24 full-size games and ran 3h33m without completing. Inner dimensions are now overridden only where the caller left the `TrainingConfig` default, so explicit flags and every existing test config still win. |
 | 2026-08-28 | `inference_thread_limit()` caps torch threads for batch-of-1 search | MCTS evaluates one position at a time; torch sizes its intra-op pool to the core count and the per-operator OpenMP barrier (default *active*, spinning) then dominates. Measured on a 4-vCPU box: 1.54 ms/forward at 2 threads vs 347 ms at 4 — 225x. Applied only around self-play and evaluation so batched training keeps torch's default, which does scale with cores on real hardware. Opt out with `CIV6AZ_INFERENCE_THREADS=auto`. |
+| 2026-08-30 | Secret scanning is `gitleaks`, pinned once in the Makefile | The policy was asserted only by a hand-written pattern list in `tests/security/`, and nothing scanned **history** — where a removed secret still lives. `make security-secrets` runs `gitleaks dir` + `gitleaks git`; CI reads the version via `make print-gitleaks-version` so the pin has one definition. Baseline at adoption: **0 findings / 525 commits**, so it is blocking with no burndown. Gotcha found while validating it: a negative control using AWS's *documentation* example keys (`AKIAIOSFODNN7EXAMPLE`) does **not** fire — gitleaks allowlists those upstream. Use randomly generated values when testing the config. |
+| 2026-08-30 | `scripts/validate_agents.py` — the 30 `Agent.md` persona docs are now gated | They had zero validator coverage: no gate, no hook, no test. Codes A1–A6 cover heading form, persona statement, required sections, coverage literals, per-package presence, and referenced-file existence, with `<!-- validate-agents: allow -->` as the escape hatch for prose that deliberately names a removed file. First run found 16 real errors. Warnings (missing conventional sections in 5 docs) are deliberately non-blocking — a visible burndown, same pattern as the `PLR0915` list. |
+| 2026-08-30 | `validate_skills.py` scans `.agents/skills/` as well | That tree was routed to the validator by the PostToolUse hook but scanned by **neither** pre-commit nor CI, so it accumulated violations in silence. Also: the hand-rolled frontmatter parser reduced a YAML folded scalar (`description: >`) to the literal `">"`, which passed the non-empty check **vacuously** — worse than not checking. It now parses block scalars. |
 | 2026-08-30 | `core/civ6_mcts.py` split into `alpha_zero/core/mcts/` | 2,443 lines holding five search variants, four protocols and three config dataclasses (scattered 1,300 lines from their variants). One module per variant, largest 876 lines. Layering: `mcts_protocols`/`gumbel_ops`/`base` are leaves; `puct`/`simple` build on `base`; **`gumbel` and `muzero` carry their own node and config types and depend on neither `base` nor each other** — the Gumbel-Top-k helpers live in `gumbel_ops` precisely because `MuZeroMCTS` calls them. `civ6_mcts` is a permanent re-export shim with explicit `__all__`; `mcts_factory.py` untouched (its lazy import resolves through the shim), so the diff outside the moved blocks is the shim and docs only. |
 | 2026-08-30 | An identity test does not prove a shim is safe | `mock.patch("<old.module>.<Name>")` rebinds an attribute **on the named module object**. A re-export shim trivially satisfies `old_obj is new_obj` while the patch becomes a **silent no-op** whenever the patched symbol's consumer also moves to a sibling module. So `tests/unit/test_mcts_split_backcompat.py` pins patchability separately (`MuZeroTrainingBridge.create_mcts` imports from the shim at call time), plus module-scope-import layering. This is why the three cloud workers are **not** decomposed: they carry **38** `mock.patch` string targets against them. |
 | 2026-08-30 | ruff `PLR0915` (`max-statements = 100`) over a module-line-count gate | The pathology here is the 623-line `main`, not the long module — and *moving* a 623-line function to another file does not shorten it, so a decomposition-by-relocation would not have fixed it. Statements-per-function targets it directly and is one line in an existing config, versus a bespoke validator needing six touchpoints. Three `main`s exceed the threshold (248/168/134 statements) and sit in `per-file-ignores` as an explicit burndown list — **delete an entry when its function is split; never raise the threshold.** |
@@ -568,7 +571,10 @@ Civ6-AlphaZero/
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── civ6_network.py      # Neural networks
-│   │   ├── civ6_mcts.py         # MCTS implementation
+│   │   ├── mcts/                # MCTS variants, one module each (8 files):
+│   │   │                        #   mcts_protocols, gumbel_ops, base (leaves);
+│   │   │                        #   puct, simple; gumbel, muzero (independent)
+│   │   ├── civ6_mcts.py         # Re-export shim for the historical import path
 │   │   └── civ6_actions.py      # Action space definition
 │   ├── distributed/             # Distributed training
 │   │   ├── __init__.py
@@ -624,16 +630,16 @@ Civ6-AlphaZero/
 │   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
 │   ├── tournament/              # ELO Tournament System (9 files)
 │   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
-│   ├── bridge/                  # Civ6 Lua Mod Bridge (9 files, file IPC)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (15 files, file IPC + FireTuner socket)
 │   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
 │   ├── training/                # Training integrations (11 files: MuZero trainer,
 │   │                           #   safeguards, diagnostics, convergence monitor)
 │   ├── interfaces/              # Game interfaces (4 files, incl. unciv_interface.py)
 │   ├── mechanics/              # Game mechanics: diplomacy, trade, espionage,
 │   │                           #   religion, government, climate, eras (12 files)
-│   ├── evaluation/             # Evaluation + LLM eval harness, llm_harness/ (12 files)
+│   ├── evaluation/             # Evaluation + LLM eval harness, llm_harness/ (14 files)
 │   ├── gameplay/               # Gameplay systems: terrain, fog of war, tech, combat (8)
-│   ├── optimizations/         # Training optimization strategies (9 files)
+│   ├── optimizations/         # Training optimization strategies (10 files)
 │   ├── opponents/             # Opponent types & strategies (4 files)
 │   ├── spacetimedb/           # SpacetimeDB integration (9 files)
 │   ├── inference/             # Inference service: client/engine/schemas (4)
@@ -687,7 +693,7 @@ Civ6-AlphaZero/
 └── CLAUDE.md                    # This file
 ```
 
-> **Authoritative module list:** `alpha_zero/` has **28 submodules** as of v1.8.0.
+> **Authoritative module list:** `alpha_zero/` has **29 submodules** as of v1.8.0.
 > File counts above are recursive `*.py` counts (excluding `__pycache__`). The
 > single source of truth — one row per submodule with responsibility — lives in
 > [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.

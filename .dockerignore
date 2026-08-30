@@ -108,116 +108,6 @@ latest_run_log.txt
 debug_selfplay.log
 test_error.log
 
-# Local scratch / session artifacts (not needed in build context)
-# Git
-.git
-.gitignore
-
-# AI coding assistants
-.agent/
-.gemini/
-
-# Python cache
-__pycache__
-*.pyc
-*.pyo
-*.egg-info
-.eggs
-build
-dist
-*.egg
-
-# Virtual environments
-venv
-.venv
-env
-
-# IDE
-.vscode
-.idea
-*.swp
-*.swo
-
-# Testing and coverage
-tests/
-.pytest_cache
-.coverage
-htmlcov/
-.mypy_cache
-.tox
-.nox
-.ruff_cache
-
-# Documentation
-docs/
-*.md
-!requirements*.txt
-
-# Environment / secrets
-.env
-.env.*
-.env.local
-credentials.json
-secrets.json
-service_account*.json
-application_default_credentials.json
-*.pem
-*.key
-
-# Cloud / Terraform
-.gcloud/
-gcloud/
-.terraform/
-terraform.tfstate*
-
-# Model & training artifacts (use GCS)
-checkpoints/
-models/
-artifacts/
-training_results/
-wandb/
-*.wandb
-*.pt
-*.pth
-*.pkl
-*.npy
-*.faiss
-
-# Logs
-logs/
-*.log
-*.tmp
-*.temp
-
-# Profiling
-*.prof
-*.lprof
-*.pstats
-profile_output/
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Windows reserved device names (cause tar failures on Linux Docker)
-# Use **/ prefix to match in any subdirectory, not just root
-**/nul
-**/con
-**/prn
-**/aux
-**/com[0-9]
-**/lpt[0-9]
-
-# Other leftover artifact files
-temp_log_tail.txt
-end_of_log.txt
-end_of_log_utf8.txt
-test_output.txt
-test_results.txt
-training_logs_full.txt
-latest_run_log.txt
-debug_selfplay.log
-test_error.log
 
 # Local scratch / session artifacts (not needed in build context)
 pytest_*.txt
@@ -228,3 +118,30 @@ mod/
 docs/superpowers/
 release-staging*/
 dataset-export/
+
+# Repository governance and agent harness — never needed at runtime, and they
+# invalidate the Docker layer cache on every doc or KB edit.
+.claude/
+.agents/
+kb/
+openspec/
+.github/
+templates/
+examples/
+demos/
+spaces/
+k8s/
+server-module/
+spacetimedb_module/
+
+# Dev tooling and lockfiles (uv.lock alone is ~868 KB)
+uv.lock
+.pre-commit-config.yaml
+.gitleaks.toml
+.hypothesis/
+.tools/
+
+# Merge/patch leftovers
+*.orig
+*.rej
+

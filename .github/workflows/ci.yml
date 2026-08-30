@@ -125,6 +125,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: `gitleaks git` scans every commit, and a secret removed
+          # in a later commit is still published in the one that added it.
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -138,6 +142,22 @@ jobs:
 
       - name: Run security sanity tests
         run: pytest tests/security/ -v --tb=short
+
+      - name: Install gitleaks
+        run: |
+          # Read the pin from the Makefile so the version has exactly one
+          # definition and a local `make security-secrets` cannot drift from CI.
+          VERSION="$(make -s print-gitleaks-version)"
+          echo "gitleaks pin from Makefile: ${VERSION}"
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+          gitleaks version
+
+      - name: Scan tracked tree for secrets
+        run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
+
+      - name: Scan full history for secrets
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner
 
       - name: Run bandit security scan
         run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json
@@ -172,7 +192,8 @@ jobs:
         run: >-
           ruff check
           scripts/validate_openspec.py scripts/validate_kb.py
-          scripts/validate_skills.py scripts/check_doc_sync.py
+          scripts/validate_skills.py scripts/validate_agents.py
+          scripts/check_doc_sync.py
           tests/governance/
 
       - name: Validate OpenSpec structure
@@ -183,6 +204,9 @@ jobs:
 
       - name: Validate skills
         run: python scripts/validate_skills.py
+
+      - name: Validate Agent.md persona docs
+        run: python scripts/validate_agents.py
 
       - name: Check documentation sync
         run: python scripts/check_doc_sync.py

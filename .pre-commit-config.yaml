@@ -49,6 +49,13 @@ repos:
         language: system
         files: ^kb/
         pass_filenames: false
+      - id: validate-agents
+        name: Validate Agent.md persona docs
+        entry: python scripts/validate_agents.py
+        language: system
+        pass_filenames: false
+        files: 'Agent\.md$'
+
       - id: validate-skills
         name: validate skills
         entry: python scripts/validate_skills.py

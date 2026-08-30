@@ -111,13 +111,32 @@ def test_patching_the_shim_reaches_a_function_local_consumer() -> None:
     assert result is mock_cls.return_value
 
 
+_PACKAGE = "alpha_zero.core.mcts"
+
+
 def _module_imports(rel_path: str) -> set[str]:
-    """Absolute module names imported at module scope by ``rel_path``."""
+    """Absolute module names imported at module scope by ``rel_path``.
+
+    Relative imports are resolved to absolute names. A first version compared
+    ``ast.ImportFrom.module`` verbatim, which records ``from .base import X`` as
+    ``"base"`` -- so a variant could reacquire the dependency this split removed
+    and the layering assertions would still pass. ``node.level`` is the number of
+    leading dots; ``level == 1`` means the module's own package.
+    """
     tree = ast.parse(pathlib.Path(rel_path).read_text())
     found: set[str] = set()
     for node in tree.body:  # module scope only -- deferred imports are exempt
-        if isinstance(node, ast.ImportFrom) and node.module:
-            found.add(node.module)
+        if isinstance(node, ast.ImportFrom):
+            if node.level:
+                # `from . import base` records the names; `from .base import X`
+                # records the submodule. Both must resolve to absolute paths.
+                parent = _PACKAGE.rsplit(".", node.level - 1)[0] if node.level > 1 else _PACKAGE
+                base = f"{parent}.{node.module}" if node.module else parent
+                found.add(base)
+                if not node.module:
+                    found.update(f"{parent}.{a.name}" for a in node.names)
+            elif node.module:
+                found.add(node.module)
         elif isinstance(node, ast.Import):
             found.update(a.name for a in node.names)
     return found

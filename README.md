@@ -86,7 +86,7 @@ recipe — self-play, MCTS, and a policy/value network — to that domain:
 - A **bridge** connects the trained agent to real Civilization VI over a socket,
   so the same policy that trains on MicroCiv can drive the full game.
 
-The project is organized into 27 submodules under `alpha_zero/`; the authoritative
+The project is organized into 29 submodules under `alpha_zero/`; the authoritative
 inventory is [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md).
 
 ## Key features

@@ -24,7 +24,7 @@ This module provides the core AlphaZero building blocks:
 
 | Pattern | Where | Why |
 |---------|-------|-----|
-| **Strategy** | `mcts/` — `simple.py` / `puct.py` / `gumbel.py` / `muzero.py`, one module per variant | Interchangeable MCTS algorithms behind a common interface |
+| **Strategy** | `mcts/simple.py` / `mcts/puct.py` / `mcts/gumbel.py` / `mcts/muzero.py`, one module per variant | Interchangeable MCTS algorithms behind a common interface |
 | **Factory** | `mcts_factory.py`, `network_heads.py` — HeadFactory | Create MCTS/network variants from config |
 | **Protocol** | `protocols.py` — NetworkProtocol; `losses.py` — AlphaZeroNetworkProtocol, MuZeroNetworkProtocol; `mcts/mcts_protocols.py` — MCTSNetwork, MuZeroNetworkProtocol, MCTSEnvironment | Structural typing for network contracts at multiple levels |
 | **Composite** | `civ6_network.py` — encoder + heads assembled via config | Network built from composable spatial encoder, policy head, value head |
@@ -87,7 +87,8 @@ This module provides the core AlphaZero building blocks:
 | Tool | Purpose |
 |------|---------|
 | `pytest tests/unit/test_network.py -v` | Test network forward/backward pass |
-| `pytest tests/unit/test_mcts.py -v` | Test MCTS search correctness |
+| `pytest tests/unit/ -k mcts -v` | Test every MCTS variant (14 files) |
+| `pytest tests/unit/test_mcts_split_backcompat.py -v` | Pin the `civ6_mcts` shim: import identity, `mock.patch` reachability, and the AST-enforced `gumbel`/`muzero` ⊥ `base` layering |
 | `python -c "from alpha_zero.core import ..."` | Verify imports and construction |
 | `mypy alpha_zero/core/` | Type-check all core modules |
 | `ruff check alpha_zero/core/` | Lint core code |

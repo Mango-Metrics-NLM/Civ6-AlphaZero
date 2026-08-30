@@ -5,6 +5,7 @@ description: >
   Orchestrates: checkpoint extraction → staging → validation → Hub upload →
   git tag. Designed for deterministic, repeatable releases from CI or local
   developer machines. Safe by default: dry-run unless --publish is passed.
+allowed-tools: Read, Write, Edit, Bash
 ---
 
 # Hub Release Skill

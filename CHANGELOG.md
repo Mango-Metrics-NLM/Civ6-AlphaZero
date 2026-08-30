@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Governance gates: secret scanning, persona validation, function-size bound (2026-08-30)
+
+- **Secret scanning (`gitleaks`)** over the tracked tree *and* full history — a secret
+  removed in a later commit is still published in the one that added it. The pin lives
+  once, in the Makefile (`GITLEAKS_VERSION`); CI reads it via `make print-gitleaks-version`
+  rather than restating it. Baseline at adoption: **0 findings across 525 commits**, so it
+  lands blocking with no burndown. `make security-secrets` runs the same two scans locally.
+- **`scripts/validate_agents.py`** — a fifth deterministic validator (A1–A6) for the 30
+  `Agent.md` persona documents, which had **no gate, no hook and no test** until now. It
+  immediately found real drift: `monitoring/Agent.md` had no persona section and asserted
+  that Weights & Biases "remains in place" (retired 2026-07-13), `alpha_zero/hub/` had no
+  `Agent.md` at all, and several docs referenced files that no longer exist. All fixed.
+- **`validate_skills.py` now scans `.agents/skills/` too.** That tree was routed to the
+  validator by the PostToolUse hook but scanned by neither pre-commit nor CI, so it carried
+  live violations including a coverage literal 5 points below the gate. Also gains S5
+  (skill directory with no `SKILL.md`) and a frontmatter parser that understands YAML block
+  scalars — a folded `description: >` previously validated as the literal `">"`.
+- **`tests/regression/test_repo_hygiene_regression.py`** — pins that no tracked file is
+  gitignored, that `.gitignore` has no duplicates, and that the secret-scan allowlist
+  cannot become a catch-all.
+
+### Fixed — Repository hygiene (2026-08-30)
+
+- **Five files were tracked *and* gitignored**: `docker-compose.yml` and the four
+  `kb/sessions/*.state.json` role-state files, which CLAUDE.md §14.5 calls "the ONLY
+  mutable state per role". Git applies ignore rules only to untracked paths, so the
+  contradiction was silent — until someone added a sibling file, which would have failed
+  to stage. Fixed with targeted negations.
+- **`.gitignore` had 83 duplicate entries and `.dockerignore` a 110-line verbatim
+  duplicate** (~48% of the file). Both deduped, each verified behaviour-identical
+  beforehand — 1,963 sample paths for `.gitignore`, 714 excluded files for `.dockerignore`.
+  `.dockerignore` also now excludes `.claude/`, `kb/`, `openspec/`, `.github/` and
+  `uv.lock`, which were being shipped into the build context and invalidating the layer
+  cache on every documentation edit.
+- **A percent-matching bug in two validators**: `(\d{2,3})\s*%` matched the decimal tail
+  of `89.30%` as a bare `30%`, so a correct coverage figure read as a gate violation.
+- **`.claude/settings.json` permissions**, broken by routing the Makefile through
+  `$(PYTHON) -m`: the `Bash(ruff:*)` / `Bash(mypy:*)` / `Bash(pytest:*)` prefixes no longer
+  matched, and `make verify` — the documented pre-PR gate — was never on the allow list.
+
+
 ### Changed — `core/civ6_mcts.py` decomposed; a statement-count guard replaces nothing (2026-08-30)
 
 - **`alpha_zero/core/civ6_mcts.py` (2,443 lines) split into `alpha_zero/core/mcts/`**, one
