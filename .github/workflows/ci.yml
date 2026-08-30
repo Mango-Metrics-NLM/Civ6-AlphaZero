@@ -156,8 +156,12 @@ jobs:
       - name: Scan tracked tree for secrets
         run: gitleaks dir . --config .gitleaks.toml --redact --no-banner
 
-      - name: Scan full history for secrets
-        run: gitleaks git . --config .gitleaks.toml --redact --no-banner
+      - name: Scan this branch's history for secrets
+        # Scoped to HEAD: without --log-opts gitleaks walks every ref the
+        # fetch-depth: 0 checkout pulled in, so the gate would fail on secrets
+        # committed to unmerged branches that this PR neither contains nor can
+        # fix. `make security-secrets-audit` covers the repo-wide case.
+        run: gitleaks git . --config .gitleaks.toml --redact --no-banner --log-opts="HEAD"
 
       - name: Run bandit security scan
         run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security — Unremediated W&B credential found in git history (2026-08-30)
+
+- The new repo-wide secret audit found **a real Weights & Biases API key** (40-char
+  lowercase hex, the exact W&B format) committed on 2026-03-19 in `87cd68a2` across five
+  deployment scripts. The commit is reachable only from the unmerged
+  `feature/sprint6-validation-and-nplayer-foundation` branch — not the default branch, not
+  any current PR — and all the files were later deleted, which is why the tree scan is
+  clean. **Deletion does not remove a value from git history: the key requires rotation.**
+  Triage and required actions: `docs/runbooks/secret-scanning.md`.
+- The CI secret gate is scoped to the built branch's own lineage (`--log-opts="HEAD"`,
+  527 commits here). An unscoped scan over a `fetch-depth: 0` checkout fails on findings
+  from unmerged branches that no PR can remediate — a gate nobody can turn green.
+  `make security-secrets-audit` keeps the repo-wide view available on demand.
+
 ### Added — Governance gates: secret scanning, persona validation, function-size bound (2026-08-30)
 
 - **Secret scanning (`gitleaks`)** over the tracked tree *and* full history — a secret
