@@ -164,6 +164,36 @@ def _make_recipe(target: str) -> str:
     return match.group(1) if match else ""
 
 
+def _is_module_level_skip_guarded(path: Path) -> bool:
+    """Is the whole module skipped at import time by ``pytest.importorskip``?
+
+    A module-level ``importorskip`` aborts collection for the file, so a suite
+    where *every* module is guarded collects nothing when its optional extra is
+    absent -- and pytest exits **5** ("no tests collected"), failing the build.
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError):  # pragma: no cover - unreadable module
+        return False
+    for node in tree.body:
+        if not isinstance(node, ast.Expr | ast.Assign):
+            continue
+        call = node.value
+        if (
+            isinstance(call, ast.Call)
+            and isinstance(call.func, ast.Attribute)
+            and call.func.attr == "importorskip"
+        ):
+            return True
+    return False
+
+
+def _collects_nothing_without_extras(suite: str) -> bool:
+    """Would this suite collect zero tests on a plain ``[dev]`` install?"""
+    modules = [path for path in (REPO_ROOT / suite).glob("test_*.py") if _defines_tests(path)]
+    return bool(modules) and all(_is_module_level_skip_guarded(path) for path in modules)
+
+
 _MIN_REASON_CHARS = 20
 
 
@@ -220,6 +250,31 @@ class TestEverySuiteIsGated:
         """
         problems = _not_gated_problems(NOT_GATED, _suites_on_disk())
         assert not problems, "\n".join(problems)
+
+    def test_no_ci_step_runs_only_fully_skip_guarded_suites(self) -> None:
+        """A step whose every suite is optional-extra-guarded exits 5, not 0.
+
+        ``pytest tests/inference/`` collected 0 items and returned pytest's
+        "no tests collected" code, turning CI red for a suite behaving exactly
+        as designed. Locally the output read ``1 skipped`` and looked fine --
+        the failure was in the exit code, which is the only part CI reads.
+
+        The fix is to pair such a suite with a populated one; the point of this
+        assertion is that the next one cannot be given its own step by mistake.
+        """
+        offenders = []
+        for script in _run_scripts_for_jobs():
+            for line in script.splitlines():
+                if "pytest" not in line:
+                    continue
+                suites = _test_paths_in(line)
+                if suites and all(_collects_nothing_without_extras(s) for s in suites):
+                    offenders.append(sorted(suites))
+        assert not offenders, (
+            f"CI steps run only fully skip-guarded suites: {offenders}. Without "
+            "the optional extra these collect nothing and pytest exits 5, so the "
+            "step fails. Pair each with a suite that always collects."
+        )
 
     def test_make_test_mirrors_the_ci_jobs_it_claims_to(self) -> None:
         """`make test` says it runs "the suites CI runs" -- hold it to that."""

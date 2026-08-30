@@ -23,7 +23,14 @@ nothing:
 | `tests/inference/` | skip-guarded, never invoked |
 
 All five are now wired into CI and `make test`, and the three `tests/scripts/`
-failures are guarded. `tests/test_sanity.py` — an unreferenced two-line
+failures are guarded. `tests/inference/` runs paired with `tests/smoke/` rather
+than in its own step: every module in it is `pytest.importorskip`-guarded on the
+`web` extra, so alone it collects nothing and pytest exits **5** — a red build
+for a suite behaving exactly as designed. That was caught by CI, not locally,
+because the local output read `1 skipped` and looked fine; the failure lived in
+the exit code, which is the only part CI reads. The meta-gate now also refuses a
+CI step whose every suite is fully skip-guarded, so the next one cannot repeat
+it. `tests/test_sanity.py` — an unreferenced two-line
 `assert True` at the tests root — was removed rather than wired; a test that
 cannot fail cannot gate anything.
 

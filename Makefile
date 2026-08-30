@@ -244,9 +244,8 @@ test:
 	$(PYTHON) -m pytest tests/sanity/ -v --tb=short
 	$(PYTHON) -m pytest tests/regression/ -v --tb=short
 	$(PYTHON) -m pytest tests/integration/ -v --tb=short -m "not slow and not requires_env" -x
-	$(PYTHON) -m pytest tests/smoke/ -v --tb=short
+	$(PYTHON) -m pytest tests/smoke/ tests/inference/ -v --tb=short
 	$(PYTHON) -m pytest tests/scripts/ -v --tb=short -m "not requires_env"
-	$(PYTHON) -m pytest tests/inference/ -v --tb=short
 	$(PYTHON) -m pytest tests/e2e/ -v --tb=short -m "not slow and not requires_env"
 	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x
 	$(PYTHON) -m pytest tests/cloud/smoke/ -v --tb=short

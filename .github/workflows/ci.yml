@@ -100,14 +100,16 @@ jobs:
       # The four suites below were in the same position tests/regression/ was:
       # present, passing when run by hand, and enumerated by no job and no make
       # target. tests/scripts/ was hiding three real failures because of it.
-      - name: Run smoke tests
-        run: pytest tests/smoke/ -v --tb=short
+      # tests/inference/ rides along with tests/smoke/ rather than getting its
+      # own step: every module in it is `pytest.importorskip`-guarded on the
+      # `web` extra, so alone it collects nothing and pytest exits 5 ("no tests
+      # collected") -- a red build for a suite behaving exactly as designed.
+      # Paired, it still gates: a failure in it fails this step.
+      - name: Run smoke and inference tests
+        run: pytest tests/smoke/ tests/inference/ -v --tb=short
 
       - name: Run script tests
         run: pytest tests/scripts/ -v --tb=short -m "not requires_env"
-
-      - name: Run inference tests
-        run: pytest tests/inference/ -v --tb=short
 
       - name: Run end-to-end tests
         run: pytest tests/e2e/ -v --tb=short -m "not slow and not requires_env"
