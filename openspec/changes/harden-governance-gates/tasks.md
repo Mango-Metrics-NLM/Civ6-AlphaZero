@@ -5,7 +5,7 @@
       allowlist and value-scoped fixture exemptions
 - [x] 1.2 Measure the adoption baseline before making it blocking — the first measurement
       (0 findings / 525 commits) predated `git fetch --all` and missed the branch carrying a
-      real credential; re-measured as 0 on the tree and 0 across the 528-commit `HEAD` lineage,
+      real credential; re-measured as 0 on the tree and 0 across the whole `HEAD` lineage,
       with the repo-wide sweep split into a separate non-blocking audit
 - [x] 1.3 Add `make gitleaks-install` / `make security-secrets` with a pinned, overridable version
 - [x] 1.4 Add `make print-gitleaks-version` and have CI read the pin from it

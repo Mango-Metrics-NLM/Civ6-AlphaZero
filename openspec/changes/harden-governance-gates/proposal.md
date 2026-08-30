@@ -27,7 +27,8 @@ that.
 - **Secret scanning** (`gitleaks`, pinned in the Makefile and read from there by
   CI): the blocking gate scans the tracked tree and the commit lineage reachable
   from `HEAD`; `make security-secrets-audit` sweeps every ref, non-blocking.
-  Measured: 0 findings on the tree, 0 across the 528 commits the gate covers. The
+  Measured 2026-08-30: 0 findings on the tree, 0 across the branch lineage the gate covers
+  (532 commits then — a count that moves with every push, unlike the scope). The
   repo-wide audit is **not** clean — it found an unrotated credential on an
   unmerged branch (`docs/runbooks/secret-scanning.md`), which is why the two scopes
   are separate targets rather than one. The "0 findings across 525 commits"

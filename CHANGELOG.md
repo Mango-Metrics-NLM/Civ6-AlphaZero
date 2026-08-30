@@ -50,7 +50,7 @@ tmp-tree tests were silently scanning the repository's real `.agents/skills/`.
   clean. **Deletion does not remove a value from git history: the key requires rotation.**
   Triage and required actions: `docs/runbooks/secret-scanning.md`.
 - The CI secret gate is scoped to the built branch's own lineage (`--log-opts="HEAD"`,
-  527 commits here). An unscoped scan over a `fetch-depth: 0` checkout fails on findings
+  the branch's whole lineage). An unscoped scan over a `fetch-depth: 0` checkout fails on findings
   from unmerged branches that no PR can remediate — a gate nobody can turn green.
   `make security-secrets-audit` keeps the repo-wide view available on demand.
 
@@ -63,8 +63,8 @@ tmp-tree tests were silently scanning the repository's real `.agents/skills/`.
   `make security-secrets-audit` runs the repo-wide sweep. **The "0 findings across 525
   commits" baseline this originally cited was measured before `git fetch --all`, and was
   wrong** — see the Security entry above; the repo-wide audit has an open finding. What is
-  measured: 0 findings on the tracked tree, and 0 across the 528 commits reachable from
-  this branch's `HEAD`, which is the scope the blocking gate actually covers.
+  measured, 2026-08-30: 0 findings on the tracked tree, and 0 across this branch's entire
+  `HEAD` lineage (532 commits), which is the scope the blocking gate covers.
 - **`scripts/validate_agents.py`** — a fifth deterministic validator (A1–A6) for the 30
   `Agent.md` persona documents, which had **no gate, no hook and no test** until now. It
   immediately found real drift: `monitoring/Agent.md` had no persona section and asserted
