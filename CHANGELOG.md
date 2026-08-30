@@ -56,11 +56,15 @@ tmp-tree tests were silently scanning the repository's real `.agents/skills/`.
 
 ### Added — Governance gates: secret scanning, persona validation, function-size bound (2026-08-30)
 
-- **Secret scanning (`gitleaks`)** over the tracked tree *and* full history — a secret
-  removed in a later commit is still published in the one that added it. The pin lives
-  once, in the Makefile (`GITLEAKS_VERSION`); CI reads it via `make print-gitleaks-version`
-  rather than restating it. Baseline at adoption: **0 findings across 525 commits**, so it
-  lands blocking with no burndown. `make security-secrets` runs the same two scans locally.
+- **Secret scanning (`gitleaks`)** over the tracked tree *and* history — a secret removed
+  in a later commit is still published in the one that added it. The pin lives once, in the
+  Makefile (`GITLEAKS_VERSION`); CI reads it via `make print-gitleaks-version` rather than
+  restating it. `make security-secrets` runs the blocking pair locally;
+  `make security-secrets-audit` runs the repo-wide sweep. **The "0 findings across 525
+  commits" baseline this originally cited was measured before `git fetch --all`, and was
+  wrong** — see the Security entry above; the repo-wide audit has an open finding. What is
+  measured: 0 findings on the tracked tree, and 0 across the 528 commits reachable from
+  this branch's `HEAD`, which is the scope the blocking gate actually covers.
 - **`scripts/validate_agents.py`** — a fifth deterministic validator (A1–A6) for the 30
   `Agent.md` persona documents, which had **no gate, no hook and no test** until now. It
   immediately found real drift: `monitoring/Agent.md` had no persona section and asserted
