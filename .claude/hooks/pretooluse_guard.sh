@@ -29,13 +29,35 @@
 set -euo pipefail
 
 input="$(cat)"
-cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
-[ -z "$cmd" ] && exit 0
 
 deny() {
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' "$1"
   exit 0
 }
+
+# Command extraction, with a fallback. This read the payload through `jq`
+# alone, swallowing every error into `|| true`: with jq absent, `cmd` came back
+# empty and the guard exited 0 on the next line, so `git push --force origin
+# main` was SILENTLY ALLOWED with no signal on any channel (measured 2026-09-02
+# by running the hook with jq off PATH -- empty output, exit 0). jq is not
+# installed by `pip install -e '.[dev]'`, not checked by the SessionStart hook,
+# and not named in any manifest, so its absence is an ordinary environment, not
+# a hypothetical. python3 is the fallback because every other hook in this
+# directory already requires it.
+#
+# The distinction that matters: a parser that RAN and found no command means a
+# non-Bash payload (allow, as before); NO parser at all means the guard cannot
+# see what it is guarding, which is the one case that must fail closed.
+if command -v jq >/dev/null 2>&1; then
+  cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null || true)"
+elif command -v python3 >/dev/null 2>&1; then
+  cmd="$(printf '%s' "$input" | python3 -c \
+    'import json,sys; print(json.load(sys.stdin).get("tool_input",{}).get("command") or "")' \
+    2>/dev/null || true)"
+else
+  deny "CLAUDE.md S3.2 guard cannot inspect this command: neither jq nor python3 is available, so the prohibited-action checks cannot run. Install jq or python3 rather than proceeding unguarded."
+fi
+[ -z "$cmd" ] && exit 0
 
 # Optional leading `FOO=bar ` env assignments before the real program.
 env_prefix='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*'
