@@ -264,6 +264,15 @@ OMP_NUM_THREADS=2 python -m alpha_zero.training_civ6 --seed 42 \
     --num_games 20 --num_iterations 20 --save_interval 1 2>&1 | tee run.log
 ```
 
+**Resume (added 2026-09-02, after a container restart killed the first attempt at 4.5
+minutes).** `--resume_from checkpoints/validation_iteration_one/checkpoint_<N>.pt`
+continues at iteration `N+1`; `--num_iterations` stays the end of the run. It restores
+network weights only — optimizer moments and the replay buffer are not carried across, so
+the first resumed iteration trains on fresh games alone and the artifact must say where
+the run was interrupted. Without it, any interruption costs the entire run, which is a
+worse property for WS-C (cloud spend) than for WS-L (CPU time). Restoring optimizer state
+is deliberate follow-up work, not done here.
+
 Budget, re-derived: self-play 20 games × ~20 s (measured at 8/60, 12 sims, rising as the
 policy learns to reach the limit), training ~260 s/iteration once the buffer exceeds the
 `batch_size × 100 = 12,800` sample cap (`training_civ6.py:966` — later iterations train on
