@@ -52,13 +52,24 @@ class PackageResult:
 
     @property
     def ok(self) -> bool:
-        """True when the measured percentage meets the floor."""
-        return self.files == 0 or self.percent >= self.minimum
+        """True when the measured percentage meets the floor.
+
+        An empty result is deliberately **not** ok. A report with no files
+        under the prefix means the package was not measured at all, which is
+        the exact failure this gate exists to catch: drop ``--rcfile`` from
+        the ``coverage json`` step and pyproject's omit list silently removes
+        every ``alpha_zero/cloud`` file, leaving the only job that measures
+        the deployed path measuring nothing and reporting green.
+        """
+        return self.files > 0 and self.percent >= self.minimum
 
     def describe(self) -> str:
         """One line for the CLI, naming the shortfall when there is one."""
         if self.files == 0:
-            return f"{self.package}: no files in the report (package not exercised by this run)"
+            return (
+                f"{self.package}: NOT MEASURED — no files under this prefix in the report. "
+                "Did the coverage run omit the package (missing --rcfile), or was it renamed?"
+            )
         verdict = "OK" if self.ok else "BELOW FLOOR"
         return (
             f"{self.package}: {self.percent:.1f}% of {self.total} statements "
@@ -114,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", type=Path, default=DEFAULT_REPORT, help="coverage json output")
     parser.add_argument("--floors", type=Path, default=DEFAULT_FLOORS)
     parser.add_argument("--package", help="check only this configured package prefix")
+    parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="treat a package with no files in the report as a pass (default: hard failure)",
+    )
     parser.add_argument("-v", "--verbose", action="store_true")
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO, format="%(message)s")
@@ -135,6 +151,18 @@ def main(argv: list[str] | None = None) -> int:
     results = [measure(report, package, minimum) for package, minimum in sorted(floors.items())]
     for result in results:
         logger.info("%s", result.describe())
+
+    empty = [r for r in results if r.files == 0]
+    if empty and not args.allow_empty:
+        for result in empty:
+            logger.error(
+                "NOT MEASURED %s: the report contains no files under this prefix, so the floor "
+                "proves nothing. Check that the coverage run used --rcfile with a config that "
+                "does not omit the package. Pass --allow-empty only when the package is "
+                "deliberately absent from this run.",
+                result.package,
+            )
+        return 2
 
     breached = [r for r in results if not r.ok]
     if breached:

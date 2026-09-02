@@ -6,9 +6,18 @@ here so that the baseline is a command, not a hand count, and so that
 ``tests/regression/test_debt_ratchet.py`` can hold each metric to "never
 worse than the committed baseline".
 
-Every metric is "lower is better". Metrics that need a tool this
-environment lacks (``ruff`` for statement counts) are reported as ``null``
-and skipped by the ratchet rather than guessed.
+Metrics come in two kinds, and the distinction is what keeps the ratchet
+useful:
+
+* **Ratcheted** (:data:`RATCHETED_METRICS`) -- debt. Lower is better and the
+  gate fails when one rises.
+* **Informational** -- context, such as the package's file and line counts.
+  Reported and diffed, never gated: adding a feature adds lines, so ratcheting
+  them would fail honest work and train people to regenerate the baseline
+  reflexively, which destroys the ratchet for the metrics that do matter.
+
+Metrics that need a tool this environment lacks (``ruff`` for statement counts)
+are reported as ``null`` and skipped by the ratchet rather than guessed.
 
 Usage::
 
@@ -43,9 +52,34 @@ logger = logging.getLogger("measure_debt")
 PACKAGE_DIR = "alpha_zero"
 TESTS_DIR = "tests"
 GOD_FILE_LINES = 1000
-MAX_STATEMENTS = 100
+#: Fallback only. The live value is read from pyproject so the metric and the
+#: linter cannot drift apart; see :func:`_max_statements`.
+DEFAULT_MAX_STATEMENTS = 100
 SKIP_SITE_PATTERN = re.compile(r"@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(")
 SKIP_PARTS = {"__pycache__", ".git", "alpha_zero.egg-info"}
+
+#: Metrics the ratchet enforces. Everything else `measure` emits is context.
+RATCHETED_METRICS: frozenset[str] = frozenset(
+    {
+        "files_over_1000_lines",
+        "test_files_over_1000_lines",
+        "functions_over_max_statements",
+        "dead_modules",
+        "dead_module_lines",
+        "dead_modules_inside_coverage",
+        "coverage_omit_patterns",
+        "coverage_omitted_files",
+        "coverage_omitted_lines",
+        "type_ignore_comments",
+        "noqa_comments",
+        "ruff_per_file_ignores",
+        "pytest_skip_sites",
+        "dependency_manifests",
+        "runtime_asserts",
+        "except_pass_handlers",
+        "unsafe_torch_load_calls",
+    }
+)
 
 
 def _py_files(root: Path, subdir: str) -> list[Path]:
@@ -79,20 +113,33 @@ def is_omitted(rel_path: str, patterns: list[str]) -> bool:
     )
 
 
-def _ruff_statement_violations(root: Path) -> int | None:
+def _max_statements(pyproject: dict[str, Any]) -> int:
+    """The PLR0915 threshold ruff is configured with, so the two cannot drift."""
+    pylint = pyproject.get("tool", {}).get("ruff", {}).get("lint", {}).get("pylint", {})
+    value = pylint.get("max-statements", DEFAULT_MAX_STATEMENTS)
+    return int(value)
+
+
+def _ruff_statement_violations(root: Path, max_statements: int) -> int | None:
     ruff = shutil.which("ruff")
     if ruff is None:
         logger.warning("ruff not on PATH; statement-count metric reported as null")
         return None
+    # --isolated is load-bearing, not tidiness: without it ruff reads
+    # pyproject, whose [tool.ruff.lint.per-file-ignores] waives PLR0915 on
+    # exactly the three worst `main`s (248/168/134 statements). The metric
+    # then reports 0 for ever -- it cannot see the debt it exists to track.
+    # The per-file-ignores list is the burndown, not the eraser.
     cmd = [
         ruff,
         "check",
         PACKAGE_DIR,
         "scripts",
+        "--isolated",
         "--select",
         "PLR0915",
         "--config",
-        f"lint.pylint.max-statements={MAX_STATEMENTS}",
+        f"lint.pylint.max-statements={max_statements}",
         "--output-format",
         "json",
         "--no-cache",
@@ -148,6 +195,7 @@ def measure(root: Path = REPO_ROOT) -> dict[str, int | None]:
     test_files = _py_files(root, TESTS_DIR)
     pyproject = _pyproject(root)
     patterns = coverage_omit_patterns(pyproject)
+    max_statements = _max_statements(pyproject)
 
     pkg_lines = {p: _line_count(p) for p in pkg_files}
     omitted = [p for p in pkg_files if is_omitted(str(p.relative_to(root)), patterns)]
@@ -164,7 +212,7 @@ def measure(root: Path = REPO_ROOT) -> dict[str, int | None]:
         "package_lines": sum(pkg_lines.values()),
         "files_over_1000_lines": sum(1 for n in pkg_lines.values() if n > GOD_FILE_LINES),
         "test_files_over_1000_lines": sum(1 for p in test_files if _line_count(p) > GOD_FILE_LINES),
-        "functions_over_100_statements": _ruff_statement_violations(root),
+        "functions_over_max_statements": _ruff_statement_violations(root, max_statements),
         "dead_modules": len(dead),
         "dead_module_lines": sum(r.lines for r in dead),
         "dead_modules_inside_coverage": len(dead_measured),
@@ -193,9 +241,11 @@ def measure(root: Path = REPO_ROOT) -> dict[str, int | None]:
 
 
 def compare(current: dict[str, int | None], baseline: dict[str, int | None]) -> list[str]:
-    """Return one message per metric that is worse than the baseline (higher)."""
+    """Return one message per *ratcheted* metric that is worse than the baseline."""
     regressions: list[str] = []
     for key, base in baseline.items():
+        if key not in RATCHETED_METRICS:
+            continue
         now = current.get(key)
         if base is None or now is None:
             continue

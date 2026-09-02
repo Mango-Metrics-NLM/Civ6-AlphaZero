@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING) — checkpoints load safely by default (2026-09-02)
+
+Both checkpoint loaders retried a failed safe load with `weights_only=False`,
+executing arbitrary code from the file without the caller asking. The retry now
+requires an explicit opt-in.
+
+- `alpha_zero.utils.checkpoint.safe_load_checkpoint(allow_unsafe_fallback=)`
+  defaults to `False` (was `True`), and the six live call sites
+  (`core/civ6_network.py` ×3, `core/muzero_network.py`, `distributed/learner.py`,
+  `distributed/ddp_learner.py`, `training/muzero_trainer.py`) no longer pass
+  `True`. `alpha_zero.core.checkpoint_utils.load_checkpoint` gains
+  `allow_unsafe=`; `weights_only=False` there is a deprecated alias for it.
+- **What breaks:** a checkpoint whose payload is not `weights_only`-clean now
+  raises `UnsafeCheckpointError` instead of loading. Freshly-saved models are
+  unaffected; the risk is legacy artifacts. The escape hatch is
+  `allow_unsafe_fallback=True` or `CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1`.
+- `MuZeroTrainer.save_checkpoint` used to pickle its config dataclass, so **its
+  own** checkpoints could only be reopened unsafely. It now stores a serialized
+  dict; checkpoints written before this need the env var once and a re-save.
+- An I/O failure (missing file, truncated download) re-raises as `OSError`
+  rather than being reported as an unsafe checkpoint — the old behaviour told
+  operators to disable the security control to fix a failed download.
+
+### Changed (BREAKING) — `action_space_size` defaults derive from the environment (2026-09-02)
+
+`NetworkConfig`, `MuZeroConfig`, `NPlayerNetworkConfig`, `MicroCivNetwork`,
+`civ6_local._build_network_for_bridge` and `factories.create_simultaneous_mcts`
+defaulted to `381` (or `356`), while `MicroCivActionSpace.total_size` is `376`.
+All now derive from `alpha_zero.utils.constants.default_action_space_size()`;
+the argparse defaults in `cloud/gcp/evaluation_worker.py` and
+`vertex_orchestrator.py` do too.
+
+**What breaks:** a network built with the old default now has a 376-wide policy
+head. Passing `action_space_size=381` explicitly still works, so checkpoints
+trained on the old default remain loadable when the caller states the width.
+
 ### Removed — Tier A dead code, measured by import graph (2026-09-02)
 
 `scripts/audit_import_graph.py` (stdlib AST, resolves package re-exports)
@@ -23,6 +59,11 @@ Tier A (superseded or unwired, claimed by no document as a feature):
   `scaling_config`, `worker_autoscaler`, `gpu_scheduler`, `vertex_trainer`,
   `vertex`, `monitoring`, `__main__`. `distributed/cloud_coordinator` went with
   them: it imported only deleted names and could no longer be imported.
+  **Authorization note:** that module is row B14 of the plan's Tier B, which is
+  a CONFIRM-FIRST item, and it was removed under the Tier A authorization. The
+  technical justification stands (Tier A left it unimportable) but the process
+  did not: it should have been raised, not folded in. Flagged for the maintainer
+  rather than left in the commit's "Tier B untouched" claim.
 - **`alpha_zero/core/`**: `action_pruning`, `network_heads`, `mixins`,
   `timeout_config`, `buffer_config`.
 - **`alpha_zero/utils/`**: `training_diagnostics`, `training_config_enhanced`,

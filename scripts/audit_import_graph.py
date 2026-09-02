@@ -15,6 +15,11 @@ build or deploy file (Dockerfiles, ``cloudbuild*.yaml``, ``Makefile``,
 importer by design, and a grep of their dotted name is how you decide whether
 the entry point is still wired to anything.
 
+Deadness is **not transitive**: a dead module still counts as an importer of
+what it imports, so a cluster of mutually-importing dead modules hides its
+members. Expect a second wave after any deletion -- this branch found 79,
+deleted 44, and re-measured 54.
+
 Exit codes: 0 always for a report; 2 on a usage error. This is an audit,
 not a gate -- the gate is ``tests/regression/test_dead_module_ratchet.py``
 once it exists (see ``kb/specs/20260902-tech-debt-hardening.md`` WS-M).
@@ -31,11 +36,14 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import logging
 import re
 import sys
 from collections import defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger("audit_import_graph")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE = "alpha_zero"
@@ -52,6 +60,9 @@ DEPLOY_GLOBS = (
     "scripts/*.ps1",
     "docker-compose.yml",
     "configs/**/*.yaml",
+    ".github/workflows/*.yml",
+    ".github/workflows/*.yaml",
+    "infra/**/*.yaml",
 )
 SKIP_PARTS = {".git", "__pycache__", "venv", ".venv", "node_modules", "alpha_zero.egg-info"}
 # Prefix on an importer entry recording that the import was a side-effect import
@@ -99,12 +110,24 @@ def _resolve_relative(src_mod: str, src_path: Path, level: int, mod: str | None)
 
 
 def _parse_all(modules: dict[str, Path]) -> dict[str, ast.Module]:
+    """Parse every module, warning loudly about any that cannot be read.
+
+    A file dropped here loses *its* imports from the graph, so whatever it
+    imports can be reported dead. Silently skipping is therefore an
+    under-count, not a no-op: a UTF-8 BOM alone used to be enough (``ast.parse``
+    rejects U+FEFF), which is why the read is ``utf-8-sig``.
+    """
     trees: dict[str, ast.Module] = {}
     for name, path in modules.items():
         try:
-            trees[name] = ast.parse(path.read_text(encoding="utf-8", errors="replace"))
-        except SyntaxError:
-            continue
+            trees[name] = ast.parse(path.read_text(encoding="utf-8-sig", errors="replace"))
+        except (SyntaxError, OSError) as exc:
+            logger.warning(
+                "could not parse %s (%s); its imports are missing from the graph, "
+                "so this run may over-report dead modules",
+                path,
+                exc,
+            )
     return trees
 
 
@@ -199,7 +222,11 @@ def build_import_graph(root: Path) -> tuple[dict[str, Path], dict[str, set[str]]
                 )
                 record(base, source)
                 for alias in node.names:
-                    record(f"{base}.{alias.name}", source)
+                    qualified = f"{base}.{alias.name}"
+                    # `from pkg import submodule` binds and executes the module
+                    # itself -- semantically identical to `import pkg.submodule`
+                    # and the usual shape of a registry-registration import.
+                    record(qualified, source, side_effect=qualified in modules)
                     record_reexport(base, alias.name, source)
                     if f"{base}.{alias.name}" in tables:
                         package_aliases[alias.asname or alias.name] = f"{base}.{alias.name}"
@@ -287,8 +314,14 @@ def audit(root: Path, package_filter: str | None = None) -> list[ModuleReport]:
             continue
         if _live_importers(module, importers.get(module, set()), modules):
             continue
-        with path.open(encoding="utf-8", errors="replace") as handle:
-            lines = sum(1 for _ in handle)
+        try:
+            with path.open(encoding="utf-8-sig", errors="replace") as handle:
+                lines = sum(1 for _ in handle)
+        except OSError:
+            # The tree can change under a long walk (a concurrent test run
+            # creating and removing a probe file, an editor save). Skip rather
+            # than crash: this script feeds a CI gate.
+            continue
         test_count = sum(
             1
             for s in importers.get(module, set())
@@ -335,6 +368,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--root", type=Path, default=REPO_ROOT, help="repository root")
     args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
     if not (args.root / PACKAGE).is_dir():
         parser.error(f"{args.root} does not contain a {PACKAGE}/ package")
         return 2

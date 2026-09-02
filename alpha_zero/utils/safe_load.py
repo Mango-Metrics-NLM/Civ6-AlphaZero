@@ -17,8 +17,19 @@ Policy (tech-debt hardening spec WS4.1):
   time; either logs a WARNING and loads with ``weights_only=False``, which can
   execute arbitrary code from the file.
 
+An I/O failure (missing, unreadable or truncated file) is re-raised as-is
+rather than converted: reporting it as an unsafe checkpoint would tell the
+operator to set the env var to "fix" a failed download, disabling the control
+for the rest of the job and still not loading.
+
 ``tests/security/test_no_unsafe_torch_load.py`` pins that :func:`safe_torch_load`
-is the only ``weights_only=False`` call in ``alpha_zero/``.
+holds the only *ungated* ``weights_only=False`` call. Seven further sites remain
+on that test's explicit burndown allowlist (``orchestrator/checkpointer``,
+``storage/{gcs,local}_backend``, ``distributed/coordinator``,
+``core/transformer_network``, ``training/imitation_pretraining``,
+``spacetimedb/serialization``); route each through this function and delete its
+entry. Stating "the only one" while seven are allowlisted is the kind of claim
+that makes a reader trust a gate further than it reaches.
 """
 
 from __future__ import annotations
@@ -104,6 +115,13 @@ def safe_torch_load(
     label = str(source) if isinstance(source, (str, Path)) else f"<{type(source).__name__}>"
     try:
         return torch.load(source, map_location=map_location, weights_only=True)
+    except OSError:
+        # A missing, unreadable or truncated file is an I/O problem, not a
+        # rejected payload. Reporting it as an unsafe-checkpoint error would
+        # tell the operator to set CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 -- turning
+        # off a security control to "fix" a failed download, which then fails
+        # again with the control left off for the rest of the job.
+        raise
     except Exception as exc:
         if not unsafe_checkpoint_loading_allowed(allow_unsafe):
             raise UnsafeCheckpointError(

@@ -18,7 +18,17 @@ not a regex -- sees the call):
   behind the ``allow_unsafe`` / ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`` gate (a leaf
   module, re-exported by ``core/checkpoint_utils`` and used by
   ``utils/checkpoint.safe_load_checkpoint``); elsewhere only while the file is
-  on the burndown allowlist below, at most the listed number of times.
+  on the burndown allowlist below, at most the listed number of times;
+* ``torch.load`` must be referenced *directly*. A call-site walk cannot see
+  through ``_load = torch.load`` or ``getattr(torch, "load")``, so both are
+  violations in their own right --
+  :func:`test_no_indirect_reference_to_torch_load`.
+
+Known limit, stated rather than papered over: this is static analysis, so a
+reference assembled fully at runtime (``getattr(torch, "lo" + "ad")``, an entry
+in a dispatch dict built from strings) is out of reach. The checks above cover
+every spelling a person would plausibly write; the enforcement that does not
+depend on spelling is that the one unsafe call lives behind an explicit flag.
 
 Negative control (run 2026-09-02)::
 
@@ -57,8 +67,6 @@ UNSAFE_FALSE_ALLOWLIST: dict[str, tuple[int, str]] = {
     "alpha_zero/storage/local_backend.py": (1, "load_checkpoint with training metadata"),
     "alpha_zero/distributed/coordinator.py": (1, "coordinator resume path"),
     "alpha_zero/core/transformer_network.py": (1, "TransformerNetwork.load"),
-    # Legacy module scheduled for deletion in WS2; harmless once gone.
-    "alpha_zero/cloud/gcs_storage.py": (1, "legacy GCS manager, WS2 deletion"),
 }
 
 
@@ -93,11 +101,54 @@ def _is_torch_load(func: ast.expr) -> bool:
     return False
 
 
+def _is_torch_load_expr(node: ast.expr) -> bool:
+    """True for an expression that *evaluates to* ``torch.load`` without calling it.
+
+    Two spellings reach the function object indirectly and so slip past a
+    call-site walk: binding it to a name (``_load = torch.load``) and fetching
+    it dynamically (``getattr(torch, "load")``). Neither is an accident, but a
+    gate that misses them buys false confidence, which is worse than no gate.
+    """
+    if _is_torch_load(node):
+        return True  # a bare `torch.load` reference, e.g. on the RHS of an assignment
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "getattr"
+        and len(node.args) >= 2
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id == "torch"
+        and isinstance(node.args[1], ast.Constant)
+        and node.args[1].value == "load"
+    )
+
+
 class _TorchLoadVisitor(ast.NodeVisitor):
     def __init__(self, rel_path: str) -> None:
         self.rel_path = rel_path
         self.calls: list[LoadCall] = []
+        self.indirect: list[LoadCall] = []
         self._function_stack: list[str] = []
+
+    def _record_indirect(self, node: ast.expr, how: str) -> None:
+        self.indirect.append(
+            LoadCall(
+                self.rel_path,
+                node.lineno,
+                self._function_stack[-1] if self._function_stack else None,
+                how,
+            )
+        )
+
+    def visit_Assign(self, node: ast.Assign) -> None:
+        if _is_torch_load_expr(node.value):
+            self._record_indirect(node, "aliased")
+        self.generic_visit(node)
+
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> None:
+        if node.value is not None and _is_torch_load_expr(node.value):
+            self._record_indirect(node, "aliased")
+        self.generic_visit(node)
 
     def _visit_function(self, node: ast.FunctionDef | ast.AsyncFunctionDef) -> None:
         self._function_stack.append(node.name)
@@ -108,6 +159,10 @@ class _TorchLoadVisitor(ast.NodeVisitor):
     visit_AsyncFunctionDef = _visit_function  # noqa: N815 - ast API
 
     def visit_Call(self, node: ast.Call) -> None:
+        if _is_torch_load_expr(node.func) and not _is_torch_load(node.func):
+            # getattr(torch, "load")(...) — the call is real but the walk below
+            # cannot attribute its keywords reliably, so flag the indirection.
+            self._record_indirect(node, "dynamic getattr")
         if _is_torch_load(node.func):
             spelled: object = "missing"
             for keyword in node.keywords:
@@ -128,8 +183,10 @@ class _TorchLoadVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 
-def _scan() -> list[LoadCall]:
+def _walk() -> tuple[list[LoadCall], list[LoadCall]]:
+    """Return ``(direct call sites, indirect references)`` across the package."""
     calls: list[LoadCall] = []
+    indirect: list[LoadCall] = []
     for path in sorted(PACKAGE_ROOT.rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
@@ -137,7 +194,12 @@ def _scan() -> list[LoadCall]:
         visitor = _TorchLoadVisitor(rel)
         visitor.visit(ast.parse(path.read_text(encoding="utf-8"), filename=rel))
         calls.extend(visitor.calls)
-    return calls
+        indirect.extend(visitor.indirect)
+    return calls, indirect
+
+
+def _scan() -> list[LoadCall]:
+    return _walk()[0]
 
 
 def test_every_torch_load_is_weights_only_true() -> None:
@@ -177,10 +239,37 @@ def test_gated_loader_has_exactly_one_unsafe_site() -> None:
     )
 
 
+def test_no_indirect_reference_to_torch_load() -> None:
+    """``torch.load`` must be called directly, so the keyword walk above can see it.
+
+    Binding it to a name (``_load = torch.load``) or fetching it dynamically
+    (``getattr(torch, "load")``) evades a call-site walk entirely. Probed
+    2026-09-02: a file spelling both slipped past the keyword check while a
+    plain ``torch.load(p)`` in the same file was caught, so the gate reported
+    green on two of four unsafe spellings. Nothing in the package needs the
+    indirection; if a future caller genuinely does, route it through
+    ``alpha_zero.utils.safe_load.safe_torch_load`` instead of allowlisting it.
+    """
+    _, indirect = _walk()
+    assert not indirect, (
+        "indirect references to torch.load defeat the keyword check "
+        "(call it directly, or use safe_torch_load):\n  "
+        + "\n  ".join(f"{c.path}:{c.line}: {c.weights_only}" for c in indirect)
+    )
+
+
 def test_unsafe_allowlist_is_not_stale() -> None:
     """Allowlisted files that still exist must still contain a ``weights_only=False``."""
     present = {c.path for c in _scan() if c.weights_only is False}
-    stale = [
+    missing_file = [rel for rel in UNSAFE_FALSE_ALLOWLIST if not (REPO_ROOT / rel).exists()]
+    no_violation = [
         rel for rel in UNSAFE_FALSE_ALLOWLIST if (REPO_ROOT / rel).exists() and rel not in present
     ]
-    assert not stale, f"Allowlist entries with no remaining unsafe call -- delete them: {stale}"
+    assert not missing_file, (
+        "Allowlist entries naming files that no longer exist -- delete them. Skipping these "
+        "was a hole exactly where rot happens: this branch deleted 44 modules and five stale "
+        f"entries survived the check that exists to catch stale entries: {missing_file}"
+    )
+    assert not no_violation, (
+        f"Allowlist entries with no remaining unsafe call -- delete them: {no_violation}"
+    )

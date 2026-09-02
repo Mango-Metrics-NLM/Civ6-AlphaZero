@@ -71,11 +71,26 @@ def test_no_metric_regressed(
     )
 
 
-def test_compare_reports_only_increases() -> None:
-    base = {"a": 5, "b": None, "c": 3}
-    assert measure_debt.compare({"a": 5, "b": 9, "c": 2}, base) == []
-    assert measure_debt.compare({"a": 6, "b": 9, "c": 2}, base) == ["a: 6 > baseline 5"]
-    assert measure_debt.compare({"a": 5, "c": None}, base) == []
+def test_compare_reports_only_increases_in_ratcheted_metrics() -> None:
+    ratcheted = "dead_modules"
+    informational = "package_lines"
+    base = {ratcheted: 5, "unmeasured": None, informational: 3}
+    assert measure_debt.compare({ratcheted: 5, "unmeasured": 9, informational: 2}, base) == []
+    assert measure_debt.compare({ratcheted: 6, informational: 2}, base) == [
+        f"{ratcheted}: 6 > baseline 5"
+    ]
+    assert measure_debt.compare({ratcheted: 5, informational: 99}, base) == [], (
+        "informational metrics must not gate: adding a feature adds lines, and failing "
+        "honest work teaches people to regenerate the baseline, which kills the ratchet"
+    )
+    assert measure_debt.compare({ratcheted: 5, informational: None}, base) == []
+
+
+def test_every_ratcheted_metric_is_actually_measured() -> None:
+    """A typo in RATCHETED_METRICS would silently stop gating that metric."""
+    measured = set(measure_debt.measure(REPO_ROOT))
+    missing = measure_debt.RATCHETED_METRICS - measured
+    assert not missing, f"ratcheted metrics that measure() does not emit: {sorted(missing)}"
 
 
 def test_omit_rule_is_the_documented_one() -> None:

@@ -31,6 +31,11 @@ from pathlib import Path
 
 import pytest
 
+#: How many omit entries one ``#`` comment may explain. Without a cap, a single
+#: comment at the top of the list "explains" all 43 entries, and a comment left
+#: behind by a deleted entry silently becomes the reason for whatever follows.
+MAX_ENTRIES_PER_REASON = 8
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 FLOORS = REPO_ROOT / "coverage-floors.json"
@@ -67,11 +72,12 @@ def test_every_omit_entry_has_a_reason(pyproject: dict) -> None:
     entry = re.compile(r'^\s*"(?P<pattern>[^"]+)",\s*(?P<trailing>#.*)?$')
     in_omit = False
     group_reason: str | None = None
+    since_reason = 0
     unexplained: list[str] = []
     for line in lines:
         stripped = line.strip()
         if stripped.startswith("omit = ["):
-            in_omit, group_reason = True, None
+            in_omit, group_reason, since_reason = True, None, 0
             continue
         if not in_omit:
             continue
@@ -79,15 +85,16 @@ def test_every_omit_entry_has_a_reason(pyproject: dict) -> None:
             in_omit = False
             continue
         if stripped.startswith("#"):
-            group_reason = stripped
+            group_reason, since_reason = stripped, 0
             continue
         match = entry.match(line)
-        if (
-            match
-            and match.group("pattern").startswith("alpha_zero/")
-            and not (match.group("trailing") or group_reason)
-        ):
-            unexplained.append(match.group("pattern"))
+        if match:
+            since_reason += 1
+            covered = match.group("trailing") or (
+                group_reason is not None and since_reason <= MAX_ENTRIES_PER_REASON
+            )
+            if match.group("pattern").startswith("alpha_zero/") and not covered:
+                unexplained.append(match.group("pattern"))
     assert not unexplained, (
         "coverage omit entries with no reason above them (head the group with a `#` comment, "
         f"or put one on the line): {unexplained}"

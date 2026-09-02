@@ -9,6 +9,7 @@ depend on the state of ``alpha_zero/``; one smoke test runs it on the real repo.
 
 from __future__ import annotations
 
+import logging
 import sys
 from pathlib import Path
 
@@ -128,3 +129,60 @@ def test_cli_rejects_root_without_package(tmp_path: Path) -> None:
     with pytest.raises(SystemExit) as excinfo:
         aig.main(["--root", str(tmp_path)])
     assert excinfo.value.code == 2
+
+
+def test_from_dot_import_submodule_is_a_side_effect_use(tmp_path: Path) -> None:
+    """``from . import registry`` executes the module, exactly like ``import pkg.registry``.
+
+    The two spellings are semantically identical and the first is the usual
+    shape of a registry-registration import, so treating only the second as a
+    use reported live registry modules as dead.
+    """
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    _write(
+        tmp_path,
+        "alpha_zero/pkg/__init__.py",
+        "from . import registry_a\nimport alpha_zero.pkg.registry_c\n",
+    )
+    _write(tmp_path, "alpha_zero/pkg/registry_a.py", "REGISTERED = True\n")
+    _write(tmp_path, "alpha_zero/pkg/registry_c.py", "REGISTERED = True\n")
+    reported = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.pkg.registry_a" not in reported, "`from . import x` is a use"
+    assert "alpha_zero.pkg.registry_c" not in reported, "`import pkg.x` is a use"
+
+
+def test_unparseable_file_warns_instead_of_silently_dropping(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A file whose imports are lost must say so: silence under-counts, not no-ops."""
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    _write(tmp_path, "alpha_zero/broken.py", "def f(:\n")
+    _write(tmp_path, "alpha_zero/target.py", "VALUE = 1\n")
+    with caplog.at_level(logging.WARNING, logger="audit_import_graph"):
+        aig.audit(tmp_path)
+    assert any("broken.py" in r.getMessage() for r in caplog.records), (
+        "an unparseable file must warn -- its imports are missing from the graph"
+    )
+
+
+def test_bom_file_is_parsed(tmp_path: Path) -> None:
+    """A UTF-8 BOM alone used to drop a file's imports (ast.parse rejects U+FEFF)."""
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    (tmp_path / "alpha_zero" / "importer.py").write_text(
+        "\ufeffimport alpha_zero.target\n", encoding="utf-8"
+    )
+    _write(tmp_path, "alpha_zero/target.py", "VALUE = 1\n")
+    _write(tmp_path, "alpha_zero/root.py", "from alpha_zero import importer\n")
+    reported = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.target" not in reported, "BOM file's imports must still count"
+
+
+def test_workflow_reference_counts_as_a_deploy_ref(tmp_path: Path) -> None:
+    """A module wired only from a CI workflow is an entry point, not dead code."""
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    _write(tmp_path, "alpha_zero/ci_only.py", "VALUE = 1\n")
+    _write(
+        tmp_path, ".github/workflows/ci.yml", "jobs:\n  x:\n    run: python -m alpha_zero.ci_only\n"
+    )
+    reported = _by_module(aig.audit(tmp_path))
+    assert reported["alpha_zero.ci_only"].deploy_refs == [".github/workflows/ci.yml"]

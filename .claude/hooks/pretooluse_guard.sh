@@ -42,7 +42,12 @@ env_prefix='^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]+[[:space:]]+)*'
 
 # Global git options that may sit between `git` and the subcommand, e.g.
 # `git -C /repo push ...`, which otherwise bypassed every rule below.
-git_opts='(-C[[:space:]]+[^[:space:]]+[[:space:]]+|--git-dir=[^[:space:]]+[[:space:]]+|--work-tree=[^[:space:]]+[[:space:]]+)*'
+# Any run of git's own global options before the subcommand. Enumerating a
+# few by name (-C, --git-dir, --work-tree) left every other one as a bypass:
+# `git --no-pager push origin main`, `git -c k=v push ...` and `git -P push ...`
+# all slipped through the whole rule. Match an option run generically instead --
+# a leading `-` is never a subcommand, so this cannot swallow `push`/`commit`.
+git_opts='((-[A-Za-z-][^[:space:]]*|--[A-Za-z][A-Za-z0-9-]*(=[^[:space:]]+)?)[[:space:]]+([^-][^[:space:]]*[[:space:]]+)?)*'
 
 # Split the command into segments on shell separators (&&, ||, ;, |, newline) so
 # a chained `... && git push origin main` is caught, while each segment is still
@@ -83,7 +88,8 @@ while IFS= read -r seg; do
   #          commit or push would land there;
   #      (b) the segment is a push whose DESTINATION is a protected branch,
   #          in any refspec form, not just as a trailing bare word:
-  #          `HEAD:main`, `feat:main`, `refs/heads/main` and a quoted `'main'`
+  #          `HEAD:main`, `feat:main`, `refs/heads/main`, `HEAD:refs/heads/main`
+  #          and a quoted `'main'`
   #          all previously slipped through, and `HEAD:main` is the idiomatic
   #          way to push a branch to main. Anchoring the tail on whitespace or
   #          end-of-segment (rather than \b) also stops `main-fix` matching.
@@ -92,7 +98,7 @@ while IFS= read -r seg; do
       deny "CLAUDE.md S3.2: direct commits/pushes to ${branch} (a protected branch) are prohibited - use a feature branch."
     fi
     if printf '%s' "$seg" | grep -qE "${env_prefix}git[[:space:]]+${git_opts}push([[:space:]]|$)" && \
-       printf '%s' "$seg" | grep -qE -- "(^|[[:space:]])['\"]?(refs/heads/)?([A-Za-z0-9_/.^~-]+:)?${protected_re}['\"]?([[:space:]]|\$)"; then
+       printf '%s' "$seg" | grep -qE -- "(^|[[:space:]])['\"]?(refs/heads/)?([A-Za-z0-9_/.^~-]+:)?(refs/heads/)?${protected_re}['\"]?([[:space:]]|\$)"; then
       deny "CLAUDE.md S3.2: direct pushes to main / the default branch (${default_branch}) are prohibited - use a feature branch."
     fi
   fi

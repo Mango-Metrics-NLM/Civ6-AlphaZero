@@ -107,10 +107,34 @@ def test_push_to_resolved_default_branch_is_denied(repo: Path) -> None:
 
 @pytest.mark.parametrize(
     "refspec",
-    [f"HEAD:{DEFAULT_BRANCH}", f"refs/heads/{DEFAULT_BRANCH}", f"'{DEFAULT_BRANCH}'"],
+    [
+        f"HEAD:{DEFAULT_BRANCH}",
+        f"refs/heads/{DEFAULT_BRANCH}",
+        f"'{DEFAULT_BRANCH}'",
+        # `refs/heads/` on the DESTINATION side of a refspec. The pattern
+        # allowed it only on the source side, so this idiomatic, legal push
+        # slipped through while the header comment claimed it was covered.
+        f"HEAD:refs/heads/{DEFAULT_BRANCH}",
+        f"{DEFAULT_BRANCH}:refs/heads/{DEFAULT_BRANCH}",
+    ],
 )
 def test_default_branch_as_refspec_destination_is_denied(repo: Path, refspec: str) -> None:
     assert _run_guard(repo, f"git push origin {refspec}") is not None
+
+
+@pytest.mark.parametrize(
+    "git_option",
+    ["--no-pager", "-P", "-c user.name=x", "--literal-pathspecs", "-c k=v --no-pager"],
+)
+def test_global_git_options_do_not_bypass_the_guard(repo: Path, git_option: str) -> None:
+    """A git global option before the subcommand must not defeat the rule.
+
+    The option run was enumerated by name (-C, --git-dir, --work-tree), so
+    every other one -- `--no-pager`, `-c key=val`, `-P` -- made the whole
+    protected-branch rule a no-op. Probed 2026-09-02: `git push origin trunk`
+    denied, `git --no-pager push origin trunk` allowed.
+    """
+    assert _run_guard(repo, f"git {git_option} push origin {DEFAULT_BRANCH}") is not None
 
 
 def test_push_to_feature_branch_is_allowed(repo: Path) -> None:

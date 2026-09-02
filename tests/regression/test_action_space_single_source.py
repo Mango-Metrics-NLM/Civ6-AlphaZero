@@ -24,6 +24,18 @@ Two checks:
    different games, not copies of this one.
 2. **Runtime equality**: the live defaults equal the environment's size.
 
+Which of the two is the real gate matters. The AST walk sees *integer
+literals* only: a computed value (``BASE + 1``), a value read from another
+constant, or ``int("381")`` all slip past it -- probed 2026-09-02, all three
+passed. That is acceptable because check 2 is the one that catches the
+defect regardless of spelling: it constructs each live config and compares
+against ``MicroCivActionSpace().total_size``. Treat check 1 as a lint that
+keeps copies from being *typed*, and check 2 as the assertion that they stay
+*correct*. Adding a config whose default is wrong fails check 2 however the
+number is written; adding one the runtime check does not construct is the
+real hole, so extend the ``observed`` mapping in check 2 whenever a new
+config grows the field.
+
 The allowlist is a burndown list: an entry whose file still exists but no
 longer has a violation fails the test, so entries are deleted as sites are
 fixed and cannot rot.
@@ -215,6 +227,26 @@ class _ActionSpaceLiteralVisitor(ast.NodeVisitor):
             value = _int_literal(node.args[0])
             if value in _KNOWN_SIZE_LITERALS:
                 self._record(node.args[0], value, f"{func.attr}({value}) mask literal")
+
+        # parser.add_argument("--action_space_size", ..., default=376). The
+        # keyword here is `default`, not `action_space_size`, so the keyword
+        # rule above cannot see it. Found 2026-09-02 in the deployed
+        # cloud/gcp/evaluation_worker.py, which no other check flagged.
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr == "add_argument"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+            and _NAME_PATTERN.match(node.args[0].value.lstrip("-").replace("-", "_"))
+        ):
+            for keyword in node.keywords:
+                if keyword.arg == "default":
+                    value = _int_literal(keyword.value)
+                    if value is not None:
+                        self._record(
+                            keyword.value, value, f'add_argument("{node.args[0].value}", default=)'
+                        )
 
         self.generic_visit(node)
 

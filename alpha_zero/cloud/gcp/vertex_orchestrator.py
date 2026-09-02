@@ -62,6 +62,7 @@ from alpha_zero.evaluation.promotion import (
     log_promotion_decision,
     verdict_from_results,
 )
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -172,7 +173,12 @@ def parse_args() -> argparse.Namespace:
 
     # Network architecture
     parser.add_argument("--board_size", type=int, default=8, help="Board size")
-    parser.add_argument("--action_space_size", type=int, default=376, help="Action space size")
+    parser.add_argument(
+        "--action_space_size",
+        type=int,
+        default=DEFAULT_ACTION_SPACE_SIZE,
+        help="Action space size (defaults to the MicroCiv environment width)",
+    )
     parser.add_argument("--num_res_blocks", type=int, default=6, help="Residual blocks in network")
     parser.add_argument("--num_filters", type=int, default=64, help="Conv filters in network")
     parser.add_argument("--num_heads", type=int, default=8, help="Number of attention heads")
