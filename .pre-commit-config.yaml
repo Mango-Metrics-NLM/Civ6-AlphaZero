@@ -60,7 +60,11 @@ repos:
         name: validate skills
         entry: python scripts/validate_skills.py
         language: system
-        files: ^\.claude/skills/
+        # Both trees, because the validator scans both (2026-08-30). This
+        # pattern named only `.claude/skills/`, so a commit that touched ONLY
+        # `.agents/skills/` ran no skills gate at all -- the same half-covered
+        # tree that decision was written to close, left open on this side.
+        files: ^(\.claude|\.agents)/skills/
         pass_filenames: false
       - id: check-doc-sync
         name: check doc sync

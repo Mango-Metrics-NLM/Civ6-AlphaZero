@@ -21,30 +21,31 @@ Read `kb/sessions/pre-pr.state.json` to understand the current validation task.
 
 ### 2. Run Full Verification
 
-Execute the verification commands from CLAUDE.md Section 4.1:
+```bash
+make verify          # lint + format + types + the suites CI runs + validators
+make test-all        # coverage, mirroring CI's coverage job
+```
+
+`make verify` is the single definition of the gate — see the `verify` skill.
+Do not hand-assemble the sequence here. The version that used to live in this
+file ran `ruff check alpha_zero/` (CI checks the whole repo and also runs
+`ruff format --check`), `mypy alpha_zero/ --ignore-missing-imports` (CI passes
+no such flag; the config lives in `pyproject.toml`) and a bare
+`pytest tests/ --cov` (CI runs four suites with marker filters and its own
+coverage scope). Passing that sequence proved nothing about CI — and this is
+the *last* role before a PR, so it is the worst place to run a weaker gate
+than the one downstream.
+
+Add the smoke test when the change touches training:
 
 ```bash
-# 1. Lint check
-ruff check alpha_zero/
-
-# 2. Type check
-mypy alpha_zero/ --ignore-missing-imports
-
-# 3. Unit tests
-pytest tests/unit/ -v --tb=short
-
-# 4. Integration tests
-pytest tests/integration/ -v --tb=short
-
-# 5. Full test suite with coverage
-pytest tests/ -v --cov=alpha_zero --cov-report=term-missing
-
-# 6. Smoke tests (as applicable)
 python -m alpha_zero.training_civ6 --dry_run
 ```
 
 Record pass/fail status for each. **This verification gate is mandatory: do not
 mark PR-READY unless lint, types, and the touched tests pass** (see Rule 6).
+If a suite could not run, say so and name CI as its gate — never report a suite
+green that you did not run.
 
 ### 2b. Independent Review (isolated context)
 
