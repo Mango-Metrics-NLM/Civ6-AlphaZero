@@ -4,13 +4,15 @@ Generated 2026-09-02 from commit `50144cc` (default-branch head), Python 3.11.15
 torch 2.14.0, numpy 2.4.6, CPU, `OMP_NUM_THREADS=2`. Reproduce with:
 
 ```bash
-PYTHONPATH=. python docs/evidence/draw_rate_sweep/draw_rate_sweep.py 60 out.json
+PYTHONPATH=. python docs/evidence/draw_rate_sweep/draw_rate_sweep.py 60 \
+    docs/evidence/draw_rate_sweep/draw_rate_sweep.json
 ```
 
 Every game is a seeded `MicroCivEnv` (seed `10000*board + 100*turns + game`) driven
 by uniform random choice over the action mask; the outcome is `env.winner` at
-termination and the final per-player city counts. 60 games per cell, 720 games,
-92.4 s wall.
+termination and the final city counts as an **unordered pair** (player identity is
+dropped, so (1,2) means "one player had one city, the other two"). 60 games per
+cell, 720 games, 92.4 s wall.
 
 ## Why this was run
 
@@ -25,7 +27,7 @@ games to 1–1. Both were arguments from code. This is the measurement.
 
 ## Result
 
-| board | max_turns | draw rate | most common final city counts (of 60) | mean actions/game |
+| board | max_turns | draw rate | most common final city counts, unordered (of 60) | mean actions/game |
 |---:|---:|---:|---|---:|
 | 8 | 30 | **0.68** | (1,1) 41 · (0,1) 12 · (1,2) 6 | 209 |
 | 8 | 60 | **0.47** | (1,1) 25 · (1,2) 20 · (0,1) 7 | 501 |

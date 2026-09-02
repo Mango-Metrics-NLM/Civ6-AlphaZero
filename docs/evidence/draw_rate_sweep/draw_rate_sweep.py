@@ -41,6 +41,11 @@ def play(board: int, turns: int, seed: int) -> tuple[int | None, tuple[int, ...]
     return env.winner, cities, steps
 
 
+def unordered(cities: tuple[int, ...]) -> tuple[int, ...]:
+    """Drop player identity: (2, 1) and (1, 2) are the same outcome for a draw analysis."""
+    return tuple(sorted(cities))
+
+
 results = []
 t0 = time.time()
 for board in BOARDS:
@@ -51,7 +56,7 @@ for board in BOARDS:
         for g in range(GAMES):
             winner, cities, steps = play(board, turns, seed=10_000 * board + 100 * turns + g)
             outcomes["draw" if winner is None else f"p{winner}"] += 1
-            city_pairs[tuple(sorted(cities))] += 1
+            city_pairs[unordered(cities)] += 1  # symmetric multiset, not player-indexed
             steps_total += steps
         draw_rate = outcomes["draw"] / GAMES
         row = {
