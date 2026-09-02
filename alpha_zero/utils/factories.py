@@ -17,7 +17,11 @@ Usage:
         create_llm_client,
     )
 
-    network = create_network(config.network, board_size=16)  # action space from constants
+    network = create_network(
+        config.network,
+        board_size=16,
+        action_space_size=DEFAULT_ACTION_SPACE_SIZE,  # alpha_zero.utils.constants
+    )
     mcts = create_mcts(config.mcts, network, device="cuda")
     env = create_environment(config.environment)
 """
