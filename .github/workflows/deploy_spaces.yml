@@ -25,12 +25,18 @@ concurrency:
 env:
   HF_ORG: ${{ vars.HF_ORG || 'Mango-Metrics-NLM' }}
 
+# The deploy jobs push to Hugging Face with HF_TOKEN, not to GitHub; the
+# GITHUB_TOKEN only needs to read the checkout.
+permissions:
+  contents: read
+
 jobs:
   # ------------------------------------------------------------------
   # Gate: only deploy if hub extra is installable (validation)
   # ------------------------------------------------------------------
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,6 +59,7 @@ jobs:
   deploy-microciv-explorer:
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: >
       github.event.inputs.space == 'microciv-explorer' ||
       github.event.inputs.space == 'all' ||
@@ -102,6 +109,7 @@ jobs:
   deploy-elo-dashboard:
     needs: validate
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     if: >
       github.event.inputs.space == 'elo-dashboard' ||
       github.event.inputs.space == 'all' ||

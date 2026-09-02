@@ -5,13 +5,19 @@ on:
         tags:
             - "v*.*.*"
 
+# Workflow default is read-only; only the job that actually publishes the
+# release is granted `contents: write` (job-level permissions replace, not
+# extend, the workflow-level block).
 permissions:
-    contents: write
+    contents: read
 
 jobs:
     release:
         name: Create Release
         runs-on: ubuntu-latest
+        timeout-minutes: 15
+        permissions:
+            contents: write
 
         steps:
             - uses: actions/checkout@v4
@@ -102,8 +108,13 @@ jobs:
                   echo "" >> release_notes.md
                   echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.version.outputs.VERSION }}" >> release_notes.md
 
+            # Pinned to the commit behind the mutable `v2` tag (resolved
+            # 2026-09-02 with `git ls-remote https://github.com/softprops/action-gh-release refs/tags/v2`,
+            # which pointed at the same commit as v2.6.2). A mutable tag in the
+            # one job holding `contents: write` is a supply-chain hole; re-resolve
+            # with that command and update both the SHA and the trailing comment.
             - name: Create GitHub Release
-              uses: softprops/action-gh-release@v2
+              uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
               with:
                   body_path: release_notes.md
                   generate_release_notes: false

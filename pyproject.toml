@@ -307,7 +307,10 @@ reportUnknownMemberType = false
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short --timeout=120"
+# --strict-markers: an unregistered marker is a collection error, not a warning,
+# so a typo'd `@pytest.mark.requires_gcpp` can no longer slip past every `-m`
+# filter in CI and run (or never run) unnoticed.
+addopts = "-v --tb=short --timeout=120 --strict-markers"
 asyncio_mode = "auto"
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",

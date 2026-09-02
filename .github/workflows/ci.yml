@@ -10,6 +10,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege for the default GITHUB_TOKEN. Every job here only checks out
+# and uploads artifacts (actions/upload-artifact needs no extra scope); none
+# writes to the repository, packages, or PRs.
+permissions:
+  contents: read
+
 jobs:
   lint:
     name: Lint & Type Check
@@ -297,6 +303,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]" pytest-cov
 
+      # `--ignore=tests/unit/test_distributed` was removed 2026-09-02: that
+      # directory has never existed (the DDP suites are flat
+      # tests/unit/test_distributed_*.py files), so the flag was a no-op.
+      #
+      # The Codecov upload was removed at the same time rather than made
+      # blocking: no CODECOV_TOKEN secret is referenced by this workflow, so
+      # `fail_ci_if_error: true` would turn every tokenless-upload rate limit
+      # into a red build. `--cov-fail-under=85` is the coverage gate; the XML
+      # is still produced for local inspection.
       - name: Run tests with coverage
         run: |
           pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ tests/regression/ \
@@ -304,11 +319,4 @@ jobs:
             --cov-report=xml \
             --cov-report=term-missing \
             --cov-fail-under=85 \
-            -m "not slow and not requires_env" \
-            --ignore=tests/unit/test_distributed
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
-          fail_ci_if_error: false
+            -m "not slow and not requires_env"

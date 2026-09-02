@@ -3,12 +3,24 @@
 # previously only documented (prose), not machine-enforced.
 #
 # Denies:
-#   * git commit / git push when it would land on `main`
+#   * git commit / git push when it would land on `main` OR on the repository's
+#     default branch (they are not the same branch in this repo)
 #   * self-play / training invocations above the 1000-game cap
+#   * force-pushes (--force / -f / +refspec; --force-with-lease is allowed)
 #
 # Reads the Bash tool input as JSON on stdin and, on a violation, emits a
 # PreToolUse deny decision; otherwise exits 0 silently (allow / fall through to
-# normal permission handling).
+# normal permission handling). Input shape (Claude Code PreToolUse for Bash):
+#   {"tool_input": {"command": "git push origin main"}}
+#
+# Default-branch resolution, first non-empty wins:
+#   1. CIV6AZ_DEFAULT_BRANCH  -- explicit override (tests; a clone whose
+#                                origin/HEAD is unset or points elsewhere)
+#   2. git symbolic-ref --short refs/remotes/origin/HEAD, `origin/` stripped
+#   3. `main`
+# The literal `main` is always protected as well, so a clone with no
+# origin/HEAD (a fresh `git clone` sets it; a manual `git remote add` does not)
+# keeps the historical rule.
 #
 # Matching is intentionally ANCHORED to the command actually being the dangerous
 # invocation (optionally prefixed by `ENV=val` assignments), so that merely
@@ -39,22 +51,49 @@ segments="$(printf '%s' "$cmd" | sed -E 's/(\&\&|\|\||;|\|)/\n/g')"
 
 branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "")"
 
+# Repository default branch (see header). Resolved once per invocation.
+default_branch="${CIV6AZ_DEFAULT_BRANCH:-}"
+if [ -z "$default_branch" ]; then
+  default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+  default_branch="${default_branch#origin/}"
+fi
+[ -z "$default_branch" ] && default_branch="main"
+
+# Protected push destinations as an ERE alternation. Branch names may contain
+# `.` (and in principle `+`), so the default branch is escaped before it is
+# interpolated into the pattern below.
+protected_re='main'
+if [ "$default_branch" != "main" ]; then
+  escaped="$(printf '%s' "$default_branch" | sed -E 's/[][\.^$*+?(){}|\\]/\\&/g')"
+  protected_re="(main|${escaped})"
+fi
+
 while IFS= read -r seg; do
   [ -z "$seg" ] && continue
 
-  # 1) No direct commits/pushes to main. Segment must START with git (an
-  #    optional `-C <dir>` is allowed between `git` and the subcommand).
+  # 1) No direct commits/pushes to main or the default branch. Segment must
+  #    START with git (an optional `-C <dir>` is allowed between `git` and the
+  #    subcommand).
   #
-  #    `main` is matched as a push DESTINATION in any refspec form, not just as
-  #    a trailing bare word: `HEAD:main`, `feat:main`, `refs/heads/main` and a
-  #    quoted `'main'` all previously slipped through, and `HEAD:main` is the
-  #    idiomatic way to push a branch to main. Anchoring the tail on whitespace
-  #    or end-of-segment (rather than \b) also stops `main-fix` matching.
+  #    Two independent triggers, each written as its own `if` because the
+  #    earlier `A || B && C` form parsed as `(A || B) && C` in bash -- so a
+  #    commit while checked out on main was denied only if the segment ALSO
+  #    mentioned `main` as a destination, which a commit never does:
+  #      (a) the working copy is checked out on a protected branch, so a
+  #          commit or push would land there;
+  #      (b) the segment is a push whose DESTINATION is a protected branch,
+  #          in any refspec form, not just as a trailing bare word:
+  #          `HEAD:main`, `feat:main`, `refs/heads/main` and a quoted `'main'`
+  #          all previously slipped through, and `HEAD:main` is the idiomatic
+  #          way to push a branch to main. Anchoring the tail on whitespace or
+  #          end-of-segment (rather than \b) also stops `main-fix` matching.
   if printf '%s' "$seg" | grep -qE "${env_prefix}git[[:space:]]+${git_opts}(commit|push)\b"; then
-    if [ "$branch" = "main" ] || \
-       printf '%s' "$seg" | grep -qE "${env_prefix}git[[:space:]]+${git_opts}push([[:space:]]|$)" && \
-       printf '%s' "$seg" | grep -qE -- "(^|[[:space:]])['\"]?(refs/heads/)?([A-Za-z0-9_/.^~-]+:)?main['\"]?([[:space:]]|\$)"; then
-      deny "CLAUDE.md S3.2: direct commits/pushes to main are prohibited - use a feature branch."
+    if [ "$branch" = "main" ] || [ "$branch" = "$default_branch" ]; then
+      deny "CLAUDE.md S3.2: direct commits/pushes to ${branch} (a protected branch) are prohibited - use a feature branch."
+    fi
+    if printf '%s' "$seg" | grep -qE "${env_prefix}git[[:space:]]+${git_opts}push([[:space:]]|$)" && \
+       printf '%s' "$seg" | grep -qE -- "(^|[[:space:]])['\"]?(refs/heads/)?([A-Za-z0-9_/.^~-]+:)?${protected_re}['\"]?([[:space:]]|\$)"; then
+      deny "CLAUDE.md S3.2: direct pushes to main / the default branch (${default_branch}) are prohibited - use a feature branch."
     fi
   fi
 
