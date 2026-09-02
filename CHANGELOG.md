@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed — Tier A dead code, measured by import graph (2026-09-02)
+
+`scripts/audit_import_graph.py` (stdlib AST, resolves package re-exports)
+found 79 `alpha_zero/` modules with no live importer — 40,503 lines, a quarter
+of the package — of which 34 were *measured* by the coverage gate and so
+inflating the 85% figure with test-only code. The plan in
+`kb/specs/20260902-tech-debt-hardening.md` tiers them; this release removes
+Tier A (superseded or unwired, claimed by no document as a feature):
+
+- **`alpha_zero/cloud/`**: the LEGACY `selfplay_worker`, `trainer`, `evaluator`
+  (superseded by `cloud/gcp/`), `gcs_storage`, `cloud_logging`,
+  `vertex_launcher`, `preemption` (duplicate of `gcp/preemption_handler`), and
+  under `gcp/`: `lifecycle`, `pipeline_cache`, `quota_manager`, `idle_manager`,
+  `scaling_config`, `worker_autoscaler`, `gpu_scheduler`, `vertex_trainer`,
+  `vertex`, `monitoring`, `__main__`. `distributed/cloud_coordinator` went with
+  them: it imported only deleted names and could no longer be imported.
+- **`alpha_zero/core/`**: `action_pruning`, `network_heads`, `mixins`,
+  `timeout_config`, `buffer_config`.
+- **`alpha_zero/utils/`**: `training_diagnostics`, `training_config_enhanced`,
+  `simple_mcts` (the second `SimpleMCTS`; `core/mcts/simple.py` is the one).
+- **`alpha_zero/training/`**: `curriculum_pipeline`, `training_profiler`.
+- **`alpha_zero/evaluation/`**: `sequential_testing`, `reports`.
+- **`alpha_zero/optimizations/`**: `benchmarks`, `config`, `cuda_graph_cache`.
+- **`alpha_zero/human_interface/`**: `input_handler`, `visualizer`.
+- `alpha_zero/exceptions.py`, `alpha_zero/envs/docker_config.py`,
+  `alpha_zero/opponents/{base,network_opponent}.py`.
+- Build files that only served the LEGACY workers: `dockerfiles/Dockerfile.{base,
+  selfplay,trainer,evaluator}`, `docker-compose.yml`, the Makefile
+  `build-{base,selfplay,trainer,evaluator}` / `push-*` / `local-test` /
+  `local-down` targets (`build-all` and `push` now build and push
+  `dockerfiles/Dockerfile.vertex`; `local-smoke` dry-runs the deployed worker),
+  the root `Dockerfile.inference` duplicate, `sweep_config.yaml` (W&B-format,
+  unreferenced), and `setup.py` (kept only for `Dockerfile.base`).
+- Test files that exercised only the removed modules, and the removed cases in
+  files that mixed them with live tests.
+
+Package `__init__` re-exports of the removed names are gone with them: importing
+e.g. `HeadFactory` from `alpha_zero.core` or `CurriculumPipeline` from
+`alpha_zero.training` now raises `ImportError`. Nothing in `alpha_zero/`,
+`scripts/`, or the root entry points did so.
+
+**Deprecated, not removed** (one release window, then deletion):
+`alpha_zero.core.{hex_conv,hex_encoder,encoder_registry,crystalline_layers}`
+(re-export shims for `alpha_zero.hexcrystal`) and
+`alpha_zero.tournament.wandb_dashboards.TournamentWandbLogger` now emit a
+`DeprecationWarning` on import.
+
 ### Added — A seed now determines the whole run (2026-08-30)
 
 The project could not replay its own runs. Its only recorded training run says

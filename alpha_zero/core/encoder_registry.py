@@ -11,6 +11,8 @@ an encoder registered through either import path is visible through both.
 
 from __future__ import annotations
 
+import warnings
+
 from alpha_zero.hexcrystal.encoder_registry import (
     EncoderFactory,
     EncoderType,
@@ -26,3 +28,10 @@ __all__ = [
     "get_registered_encoders",
     "register_encoder",
 ]
+
+warnings.warn(
+    "alpha_zero.core.encoder_registry is a deprecated re-export shim; import from "
+    "alpha_zero.hexcrystal.encoder_registry instead. The shim will be removed one release after 2026-09-02.",
+    DeprecationWarning,
+    stacklevel=2,
+)

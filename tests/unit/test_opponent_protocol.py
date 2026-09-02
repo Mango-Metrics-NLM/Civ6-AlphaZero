@@ -1,57 +1,17 @@
-"""Tests for the :class:`Opponent` Protocol and minimal compliance checks."""
+"""Minimal compliance checks for the opponent adapters.
+
+The ``Opponent`` Protocol and ``NetworkOpponent`` adapter were removed on
+2026-09-02 (no consumer); the protocol-conformance tests went with them.
+"""
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import MagicMock
 
-import numpy as np
-
-from alpha_zero.opponents import (
-    NetworkOpponent,
-    Opponent,
-    StockfishOpponent,
-    StockfishOpponentConfig,
-)
+from alpha_zero.opponents import StockfishOpponent, StockfishOpponentConfig
 
 
-class _DummyOpponent:
-    """Minimal Opponent implementation used to exercise the Protocol check."""
-
-    name = "dummy"
-
-    def get_action(self, env: Any, action_mask: np.ndarray) -> int:
-        return int(np.flatnonzero(action_mask > 0)[0])
-
-    def reset(self) -> None:
-        return None
-
-    def close(self) -> None:
-        return None
-
-
-class TestProtocolCompliance:
-    def test_dummy_satisfies_protocol(self) -> None:
-        assert isinstance(_DummyOpponent(), Opponent)
-
-    def test_stockfish_opponent_satisfies_protocol(self) -> None:
-        engine = MagicMock()
-        sf = StockfishOpponent(
-            StockfishOpponentConfig(path="/nonexistent/bin/stockfish"),
-            engine=engine,
-        )
-        try:
-            assert isinstance(sf, Opponent)
-        finally:
-            sf.close()
-
-    def test_network_opponent_satisfies_protocol(self) -> None:
-        net = MagicMock()
-        op = NetworkOpponent(network=net, name="frozen")
-        assert isinstance(op, Opponent)
-
-
-class TestProtocolName:
+class TestOpponentName:
     def test_name_is_required_attribute(self) -> None:
         engine = MagicMock()
         sf = StockfishOpponent(

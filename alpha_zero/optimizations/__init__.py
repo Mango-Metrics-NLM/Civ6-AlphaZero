@@ -7,30 +7,11 @@ This module provides various performance optimizations based on 2025 research:
 - **Cyclic Learning Rates**: 5 schedule types for improved training stability
 - **Auxiliary Policy Targets**: Richer training signals (attention, opponent modeling)
 
-Quick Start:
-    from alpha_zero.optimizations import PerformanceOptimizationsConfig
-
-    # Use a preset
-    config = PerformanceOptimizationsConfig.balanced_preset()
-
-    # Or customize
-    config = PerformanceOptimizationsConfig(
-        enable_playout_cap=True,
-        enable_cyclic_lr=True,
-    )
-
-Individual Components:
+Components:
     from alpha_zero.optimizations.playout_cap import PlayoutCapRandomizer
     from alpha_zero.optimizations.policy_pruning import PolicyTargetPruner
     from alpha_zero.optimizations.cyclic_lr import CyclicLRScheduler
     from alpha_zero.optimizations.auxiliary_targets import AuxiliaryTargetGenerator
-
-Benchmarking:
-    from alpha_zero.optimizations.benchmarks import OptimizationBenchmark
-
-    benchmark = OptimizationBenchmark()
-    results = benchmark.run_all_benchmarks()
-    print(results)
 """
 
 from alpha_zero.optimizations.auxiliary_targets import (
@@ -41,12 +22,6 @@ from alpha_zero.optimizations.auxiliary_targets import (
     GamePhase,
     create_auxiliary_system,
 )
-from alpha_zero.optimizations.benchmarks import (
-    BenchmarkResult,
-    ComparisonResult,
-    OptimizationBenchmark,
-)
-from alpha_zero.optimizations.config import PerformanceOptimizationsConfig
 from alpha_zero.optimizations.cyclic_lr import (
     CycleInfo,
     CyclicLRConfig,
@@ -68,8 +43,6 @@ __all__ = [
     "AuxiliaryTargets",
     # Auxiliary targets
     "AuxiliaryTargetsConfig",
-    "BenchmarkResult",
-    "ComparisonResult",
     "CycleInfo",
     # Cyclic LR
     "CyclicLRConfig",
@@ -77,9 +50,7 @@ __all__ = [
     "CyclicScheduleType",
     "GamePhase",
     # Benchmarks
-    "OptimizationBenchmark",
     # Main config
-    "PerformanceOptimizationsConfig",
     # Playout cap
     "PlayoutCapConfig",
     "PlayoutCapRandomizer",

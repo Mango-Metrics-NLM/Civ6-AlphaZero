@@ -251,17 +251,6 @@ from alpha_zero.utils.environment_tuning import (  # noqa: E402, F401
     get_default_fast_config,
     get_default_realistic_config,
 )
-from alpha_zero.utils.training_config_enhanced import (  # noqa: E402, F401
-    EnhancedTrainingConfig,
-    ParameterSchedule,
-    ResourceConfig,
-    ResourceManager,
-    SchedulePoint,
-    ScheduleType,
-    create_training_config,
-    get_fast_training_config,
-    get_production_training_config,
-)
 
 __all__.extend(
     [
@@ -280,23 +269,16 @@ __all__.extend(
         "EnhancedRewardsConfig",
         "EnhancedStateFeatures",
         # Enhanced Training Config
-        "EnhancedTrainingConfig",
         # Environment Tuning
         "EnvironmentTuningConfig",
         "IntermediateRewardsConfig",
-        "ParameterSchedule",
         "ProductionConfig",
-        "ResourceConfig",
-        "ResourceManager",
-        "SchedulePoint",
-        "ScheduleType",
         "TunedEnvironmentWrapper",
         "VictoryBonusConfig",
         "WinCondition",
         "WinConditionEvaluator",
         "create_curriculum_manager",
         "create_enhanced_reward_shaper",
-        "create_training_config",
         "create_tuned_environment",
         "get_aggressive_rewards_config",
         "get_balanced_rewards_config",
@@ -304,7 +286,5 @@ __all__.extend(
         "get_default_fast_config",
         "get_default_realistic_config",
         "get_defensive_rewards_config",
-        "get_fast_training_config",
-        "get_production_training_config",
     ]
 )

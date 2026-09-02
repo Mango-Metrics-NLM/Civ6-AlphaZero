@@ -25,12 +25,10 @@ This module provides the core AlphaZero building blocks:
 | Pattern | Where | Why |
 |---------|-------|-----|
 | **Strategy** | `mcts/simple.py` / `mcts/puct.py` / `mcts/gumbel.py` / `mcts/muzero.py`, one module per variant | Interchangeable MCTS algorithms behind a common interface |
-| **Factory** | `mcts_factory.py`, `network_heads.py` — HeadFactory | Create MCTS/network variants from config |
 | **Protocol** | `protocols.py` — NetworkProtocol; `losses.py` — AlphaZeroNetworkProtocol, MuZeroNetworkProtocol; `mcts/mcts_protocols.py` — MCTSNetwork, MuZeroNetworkProtocol, MCTSEnvironment | Structural typing for network contracts at multiple levels |
 | **Composite** | `civ6_network.py` — encoder + heads assembled via config | Network built from composable spatial encoder, policy head, value head |
 | **Registry** | `encoder_registry.py` (re-export shim; implementation in `alpha_zero/hexcrystal/`) | Register and look up state encoders by name |
 | **Builder** | `civ6_network.py` — `NetworkConfig` dataclass → network construction | Config-driven network assembly |
-| **Mixin** | `mixins.py` | Reusable behaviors mixed into network classes |
 | **Template Method** | MCTS `search()` → `_select_simulation_action()` → `_expand_leaf()`/`_expand_node()` → `_backpropagate()` | Fixed search skeleton with variant-specific steps |
 
 ---
@@ -46,17 +44,13 @@ This module provides the core AlphaZero building blocks:
 | `civ6_mcts.py` | Re-export shim for the historical `alpha_zero.core.civ6_mcts` import path — both paths resolve to the same objects |
 | `civ6_actions.py` | ActionSpace, HierarchicalAction encoding |
 | `losses.py` | Loss functions, MuZeroLossCalculator, categorical support |
-| `network_heads.py` | MLPHead, HeadFactory, SpatialPreprocessor |
 | `protocols.py` | Protocol classes for type-safe network contracts |
 | `config.py` | Core configuration dataclasses |
 | `hex_conv.py`, `hex_encoder.py`, `crystalline_layers.py`, `encoder_registry.py` | Re-export shims only — the implementation moved to `alpha_zero/hexcrystal/` (torch-only, standalone-reusable). Import from either path; both resolve to the same objects. |
 | `batch_mcts.py` | Batched MCTS for throughput optimization |
-| `action_pruning.py` | Intelligent action space reduction |
 | `mcts_constants.py` | Shared MCTS hyperparameter defaults |
 | `reflection_generator.py`, `reflection_memory.py` | Self-reflection for training insights |
-| `buffer_config.py` | ReplayBufferConfig, SharedStorageConfig |
 | `checkpoint_utils.py` | Checkpoint save/load utilities |
-| `timeout_config.py` | TimeoutConfig for MCTS and search timeouts |
 
 ---
 

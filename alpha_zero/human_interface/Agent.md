@@ -43,8 +43,6 @@ This module provides a complete Human vs AI interface:
 |------|---------------|
 | `config.py` | HumanInterfaceConfig, InputMode |
 | `game_controller.py` | GameController, GamePhase, TurnResult, undo stack |
-| `visualizer.py` | StateVisualizer, BoardTheme — ASCII board, move probabilities, evaluation bar, MCTS stats |
-| `input_handler.py` | HumanInputHandler, ActionParser, ParsedAction (coordinate/index/command parsing) |
 | `replay.py` | GameRecorder, GameRecording, GameReplay, ReplayManager |
 
 ---

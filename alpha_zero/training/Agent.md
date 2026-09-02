@@ -43,10 +43,8 @@ This module provides extended training infrastructure:
 |------|---------------|
 | `muzero_trainer.py` | MuZeroTrainer, GameTrajectory, TrajectoryBuffer, MuZeroTrainingConfig |
 | `muzero_integration.py` | MuZeroTrainingBridge — facade for orchestrator integration |
-| `curriculum_pipeline.py` | CurriculumPipeline, WeightTransferManager, EnvironmentFactory, DifficultyStage |
 | `convergence_monitor.py` | ConvergenceMonitor — training state classification with callbacks |
 | `training_safeguards.py` | TrainingSafeguard — NaN/explosion/gradient/memory guards, Intervention |
-| `training_profiler.py` | TrainingProfiler — diminishing returns detection |
 | `elo_plateau_detector.py` | EloPlateauDetector — ELO stagnation detection |
 | `training_report.py` | TrainingReport — Markdown/HTML report generation |
 | `imitation_pretraining.py` | Supervised pretraining from recorded games |

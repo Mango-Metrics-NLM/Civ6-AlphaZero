@@ -300,7 +300,7 @@ def mock_replay_buffer() -> MagicMock:
 
 
 # =============================================================================
-# Bridge / Docker Fixtures
+# Bridge Fixtures
 # =============================================================================
 
 
@@ -323,24 +323,6 @@ def bridge_config() -> Generator[Path, None, None]:
             retry_delay_s=0.1,
             board_size=16,
         )
-
-
-@pytest.fixture
-def docker_connection_config():
-    """Create Docker connection configuration for testing.
-
-    Returns:
-        DockerConnectionConfig with test-appropriate values.
-    """
-    from alpha_zero.envs.docker_config import DockerConnectionConfig
-
-    return DockerConnectionConfig(
-        host="localhost",
-        port=6300,
-        connection_timeout_s=5.0,
-        retry_count=3,
-        retry_delay_s=0.5,
-    )
 
 
 # =============================================================================

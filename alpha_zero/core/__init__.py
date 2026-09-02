@@ -50,15 +50,6 @@ from alpha_zero.core.losses import (
     # Utility functions
     scalar_to_categorical,
 )
-from alpha_zero.core.network_heads import (
-    ActivationType,
-    FeatureCombiner,
-    HeadFactory,
-    MLPHead,
-    MLPHeadConfig,
-    SpatialPreprocessor,
-    SpatialPreprocessorConfig,
-)
 from alpha_zero.core.transformer_network import (
     AttentionType,
     Civ6TransformerNetwork,
@@ -89,7 +80,6 @@ __all__ = [
     *__all_jax__,
     "ActionSpace",
     # Network heads (reusable components)
-    "ActivationType",
     "AlphaZeroNetworkProtocol",
     "AttentionSpatialEncoder",
     "AttentionType",
@@ -103,17 +93,13 @@ __all__ = [
     # Transformer network
     "Civ6TransformerNetwork",
     "CrossModalAttention",
-    "FeatureCombiner",
     "GumbelMCTS",
     "GumbelMCTSConfig",
-    "HeadFactory",
     "HierarchicalAction",
     "HierarchicalPolicyHead",
     "LossConfig",
     "MCTSConfig",
     "MCTSNode",
-    "MLPHead",
-    "MLPHeadConfig",
     "MicroCivNetwork",
     # Calculator class
     "MuZeroLossCalculator",
@@ -125,8 +111,6 @@ __all__ = [
     "NormType",
     "PositionalEncoding2D",
     "SimpleMCTS",
-    "SpatialPreprocessor",
-    "SpatialPreprocessorConfig",
     "SpatialSelfAttention",
     "StepLossOutput",
     "TrajectoryBatch",

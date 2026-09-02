@@ -44,40 +44,11 @@ from alpha_zero.cloud.gcp.exceptions import (
 )
 
 # Phase 6: Data Lifecycle
-from alpha_zero.cloud.gcp.lifecycle import (
-    CleanupResult,
-    GCSLifecycleManager,
-    LifecycleConfig,
-    LifecycleRule,
-    RetentionPolicyConfig,
-    StorageClass,
-    get_lifecycle_manager,
-)
-
 # Model version selection utilities
 from alpha_zero.cloud.gcp.model_selection import subsample_model_versions
 
 # Phase 6: Pipeline Caching
-from alpha_zero.cloud.gcp.pipeline_cache import (
-    CacheEntry,
-    ComponentSignature,
-    ComponentType,
-    PipelineCache,
-    PipelineCacheConfig,
-    get_pipeline_cache,
-)
-
 # Phase 6: Scaling Configuration
-from alpha_zero.cloud.gcp.scaling_config import (
-    BudgetTier,
-    CycleTierConfig,
-    EvaluationTierConfig,
-    GPUSpec,
-    ScalingTierConfig,
-    SelfPlayTierConfig,
-    TrainingTierConfig,
-)
-
 # Phase 6: Spot Availability
 from alpha_zero.cloud.gcp.spot_availability import (
     AvailabilityLevel,
@@ -105,14 +76,6 @@ from alpha_zero.cloud.gcp.vertex_jobs import (
 )
 
 # Phase 6: Worker Autoscaling
-from alpha_zero.cloud.gcp.worker_autoscaler import (
-    ScalingAction,
-    ScalingDecision,
-    WorkerAutoscaler,
-    WorkerAutoscalerConfig,
-    WorkerMetrics,
-    get_worker_autoscaler,
-)
 
 __all__ = [
     "AlertChannel",
@@ -124,16 +87,9 @@ __all__ = [
     # Phase 6: Spot Availability
     "AvailabilityLevel",
     # Phase 6: Scaling Configuration
-    "BudgetTier",
-    "CacheEntry",
-    "CleanupResult",
-    "ComponentSignature",
     # Phase 6: Pipeline Caching
-    "ComponentType",
     "ConfigurationError",
-    "CycleTierConfig",
     "EmailConfig",
-    "EvaluationTierConfig",
     # Config
     "GCPConfig",
     # Exceptions
@@ -141,37 +97,24 @@ __all__ = [
     # Storage
     "GCSBackend",
     "GCSCheckpointStorage",
-    "GCSLifecycleManager",
     "GCSModelStorage",
     "GCSStorageError",
     "GCSTrajectoryStorage",
-    "GPUSpec",
     "JobResult",
     # Vertex AI Jobs
     "JobSpec",
     "JobState",
-    "LifecycleConfig",
-    "LifecycleRule",
     "ModelMetadata",
-    "PipelineCache",
-    "PipelineCacheConfig",
     "PreemptionError",
     "PreemptionEvent",
     "QuotaExceededError",
-    "RetentionPolicyConfig",
     # Phase 6: Worker Autoscaling
-    "ScalingAction",
-    "ScalingDecision",
-    "ScalingTierConfig",
-    "SelfPlayTierConfig",
     "SelfPlayWorkerConfig",
     "SlackConfig",
     "SpotAvailabilityConfig",
     "SpotAvailabilityTracker",
     "SpotPattern",
     # Phase 6: Data Lifecycle
-    "StorageClass",
-    "TrainingTierConfig",
     "TrainingWorkerConfig",
     "VertexAIClient",
     "VertexJobError",
@@ -179,13 +122,7 @@ __all__ = [
     "VertexTier",
     "VertexTournamentJob",
     "VertexTrainingJob",
-    "WorkerAutoscaler",
-    "WorkerAutoscalerConfig",
-    "WorkerMetrics",
     "get_alert_manager",
-    "get_lifecycle_manager",
-    "get_pipeline_cache",
     "get_spot_tracker",
-    "get_worker_autoscaler",
     "subsample_model_versions",
 ]

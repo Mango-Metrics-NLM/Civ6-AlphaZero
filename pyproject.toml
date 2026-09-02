@@ -198,7 +198,6 @@ max-statements = 100
 "alpha_zero/cloud/gcp/training_worker.py" = ["PLR0915"]  # main(): 168 statements
 "run_enhanced_training.py" = ["PLR0915"]  # main(): 134 statements
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
-"alpha_zero/cloud/preemption.py" = ["S310"]  # GCE metadata URL is intentional
 "alpha_zero/cloud/gcp/preemption.py" = ["S310"]  # GCP preemption handler metadata URL is intentional
 "run_*.py" = ["ANN"]  # Skip annotations in run scripts
 "run_civ6_ai.py" = ["S603"]  # Launcher wrapper: subprocess runs a fixed python -m module
@@ -355,27 +354,22 @@ omit = [
     "alpha_zero/interfaces/civ6_interface.py",
     "alpha_zero/envs/civrealm_wrapper.py",
     "alpha_zero/envs/real_civ6_env.py",
-    "alpha_zero/envs/docker_config.py",
     # External store backends (require ChromaDB, FAISS, SpacetimeDB)
     "alpha_zero/rag/stores/chroma_store.py",
     "alpha_zero/rag/stores/faiss_store.py",
     "alpha_zero/spacetimedb/*",
     "alpha_zero/storage/gcs_backend.py",
-    # Cloud coordinator (requires GCP SDK imports)
-    "alpha_zero/distributed/cloud_coordinator.py",
     # Distributed orchestration (requires torch.distributed init + multi-process)
     "alpha_zero/distributed/coordinator.py",
     "alpha_zero/distributed/ddp_learner.py",
     "alpha_zero/distributed/learner.py",
     "alpha_zero/distributed/parameter_server.py",
     # CUDA graph cache (requires CUDA hardware)
-    "alpha_zero/optimizations/cuda_graph_cache.py",
     # Orchestrator main entrypoint and run loop - exercised by smoke
     # tests / dry-run flag, not by unit tests
     "alpha_zero/orchestrator/__main__.py",
     "alpha_zero/orchestrator/orchestrator.py",
     # Benchmark scripts (perf reports, not unit-testable)
-    "alpha_zero/optimizations/benchmarks.py",
     "alpha_zero/evaluation/muzero_vs_alphazero_benchmark.py",
     # System monitoring / memory guard (requires real process metrics)
     "alpha_zero/utils/memory_guard.py",
@@ -401,13 +395,11 @@ omit = [
     # Evaluation baselines/reports (require trained models, output formatting)
     "alpha_zero/evaluation/baselines.py",
     "alpha_zero/evaluation/baseline_agents.py",
-    "alpha_zero/evaluation/reports.py",
     # Checkpoint I/O utilities (file-system + torch.load, integration-tested)
     "alpha_zero/core/checkpoint_utils.py",
     # Distributed actor (requires multi-process pool)
     "alpha_zero/distributed/actor.py",
     # Optimisations config (legacy, exercised by smoke tests not unit tests)
-    "alpha_zero/optimizations/config.py",
 ]
 
 [tool.coverage.report]
@@ -437,20 +429,16 @@ omit = [
     "alpha_zero/interfaces/civ6_interface.py",
     "alpha_zero/envs/civrealm_wrapper.py",
     "alpha_zero/envs/real_civ6_env.py",
-    "alpha_zero/envs/docker_config.py",
     "alpha_zero/rag/stores/chroma_store.py",
     "alpha_zero/rag/stores/faiss_store.py",
     "alpha_zero/spacetimedb/*",
     "alpha_zero/storage/gcs_backend.py",
-    "alpha_zero/distributed/cloud_coordinator.py",
     "alpha_zero/distributed/coordinator.py",
     "alpha_zero/distributed/ddp_learner.py",
     "alpha_zero/distributed/learner.py",
     "alpha_zero/distributed/parameter_server.py",
-    "alpha_zero/optimizations/cuda_graph_cache.py",
     "alpha_zero/orchestrator/__main__.py",
     "alpha_zero/orchestrator/orchestrator.py",
-    "alpha_zero/optimizations/benchmarks.py",
     "alpha_zero/evaluation/muzero_vs_alphazero_benchmark.py",
     "alpha_zero/utils/memory_guard.py",
     "alpha_zero/training/convergence_monitor.py",
@@ -468,10 +456,8 @@ omit = [
     "alpha_zero/evaluation/llm_harness/*",
     "alpha_zero/evaluation/baselines.py",
     "alpha_zero/evaluation/baseline_agents.py",
-    "alpha_zero/evaluation/reports.py",
     "alpha_zero/core/checkpoint_utils.py",
     "alpha_zero/distributed/actor.py",
-    "alpha_zero/optimizations/config.py",
 ]
 # Coverage gate. CI enforces this via the `--cov-fail-under=85` CLI flag in
 # .github/workflows/ci.yml, which OVERRIDES this value; we set 85 here so local

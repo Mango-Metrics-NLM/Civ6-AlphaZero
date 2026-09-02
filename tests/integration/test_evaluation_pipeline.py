@@ -5,10 +5,11 @@ Tests cover:
 - Full evaluation against heuristic baseline
 - ELO rating updates through evaluation
 - Diversity metrics computation
-- Report generation in multiple formats
+
+The report-generation test went with ``alpha_zero/evaluation/reports.py``
+(dead code, removed 2026-09-02).
 """
 
-import json
 import tempfile
 from pathlib import Path
 
@@ -23,14 +24,11 @@ from alpha_zero.evaluation import (
     DiversityMetrics,
     DiversityTracker,
     EvaluationConfig,
-    EvaluationReport,
-    EvaluationResult,
     GameResult,
     HeuristicPlayer,
     HeuristicWeights,
     ModelEvaluator,
     RandomPlayer,
-    ReportGenerator,
 )
 
 
@@ -223,70 +221,6 @@ class TestEvaluationPipelineIntegration:
         assert metrics.total_games >= 0
         assert 0.0 <= metrics.opening_entropy <= 10.0  # Entropy bound
         assert metrics.avg_game_length >= 0
-
-    def test_report_generation(self, evaluation_config, random_player, temp_dir):
-        """Test report generation in multiple formats."""
-        evaluator = ModelEvaluator(evaluation_config)
-
-        # Play some games
-        random_config = evaluation_config.baselines[0]
-        baseline = evaluator.get_baseline(random_config)
-
-        game_results = []
-        for i in range(random_config.num_games):
-            result = evaluator.play_game(
-                model_player=random_player,
-                opponent=baseline,
-                model_plays_first=(i % 2 == 0),
-            )
-            game_results.append(result)
-
-        # Create evaluation result
-        wins = sum(1 for r in game_results if r.winner == 0)
-        losses = sum(1 for r in game_results if r.winner == 1)
-        draws = sum(1 for r in game_results if r.winner is None)
-        avg_length = np.mean([r.num_turns for r in game_results])
-
-        eval_result = EvaluationResult(
-            baseline_name="random_test",
-            games_played=len(game_results),
-            wins=wins,
-            losses=losses,
-            draws=draws,
-            avg_game_length=float(avg_length),
-            game_results=game_results,
-        )
-
-        # Generate report
-        generator = ReportGenerator(evaluation_config)
-        report = generator.generate(
-            results={"random_test": eval_result},
-            diversity_metrics=None,
-        )
-
-        assert isinstance(report, EvaluationReport)
-        assert report.experiment_name == evaluation_config.experiment_name
-        assert "random_test" in report.baseline_results
-
-        # Test JSON export
-        json_path = temp_dir / "report.json"
-        report.to_json(str(json_path))
-        assert json_path.exists()
-
-        with open(json_path) as f:
-            json_data = json.load(f)
-        assert "experiment_name" in json_data
-        assert "baseline_results" in json_data
-
-        # Test markdown export
-        md_path = temp_dir / "report.md"
-        md_content = report.to_markdown()
-        with open(md_path, "w") as f:
-            f.write(md_content)
-        assert md_path.exists()
-
-        assert "# Model Evaluation Report" in md_content
-        assert "random_test" in md_content
 
 
 class TestBaselineFactoryIntegration:

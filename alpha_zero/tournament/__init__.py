@@ -59,7 +59,6 @@ from alpha_zero.tournament.orchestrator import (
     TournamentOrchestrator,
     TournamentResult,
 )
-from alpha_zero.tournament.wandb_dashboards import TournamentWandbLogger
 
 __all__ = [
     # Supporting classes
@@ -106,3 +105,19 @@ __all__ = [
     "calculate_expected_score",
     "calculate_rating_change",
 ]
+
+
+# Deprecated names served lazily (PEP 562) so that `import alpha_zero.tournament`
+# stays silent and only an actual use of the old name warns.
+_DEPRECATED_LAZY: dict[str, str] = {
+    "TournamentWandbLogger": "alpha_zero.tournament.wandb_dashboards",
+}
+
+
+def __getattr__(name: str) -> object:
+    module_path = _DEPRECATED_LAZY.get(name)
+    if module_path is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    import importlib
+
+    return getattr(importlib.import_module(module_path), name)

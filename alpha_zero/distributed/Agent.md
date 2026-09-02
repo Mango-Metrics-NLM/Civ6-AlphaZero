@@ -49,7 +49,6 @@ This module provides distributed training infrastructure:
 | `ddp_config.py` | DDP backend detection and configuration |
 | `shared_storage.py` | SharedStorage, DistributedReplayBuffer, GameTrajectory |
 | `parameter_server.py` | ParameterServer with multiple update modes |
-| `cloud_coordinator.py` | Cloud-native coordinator variant |
 
 ---
 

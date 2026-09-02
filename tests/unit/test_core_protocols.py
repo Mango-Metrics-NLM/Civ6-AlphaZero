@@ -36,9 +36,7 @@ class TestSerializableProtocol:
     @pytest.mark.parametrize(
         "class_module,class_name",
         [
-            ("alpha_zero.core.timeout_config", "TimeoutConfig"),
-            ("alpha_zero.core.buffer_config", "ReplayBufferConfig"),
-            ("alpha_zero.core.buffer_config", "SharedStorageConfig"),
+            ("alpha_zero.utils.timeout_config", "TimeoutConfig"),
         ],
     )
     def test_config_classes_are_serializable(self, class_module: str, class_name: str):

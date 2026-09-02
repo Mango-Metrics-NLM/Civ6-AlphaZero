@@ -33,7 +33,6 @@ This module provides cloud-native training infrastructure:
 | **Factory** | `create_preemption_handler()`, `create_launcher_from_config()` | Config-driven component creation |
 | **Circuit Breaker** | GCS retry logic with exponential backoff | Handle transient cloud failures |
 | **Configuration Object** | `CloudConfig`, `GCPConfig` with `from_env()` / `from_yaml()` | Environment-driven deployment config |
-| **Tiered Configuration** | `gcp/scaling_config.py` — `BudgetTier` with GPU profiles | Pre-configured machine selections by cost tier |
 | **Lazy Import** | `__init__.py` — Phase 3 components conditionally imported | Avoid requiring cloud SDKs locally |
 
 ---
@@ -45,13 +44,6 @@ This module provides cloud-native training infrastructure:
 | `config.py` | CloudConfig, CloudProvider, CloudEnvironment |
 | `protocols.py` | Protocol interfaces for all cloud operations |
 | `exceptions.py` | Cloud-specific exception hierarchy |
-| `preemption.py` | PreemptionHandler, PreemptionState, SIGTERM handling |
-| `gcs_storage.py` | GCSCheckpointManager, GCSModelStorage |
-| `vertex_launcher.py` | VertexJobLauncher, JobInfo, JobStatus |
-| `cloud_logging.py` | CloudLogger, CloudMetricsExporter |
-| `selfplay_worker.py` | Containerized self-play entry point |
-| `trainer.py` | Containerized training entry point |
-| `evaluator.py` | Containerized evaluation entry point |
 
 ## Key Files (GCP Sub-module)
 
@@ -61,27 +53,17 @@ This module provides cloud-native training infrastructure:
 | `gcp/exceptions.py` | GCPError, GCSStorageError, PreemptionError, QuotaExceededError, VertexJobError |
 | `gcp/storage.py` | GCSBackend, GCSModelStorage, GCSTrajectoryStorage, GCSCheckpointStorage, ModelMetadata |
 | `gcp/vertex_jobs.py` | VertexAIClient, VertexSelfPlayJob, VertexTrainingJob, VertexTournamentJob, JobSpec, JobResult |
-| `gcp/vertex.py` | Low-level Vertex AI utilities |
 | `gcp/vertex_orchestrator.py` | Full pipeline orchestration on Vertex AI |
-| `gcp/vertex_trainer.py` | Vertex AI training job configuration |
-| `gcp/scaling_config.py` | BudgetTier, ScalingTierConfig, GPUSpec, GPU profiles (T4/L4/A100) |
 | `gcp/selfplay_worker.py` | GCP self-play worker entry point |
 | `gcp/training_worker.py` | GCP training worker entry point |
 | `gcp/evaluation_worker.py` | GCP evaluation worker entry point |
 | `gcp/tournament_worker.py` | GCP tournament worker entry point |
 | `gcp/alert_manager.py` | AlertManager, AlertChannel, AlertSeverity — Slack/email/W&B alerting |
 | `gcp/spot_availability.py` | SpotAvailabilityTracker, SpotPattern, AvailabilityLevel |
-| `gcp/worker_autoscaler.py` | WorkerAutoscaler, ScalingAction, ScalingDecision |
-| `gcp/pipeline_cache.py` | PipelineCache, ComponentSignature, ComponentType |
-| `gcp/lifecycle.py` | GCSLifecycleManager, LifecycleConfig, LifecycleRule, RetentionPolicyConfig |
 | `gcp/cost.py` | CostEstimator — per-job cost computation |
 | `gcp/cost_monitor.py` | CostMonitor — budget tracking and alerting |
 | `gcp/preemption.py` | Preemption detection utilities |
 | `gcp/preemption_handler.py` | PreemptionHandler — graceful shutdown on Spot VM preemption |
-| `gcp/monitoring.py` | Cloud Monitoring metrics export |
-| `gcp/gpu_scheduler.py` | GPU scheduling and allocation |
-| `gcp/idle_manager.py` | Idle resource detection and cleanup |
-| `gcp/quota_manager.py` | GCP quota checking and management |
 | `gcp/pbt_orchestrator.py` | Population-Based Training orchestration on GCP |
 | `gcp/arena.py` | Tournament arena for model evaluation |
 | `gcp/model_selection.py` | `subsample_model_versions()` for version selection |
@@ -89,7 +71,6 @@ This module provides cloud-native training infrastructure:
 | `gcp/container_validator.py` | Pre-deployment container validation |
 | `gcp/entrypoint.py` | Shared container entry point logic |
 | `gcp/cli.py` | CLI commands for GCP operations |
-| `gcp/__main__.py` | GCP module CLI entry point |
 
 ---
 
@@ -123,7 +104,6 @@ This module provides cloud-native training infrastructure:
 | `make push` | Push images to Artifact Registry |
 | `make local-test` | Run local docker-compose test |
 | `python -m infra.vertex_launcher --mode=selfplay --dry-run` | Dry-run self-play job |
-| `python -m alpha_zero.cloud.selfplay_worker --help` | Worker options |
 | `pytest tests/cloud/ -v` | Test cloud components |
 
 ---

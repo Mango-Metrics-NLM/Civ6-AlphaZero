@@ -22,7 +22,7 @@ RUN pip install --no-cache-dir -r requirements-container.txt
 COPY alpha_zero/ alpha_zero/
 
 # Copy setup files if they exist (for package install)
-COPY setup.py pyproject.toml* ./
+COPY pyproject.toml ./
 RUN pip install --no-cache-dir -e .
 
 # Entrypoint routes to correct worker based on --mode flag

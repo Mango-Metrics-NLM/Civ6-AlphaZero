@@ -126,7 +126,7 @@ IN SCOPE:
 - All files in alpha_zero/
 - All files in tests/
 - Configuration files in configs/
-- Root-level Python files (setup.py, pyproject.toml)
+- Root-level Python files (pyproject.toml, run_*.py)
 - Documentation files (CLAUDE.md, README.md)
 - Environment templates (.env.template)
 - Requirements files (requirements.txt)
@@ -313,18 +313,16 @@ When making changes, update the relevant sections below:
 
 | Command | Purpose |
 |---------|---------|
-| `make build-all` | Build all Docker images |
-| `make push` | Push images to Artifact Registry |
-| `make local-test` | Run local docker-compose test |
-| `make local-smoke` | Run smoke test (1 game + 1 step) |
-| `docker-compose up -d` | Start local testing environment |
+| `make build-all` | Build the deployed image (`dockerfiles/Dockerfile.vertex`); the per-role base/selfplay/trainer/evaluator images, `docker-compose.yml` and `make local-test` were removed 2026-09-02 as dead |
+| `make push` | Push it to Artifact Registry |
+| `make local-smoke` | Dry-run the deployed self-play worker (`alpha_zero.cloud.gcp.selfplay_worker --dry_run`) |
 | `python -m alpha_zero.cloud.gcp.vertex_orchestrator --help` | **The deployed orchestrator.** `cloudbuild.yaml` builds only `Dockerfile.vertex`, which entrypoints `alpha_zero.cloud.gcp.entrypoint` |
 | `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run — **legacy, not deployed**: resolves `civ6-selfplay:latest` and friends, images no build pipeline produces |
 | `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run — legacy, not deployed |
 | `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run — legacy, not deployed |
-| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options — **legacy** (hardcodes SimpleMCTS); the deployed worker is `alpha_zero.cloud.gcp.selfplay_worker` |
-| `python -m alpha_zero.cloud.trainer --help` | Trainer options |
-| `python -m alpha_zero.cloud.evaluator --help` | Evaluator options |
+| `python -m alpha_zero.cloud.gcp.selfplay_worker --help` | Deployed self-play worker options (the LEGACY `alpha_zero.cloud.{selfplay_worker,trainer,evaluator}` modules were deleted 2026-09-02) |
+| `python -m alpha_zero.cloud.gcp.training_worker --help` | Deployed trainer options |
+| `python -m alpha_zero.cloud.gcp.arena --help` | Deployed arena/evaluator options |
 
 #### Test Commands
 
@@ -345,7 +343,9 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
-| `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
+| `pytest tests/regression/test_debt_ratchet.py -v` | Tech-debt ratchet — every tracked metric vs the committed baseline |
+| `python scripts/audit_import_graph.py` | List `alpha_zero/` modules with no live importer (AST import graph) |
+| `python scripts/measure_debt.py --write PATH` | Re-measure every tracked debt metric as JSON |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_nplayer_training_pipeline.py -v` | Test N-player training pipeline (G9: per-player values) |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
@@ -415,7 +415,7 @@ When making changes, update the relevant sections below:
 | 2026-05-24 | BridgeEvalHarness (W2.3a) | MLflow-backed telemetry hooks (`on_start`, `on_turn_end`, `on_stop`) wired into `BridgeAgentLoop`. `--eval-harness` flag in `civ6_local.py`; env var `CIV6AZ_LOCAL_USE_EVAL_HARNESS=1`. |
 | 2026-05-24 | install_civ6_mod.py (W2.3b) | `scripts/install_civ6_mod.py` copies `mod/AlphaZeroAI` → `%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Mods\AlphaZeroAI`. Creates dir if absent. Supports `--mod-dir` override. |
 | 2026-05-24 | execute_with_retry wired (W3.1) | `GameBridgeHealthChecker.execute_with_retry` wraps both `wait_for_state` and `send_and_wait_with_retry` in `BridgeAgentLoop` when `health_checker` is supplied. `CircuitBreakerOpenError` maps to `state_timeouts` counter and asyncio.sleep(≥ retry_after). |
-| 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
+| 2026-05-30 (half superseded 2026-09-02) | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss). Env: `CIV6AZ_STAGNATION_*`. Default OFF. **The `count_consecutive_non_promotions` half is gone:** it lived only in `cloud/evaluator.py`, which the import graph showed had no live importer (the deployed promotion path is `cloud/gcp/arena.py` + `evaluation/promotion.py`), so it was removed with Tier A on 2026-09-02 along with its `CIV6_STAGNATION_PATIENCE` env var and `tests/cloud/unit/test_evaluator_stagnation.py`. Promotion-stagnation detection on the deployed path is unimplemented — a real gap, not a relocation. |
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 | 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
@@ -600,13 +600,11 @@ Civ6-AlphaZero/
 │   │   ├── models.py            # Metadata dataclasses
 │   │   ├── replay_buffer.py     # Streaming replay buffer
 │   │   └── factory.py           # create_storage_backend
-│   ├── cloud/                   # Cloud-native components (NEW)
+│   ├── cloud/                   # Cloud-native components
 │   │   ├── __init__.py
 │   │   ├── config.py            # CloudConfig, MachineProfile
-│   │   ├── preemption.py        # PreemptionHandler for Spot VMs
-│   │   ├── selfplay_worker.py   # Self-play worker entry point
-│   │   ├── trainer.py           # Trainer entry point
-│   │   └── evaluator.py         # Evaluator entry point
+│   │   └── gcp/                 # The deployed path: selfplay_worker, training_worker,
+│   │                            #   arena, vertex_orchestrator, storage, preemption_handler
 │   ├── orchestrator/            # Unified Training Orchestrator
 │   │   ├── __init__.py
 │   │   ├── config.py            # OrchestratorConfig with schedules
@@ -667,11 +665,9 @@ Civ6-AlphaZero/
 │   │   ├── agent_tools.py       # Claude Code agent tools
 │   │   └── env_loader.py        # Zero-dependency .env loader (CIV6AZ_ convention)
 │   └── training_civ6.py         # Training entry point
-├── dockerfiles/                 # Container images (NEW)
-│   ├── Dockerfile.base          # Base image with PyTorch
-│   ├── Dockerfile.selfplay      # Self-play worker image
-│   ├── Dockerfile.trainer       # Trainer image
-│   └── Dockerfile.evaluator     # Evaluator image
+├── dockerfiles/                 # Container images
+│   ├── Dockerfile.vertex        # The deployed image (built by cloudbuild.yaml)
+│   └── Dockerfile.inference     # Inference server image (infra/cloudbuild-gameplay.yaml)
 ├── infra/                       # Infrastructure (NEW)
 │   ├── __init__.py
 │   └── vertex_launcher.py       # Vertex AI job launcher
@@ -697,8 +693,7 @@ Civ6-AlphaZero/
 ├── .env.template                # Environment template
 ├── requirements.txt             # Dependencies
 ├── pyproject.toml               # Package configuration
-├── Makefile                     # Build and deployment targets (NEW)
-├── docker-compose.yml           # Local testing environment (NEW)
+├── Makefile                     # Build and deployment targets
 └── CLAUDE.md                    # This file
 ```
 
@@ -1139,25 +1134,16 @@ storage.save_trajectory(trajectory, iteration=1, worker_id=0, game_id="game_001"
 | `eval_l4_spot` | 1× L4 | 24 GB | $0.24 | $0.80 | Evaluation |
 
 ### 12.4 Cloud Workers
+
+The deployed workers live in `alpha_zero/cloud/gcp/` and are entrypointed by
+`alpha_zero.cloud.gcp.entrypoint` inside `dockerfiles/Dockerfile.vertex`. Each has a
+`--help`; `--dry_run` exercises the path without GCS:
+
 ```bash
-# Self-play worker
-python -m alpha_zero.cloud.selfplay_worker \
-    --num-games=100 \
-    --iteration=5 \
-    --worker-id=0 \
-    --num-simulations=800
-
-# Trainer
-python -m alpha_zero.cloud.trainer \
-    --training-steps=1000 \
-    --iteration=5 \
-    --batch-size=256
-
-# Evaluator
-python -m alpha_zero.cloud.evaluator \
-    --num-games=400 \
-    --iteration=5 \
-    --promotion-threshold=0.55
+python -m alpha_zero.cloud.gcp.selfplay_worker --help
+python -m alpha_zero.cloud.gcp.training_worker --help
+python -m alpha_zero.cloud.gcp.arena --help
+python -m alpha_zero.cloud.gcp.vertex_orchestrator --help
 ```
 
 ### 12.5 Environment Variables
@@ -1174,16 +1160,15 @@ python -m alpha_zero.cloud.evaluator \
 
 ### 12.6 Docker Build
 ```bash
-# Build all images
+# Build the deployed image locally
 make build-all
 
 # Push to Artifact Registry
 make setup-artifact-registry
 make push
 
-# Local testing
-docker-compose up -d
-docker-compose logs -f trainer
+# Local smoke (no Docker): dry-run the deployed worker
+make local-smoke
 ```
 
 ### 12.7 Vertex AI Jobs
@@ -1272,10 +1257,8 @@ project has since shipped through v1.8.0:
    trainer would index past). What remains: no config selects `batch_gumbel`
    (`--num_parallel_games` now defaults to 1 and warns when parallelism is
    requested with a variant that cannot use it, rather than silently running
-   sequential), `dockerfiles/Dockerfile.selfplay` entrypoints the *other* worker
-   (`cloud/selfplay_worker.py`, now banner-marked LEGACY — it hardcodes
-   `SimpleMCTS` and nothing but the Makefile/docker-compose builds it), and the
-   claimed 5-10x still has no benchmark artifact.
+   sequential), and the claimed 5-10x still has no benchmark artifact. (The LEGACY
+   `cloud/selfplay_worker.py` and its `Dockerfile.selfplay` were deleted 2026-09-02.)
 2. **Fog of war** (gap G10): partly done, and the remaining items are
    **sequential, not parallel**. Fog is implemented in `MicroCivEnv` (flag,
    default off) and the encoder; `DeterminizedMCTS`

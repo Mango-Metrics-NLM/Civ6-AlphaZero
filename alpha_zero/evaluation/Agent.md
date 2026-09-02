@@ -45,8 +45,6 @@ This module provides comprehensive model evaluation:
 | `baseline_agents.py` | BaseAgent ABC, RandomAgent, GreedyHeuristicAgent, MCTSAgentWrapper |
 | `config.py` | EvaluationConfig (master), BaselineConfig, DiversityConfig, presets |
 | `diversity.py` | DiversityTracker, DiversityMetrics (entropy, game length, victory types) |
-| `reports.py` | EvaluationReport, ReportGenerator (JSON/Markdown/text output) |
-| `sequential_testing.py` | SequentialTester, SequentialTestingConfig, SequentialTestResult, EvaluationDecision — SPRT-based early stopping |
 | `evaluation_pipeline.py` | Older evaluation pipeline (EvaluationPipeline) |
 | `muzero_vs_alphazero_benchmark.py` | Architecture comparison benchmarks |
 
@@ -98,4 +96,4 @@ This module provides comprehensive model evaluation:
 
 - **Internal**: `alpha_zero.envs.microciv` (game simulation), `alpha_zero.tournament.elo` (ratings), `alpha_zero.core` (network, MCTS)
 - **External**: `numpy`, `torch`, `yaml`
-- **Consumed by**: `alpha_zero.orchestrator` (model promotion), `alpha_zero.cloud.evaluator` (cloud evaluation)
+- **Consumed by**: `alpha_zero.orchestrator` (model promotion), `alpha_zero.cloud.gcp.arena` (cloud evaluation)
