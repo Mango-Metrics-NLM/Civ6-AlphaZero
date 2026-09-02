@@ -6,12 +6,14 @@
 # hand-written pattern list. This config adds an independent, rule-driven scanner
 # so the guarantee does not depend on that list staying current.
 #
-# Baseline (gitleaks 8.30.0, 2026-08-30). Be precise about what is and is not
-# clean, because the first version of this comment overstated it:
+# Baseline (gitleaks 8.30.0; re-measured 2026-09-02). Be precise about what is and
+# is not clean, because the first version of this comment overstated it:
 #
-#   * Tracked tree: 0 findings.
-#   * Branch lineage reachable from HEAD (528 commits): 0 findings. This is what
-#     the blocking gate scans — `gitleaks git . --log-opts="HEAD"`.
+#   * Tracked tree: 0 findings (16.01 MB scanned).
+#   * Branch lineage reachable from HEAD (543 commits on 2026-09-02, 528 on
+#     2026-08-30): 0 findings. This is what the blocking gate scans —
+#     `gitleaks git . --log-opts="HEAD"`. The count moves with every push; the
+#     scope does not.
 #   * Repo-wide, across every ref: **NOT clean.** A real Weights & Biases API key
 #     was committed on 2026-03-19 in 87cd68a2, on the unmerged branch
 #     feature/sprint6-validation-and-nplayer-foundation. It requires rotation, not
@@ -40,7 +42,14 @@ paths = [
     '''^\.pytest_cache/''',
     '''^\.ruff_cache/''',
     '''^htmlcov/''',
-    '''^\.coverage''',
+    # Anchored deliberately. The original `^\.coverage` was a prefix match, so it
+    # also swallowed `.coveragerc-cloud` -- a tracked config file added on
+    # 2026-09-02. Measured: an identical planted key was reported in a control
+    # file and NOT reported in `.coveragerc-cloud` until this anchor was added.
+    '''^\.coverage$''',
+    '''^\.coverage\.''',
+    '''^coverage\.(xml|json)$''',
+    '''^coverage-cloud\.json$''',
     '''^mlruns/''',
     '''^mlflow\.db$''',
     '''^checkpoints/''',

@@ -25,8 +25,8 @@ flowchart TB
     GCS["☁️ Google Cloud Storage\n(model checkpoints, replay buffers,\ntrajectories, ELO snapshots)"]:::external
     VertexAI["☁️ Google Vertex AI\n(distributed self-play workers,\ntraining jobs, evaluation jobs)"]:::external
     MLflowServer["📊 MLflow Server\n(experiment tracking,\nSQLite backend: mlflow.db)"]:::external
-    Civ6Game["🎮 Civilization VI\n(Lua mod bridge via file IPC;\nproduces game states + actions)"]:::external
-    WandB["📈 Weights & Biases\n(training loss curves,\nhyperparameter sweeps)"]:::external
+    Civ6Game["🎮 Civilization VI\n(Lua mod bridge: file IPC or\nheadless FireTuner socket)"]:::external
+    HFHub["🤗 Hugging Face Hub\n(encoder / transformer / MuZero\nmodel repos, ELO dataset, Spaces)"]:::external
 
     User -->|"launches training runs,\nviews dashboards"| Core
     Core -->|"reads/writes model checkpoints\n& replay buffers"| GCS
@@ -34,9 +34,14 @@ flowchart TB
     VertexAI -->|"worker output via GCS"| GCS
     Core -->|"logs metrics, params, artifacts"| MLflowServer
     Core -->|"receives game states,\nsends actions"| Civ6Game
-    Core -->|"logs loss / ELO metrics"| WandB
+    Core -->|"publishes checkpoints\n& datasets"| HFHub
     User -->|"browses MLflow UI"| MLflowServer
 ```
+
+> **Weights & Biases is no longer an external system here.** It was retired on
+> 2026-07-13; MLflow is the sole tracker. Only two read-only historical-run
+> readers (`scripts/compare_training_runs.py`, `scripts/search_efficiency_report.py`)
+> still reach W&B-hosted history, and they are documented as deprecated.
 
 **Legend:**
 | Colour | Meaning |
@@ -51,6 +56,15 @@ flowchart TB
 
 > **Scope:** Inside the Civ6-AlphaZero boundary. Shows the major deployable units (containers) and how they communicate.
 
+**There is exactly one training image.** `cloudbuild.yaml` builds only
+`dockerfiles/Dockerfile.vertex`, whose `alpha_zero.cloud.gcp.entrypoint` routes
+`--mode` to one of four workers in the same image. The four per-role images
+(`Dockerfile.base` / `.selfplay` / `.trainer` / `.evaluator`), `docker-compose.yml`
+and the LEGACY `alpha_zero/cloud/{selfplay_worker,trainer,evaluator}.py` they
+entrypointed were deleted on 2026-09-02 — nothing built or deployed them. The
+second image, `dockerfiles/Dockerfile.inference`, is built separately by
+`infra/cloudbuild-gameplay.yaml` and serves `alpha_zero/serving/`.
+
 ```mermaid
 flowchart TB
     classDef worker fill:#1168BD,color:#fff,stroke:#0E5EA8
@@ -59,26 +73,28 @@ flowchart TB
     classDef infra fill:#555,color:#fff,stroke:#333
 
     GCS["☁️ GCS Storage\n(checkpoints, replays,\nELO snapshots)"]:::storage
-    MLiteDB["🗄️ MLflow SQLite DB\n(mlflow.db)\n[NEW]"]:::new
+    MLiteDB["🗄️ MLflow SQLite DB\n(mlflow.db)"]:::new
 
-    subgraph VertexAI["Vertex AI (Cloud)"]
-        SPWorker["Self-Play Workers\nalpha_zero/cloud/gcp/selfplay_worker.py\n(BatchGumbelMCTS + VectorizedMicroCivEnv)"]:::worker
-        TrainWorker["Training Worker\nalpha_zero/cloud/gcp/training_worker.py\n(gradient updates, champion promotion)"]:::worker
-        TournWorker["Tournament Worker\nalpha_zero/cloud/gcp/tournament_worker.py\n(round-robin ELO evaluation)"]:::worker
-        EvalWorker["Evaluation Worker\nalpha_zero/cloud/gcp/evaluation_worker.py\n(win-rate vs random / heuristic)"]:::worker
-        VOrch["Vertex Orchestrator\nalpha_zero/cloud/gcp/vertex_orchestrator.py\n(job sequencing + preemption recovery)"]:::infra
+    subgraph VertexAI["Vertex AI — one image: dockerfiles/Dockerfile.vertex"]
+        Entry["Container entrypoint\nalpha_zero/cloud/gcp/entrypoint.py\n--mode routes to one worker\n(orchestrator mode is refused here)"]:::infra
+        SPWorker["--mode=selfplay\ncloud/gcp/selfplay_worker.py\n(Gumbel / BatchGumbel MCTS + MicroCiv)"]:::worker
+        TrainWorker["--mode=training\ncloud/gcp/training_worker.py\n(gradient updates, champion promotion)"]:::worker
+        TournWorker["--mode=tournament\ncloud/gcp/tournament_worker.py\n(round-robin ELO evaluation)"]:::worker
+        EvalWorker["--mode=evaluation\ncloud/gcp/evaluation_worker.py\n(arena.py scoring vs incumbent)"]:::worker
     end
 
     subgraph Local["Local / CI"]
-        MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator\n[NEW]"]:::new
+        VOrch["Vertex Orchestrator\ncloud/gcp/vertex_orchestrator.py\n(job sequencing + preemption recovery)\nruns LOCALLY, not in the image"]:::infra
+        MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator"]:::new
         WebUI["Web UI\nalpha_zero/web/\n(FastAPI + WebSocket game UI)"]:::worker
-        Bridge["Civ6 Bridge\nalpha_zero/bridge/\n(Lua mod file IPC)"]:::worker
+        Bridge["Civ6 Bridge\nalpha_zero/bridge/\n(file IPC or FireTuner socket)"]:::worker
     end
 
-    VOrch -->|"launch jobs"| SPWorker
-    VOrch -->|"launch jobs"| TrainWorker
-    VOrch -->|"launch jobs"| TournWorker
-    VOrch -->|"launch jobs"| EvalWorker
+    VOrch -->|"submit Vertex job"| Entry
+    Entry --> SPWorker
+    Entry --> TrainWorker
+    Entry --> TournWorker
+    Entry --> EvalWorker
 
     SPWorker -->|"write trajectories"| GCS
     TrainWorker -->|"read trajectories,\nwrite checkpoints"| GCS
@@ -90,21 +106,21 @@ flowchart TB
     TrainWorker -->|"log training loss"| MonLayer
     MonLayer -->|"persist experiments"| MLiteDB
 
-    Bridge -->|"file IPC"| WebUI
+    Bridge -->|"game state / actions"| WebUI
 ```
 
 **Container responsibilities:**
 
-| Container | Technology | Hosts |
-|-----------|-----------|-------|
-| Self-Play Workers | Python / PyTorch / Docker (Vertex) | BatchGumbelMCTS + VectorizedMicroCivEnv |
-| Training Worker | Python / PyTorch / Docker (Vertex) | SGD updates, weight promotion |
-| Vertex Orchestrator | Python / google-cloud-aiplatform | Job sequencing, preemption |
-| Tournament Worker | Python / ELO library | Round-robin, ELO snapshots |
-| Evaluation Worker | Python | Win-rate vs random/heuristic |
-| MLflow Monitoring Layer | Python / MLflow / SQLite | Experiment tracking **(NEW)** |
-| Web UI | FastAPI + WebSocket | Human-vs-AI browser interface |
-| Civ6 Bridge | Python / Lua mod | File-based IPC to real Civ6 |
+| Unit | `--mode` | Technology | Hosts |
+|------|----------|-----------|-------|
+| Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel or BatchGumbel MCTS over MicroCiv |
+| Training Worker | `training` | Python / PyTorch / Docker (Vertex) | SGD updates, weight promotion |
+| Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent |
+| Tournament Worker | `tournament` | Python (Vertex) | Round-robin, ELO snapshots |
+| Vertex Orchestrator | — (local) | Python / google-cloud-aiplatform | Job sequencing, preemption recovery |
+| MLflow Monitoring Layer | — (local) | Python / MLflow / SQLite | Experiment tracking (sole tracker) |
+| Web UI | — (local) | FastAPI + WebSocket | Human-vs-AI browser interface |
+| Civ6 Bridge | — (local) | Python / Lua mod | File IPC or headless FireTuner socket |
 
 ---
 
@@ -121,8 +137,8 @@ flowchart LR
 
     subgraph Monitoring["alpha_zero/monitoring/"]
         MLflowLogger["MLflowLogger\nmlflow_logger.py\n• start_run() / end_run()\n• log_evaluation_result() → 14 metrics\n• FINISHED / FAILED lifecycle"]:::comp
-        MLflowConfig["MLflowMonitoringConfig\nconfig.py\n• tracking_uri, experiment_name\n• SQLite backend settings"]:::comp
-        AZEvaluator["AlphaZeroMLflowEvaluator\nmlflow_evaluator.py\n• policy_entropy()\n• value_mae()\n• top1_accuracy()"]:::comp
+        MLflowConfig["MLflowConfig\nconfig.py\n(MonitoringConfig = back-compat alias)\n• tracking_uri, experiment_name\n• SQLite backend settings"]:::comp
+        AZEvaluator["AlphaZeroMLflowEvaluator\nmlflow_evaluator.py\ncompute_metrics() →\npolicy_entropy · value_mae\npolicy_top1_acc · action_diversity"]:::comp
     end
 
     subgraph Scripts["scripts/"]
@@ -224,15 +240,18 @@ flowchart TD
     Shim -.->|"lazy import inside create_mcts()"| Factory
 ```
 
+Line counts below were re-measured on 2026-09-02 (`wc -l alpha_zero/core/mcts/*.py`);
+they grew with the 2026-08-30 change that gave every search its own RNG.
+
 | Module | Lines | Contents | Depends on |
 |---|---:|---|---|
 | `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
-| `gumbel_ops.py` | 98 | `gumbel_sample_actions`, `compute_completed_q` | — |
-| `base.py` | 217 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | — |
-| `puct.py` | 396 | `Civ6MCTS` | `base`, `mcts_protocols` |
-| `simple.py` | 190 | `SimpleMCTS` | `base`, `mcts_protocols` |
-| `gumbel.py` | 560 | `GumbelMCTS`, `GumbelMCTSNode`, `GumbelMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
-| `muzero.py` | 876 | `MuZeroMCTS`, `MuZeroNode`, `MuZeroMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
+| `gumbel_ops.py` | 112 | `gumbel_sample_actions`, `compute_completed_q` | — |
+| `base.py` | 223 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | — |
+| `puct.py` | 401 | `Civ6MCTS` | `base`, `mcts_protocols` |
+| `simple.py` | 199 | `SimpleMCTS` | `base`, `mcts_protocols` |
+| `gumbel.py` | 572 | `GumbelMCTS`, `GumbelMCTSNode`, `GumbelMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
+| `muzero.py` | 888 | `MuZeroMCTS`, `MuZeroNode`, `MuZeroMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
 
 **Extension seam.** New variants are added through `create_mcts(...)`'s `_MCTS_REGISTRY`
 (charter Invariant 1); callers never branch on a concrete MCTS type. The split left that
@@ -339,5 +358,7 @@ flowchart TD
 
 ---
 
-*Generated: 2026-08-30*
+*Last revised: 2026-09-02 — Tier A dead-code removal (44 modules / 21,903 lines; the
+four per-role Dockerfiles and `docker-compose.yml` with them), W&B removed from the
+context diagram, one-image container model made explicit.*
 *Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition*

@@ -50,7 +50,13 @@ CI `[dev]` install does not provide:
 - **`serving/`** — requires the `web` extra (fastapi/uvicorn). It has unit tests
   (`tests/unit/test_serving/`, guarded with `pytest.importorskip`) but stays omitted until CI
   installs the `web` extra into the coverage job.
-- **`inference/`, `cloud/`, `web/routes/`, `spacetimedb/`, RAG/LLM infra** — likewise gated on
-  optional extras (gcp, web, spacetimedb, llm) or live services.
+- **`inference/`, `web/routes/`, `spacetimedb/`, RAG/LLM infra** — likewise gated on
+  optional extras (web, spacetimedb, llm) or live services.
+- **`cloud/`** — still omitted from the repo-wide gate, but **no longer unmeasured**. Since
+  2026-09-02, CI's `cloud-tests` job measures it separately with `.coveragerc-cloud` and holds
+  it to the per-package floor in `coverage-floors.json` (**58%**, measured **59.7%** across
+  26 files / 5,485 statements on 2026-09-02). A floor may only ever be raised. Reproduce with
+  `make test-cloud-coverage`.
 
-The gate (85%) re-tightens as these modules are brought under coverage.
+The repo-wide gate (85%) re-tightens as the remaining omitted modules are brought under
+coverage.

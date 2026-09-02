@@ -31,11 +31,19 @@ env
 tests/
 .pytest_cache
 .coverage
+.coverage.*
+coverage.xml
+coverage.json
 htmlcov/
 .mypy_cache
 .tox
 .nox
 .ruff_cache
+# Coverage-gate configuration and its report. Read only by CI and `make
+# test-cloud-coverage`; nothing in the image imports them.
+.coveragerc-cloud
+coverage-floors.json
+coverage-cloud.json
 
 # Documentation
 docs/
@@ -140,6 +148,25 @@ uv.lock
 .gitleaks.toml
 .hypothesis/
 .tools/
+
+# Build and deploy definitions — never read from inside the image. Only two
+# images are built from this context: dockerfiles/Dockerfile.vertex (the deployed
+# trainer/worker, built by cloudbuild.yaml) and dockerfiles/Dockerfile.inference
+# (built by infra/cloudbuild-gameplay.yaml). The four per-role Dockerfiles and
+# docker-compose.yml were deleted on 2026-09-02.
+#
+# `Dockerfile` / `dockerfiles/` are deliberately NOT listed: excluding the
+# Dockerfile named by `-f` is normally harmless, but this is the deployed build
+# and no docker daemon was available to prove it here. A few KB in a multi-GB
+# CUDA image is not worth the risk.
+cloudbuild.yaml
+docker-compose*.yml
+Makefile
+infra/terraform/
+
+# Note on evidence: docs/evidence/ (including tech_debt_baseline/baseline.json)
+# is already excluded by the `docs/` rule above — it is committed input to the
+# debt-ratchet test, not a runtime artifact.
 
 # Merge/patch leftovers
 *.orig

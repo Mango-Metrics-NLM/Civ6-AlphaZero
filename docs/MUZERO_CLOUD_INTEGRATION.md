@@ -37,7 +37,11 @@ When `--algorithm=muzero`:
 
 | Flag | Values | Default | Description |
 |------|--------|---------|-------------|
-| `--mcts_type` | `civ6`, `gumbel`, `muzero` | `civ6` | MCTS variant to use |
+| `--mcts_type` | `civ6`, `gumbel`, `batch_gumbel`, `muzero` | `gumbel` | MCTS variant to use |
+
+Values and default come from `VALID_MCTS_TYPES` / `DEFAULT_MCTS_TYPE` in
+`alpha_zero/cloud/gcp/config.py` — a single source shared by `selfplay_worker`,
+`evaluation_worker` and `vertex_orchestrator`.
 
 When `--mcts_type=muzero`:
 

@@ -31,12 +31,14 @@ passing it proved nothing about CI. The individual targets remain available for 
 faster inner loop:
 
 ```bash
-make lint          # ruff check/format, whole repo (0.15.8, 100-char lines)
-make typecheck     # mypy, exactly as CI runs it (typecheck-strict is local-only)
-make test          # the four suites CI runs, with CI's marker filters
-make test-all      # coverage, mirroring CI's coverage job (gate: 85%)
-make validate      # governance validators (openspec, kb, skills, doc-sync)
-make eval-llm      # LLM eval gate (offline)
+make lint                # ruff check/format, whole repo (0.15.8, 100-char lines)
+make typecheck           # mypy, exactly as CI runs it (typecheck-strict is local-only)
+make test                # the suites CI runs, with CI's marker filters
+make test-all            # coverage, mirroring CI's coverage job (gate: 85%)
+make test-cloud-coverage # the deployed path, against coverage-floors.json
+make validate            # governance validators (openspec, kb, skills, agents, doc-sync)
+make security-secrets    # gitleaks: committable tree + this branch's history
+make eval-llm            # LLM eval gate (offline)
 ```
 
 The installed git hooks run ruff/format and the governance validators on commit,
@@ -46,6 +48,15 @@ and a quick unit-test pass on push.
 
 - **Coverage:** CI enforces **85%** on `alpha_zero/` (`--cov-fail-under=85`,
   matching `pyproject.toml` `fail_under`). Keep new code covered.
+  `alpha_zero/cloud/` is omitted from that gate and measured separately against a
+  per-package floor in `coverage-floors.json` (via `.coveragerc-cloud`). Floors
+  are a ratchet: raise one when the measurement supports it, never lower one, and
+  move the recorded `measured` value in the same PR.
+- **Debt ratchet:** `tests/regression/test_debt_ratchet.py` holds the metrics in
+  `docs/evidence/tech_debt_baseline/baseline.json`. A metric may fall — update the
+  baseline in the same PR — but may never rise. Re-measure with
+  `python scripts/measure_debt.py`; find newly dead modules with
+  `python scripts/audit_import_graph.py`.
 - **Lint:** ruff check + format must pass on the **whole repository** (tests/,
   scripts/, infra/, and root runners included; unmaintained fringe dirs are
   excluded centrally in `pyproject.toml`). Line length is 100.

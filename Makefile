@@ -61,7 +61,8 @@ help:
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
-	@echo "  make test-all          Run all tests with coverage"
+	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
+	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
 	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
@@ -74,9 +75,9 @@ help:
 	@echo "  make local-smoke       Dry-run the deployed self-play worker"
 	@echo ""
 	@echo "Vertex AI:"
-	@echo "  make deploy-pipeline   Deploy training pipeline"
-	@echo "  make run-iteration     Run single training iteration"
-	@echo "  make estimate-cost     Estimate costs for configuration"
+	@echo "  make run-iteration     Run single training iteration (infra.vertex_launcher, LEGACY)"
+	@echo "  make deploy-pipeline   NOT IMPLEMENTED - use alpha_zero.cloud.gcp.vertex_orchestrator"
+	@echo "  make estimate-cost     NOT IMPLEMENTED - see docs/GCP_INFRA.md"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  PROJECT_ID=$(PROJECT_ID)"
@@ -151,6 +152,20 @@ test-sanity:
 .PHONY: test-cloud
 test-cloud:
 	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short
+
+# Mirrors CI's `cloud-tests` job, which since 2026-09-02 also MEASURES the
+# deployed path. alpha_zero/cloud/* is omitted from the repo-wide gate, so until
+# this floor existed no job measured it at all. A separate coverage config is
+# required, not cosmetic: the repo-wide one omits the very package under test,
+# and `coverage json` without --rcfile reads pyproject.toml and reports nothing.
+.PHONY: test-cloud-coverage
+test-cloud-coverage:
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x \
+		--cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-report=
+	$(PYTHON) -m pytest tests/cloud/smoke/ -v --tb=short \
+		--cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-append --cov-report=
+	$(PYTHON) -m coverage json --rcfile=.coveragerc-cloud -o coverage-cloud.json
+	$(PYTHON) scripts/check_coverage_floors.py --report coverage-cloud.json --package alpha_zero/cloud
 
 # Mirrors CI's `security` job, which runs BOTH the pytest suite and a bandit
 # scan. The bandit half was missing entirely, so `make verify` could pass while
@@ -291,8 +306,8 @@ hooks-install:
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
 .PHONY: verify
-verify: lint-check typecheck test test-security security-secrets test-governance validate test-all eval-llm
-	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage and eval gates"
+verify: lint-check typecheck test test-security security-secrets test-governance validate test-all test-cloud-coverage eval-llm
+	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage (global + cloud floor) and eval gates"
 
 .PHONY: eval-llm
 eval-llm:
@@ -351,14 +366,16 @@ push: build-all
 # ============================================================================
 # Local Testing
 # ============================================================================
-# `make local-test` / `make local-smoke` (docker-compose over the per-role
-# images) were removed with those images on 2026-09-02. The local smoke test
-# is the deployed worker's own dry run:
+# `make local-test` / `make local-down` (docker-compose over the per-role images)
+# were removed with those images on 2026-09-02. `local-smoke` survives, but it no
+# longer goes through docker at all: it is the deployed worker's own dry run.
 
 .PHONY: local-smoke
 local-smoke:
 	@echo "Running local smoke test (deployed self-play worker, dry run)..."
-	$(PYTHON) -m alpha_zero.cloud.gcp.selfplay_worker --dry_run
+	CIV6_STORAGE_BACKEND=local CIV6_STORAGE_BASE_PATH=./test_storage \
+	$(PYTHON) -m alpha_zero.cloud.gcp.selfplay_worker \
+		--worker_id 0 --model_version 0 --iteration 0 --games 1 --dry_run
 	@echo "Smoke test passed"
 
 .PHONY: clean-test-storage
@@ -401,6 +418,13 @@ deploy-pipeline:
 	@echo "Use: $(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator --help"
 	@exit 1
 
+# LEGACY, and only partly working. `infra/vertex_launcher.py` is not the deployed
+# path -- cloudbuild.yaml builds only dockerfiles/Dockerfile.vertex, which
+# entrypoints alpha_zero.cloud.gcp.entrypoint. Its --dry-run works; a real submit
+# does not: the submit path imports `get_machine_profile` from
+# alpha_zero.cloud.config, which does not exist (verified against the default
+# branch, so this predates the 2026-09-02 deletion). Use
+# `$(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator` for real runs.
 .PHONY: run-iteration
 run-iteration:
 	@echo "Running training iteration $(ITERATION)..."
@@ -433,11 +457,19 @@ run-evaluator:
 		--iteration=$(ITERATION) \
 		--num-games=$(EVAL_GAMES)
 
+# BROKEN: `CloudConfig.estimate_iteration_cost()` does not exist and never has
+# (checked against the default branch), so this target has always raised
+# AttributeError. Kept with the failure made explicit rather than silently
+# advertising a number the code cannot produce. The live estimator is
+# per-job, not per-iteration: `alpha_zero.cloud.gcp.cost.CostEstimator
+# .estimate_job_cost(machine_type, accelerator_type, count, hours, is_spot)`.
+# Measured per-iteration costs are tabulated in docs/GCP_INFRA.md.
 .PHONY: estimate-cost
 estimate-cost:
-	$(PYTHON) -c "from alpha_zero.cloud.config import CloudConfig; \
-		c = CloudConfig.from_env(); \
-		print('Estimated cost per iteration:', c.estimate_iteration_cost())"
+	@echo "estimate-cost is not implemented: CloudConfig has no estimate_iteration_cost()."
+	@echo "Per-job estimates: alpha_zero.cloud.gcp.cost.CostEstimator.estimate_job_cost(...)"
+	@echo "Measured per-iteration costs: docs/GCP_INFRA.md"
+	@exit 1
 
 # ============================================================================
 # Utilities
@@ -468,9 +500,11 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
+# `docker-compose down -v` was removed on 2026-09-02 with docker-compose.yml and
+# the per-role images it composed; there is no local stack left to tear down.
 .PHONY: clean-all
 clean-all: clean clean-test-storage
-	docker-compose down -v || true
+	rm -f coverage-cloud.json
 	docker rmi $(LOCAL_BASE_IMAGE) 2>/dev/null || true
 
 # ============================================================================

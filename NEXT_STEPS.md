@@ -1,5 +1,15 @@
 # Next Steps — Live Bridge (v1.8.0)
 
+> **Scope note.** This document covers the live Civ6 bridge only. The other open
+> track is tech-debt reduction and hardening: its Core scope landed on 2026-09-02
+> (44 dead modules / 21,903 lines deleted, the four per-role Dockerfiles,
+> `docker-compose.yml`, `setup.py` and `sweep_config.yaml` with them; a derived
+> `action_space_size`; safe-by-default checkpoint loading; a coverage floor on the
+> deployed path). What remains — WS0 key rotation, the fourteen Tier B decisions,
+> WS3.2's env-prefix collapse, WS5's seven decompositions, WS6 and WS7 — is
+> itemised in [`ROADMAP.md`](ROADMAP.md) (M4) and specified in
+> `kb/specs/20260902-tech-debt-hardening.md`.
+
 ## Status
 
 Live command delivery to Civilization VI is **proven, headless, end to end**. The
