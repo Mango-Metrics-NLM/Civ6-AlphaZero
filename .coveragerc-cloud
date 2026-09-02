@@ -1,0 +1,7 @@
+[run]
+source = alpha_zero.cloud
+branch = True
+omit =
+    */tests/*
+    */__pycache__/*
+    */__init__.py

@@ -488,8 +488,10 @@ class TrainingSafeguard:
         path_str = str(path)
 
         try:
-            # Load checkpoint
-            checkpoint = torch.load(path, map_location="cpu")
+            # Load checkpoint. weights_only=True: a checkpoint that needs
+            # arbitrary unpickling to open fails validation (the except below
+            # records the reason) rather than executing code during a check.
+            checkpoint = torch.load(path, map_location="cpu", weights_only=True)
 
             # Check for state_dict (common checkpoint format)
             state_dict = checkpoint

@@ -8,6 +8,8 @@ historical import paths keep working; both paths resolve to the same objects.
 
 from __future__ import annotations
 
+import warnings
+
 from alpha_zero.hexcrystal.crystalline_layers import (
     CrystallineLatticeConfig,
     CrystallineLatticeLayer,
@@ -19,3 +21,10 @@ __all__ = [
     "CrystallineLatticeLayer",
     "SymmetryType",
 ]
+
+warnings.warn(
+    "alpha_zero.core.crystalline_layers is a deprecated re-export shim; import from "
+    "alpha_zero.hexcrystal.crystalline_layers instead. The shim will be removed one release after 2026-09-02.",
+    DeprecationWarning,
+    stacklevel=2,
+)

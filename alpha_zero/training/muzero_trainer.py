@@ -1246,11 +1246,16 @@ class MuZeroTrainer:
         Args:
             path: Path to save checkpoint.
         """
+        from alpha_zero.core.checkpoint_utils import serialize_config
+
         checkpoint = {
             "network_state_dict": self.network.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "step_count": self.step_count,
-            "config": self.config,
+            # Primitives, not the dataclass instance: an instance is not a torch
+            # safe global, so storing it forced every later load of the
+            # trainer's *own* checkpoints onto the weights_only=False path.
+            "config": serialize_config(self.config),
         }
         torch.save(checkpoint, path)
         logger.info(f"Saved checkpoint to {path}")
@@ -1262,15 +1267,15 @@ class MuZeroTrainer:
             path: Path to checkpoint.
 
         Note:
-            Checkpoints containing optimizer state may require unsafe loading.
-            Only load checkpoints from trusted sources.
+            Checkpoints written by :meth:`save_checkpoint` load with
+            ``weights_only=True`` (optimizer state is tensors and primitives).
+            A checkpoint written before 2026-09-02 carries the config as a
+            dataclass instance and needs ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1``;
+            re-save it once to migrate.
         """
-        result = safe_load_checkpoint(
-            path,
-            map_location=self.device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=self.device)
         checkpoint = result.data
 
         self.network.load_state_dict(checkpoint["network_state_dict"])
@@ -1279,8 +1284,9 @@ class MuZeroTrainer:
 
         if not result.loaded_safely:
             logger.warning(
-                "Checkpoint loaded with weights_only=False due to optimizer state. "
-                "Ensure checkpoint is from a trusted source."
+                "Checkpoint %s was loaded with weights_only=False (legacy layout: "
+                "config stored as a dataclass instance). Re-save it to migrate.",
+                path,
             )
         logger.info(f"Loaded checkpoint from {path}, step={self.step_count}")
 

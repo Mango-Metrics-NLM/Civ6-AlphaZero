@@ -13,7 +13,6 @@ from __future__ import annotations
 import logging
 import tempfile
 import time
-import uuid
 from pathlib import Path
 
 import pytest
@@ -33,21 +32,13 @@ try:
 except ImportError:
     GCS_AVAILABLE = False
 
-try:
-    from google.cloud import aiplatform as _aiplatform  # noqa: F401
-
-    VERTEX_AVAILABLE = True
-except ImportError:
-    VERTEX_AVAILABLE = False
-
 # Fixtures e2e_cloud_config, test_artifact_path, and cleanup_gcs_artifacts
 # are provided by tests/e2e/conftest.py
 
-# Skip markers for SDK availability
+# Skip marker for SDK availability. The Vertex and Cloud Logging classes that
+# used to follow imported names the deleted LEGACY cloud modules never exported;
+# they were removed on 2026-09-02 with those modules.
 requires_gcs = pytest.mark.skipif(not GCS_AVAILABLE, reason="google-cloud-storage not installed")
-requires_vertex = pytest.mark.skipif(
-    not VERTEX_AVAILABLE, reason="google-cloud-aiplatform not installed"
-)
 
 
 @pytest.mark.requires_gcp
@@ -145,114 +136,3 @@ class TestGCSIntegration:
             assert latest is not None
             assert "step_100" in latest
             logger.info(f"Latest checkpoint: {latest}")
-
-
-@pytest.mark.requires_gcp
-@requires_vertex
-class TestVertexAIIntegration:
-    """E2E tests for Vertex AI integration."""
-
-    def test_vertex_trainer_initialization(self, e2e_cloud_config: GCPConfig) -> None:
-        """Test that Vertex AI trainer initializes with real credentials."""
-        from alpha_zero.cloud.gcp import VertexAITrainer  # type: ignore
-
-        trainer = VertexAITrainer(e2e_cloud_config)
-        assert trainer.is_mock is False
-        logger.info(f"Vertex AI trainer initialized for project: {e2e_cloud_config.project_id}")
-
-    def test_vertex_job_spec_validation(self, e2e_cloud_config: GCPConfig) -> None:
-        """Test creating a valid Vertex AI job spec (without submission)."""
-        from alpha_zero.cloud.gcp import VertexAITrainer  # type: ignore
-
-        trainer = VertexAITrainer(e2e_cloud_config)
-
-        # Create job spec without submitting
-        job_spec = trainer._create_job_spec(
-            display_name="e2e-test-job-validation",
-            container_uri="gcr.io/cloud-aiplatform/training/pytorch-gpu.1-13:latest",
-            args=["--test", "true"],
-        )
-
-        # Validate spec structure
-        assert job_spec is not None
-        assert "workerPoolSpecs" in job_spec or hasattr(job_spec, "worker_pool_specs")
-        logger.info("Job spec validation passed")
-
-
-@pytest.mark.requires_gcp
-class TestCloudLoggingIntegration:
-    """E2E tests for Cloud Logging integration."""
-
-    def test_cloud_logger_initialization(self, e2e_cloud_config: GCPConfig) -> None:
-        """Test that Cloud Logger initializes with real credentials."""
-        from alpha_zero.cloud.gcp import CloudLogger  # type: ignore
-
-        logger_instance = CloudLogger(
-            e2e_cloud_config,
-            log_name="e2e-test-log",
-        )
-
-        # Should not be in mock mode
-        assert logger_instance.is_mock is False
-        logger.info("Cloud Logger initialized successfully")
-
-    def test_cloud_logger_write(self, e2e_cloud_config: GCPConfig) -> None:
-        """Test writing a log entry to Cloud Logging."""
-        from alpha_zero.cloud.gcp import CloudLogger  # type: ignore
-
-        cloud_logger = CloudLogger(
-            e2e_cloud_config,
-            log_name="e2e-test-log",
-        )
-
-        # Write test log entry
-        cloud_logger.log_event(
-            severity="INFO",
-            message="E2E test log entry",
-            payload={"test_id": uuid.uuid4().hex, "source": "e2e_test"},
-        )
-
-        # Flush to ensure write
-        cloud_logger.flush()
-        logger.info("Log entry written to Cloud Logging")
-
-
-@pytest.mark.requires_gcp
-@requires_gcs
-class TestFullCloudWorkflow:
-    """E2E tests for complete cloud training workflow."""
-
-    def test_coordinator_real_gcs(
-        self,
-        e2e_cloud_config: GCPConfig,
-        cleanup_gcs_artifacts: str,
-    ) -> None:
-        """Test CloudTrainingCoordinator with real GCS storage."""
-        from alpha_zero.distributed.cloud_coordinator import (
-            CloudCoordinatorConfig,
-            CloudTrainingCoordinator,
-        )
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Configure coordinator with real GCS
-            config = CloudCoordinatorConfig(
-                cloud_config=e2e_cloud_config,  # type: ignore
-                checkpoint_dir=tmpdir,
-                sync_interval=1.0,  # Fast sync for testing
-                enable_cloud_checkpoints=True,
-                enable_preemption_handling=False,  # Disable for E2E to avoid signal handling
-            )
-
-            coordinator = CloudTrainingCoordinator(config)
-            coordinator.initialize(force_mock=False)
-
-            try:
-                # Log some metrics
-                coordinator.log_training_metrics(
-                    step=1,
-                    metrics={"loss": 0.5, "e2e_test": 1.0},
-                )
-
-                logger.info("CloudTrainingCoordinator E2E test passed")
-            finally:
-                coordinator.shutdown()

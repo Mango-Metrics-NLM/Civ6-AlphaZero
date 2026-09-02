@@ -5,7 +5,12 @@ Tests cover:
 - Cyclic LR with optimizer integration
 - All optimizations working together
 - PBT with optimization configs
+
+The ``PerformanceOptimizationsConfig`` preset/serialization tests went with
+``alpha_zero/optimizations/config.py`` (dead code, removed 2026-09-02).
 """
+
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
@@ -17,7 +22,6 @@ from alpha_zero.optimizations import (
     AuxiliaryTargetsConfig,
     CyclicLRConfig,
     CyclicLRScheduler,
-    PerformanceOptimizationsConfig,
     PlayoutCapConfig,
     PlayoutCapRandomizer,
     PolicyPruningConfig,
@@ -280,12 +284,8 @@ class TestAllOptimizationsTogether:
 
     @pytest.fixture
     def full_config(self):
-        """Create full optimization configuration."""
-        return PerformanceOptimizationsConfig(
-            enable_playout_cap=True,
-            enable_policy_pruning=True,
-            enable_cyclic_lr=True,
-            enable_auxiliary_targets=True,
+        """Bundle one config per optimization (the four live components)."""
+        return SimpleNamespace(
             playout_cap=PlayoutCapConfig(
                 min_playouts=25,
                 max_playouts=200,
@@ -346,41 +346,6 @@ class TestAllOptimizationsTogether:
             }
             aux_targets = aux_generator.generate_targets(game_state)
             assert isinstance(aux_targets, AuxiliaryTargets)
-
-    def test_presets_work(self):
-        """Test all configuration presets work correctly."""
-        presets = [
-            PerformanceOptimizationsConfig.fast_preset(),
-            PerformanceOptimizationsConfig.quality_preset(),
-            PerformanceOptimizationsConfig.balanced_preset(),
-            PerformanceOptimizationsConfig.minimal_preset(),
-        ]
-
-        for config in presets:
-            # Verify config is valid
-            enabled = config.get_enabled_optimizations()
-            assert isinstance(enabled, list)
-
-            # Verify summary generation works
-            summary = config.get_summary()
-            assert isinstance(summary, str)
-            assert len(summary) > 0
-
-    def test_config_serialization_roundtrip(self, full_config, tmp_path):
-        """Test config can be serialized and deserialized."""
-        # Save to YAML
-        yaml_path = tmp_path / "optimizations.yaml"
-        full_config.to_yaml(yaml_path)
-        assert yaml_path.exists()
-
-        # Load back
-        loaded = PerformanceOptimizationsConfig.from_yaml(yaml_path)
-
-        # Verify values match
-        assert loaded.enable_playout_cap == full_config.enable_playout_cap
-        assert loaded.enable_cyclic_lr == full_config.enable_cyclic_lr
-        assert loaded.playout_cap.min_playouts == full_config.playout_cap.min_playouts
-        assert loaded.cyclic_lr.schedule_type == full_config.cyclic_lr.schedule_type
 
 
 class TestPBTWithOptimizations:

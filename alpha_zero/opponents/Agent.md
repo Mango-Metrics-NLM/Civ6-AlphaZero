@@ -27,14 +27,10 @@ This module provides a common opponent contract and concrete implementations:
 
 | Pattern | Where | Why |
 |---------|-------|-----|
-| **Strategy** | `base.py` — `Opponent` ABC with concrete impls | Swap opponents without changing evaluation/self-play code |
 | **Adapter** | `stockfish_opponent.py` | Wrap an external engine behind the common interface |
-| **Snapshot** | `network_opponent.py` | Freeze a network version as a fixed adversary |
 
 ---
 
 ## Key Files
 
-- `base.py` — `Opponent` interface.
-- `network_opponent.py` — network-backed opponent.
 - `stockfish_opponent.py` — external chess-engine opponent.

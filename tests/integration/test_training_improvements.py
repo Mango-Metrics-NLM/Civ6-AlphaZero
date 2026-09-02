@@ -22,11 +22,6 @@ from alpha_zero.utils.environment_tuning import (
     create_tuned_environment,
     get_default_fast_config,
 )
-from alpha_zero.utils.training_config_enhanced import (
-    EnhancedTrainingConfig,
-    create_training_config,
-    get_fast_training_config,
-)
 
 
 class TestTunedEnvironmentTraining:
@@ -258,10 +253,7 @@ class TestFullTrainingPipeline:
             board_size=env_params["board_size"],
         )
 
-        # 4. Create training config (used for env configuration)
-        _training_config = get_fast_training_config()
-
-        # 5. Run a few games
+        # 4. Run a few games
         for _ in range(5):
             obs, _info = env.reset()
             reward_shaper.reset()
@@ -287,32 +279,6 @@ class TestFullTrainingPipeline:
         # Verify everything ran
         progress = curriculum.get_progress()
         assert progress["total_games"] == 5
-
-    def test_training_config_schedules(self):
-        """Test training config schedule integration."""
-        config = create_training_config(
-            batch_size=64,
-            learning_rate=0.001,
-            num_iterations=100,
-            use_schedules=True,
-        )
-
-        # Verify schedules at different points
-        batch_0 = config.get_batch_size(0)
-        batch_end = config.get_batch_size(100)
-
-        # Note: warmup_cosine starts at 0 during warmup, so check after warmup
-        warmup_steps = (
-            config.learning_rate_schedule.warmup_steps if config.learning_rate_schedule else 0
-        )
-        lr_after_warmup = config.get_learning_rate(warmup_steps)
-        lr_end = config.get_learning_rate(100)
-
-        # Batch size should increase
-        assert batch_end >= batch_0
-
-        # Learning rate should decrease after warmup
-        assert lr_end <= lr_after_warmup
 
 
 class TestConfigurationPersistence:
@@ -349,20 +315,6 @@ class TestConfigurationPersistence:
 
     def test_configuration_roundtrip(self):
         """Test configuration dictionary roundtrip."""
-        # Training config
-        training = create_training_config(
-            batch_size=128,
-            learning_rate=0.002,
-            num_iterations=5000,
-            use_schedules=True,
-        )
-
-        training_dict = training.to_dict()
-        training_loaded = EnhancedTrainingConfig.from_dict(training_dict)
-
-        assert training_loaded.batch_size == training.batch_size
-        assert training_loaded.learning_rate == training.learning_rate
-
         # Curriculum config
         curriculum = CurriculumConfig.default_three_stage()
         curriculum_dict = curriculum.to_dict()
@@ -376,27 +328,3 @@ class TestConfigurationPersistence:
         rewards_loaded = EnhancedRewardsConfig.from_dict(rewards_dict)
 
         assert rewards_loaded.scale_factor == rewards.scale_factor
-
-
-class TestResourceManagement:
-    """Integration tests for resource management."""
-
-    def test_batch_size_recommendation(self):
-        """Test batch size recommendation with real model size."""
-        from alpha_zero.utils.training_config_enhanced import ResourceConfig, ResourceManager
-
-        config = ResourceConfig(max_memory_gb=4.0)  # Simulate limited memory
-        manager = ResourceManager(config)
-
-        batch_size, accumulation = manager.recommend_batch_size(
-            spatial_size=(13, 16, 16),
-            vector_size=64,
-            model_params=500000,  # ~500K params
-            target_effective_batch=256,
-        )
-
-        effective = batch_size * accumulation
-
-        # Should achieve reasonable effective batch size
-        assert effective >= 64
-        assert accumulation >= 1

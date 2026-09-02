@@ -27,8 +27,9 @@ AlphaZero on MicroCiv, proven end-to-end. *(Delivered: Phases 1–18, v0.x–v1.
 
 Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7, 19–21, v1.6.0.)*
 
-- 3-phase Vertex AI pipeline (self-play → train → eval), Docker images, GCS-backed
-  storage and replay, Spot-VM preemption handling.
+- 3-phase Vertex AI pipeline (self-play → train → eval) in a single image
+  (`dockerfiles/Dockerfile.vertex`, routed by `alpha_zero.cloud.gcp.entrypoint`),
+  GCS-backed storage and replay, Spot-VM preemption handling.
 - MLflow monitoring layer (`alpha_zero/monitoring/`), ELO tournament system,
   post-run evaluation and analysis scripts.
 - 50-iteration production runs completed; 269 model versions in the GCS lineage.
@@ -66,9 +67,32 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   configs/toggles unified with legacy env fallback, dead suites replaced by MLflow
   equivalents; `run_sweep.py` ported to Optuna)*; add fixtures for the skipped
   hierarchical / state-extraction / training-smoke tests.
-- Bring omitted modules (`serving/`, `inference/`, cloud infra) under the coverage
-  gate (re-tightened 80% → 85% on 2026-07-13; omit-list shrink remains).
+- Bring omitted modules under the coverage gate (re-tightened 80% → 85% on
+  2026-07-13; omit-list shrink remains). **`cloud/` is now measured** — not by
+  un-omitting it, but by a separate per-package floor (`coverage-floors.json`,
+  `.coveragerc-cloud`) enforced in CI's `cloud-tests` job: floor 58%, measured
+  59.7% on 2026-09-02. `serving/` and `inference/` still need the `web` extra in
+  the coverage job before they can follow.
 - Achieve 100% clean mypy type safety across all 350 files (done 2026-08-10).
+- **Tech-debt reduction and hardening** (`kb/specs/20260902-tech-debt-hardening.md`).
+  Core scope landed 2026-09-02: measurement-first debt metrics with a ratchet
+  (`scripts/measure_debt.py`, `scripts/audit_import_graph.py`), workflow and hook
+  hardening, `action_space_size` derived from one source instead of a wrong 381
+  literal, safe-by-default checkpoint loading, Tier A deletion (44 modules /
+  21,903 lines, plus the four per-role Dockerfiles, `docker-compose.yml`,
+  `setup.py` and `sweep_config.yaml`), and the cloud coverage floor above.
+  Remaining, in the maintainer's hands or a later PR:
+  - **WS0** — rotate the leaked W&B key and close the issue backlog (see the
+    known-issue row in `CLAUDE.md` §5.3 and `docs/runbooks/secret-scanning.md`).
+  - **Tier B** — fourteen yes/no keep-or-delete decisions, 18,133 lines.
+  - **WS3.2** — collapse the env prefix to `CIV6AZ_` only, behind a two-release
+    warn-and-map shim in `env_loader.py`.
+  - **WS5** — decompose the seven remaining god files, each behind a re-export
+    shim with a patchability test.
+  - **WS6** — consolidate duplicate definitions (`setup_logging`, `create_mcts`,
+    Elo, `MCTSConfig`) and settle on one dependency manifest.
+  - **WS7** — layering test, wider type-check scope, skip-site burndown,
+    `per-file-ignores` 23 → ≤ 12.
 
 ## M5 — Full Civ6 Mastery
 

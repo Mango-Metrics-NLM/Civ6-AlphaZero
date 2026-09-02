@@ -303,7 +303,10 @@ class TestNPlayerNetworkConfig:
         config = NPlayerNetworkConfig()
         assert config.num_players == 2
         assert config.spatial_channels == 13
-        assert config.action_space_size == 381
+        # Single dynamic source (WS3.1): the environment's own size, 376.
+        from alpha_zero.core.civ6_actions import MicroCivActionSpace
+
+        assert config.action_space_size == MicroCivActionSpace().total_size
 
     def test_custom_values(self):
         config = NPlayerNetworkConfig(

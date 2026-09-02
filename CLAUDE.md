@@ -126,7 +126,7 @@ IN SCOPE:
 - All files in alpha_zero/
 - All files in tests/
 - Configuration files in configs/
-- Root-level Python files (setup.py, pyproject.toml)
+- Root-level Python files (pyproject.toml, run_*.py)
 - Documentation files (CLAUDE.md, README.md)
 - Environment templates (.env.template)
 - Requirements files (requirements.txt)
@@ -271,6 +271,7 @@ When making changes, update the relevant sections below:
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
 | `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, LLM eval gate) — use this instead of hand-assembling the sequence |
+| `OMP_NUM_THREADS=2 pytest tests/unit -q -m "not slow"` | **Run the suite in this sandbox.** Without the thread cap, two tests wedge in `torch.conv2d` on the OpenMP spin-wait (§5.3) and hit the 120 s timeout. With it: 9,921 passed in 3m39s. Applies to any local suite run touching torch. |
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
 | `make typecheck-strict` | Harsher local `--strict` pass — **not** a CI gate |
@@ -313,18 +314,16 @@ When making changes, update the relevant sections below:
 
 | Command | Purpose |
 |---------|---------|
-| `make build-all` | Build all Docker images |
-| `make push` | Push images to Artifact Registry |
-| `make local-test` | Run local docker-compose test |
-| `make local-smoke` | Run smoke test (1 game + 1 step) |
-| `docker-compose up -d` | Start local testing environment |
+| `make build-all` | Build the deployed image (`dockerfiles/Dockerfile.vertex`); the per-role base/selfplay/trainer/evaluator images, `docker-compose.yml` and `make local-test` were removed 2026-09-02 as dead |
+| `make push` | Push it to Artifact Registry |
+| `make local-smoke` | Dry-run the deployed self-play worker (`alpha_zero.cloud.gcp.selfplay_worker --dry_run`) |
 | `python -m alpha_zero.cloud.gcp.vertex_orchestrator --help` | **The deployed orchestrator.** `cloudbuild.yaml` builds only `Dockerfile.vertex`, which entrypoints `alpha_zero.cloud.gcp.entrypoint` |
 | `python -m infra.vertex_launcher --mode=selfplay --iteration=0 --dry-run` | Self-play job dry run — **legacy, not deployed**: resolves `civ6-selfplay:latest` and friends, images no build pipeline produces |
 | `python -m infra.vertex_launcher --mode=train --iteration=0 --dry-run` | Training job dry run — legacy, not deployed |
 | `python -m infra.vertex_launcher --mode=eval --iteration=0 --dry-run` | Evaluation job dry run — legacy, not deployed |
-| `python -m alpha_zero.cloud.selfplay_worker --help` | Self-play worker options — **legacy** (hardcodes SimpleMCTS); the deployed worker is `alpha_zero.cloud.gcp.selfplay_worker` |
-| `python -m alpha_zero.cloud.trainer --help` | Trainer options |
-| `python -m alpha_zero.cloud.evaluator --help` | Evaluator options |
+| `python -m alpha_zero.cloud.gcp.selfplay_worker --help` | Deployed self-play worker options (the LEGACY `alpha_zero.cloud.{selfplay_worker,trainer,evaluator}` modules were deleted 2026-09-02) |
+| `python -m alpha_zero.cloud.gcp.training_worker --help` | Deployed trainer options |
+| `python -m alpha_zero.cloud.gcp.arena --help` | Deployed arena/evaluator options |
 
 #### Test Commands
 
@@ -345,7 +344,9 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_llm_harness_target.py -v` | Eval-harness callable target adapter tests |
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
-| `pytest tests/cloud/unit/test_evaluator_stagnation.py -v` | Test promotion-stagnation detection |
+| `pytest tests/regression/test_debt_ratchet.py -v` | Tech-debt ratchet — every tracked metric vs the committed baseline |
+| `python scripts/audit_import_graph.py` | List `alpha_zero/` modules with no live importer (AST import graph) |
+| `python scripts/measure_debt.py --write PATH` | Re-measure every tracked debt metric as JSON |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_nplayer_training_pipeline.py -v` | Test N-player training pipeline (G9: per-player values) |
 | `pytest tests/unit/test_simultaneous_mcts.py -v` | Test DUCT algorithm |
@@ -415,7 +416,7 @@ When making changes, update the relevant sections below:
 | 2026-05-24 | BridgeEvalHarness (W2.3a) | MLflow-backed telemetry hooks (`on_start`, `on_turn_end`, `on_stop`) wired into `BridgeAgentLoop`. `--eval-harness` flag in `civ6_local.py`; env var `CIV6AZ_LOCAL_USE_EVAL_HARNESS=1`. |
 | 2026-05-24 | install_civ6_mod.py (W2.3b) | `scripts/install_civ6_mod.py` copies `mod/AlphaZeroAI` → `%USERPROFILE%\Documents\My Games\Sid Meier's Civilization VI\Mods\AlphaZeroAI`. Creates dir if absent. Supports `--mod-dir` override. |
 | 2026-05-24 | execute_with_retry wired (W3.1) | `GameBridgeHealthChecker.execute_with_retry` wraps both `wait_for_state` and `send_and_wait_with_retry` in `BridgeAgentLoop` when `health_checker` is supplied. `CircuitBreakerOpenError` maps to `state_timeouts` counter and asyncio.sleep(≥ retry_after). |
-| 2026-05-30 | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss) + new `count_consecutive_non_promotions` promotion check in `cloud/evaluator.py`. Addresses §13 zero-promotion failure. Env: `CIV6AZ_STAGNATION_*`, `CIV6_STAGNATION_PATIENCE`. All default OFF. |
+| 2026-05-30 (half superseded 2026-09-02) | Training-stagnation detection (harness engineering) | Reuses existing `EloPlateauDetector` in the orchestrator (`StagnationConfig`, opt-in, ELO/win-rate signal — NOT loss). Env: `CIV6AZ_STAGNATION_*`. Default OFF. **The `count_consecutive_non_promotions` half is gone:** it lived only in `cloud/evaluator.py`, which the import graph showed had no live importer (the deployed promotion path is `cloud/gcp/arena.py` + `evaluation/promotion.py`), so it was removed with Tier A on 2026-09-02 along with its `CIV6_STAGNATION_PATIENCE` env var and `tests/cloud/unit/test_evaluator_stagnation.py`. Promotion-stagnation detection on the deployed path is unimplemented — a real gap, not a relocation. |
 | 2026-05-30 | PreToolUse prohibited-action guard | `.claude/hooks/pretooluse_guard.sh` enforces §3.2 (no commits/pushes to `main`, >1000-game cap) — turns prose into a machine deny. |
 | 2026-05-30 | Pre-PR review in isolated subagent | Pre-PR handoff skill dispatches review to a fresh `Agent`/`code-review` for generator–evaluator separation (independent context). |
 | 2026-07-05 | N-player training pipeline (G9) | `training_civ6.py` threads `num_players` end-to-end: `TrainingExample.value_vector` (per-player, relative order), per-player targets via `multiplayer.scoring` (`ScoringMethod`), `compute_nplayer_value_loss` in `train_epoch`, and `CurrentPlayerValueView` (reduces the per-player value vector to relative-index-0 so scalar `Civ6MCTS`/`GumbelMCTS` can drive an N-player network). Encoder is player-relative, so value targets and the scalar view both key on relative index 0. 2-player path byte-identical; opt-in via `--num_players`/`--scoring_method`. |
@@ -431,6 +432,14 @@ When making changes, update the relevant sections below:
 | 2026-08-28 | `inference_thread_limit()` caps torch threads for batch-of-1 search | MCTS evaluates one position at a time; torch sizes its intra-op pool to the core count and the per-operator OpenMP barrier (default *active*, spinning) then dominates. Measured on a 4-vCPU box: 1.54 ms/forward at 2 threads vs 347 ms at 4 — 225x. Applied only around self-play and evaluation so batched training keeps torch's default, which does scale with cores on real hardware. Opt out with `CIV6AZ_INFERENCE_THREADS=auto`. |
 | 2026-08-30 | A seed determines the run; every search owns its RNG | The project could not replay its own runs — five 20-game probes of **one** checkpoint scored 0.25/0.35/0.375/0.375/0.40 (`docs/evidence/validation_iteration_zero/`). Four unseeded sources, and **only the first was findable by reading code**: eight global `np.random.*` draws in the search; `MicroCivEnv.clone()` building a fresh env with **no seed**, so every MCTS rollout was unseeded in every variant no matter what the caller seeded; `ReplayBuffer.sample` + `DataLoader(shuffle=True)`, found by diffing two `--seed 42` runs that agreed on 525 lines of self-play and differed on the first epoch loss; and `NeuralNetworkPlayer` — the *evaluated agent* — drawing globally while its siblings each owned a seeded generator, which is why the probe spread survived already-seeded environments. **The method is the lesson: seeding is verified by diffing two runs, not by auditing call sites.** Controlled re-measure in `docs/evidence/seeded_probe_reproducibility/`: seeded 5/5 identical, unseeded still spans 0.30–0.45. Behaviour note: a `Generator` draws a different stream from the legacy global functions, so seeded action sequences differ from today's unseeded ones. |
 | 2026-08-30 | The suite-wiring invariant is itself a gate (`tests/regression/test_suite_wiring_regression.py`) | Fixing `tests/regression/` fixed one directory, not the category — **five more suites were enumerated by no CI job**: `tests/e2e` (70 tests), `tests/cloud/smoke` (36), `tests/smoke` (30), `tests/scripts` (**3 real failures**, optional-extra imports written bare instead of `importorskip`), `tests/inference`. All now wired. The meta-gate requires every directory holding collectible tests to be named by a CI pytest invocation or listed in `NOT_GATED` with a reason, and holds `make test` to the jobs it claims to mirror. Two design points that decide whether it works: enumeration follows **pytest's collection rule** (a `test_*` function, or a `Test*` class with a `test_*` method), not the filename glob — `tests/test_constants.py` holds `class TestDefaults` and no tests, and a glob would demand CI wiring for a suite that does not exist; and the workflow is parsed with `yaml`, not regex, because a hand parser over YAML is how `validate_skills` came to validate a folded block scalar vacuously. |
+| 2026-09-02 | A guard that cannot parse its input must deny, not allow | `pretooluse_guard.sh` read its payload with `jq` alone and swallowed the failure, so with jq off PATH the command string was empty, every rule matched nothing, and `git push --force origin main` was **silently allowed**. jq is in no manifest and the SessionStart hook does not check for it. It now falls back to python3 and denies with an explanation when neither parser exists. **The general rule:** for a control whose job is to block, "I could not inspect this" resolves to deny; the failure mode of a fail-open guard is invisible, which is why this survived three sessions of edits to the same file. Found by exercising the hook with a real stdin payload under a minimal PATH — reading the script would not have shown it. |
+| 2026-09-02 | `.agents/skills/` is validated but never loaded | A third thing, distinct from both meanings of "agents" in §15.3: it is scanned by `validate_skills.py`, routed by the PostToolUse hook and covered by `tests/governance/`, but nothing loads it — this session's skill list contains all nine `.claude/skills/` entries and none of its three. Treat it as gated documentation, not runnable skills. Its pre-commit gate was also missing until 2026-09-02: the hook's `files:` pattern named only `.claude/skills/`, so a commit touching only this tree ran no skills gate at all. |
+| 2026-09-02 | Dead code is found by import graph, not grep | `scripts/audit_import_graph.py` (stdlib AST) resolves names through package `__init__` re-export tables and PEP 562 lazy maps, credits literal `importlib.import_module`, and separates entry points and build-file-referenced modules from dead ones. It found **79 modules / 40,503 lines** with no live importer where a grep-based census had found ~15,000 — and the grep also produced *false positives*: `training_profiler` looked dead but is re-exported by `training/__init__`, and "38 test files" for `cloud/gcp/vertex.py` were substring hits on `vertex_orchestrator` (real count: 1). **The distinction that makes it work:** a package's own `__init__` re-exporting a module is not a use (that is how an unused module hides), but a plain side-effect `import pkg.mod` there is (that is how `_compat` works). |
+| 2026-09-02 | 34 dead modules were *inside* the coverage measurement | Deleting dead code **lowers** the reported coverage percentage when the dead code was tested — 14,194 of the 40,503 dead lines were measured by the gate. So a coverage floor must be set from a measurement taken *after* the deletion, never before. This is why WS1 follows WS2 in the plan, and why the v1 plan's "delete first, then widen coverage" order was hiding a red gate. |
+| 2026-09-02 | Per-package coverage floors (`coverage-floors.json`) | A global `--cov-fail-under` cannot express "this package must not get worse" for a package the global run omits — and `alpha_zero/cloud/*`, the deployed path, was measured by **no job at all**. CI's `cloud-tests` job now measures it against a floor (58%, measured 59.7%) via a separate `.coveragerc-cloud`, because the repo-wide config omits the very package under test. **Gotcha:** `coverage json` without `--rcfile` re-applies the repo-wide omit list and reports "No data to report" — the floor check then has nothing to measure and looks green. |
+| 2026-09-02 | The action-space bug on the live path was 381, not 356 | Both are wrong (`MicroCivActionSpace.total_size` is 376) but all 16 `356` sites were in dead, deferred or docstring code, while `381` was the **default** in `NetworkConfig`, `civ6_local`'s bridge builder, `MuZeroConfig` and the N-player head — and `transformer_network.py` had warned it was wrong since 2026 without anyone changing it. Ranking config drift by literal count finds the wrong one; rank by whether a *live default* carries it. |
+| 2026-09-02 | Failed safe-load must not silently downgrade | Both checkpoint loaders retried with `weights_only=False` on any exception — arbitrary code execution from a malformed file, reached without the caller asking. The opt-in is now explicit (`allow_unsafe`/`allow_unsafe_fallback` or `CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`) and the single unsafe call lives in `utils/safe_load.py`, a leaf module: `core/__init__` imports `utils.checkpoint`, so the shared helper cannot live under `core/` without a cycle. Found while doing it: `MuZeroTrainer.save_checkpoint` pickled its config dataclass, so **its own** checkpoints could only be reopened unsafely. |
+| 2026-09-02 | The `main`-branch push guard never protected this repo | `pretooluse_guard.sh` compared against the literal `main`; the default branch here is `claude/civ6-alphazero-implementation-vMnun`, so §3.2's "no direct commits to main" was prose. It now resolves the branch at runtime (`CIV6AZ_DEFAULT_BRANCH` → `origin/HEAD` → `main`). A second latent bug in the same rule: `[ on-main ] || is_push && dest_is_main` parses as `(A \|\| B) && C`, so a commit while checked out on main was denied only if the command line also mentioned `main` — i.e. never. |
 | 2026-08-30 | A gate is not a gate until something runs it | `tests/regression/` was referenced by no CI job and no make target, so ten hygiene invariants and a pre-existing regression suite had never gated a PR — they passed, which was true and irrelevant. Three sibling failures in the same review: `validate_agents --path <missing>` exited 0 (the hook calls `--path`, so a stale path read as validated), a catch-all allowlist test that checked four exact spellings and missed `^.*$`, and an A5 requirement claiming "every importable package" against a validator checking 29 of 44. **The check to apply to any new gate: prove it fails when the thing it guards is broken, and prove something actually invokes it.** |
 | 2026-08-30 | The secret **gate** scans `HEAD`'s lineage; the repo-wide sweep is a separate audit | The first version scanned every ref. CI checks out with `fetch-depth: 0`, so it failed on 6 findings from an unmerged 2026-03 branch that no PR contains or can fix — a gate no PR can turn green, which trains people to ignore it. `--log-opts="HEAD"` still covers this branch's entire lineage (532 commits at the time of writing); `make security-secrets-audit` keeps the repo-wide view available. **My adoption baseline of "0 findings / 525 commits" was measured before `git fetch --all` and was therefore incomplete** — the gate was made blocking on an incomplete measurement, which is the mistake that surfaced this. |
 | 2026-08-30 | Secret scanning is `gitleaks`, pinned once in the Makefile | The policy was asserted only by a hand-written pattern list in `tests/security/`, and nothing scanned **history** — where a removed secret still lives. `make security-secrets` runs `gitleaks dir` + `gitleaks git`; CI reads the version via `make print-gitleaks-version` so the pin has one definition. It is blocking on what it actually covers: 0 findings on the tracked tree and 0 across `HEAD`'s full commit lineage (532 commits when last measured, 2026-08-30 — the count moves with every push, the scope does not). **Do not read that as "the repository's history is clean"** — the repo-wide audit has an open finding (see the row above and §5.3); the "0 / 525 commits" figure originally quoted here was measured pre-`git fetch --all` and was incomplete. Gotcha found while validating it: a negative control using AWS's *documentation* example keys (`AKIAIOSFODNN7EXAMPLE`) does **not** fire — gitleaks allowlists those upstream. Use randomly generated values when testing the config. |
@@ -456,7 +465,8 @@ When making changes, update the relevant sections below:
 | Windows multiprocessing spawn | Use `if __name__ == "__main__"` guard |
 | pytest-xdist not always installed | Tests run without parallel flag if missing |
 | `serving/` + `inference/` omitted from coverage gate | They require the `web` extra (fastapi/uvicorn), absent from the default-CI `[dev]` install, so they cannot be imported in CI's coverage job. `serving/` has unit tests (`tests/unit/test_serving/`, `importorskip`-guarded) but stays in the omit list until CI installs the `web` extra. |
-| `alpha_zero/cloud/*` omitted from the coverage gate — the deployed path | **Measured 2026-08-28**, correcting the stale rationale in `pyproject.toml` ("require GCP SDK, Vertex AI, GCS"): all 33 `cloud/gcp` modules import cleanly with **no** Google SDK present (every `from google...` is function-local or `TYPE_CHECKING`-guarded), and CI's `cloud-tests` job already runs 1,025 of their tests on `.[dev]` alone. So no extra is needed — but un-omitting is **not** a one-liner: `cloud/gcp` **measures 60.0%** (cloud unit + batch integration + the cloud-touching unit tests; 51.1% from the cloud tests alone) against the **66.1%** it must hold. The implied global drop is **89.69% → ~83.8% (CI red)** — but note that 89.69% is the *documented CI anchor*, not a local measurement: `tests/unit/` cannot complete in the dev sandbox (four attempts wedged, three without coverage at all), so the global figure is arithmetic on one unverified input and the path-to-green below has **under half a point of margin — inside the error bar**. Land the un-omit as a draft PR that deliberately lets CI's coverage job report the real number *before* retuning the gate; do not plan against the derived figure. Path to green: omit the argparse/entrypoint shims individually (`cli.py`, `__main__.py`, `container_healthcheck.py`, +0.8pt), then add tests for `quota_manager.py` (287 stmts, 0%, no test file at all), `lifecycle.py` and `pipeline_cache.py`. Estimated 1–2 weeks. This is where every bug fixed in #113 lived, so the gate cannot see that whole class of defect. |
+| ~~`alpha_zero/cloud/*` unmeasured by any job~~ (partly resolved 2026-09-02) | It is still omitted from the *global* gate, but no longer unmeasured: CI's `cloud-tests` job now runs `--cov=alpha_zero.cloud --cov-config=.coveragerc-cloud` and `scripts/check_coverage_floors.py` enforces the per-package floor in `coverage-floors.json` (**58%**, measured 59.7% over 26 files / 5,485 statements on 2026-09-02, up from the 51.1% below because Tier A removed 14 untested dead modules from the denominator). Floors ratchet up only. Largest remaining gaps: `selfplay_worker` 48%, `training_worker` 52%, `vertex_orchestrator` 60%. Un-omitting from the global gate is still future work; the note below records the original analysis. |
+| (original analysis) `alpha_zero/cloud/*` omitted from the coverage gate — the deployed path | **Measured 2026-08-28**, correcting the stale rationale in `pyproject.toml` ("require GCP SDK, Vertex AI, GCS"): all 33 `cloud/gcp` modules import cleanly with **no** Google SDK present (every `from google...` is function-local or `TYPE_CHECKING`-guarded), and CI's `cloud-tests` job already runs 1,025 of their tests on `.[dev]` alone. So no extra is needed — but un-omitting is **not** a one-liner: `cloud/gcp` **measures 60.0%** (cloud unit + batch integration + the cloud-touching unit tests; 51.1% from the cloud tests alone) against the **66.1%** it must hold. The implied global drop is **89.69% → ~83.8% (CI red)** — but note that 89.69% is the *documented CI anchor*, not a local measurement: `tests/unit/` cannot complete in the dev sandbox (four attempts wedged, three without coverage at all), so the global figure is arithmetic on one unverified input and the path-to-green below has **under half a point of margin — inside the error bar**. Land the un-omit as a draft PR that deliberately lets CI's coverage job report the real number *before* retuning the gate; do not plan against the derived figure. Path to green: omit the argparse/entrypoint shims individually (`cli.py`, `__main__.py`, `container_healthcheck.py`, +0.8pt), then add tests for `quota_manager.py` (287 stmts, 0%, no test file at all), `lifecycle.py` and `pipeline_cache.py`. Estimated 1–2 weeks. This is where every bug fixed in #113 lived, so the gate cannot see that whole class of defect. |
 | Coverage instrumentation crashes under nightly numpy 2.4 + coverage C-tracer | Local-only sandbox issue ("cannot load module more than once"); run tests without `--cov`, or use pinned numpy. CI uses pinned versions and is unaffected. **Refined 2026-08-30:** `COVERAGE_CORE=pytrace` does **not** help for any target reached through `tests/conftest.py`, because that conftest imports numpy itself (line 20) — the double load happens at conftest import, before the `--cov` target is considered. Measured against `--cov=alpha_zero.core.mcts`: identical `ImportError: cannot load module more than once per process` with and without `pytrace`. The workaround only applies to suites that bypass the root conftest. **Partial workaround (2026-08-09):** `COVERAGE_CORE=pytrace` selects coverage's pure-Python tracer and avoids the crash — but only for `--cov` targets that do **not** import numpy. `COVERAGE_CORE=pytrace pytest tests/unit/test_hexcrystal_*.py --cov=alpha_zero.hexcrystal` works (measured 87.10%); `--cov=alpha_zero.utils.checkpoint` still crashes, because coverage importing a numpy-dependent module on top of conftest's import is the double load. CI remains the gate for numpy-importing modules. |
 | ~~MicroCiv hardcoded for 2 players~~ (resolved 2026-07-05) | Env + encoder N-player (2–6); training pipeline now N-player too. **G7/G8/G9 all done**: `training_civ6.py` threads `num_players` (per-player `value_vector`, `compute_nplayer_value_loss`, `CurrentPlayerValueView` scalar-MCTS adapter). 2-player path byte-identical. Tests: `tests/unit/test_nplayer_training_pipeline.py`. Train: `python -m alpha_zero.training_civ6 --num_players 4`. |
 | ~~12 DDP tests xfailed~~ (stale — corrected 2026-07-05) | DDP tests use CUDA `skipif`, not `xfail`. Repo has exactly one real `xfail` (`test_phase2.py:381`). **Re-measured 2026-08-27 with a stated rule** (`grep -rEc '@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(' tests/`): **124 sites across 68 files** — the earlier "11 sites / 17 tests" figure counted only static `@pytest.mark.skip`, which is why it looked an order of magnitude smaller. Most are legitimate environment gates (CUDA, optional extras: `hub`, `web`/fastapi, GCS, SpacetimeDB, JAX). Genuine debt is three items: the class-level skip on `UncivInterface.parse_multiplayer_save` (a planned method that does not exist), one disabled flaky concurrency test (`test_buffer_edge_cases.py`), and one "DUCT not yet implemented" skip. Quote the rule with the number — a bare count is not reproducible. |
@@ -600,13 +610,11 @@ Civ6-AlphaZero/
 │   │   ├── models.py            # Metadata dataclasses
 │   │   ├── replay_buffer.py     # Streaming replay buffer
 │   │   └── factory.py           # create_storage_backend
-│   ├── cloud/                   # Cloud-native components (NEW)
+│   ├── cloud/                   # Cloud-native components
 │   │   ├── __init__.py
 │   │   ├── config.py            # CloudConfig, MachineProfile
-│   │   ├── preemption.py        # PreemptionHandler for Spot VMs
-│   │   ├── selfplay_worker.py   # Self-play worker entry point
-│   │   ├── trainer.py           # Trainer entry point
-│   │   └── evaluator.py         # Evaluator entry point
+│   │   └── gcp/                 # The deployed path: selfplay_worker, training_worker,
+│   │                            #   arena, vertex_orchestrator, storage, preemption_handler
 │   ├── orchestrator/            # Unified Training Orchestrator
 │   │   ├── __init__.py
 │   │   ├── config.py            # OrchestratorConfig with schedules
@@ -667,11 +675,9 @@ Civ6-AlphaZero/
 │   │   ├── agent_tools.py       # Claude Code agent tools
 │   │   └── env_loader.py        # Zero-dependency .env loader (CIV6AZ_ convention)
 │   └── training_civ6.py         # Training entry point
-├── dockerfiles/                 # Container images (NEW)
-│   ├── Dockerfile.base          # Base image with PyTorch
-│   ├── Dockerfile.selfplay      # Self-play worker image
-│   ├── Dockerfile.trainer       # Trainer image
-│   └── Dockerfile.evaluator     # Evaluator image
+├── dockerfiles/                 # Container images
+│   ├── Dockerfile.vertex        # The deployed image (built by cloudbuild.yaml)
+│   └── Dockerfile.inference     # Inference server image (infra/cloudbuild-gameplay.yaml)
 ├── infra/                       # Infrastructure (NEW)
 │   ├── __init__.py
 │   └── vertex_launcher.py       # Vertex AI job launcher
@@ -697,8 +703,7 @@ Civ6-AlphaZero/
 ├── .env.template                # Environment template
 ├── requirements.txt             # Dependencies
 ├── pyproject.toml               # Package configuration
-├── Makefile                     # Build and deployment targets (NEW)
-├── docker-compose.yml           # Local testing environment (NEW)
+├── Makefile                     # Build and deployment targets
 └── CLAUDE.md                    # This file
 ```
 
@@ -1139,25 +1144,16 @@ storage.save_trajectory(trajectory, iteration=1, worker_id=0, game_id="game_001"
 | `eval_l4_spot` | 1× L4 | 24 GB | $0.24 | $0.80 | Evaluation |
 
 ### 12.4 Cloud Workers
+
+The deployed workers live in `alpha_zero/cloud/gcp/` and are entrypointed by
+`alpha_zero.cloud.gcp.entrypoint` inside `dockerfiles/Dockerfile.vertex`. Each has a
+`--help`; `--dry_run` exercises the path without GCS:
+
 ```bash
-# Self-play worker
-python -m alpha_zero.cloud.selfplay_worker \
-    --num-games=100 \
-    --iteration=5 \
-    --worker-id=0 \
-    --num-simulations=800
-
-# Trainer
-python -m alpha_zero.cloud.trainer \
-    --training-steps=1000 \
-    --iteration=5 \
-    --batch-size=256
-
-# Evaluator
-python -m alpha_zero.cloud.evaluator \
-    --num-games=400 \
-    --iteration=5 \
-    --promotion-threshold=0.55
+python -m alpha_zero.cloud.gcp.selfplay_worker --help
+python -m alpha_zero.cloud.gcp.training_worker --help
+python -m alpha_zero.cloud.gcp.arena --help
+python -m alpha_zero.cloud.gcp.vertex_orchestrator --help
 ```
 
 ### 12.5 Environment Variables
@@ -1174,16 +1170,15 @@ python -m alpha_zero.cloud.evaluator \
 
 ### 12.6 Docker Build
 ```bash
-# Build all images
+# Build the deployed image locally
 make build-all
 
 # Push to Artifact Registry
 make setup-artifact-registry
 make push
 
-# Local testing
-docker-compose up -d
-docker-compose logs -f trainer
+# Local smoke (no Docker): dry-run the deployed worker
+make local-smoke
 ```
 
 ### 12.7 Vertex AI Jobs
@@ -1272,10 +1267,8 @@ project has since shipped through v1.8.0:
    trainer would index past). What remains: no config selects `batch_gumbel`
    (`--num_parallel_games` now defaults to 1 and warns when parallelism is
    requested with a variant that cannot use it, rather than silently running
-   sequential), `dockerfiles/Dockerfile.selfplay` entrypoints the *other* worker
-   (`cloud/selfplay_worker.py`, now banner-marked LEGACY — it hardcodes
-   `SimpleMCTS` and nothing but the Makefile/docker-compose builds it), and the
-   claimed 5-10x still has no benchmark artifact.
+   sequential), and the claimed 5-10x still has no benchmark artifact. (The LEGACY
+   `cloud/selfplay_worker.py` and its `Dockerfile.selfplay` were deleted 2026-09-02.)
 2. **Fog of war** (gap G10): partly done, and the remaining items are
    **sequential, not parallel**. Fog is implemented in `MicroCivEnv` (flag,
    default off) and the encoder; `DeterminizedMCTS`

@@ -576,7 +576,9 @@ if TORCH_AVAILABLE:
                 path: Path to saved weights.
                 device: Device to load to.
             """
-            state_dict = torch.load(path, map_location=device)
+            # ``save`` writes a bare state_dict, so the tensor-only loader is
+            # sufficient; never widen this to weights_only=False.
+            state_dict = torch.load(path, map_location=device, weights_only=True)
             self.load_state_dict(state_dict)
             logger.info("Loaded hierarchical network from %s", path)
 

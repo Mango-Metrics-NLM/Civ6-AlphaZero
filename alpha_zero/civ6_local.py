@@ -28,6 +28,7 @@ import yaml
 
 # Safe to import at module scope: alpha_zero.utils.device defers its own torch
 # import, so --help still works without paying for torch.
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 from alpha_zero.utils.device import resolve_device, resolve_device_str
 
 logger = logging.getLogger(__name__)
@@ -369,8 +370,8 @@ def run_microciv(config: Civ6LocalConfig) -> int:
         Exit code (0 = success).
     """
     import numpy as np
-    import torch
 
+    from alpha_zero.core.checkpoint_utils import safe_torch_load
     from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig, MCTSEnvironment
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.microciv import MicroCivEnv
@@ -391,7 +392,9 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     ).to(device)
 
     if config.checkpoint_path:
-        checkpoint = torch.load(config.checkpoint_path, map_location=device)
+        # weights_only=True by default; legacy pickles need
+        # CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 (see core.checkpoint_utils).
+        checkpoint = safe_torch_load(config.checkpoint_path, map_location=device)
         state_dict = checkpoint.get("model_state_dict", checkpoint)
         net.load_state_dict(state_dict)
         logger.info("Loaded checkpoint: %s", config.checkpoint_path)
@@ -635,14 +638,15 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         return 130
 
 
-def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 381) -> Any:
+def _build_network_for_bridge(
+    config: Civ6LocalConfig, action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
+) -> Any:
     """Construct (and optionally load) the policy network for the bridge.
 
     Extracted for testability and to keep ``run_civ6_bridge`` focused on
     composition. Returns a ``MicroCivNetwork`` instance.
     """
-    import torch
-
+    from alpha_zero.core.checkpoint_utils import safe_torch_load
     from alpha_zero.core.civ6_network import MicroCivNetwork
     from alpha_zero.envs.civ6_encoder import EncoderConfig
 
@@ -674,11 +678,12 @@ def _build_network_for_bridge(config: Civ6LocalConfig, action_space_size: int = 
 
             ckpt_path = Path(config.checkpoint_path)
             # Two supported layouts:
-            # 1. Direct .pt file - load via torch.load (legacy)
+            # 1. Direct .pt file - safe torch.load (weights_only=True; legacy
+            #    pickles need CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1)
             # 2. Storage base dir containing models/champion/model.pt - use
             #    LocalStorageBackend so metadata + future GCS storage work.
             if ckpt_path.is_file():
-                state_dict = torch.load(ckpt_path, map_location=device)
+                state_dict = safe_torch_load(ckpt_path, map_location=device)
                 if isinstance(state_dict, dict) and "model_state_dict" in state_dict:
                     state_dict = state_dict["model_state_dict"]
                 network.load_state_dict(state_dict)

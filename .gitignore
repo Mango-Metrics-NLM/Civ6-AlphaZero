@@ -111,10 +111,13 @@ training_results/
 models/
 artifacts/
 
-# Docker (build context only — tracked files are .dockerignore and Dockerfile)
+# Docker (build context only — tracked files are .dockerignore, Dockerfile and
+# dockerfiles/Dockerfile.{vertex,inference}).
+#
+# The `!docker-compose.yml` un-ignore was removed on 2026-09-02: docker-compose.yml
+# was deleted with the per-role images it composed, so there is no committed
+# compose file to protect and every docker-compose*.yml is now a local override.
 docker-compose*.yml
-# ...but the committed baseline compose file is source, not a local override.
-!docker-compose.yml
 *.tar
 
 # GCS / Cloud artifacts
@@ -533,3 +536,6 @@ test_results/
 eval_results/
 release-staging*/
 dataset-export/
+
+# Per-package coverage report produced by CI's cloud floor check
+coverage-cloud.json

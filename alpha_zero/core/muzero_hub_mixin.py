@@ -25,6 +25,7 @@ from typing import Any
 
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 from alpha_zero.hub.constants import DEFAULT_MODEL_TAGS, LIBRARY_NAME  # noqa: F401
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
 try:
     from huggingface_hub import PyTorchModelHubMixin
@@ -92,7 +93,7 @@ class MuZeroNetworkForHub(MuZeroNetwork, PyTorchModelHubMixin):
         num_res_blocks: int = 6,
         num_filters: int = 64,
         fc_hidden_dim: int = 256,
-        action_space_size: int = 381,
+        action_space_size: int = DEFAULT_ACTION_SPACE_SIZE,
         value_head_hidden: int = 128,
         dropout: float = 0.0,
         hidden_state_channels: int = 64,

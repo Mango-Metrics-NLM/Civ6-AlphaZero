@@ -1,0 +1,12 @@
+{
+  "_comment": "Per-package coverage floors, checked by scripts/check_coverage_floors.py. A floor may only ever be RAISED: it is a ratchet, not a target. Each entry records the value measured when it was set, so a later reader can tell headroom from drift. The global alpha_zero floor is enforced separately by --cov-fail-under in CI's coverage job; it is listed here for one place to read them both.",
+  "floors": {
+    "alpha_zero/cloud": {
+      "minimum": 58,
+      "measured": 59.7,
+      "measured_on": "2026-09-02",
+      "measured_by": "pytest tests/cloud/unit/ tests/cloud/smoke/ --cov=alpha_zero.cloud --cov-config=.coveragerc-cloud, then coverage json --rcfile=.coveragerc-cloud (26 files, 5485 statements)",
+      "note": "alpha_zero/cloud/* is omitted from the global gate, so until this floor existed the deployed path was measured by no job at all. CLAUDE.md recorded 51.1% from the cloud tests alone before the 2026-09-02 Tier A deletion removed 14 untested dead modules from the denominator. Raise this as modules gain tests; the largest remaining gaps are selfplay_worker (48%), training_worker (52%) and vertex_orchestrator (60%)."
+    }
+  }
+}

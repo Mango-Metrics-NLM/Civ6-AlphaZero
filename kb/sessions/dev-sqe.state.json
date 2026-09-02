@@ -1,35 +1,27 @@
 {
-    "last_session_id": "session_0161DvFczCzPQqumjKqYdrXy",
-    "last_timestamp": "2026-08-30T02:20:00Z",
-    "active_branch": "claude/god-files-decomposition-gojlo3",
-    "current_focus": "PR #115 (draft) at f4cea7a: MCTS split + governance gates, with all 13 review findings remediated. Four of them were gates that gated nothing -- headlined by tests/regression/ being run by no CI job or make target.",
+    "last_session_id": "session_01EcSsbbTYiSkmZsMVyipm7G",
+    "last_timestamp": "2026-09-02T14:05:00Z",
+    "current_focus": "Tech-debt plan Core scope implemented and pushed (PR #116); handed off to Pre-PR",
     "resume_pointers": {
-        "current_task": "Confirm CI on f4cea7a -- the regression step in the test job and the regression directory in the coverage job are both new and have never run in CI",
-        "blocked_on": [],
+        "current_task": "Pre-PR review of PR #116; then Tier B and WS5/WS3.2/WS6/WS7 once the maintainer answers spec §9",
+        "blocked_on": [
+            "GCS champion-lineage inventory before the safe-load default reaches production (needs maintainer GCS access; escape hatch is CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1)",
+            "spec §9.1 Tier B rows B1-B14 (18,133 lines)",
+            "spec §9.3 architectural authorization for WS3.2, WS5, WS7.1",
+            "WS0 maintainer-only: rotate the W&B key, close #72/#69/#49/#32, merge Dependabot"
+        ],
         "next_steps": [
-            "Verify CI on f4cea7a: new regression step (test job), regression dir (coverage job), gitleaks steps (security job), validate_agents step (governance job)",
-            "PLR0915 burndown: split vertex_orchestrator.main (248 stmts), training_worker.main (168), run_enhanced_training.main (134). Delete each per-file-ignores entry as it lands; never raise the threshold",
-            "Cloud trio remains BLOCKED on a patch-target remapping strategy: 38 mock.patch string targets, and an identity test cannot detect a dead patch",
-            "Coverage omit-list shrink is the right instrument if coverage is the goal, not decomposition: quota_manager.py (309 stmts, zero test files), lifecycle.py (297), pipeline_cache.py (319)",
-            "Three pre-existing MCTS defects filed from review, threads left open for the author: gumbel_ops temperature=0 (-inf, degrades Gumbel-Top-k to uniform sampling), SimpleMCTS global RNG vs self._rng, gumbel.py docstring describing an unimplemented heuristic",
-            "ROTATE the W&B API key in 87cd68a2 -- no code change remediates it"
+            "Run `python scripts/measure_debt.py` and `scripts/audit_import_graph.py` before any further deletion — both are the authoritative census now",
+            "WS5 decompositions may start only after the mock.patch enumeration test passes on the current tree (spec WS5 note)",
+            "Raise the alpha_zero/cloud floor in coverage-floors.json as selfplay_worker (48%), training_worker (52%) and vertex_orchestrator (60%) gain tests",
+            "Burn down the two allowlists: 8 files hardcoding 376, 8 remaining weights_only=False sites"
         ]
     },
     "context_files": [
-        "kb/handoffs/20260830-devsqe-to-prepr-mcts-split-and-governance-gates.md",
-        "openspec/changes/harden-governance-gates/proposal.md",
-        "alpha_zero/core/mcts/__init__.py",
-        "tests/unit/test_mcts_split_backcompat.py",
-        "scripts/validate_agents.py",
-        "docs/architecture/C4_ARCHITECTURE.md"
-    ],
-    "known_issues": [
-        "A gate is not a gate until something runs it. tests/regression/ passed for a week while being invoked by nothing. Check both halves for any new gate: does it fail when the guarded thing breaks, and does anything call it?",
-        "UNREMEDIATED: a real 40-hex W&B API key is in git history (87cd68a2, feature/sprint6-...). Requires rotation. docs/runbooks/secret-scanning.md.",
-        "The blocking secret gate scans HEAD's lineage (528 commits, 0 findings). The repo-wide audit (make security-secrets-audit) is NOT clean and is deliberately non-blocking.",
-        "22 A3 warnings: five Agent.md files missing conventional sections. Non-blocking by design.",
-        "MuZeroNetworkProtocol is defined twice (mcts/mcts_protocols.py and core/losses.py); core/__init__.py re-exports both, so one silently shadows the other.",
-        "`.[dev]` fails on `chess` where pip resolves a wheel-less version. Environment artifact, not a repo defect: pip install --only-binary=:all: chess first.",
-        "Local coverage works (89.29%, ~11.5 min). Earlier 'wedged' reports were the bare-pytest PATH bug."
+        "kb/specs/20260902-tech-debt-hardening.md",
+        "kb/handoffs/20260902-devsqe-to-prepr-tech-debt-core-scope.md",
+        "docs/evidence/tech_debt_baseline/baseline.json",
+        "coverage-floors.json",
+        "CLAUDE.md"
     ]
 }

@@ -1,9 +1,18 @@
-"""Coverage tests for alpha_zero.core.checkpoint_utils module."""
+"""Coverage tests for alpha_zero.core.checkpoint_utils module.
 
+The ``TestNoAutomaticUnsafeFallback`` class pins WS4.1 of the tech-debt
+hardening spec: ``load_checkpoint`` used to catch *any* exception from the
+``weights_only=True`` load and silently retry with ``weights_only=False``, so a
+malicious or merely legacy pickle was always executed. Those tests are written
+so the **old** code would have passed the negative-control case silently -- the
+non-tensor payload loaded fine -- and only the new code raises.
+"""
+
+import io
+import logging
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -11,13 +20,17 @@ import torch
 from torch import nn
 
 from alpha_zero.core.checkpoint_utils import (
+    UNSAFE_CHECKPOINT_ENV_VAR,
     VALID_REDUCTIONS,
+    UnsafeCheckpointError,
     _convert_to_primitives,
     get_checkpoint_info,
     load_checkpoint,
     load_state_dict_into_network,
+    safe_torch_load,
     save_checkpoint,
     serialize_config,
+    unsafe_checkpoint_loading_allowed,
     validate_reduction,
 )
 
@@ -184,26 +197,118 @@ class TestLoadCheckpoint:
         ckpt = load_checkpoint(path, weights_only=False)
         assert "state_dict" in ckpt
 
-    def test_load_fallback_to_unsafe(self, tmp_path):
-        """Test fallback when safe loading fails."""
+    def test_load_weights_only_false_warns_deprecated(self, tmp_path, caplog):
+        """``weights_only=False`` still works but is logged as a deprecated alias."""
         net = nn.Linear(10, 5)
-        config = SampleConfig()
         path = tmp_path / "ckpt.pt"
-        save_checkpoint(net, config, path)
+        save_checkpoint(net, SampleConfig(), path)
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.core.checkpoint_utils"):
+            ckpt = load_checkpoint(path, weights_only=False)
+        assert "state_dict" in ckpt
+        assert any("deprecated" in rec.getMessage() for rec in caplog.records)
 
-        # Mock torch.load to fail on first call (weights_only=True) and succeed on second
-        original_load = torch.load
-        call_count = [0]
 
-        def mock_load(*args, **kwargs):
-            call_count[0] += 1
-            if call_count[0] == 1 and kwargs.get("weights_only", False):
-                raise RuntimeError("Safe loading failed")
-            return original_load(*args, **{**kwargs, "weights_only": False})
+def _write_non_tensor_payload(path: Path) -> None:
+    """Write a checkpoint that ``weights_only=True`` rejects.
 
-        with patch("alpha_zero.core.checkpoint_utils.torch.load", side_effect=mock_load):
+    A dataclass *instance* is not in torch's safe-globals allowlist, so the
+    tensor-only unpickler refuses it. It stands in for the class of payload the
+    old auto-downgrade silently executed.
+    """
+    torch.save({"config": SampleConfig(), "state_dict": nn.Linear(2, 2).state_dict()}, path)
+
+
+class TestNoAutomaticUnsafeFallback:
+    """WS4.1: safe-load failure raises unless unsafe loading is explicitly authorised."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_env(self, monkeypatch):
+        monkeypatch.delenv(UNSAFE_CHECKPOINT_ENV_VAR, raising=False)
+
+    def test_safe_load_works_for_tensor_payload(self, tmp_path):
+        net = nn.Linear(10, 5)
+        path = tmp_path / "ckpt.pt"
+        save_checkpoint(net, SampleConfig(), path)
+        ckpt = load_checkpoint(path)
+        assert set(ckpt) >= {"config", "state_dict"}
+
+    def test_non_tensor_payload_raises_without_flag(self, tmp_path):
+        """Negative control for the removed fallback.
+
+        Under the pre-WS4.1 code this test would have passed *silently*: the
+        ``except Exception`` branch retried with ``weights_only=False`` and the
+        dataclass instance came back as a normal value. The assertion therefore
+        only holds because the downgrade is gone.
+        """
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        with pytest.raises(UnsafeCheckpointError) as excinfo:
+            load_checkpoint(path)
+        message = str(excinfo.value)
+        assert str(path) in message
+        assert "allow_unsafe=True" in message
+        assert UNSAFE_CHECKPOINT_ENV_VAR in message
+        # The original torch rejection is chained, not swallowed.
+        assert excinfo.value.__cause__ is not None
+
+    def test_non_tensor_payload_loads_with_flag_and_warns(self, tmp_path, caplog):
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.core.checkpoint_utils"):
+            ckpt = load_checkpoint(path, allow_unsafe=True)
+        assert isinstance(ckpt["config"], SampleConfig)
+        warnings = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warnings, "unsafe load must be logged at WARNING"
+        assert "weights_only=False" in warnings[0].getMessage()
+        assert "allow_unsafe=True" in warnings[0].getMessage()
+
+    @pytest.mark.parametrize("value", ["1", "true", "YES", " on "])
+    def test_env_var_authorises_unsafe_load(self, tmp_path, monkeypatch, caplog, value):
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        monkeypatch.setenv(UNSAFE_CHECKPOINT_ENV_VAR, value)
+        with caplog.at_level(logging.WARNING, logger="alpha_zero.core.checkpoint_utils"):
             ckpt = load_checkpoint(path)
-            assert "state_dict" in ckpt
+        assert isinstance(ckpt["config"], SampleConfig)
+        assert any(UNSAFE_CHECKPOINT_ENV_VAR in r.getMessage() for r in caplog.records)
+
+    @pytest.mark.parametrize("value", ["0", "false", "", "no"])
+    def test_env_var_falsy_values_do_not_authorise(self, tmp_path, monkeypatch, value):
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        monkeypatch.setenv(UNSAFE_CHECKPOINT_ENV_VAR, value)
+        with pytest.raises(UnsafeCheckpointError):
+            load_checkpoint(path)
+
+    def test_env_var_is_read_at_call_time(self, tmp_path, monkeypatch):
+        """Setting the variable after import must take effect (no import-time snapshot)."""
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        assert unsafe_checkpoint_loading_allowed() is False
+        with pytest.raises(UnsafeCheckpointError):
+            load_checkpoint(path)
+        monkeypatch.setenv(UNSAFE_CHECKPOINT_ENV_VAR, "1")
+        assert unsafe_checkpoint_loading_allowed() is True
+        assert "config" in load_checkpoint(path)
+
+    def test_safe_torch_load_resets_buffer_before_unsafe_retry(self):
+        """A file object consumed by the failed safe attempt is rewound for the retry."""
+        buffer = io.BytesIO()
+        torch.save({"config": SampleConfig()}, buffer)
+        buffer.seek(0)
+        with pytest.raises(UnsafeCheckpointError):
+            safe_torch_load(buffer)
+        buffer.seek(0)
+        loaded = safe_torch_load(buffer, allow_unsafe=True)
+        assert isinstance(loaded["config"], SampleConfig)
+
+    def test_get_checkpoint_info_respects_flag(self, tmp_path):
+        path = tmp_path / "legacy.pt"
+        _write_non_tensor_payload(path)
+        with pytest.raises(UnsafeCheckpointError):
+            get_checkpoint_info(path)
+        info = get_checkpoint_info(path, allow_unsafe=True)
+        assert "state_dict" in info["keys"]
 
 
 class TestLoadStateDictIntoNetwork:

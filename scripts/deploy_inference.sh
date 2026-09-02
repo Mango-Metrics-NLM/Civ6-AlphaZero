@@ -22,7 +22,7 @@ echo ""
 
 # Build and push Docker image
 echo "[1/3] Building Docker image..."
-docker build -f Dockerfile.inference -t "${IMAGE_URI}" .
+docker build -f dockerfiles/Dockerfile.inference -t "${IMAGE_URI}" .
 
 echo "[2/3] Pushing to Artifact Registry..."
 docker push "${IMAGE_URI}"

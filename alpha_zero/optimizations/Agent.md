@@ -39,13 +39,10 @@ This module provides research-backed performance optimizations:
 
 | File | Responsibility |
 |------|---------------|
-| `config.py` | PerformanceOptimizationsConfig — master config with presets |
 | `playout_cap.py` | PlayoutCapRandomizer — variable MCTS simulations |
 | `policy_pruning.py` | PolicyTargetPruner — action space reduction |
 | `cyclic_lr.py` | CyclicLRScheduler — 5 schedule types (triangular, cosine, warm restarts, etc.) |
 | `auxiliary_targets.py` | AuxiliaryTargetGenerator, AuxiliaryLossCalculator |
-| `benchmarks.py` | OptimizationBenchmark — speed/quality measurement |
-| `cuda_graph_cache.py` | CUDAGraphCache — GPU kernel optimization |
 | `inference_benchmark.py` | Inference-specific benchmarking |
 
 ---

@@ -43,6 +43,7 @@ Example:
 from __future__ import annotations
 
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
@@ -50,6 +51,15 @@ import numpy as np
 from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.tournament.config import MatchResult
 from alpha_zero.tournament.elo import RatingLeaderboard
+
+warnings.warn(
+    "alpha_zero.tournament.wandb_dashboards (TournamentWandbLogger) is deprecated: "
+    "it is an MLflow-backed shim over the retired W&B API with no in-repo consumer. "
+    "Use alpha_zero.monitoring.TournamentMlflowLogger. Scheduled for removal one "
+    "release after 2026-09-02.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 logger = logging.getLogger(__name__)
 

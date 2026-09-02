@@ -7,6 +7,94 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING) — checkpoints load safely by default (2026-09-02)
+
+Both checkpoint loaders retried a failed safe load with `weights_only=False`,
+executing arbitrary code from the file without the caller asking. The retry now
+requires an explicit opt-in.
+
+- `alpha_zero.utils.checkpoint.safe_load_checkpoint(allow_unsafe_fallback=)`
+  defaults to `False` (was `True`), and the six live call sites
+  (`core/civ6_network.py` ×3, `core/muzero_network.py`, `distributed/learner.py`,
+  `distributed/ddp_learner.py`, `training/muzero_trainer.py`) no longer pass
+  `True`. `alpha_zero.core.checkpoint_utils.load_checkpoint` gains
+  `allow_unsafe=`; `weights_only=False` there is a deprecated alias for it.
+- **What breaks:** a checkpoint whose payload is not `weights_only`-clean now
+  raises `UnsafeCheckpointError` instead of loading. Freshly-saved models are
+  unaffected; the risk is legacy artifacts. The escape hatch is
+  `allow_unsafe_fallback=True` or `CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1`.
+- `MuZeroTrainer.save_checkpoint` used to pickle its config dataclass, so **its
+  own** checkpoints could only be reopened unsafely. It now stores a serialized
+  dict; checkpoints written before this need the env var once and a re-save.
+- An I/O failure (missing file, truncated download) re-raises as `OSError`
+  rather than being reported as an unsafe checkpoint — the old behaviour told
+  operators to disable the security control to fix a failed download.
+
+### Changed (BREAKING) — `action_space_size` defaults derive from the environment (2026-09-02)
+
+`NetworkConfig`, `MuZeroConfig`, `NPlayerNetworkConfig`, `MicroCivNetwork`,
+`civ6_local._build_network_for_bridge` and `factories.create_simultaneous_mcts`
+defaulted to `381` (or `356`), while `MicroCivActionSpace.total_size` is `376`.
+All now derive from `alpha_zero.utils.constants.default_action_space_size()`;
+the argparse defaults in `cloud/gcp/evaluation_worker.py` and
+`vertex_orchestrator.py` do too.
+
+**What breaks:** a network built with the old default now has a 376-wide policy
+head. Passing `action_space_size=381` explicitly still works, so checkpoints
+trained on the old default remain loadable when the caller states the width.
+
+### Removed — Tier A dead code, measured by import graph (2026-09-02)
+
+`scripts/audit_import_graph.py` (stdlib AST, resolves package re-exports)
+found 79 `alpha_zero/` modules with no live importer — 40,503 lines, a quarter
+of the package — of which 34 were *measured* by the coverage gate and so
+inflating the 85% figure with test-only code. The plan in
+`kb/specs/20260902-tech-debt-hardening.md` tiers them; this release removes
+Tier A (superseded or unwired, claimed by no document as a feature):
+
+- **`alpha_zero/cloud/`**: the LEGACY `selfplay_worker`, `trainer`, `evaluator`
+  (superseded by `cloud/gcp/`), `gcs_storage`, `cloud_logging`,
+  `vertex_launcher`, `preemption` (duplicate of `gcp/preemption_handler`), and
+  under `gcp/`: `lifecycle`, `pipeline_cache`, `quota_manager`, `idle_manager`,
+  `scaling_config`, `worker_autoscaler`, `gpu_scheduler`, `vertex_trainer`,
+  `vertex`, `monitoring`, `__main__`. `distributed/cloud_coordinator` went with
+  them: it imported only deleted names and could no longer be imported.
+  **Authorization note:** that module is row B14 of the plan's Tier B, which is
+  a CONFIRM-FIRST item, and it was removed under the Tier A authorization. The
+  technical justification stands (Tier A left it unimportable) but the process
+  did not: it should have been raised, not folded in. Flagged for the maintainer
+  rather than left in the commit's "Tier B untouched" claim.
+- **`alpha_zero/core/`**: `action_pruning`, `network_heads`, `mixins`,
+  `timeout_config`, `buffer_config`.
+- **`alpha_zero/utils/`**: `training_diagnostics`, `training_config_enhanced`,
+  `simple_mcts` (the second `SimpleMCTS`; `core/mcts/simple.py` is the one).
+- **`alpha_zero/training/`**: `curriculum_pipeline`, `training_profiler`.
+- **`alpha_zero/evaluation/`**: `sequential_testing`, `reports`.
+- **`alpha_zero/optimizations/`**: `benchmarks`, `config`, `cuda_graph_cache`.
+- **`alpha_zero/human_interface/`**: `input_handler`, `visualizer`.
+- `alpha_zero/exceptions.py`, `alpha_zero/envs/docker_config.py`,
+  `alpha_zero/opponents/{base,network_opponent}.py`.
+- Build files that only served the LEGACY workers: `dockerfiles/Dockerfile.{base,
+  selfplay,trainer,evaluator}`, `docker-compose.yml`, the Makefile
+  `build-{base,selfplay,trainer,evaluator}` / `push-*` / `local-test` /
+  `local-down` targets (`build-all` and `push` now build and push
+  `dockerfiles/Dockerfile.vertex`; `local-smoke` dry-runs the deployed worker),
+  the root `Dockerfile.inference` duplicate, `sweep_config.yaml` (W&B-format,
+  unreferenced), and `setup.py` (kept only for `Dockerfile.base`).
+- Test files that exercised only the removed modules, and the removed cases in
+  files that mixed them with live tests.
+
+Package `__init__` re-exports of the removed names are gone with them: importing
+e.g. `HeadFactory` from `alpha_zero.core` or `CurriculumPipeline` from
+`alpha_zero.training` now raises `ImportError`. Nothing in `alpha_zero/`,
+`scripts/`, or the root entry points did so.
+
+**Deprecated, not removed** (one release window, then deletion):
+`alpha_zero.core.{hex_conv,hex_encoder,encoder_registry,crystalline_layers}`
+(re-export shims for `alpha_zero.hexcrystal`) and
+`alpha_zero.tournament.wandb_dashboards.TournamentWandbLogger` now emit a
+`DeprecationWarning` on import.
+
 ### Added — A seed now determines the whole run (2026-08-30)
 
 The project could not replay its own runs. Its only recorded training run says

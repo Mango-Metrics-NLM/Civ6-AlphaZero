@@ -21,12 +21,6 @@ Quick Start:
     for baseline, result in results.items():
         print(f"{baseline}: {result.win_rate:.1%} win rate")
 
-    # Generate report
-    from alpha_zero.evaluation import ReportGenerator
-    generator = ReportGenerator(config)
-    report = generator.generate(results, evaluator.get_diversity_metrics())
-    report.to_json("evaluation_report.json")
-
 Available Classes:
     - EvaluationConfig: Master configuration for evaluation
     - BaselineConfig: Configuration for baseline opponents
@@ -39,9 +33,6 @@ Available Classes:
     - DiversityTracker: Tracks game diversity metrics
     - DiversityMetrics: Aggregated diversity metrics
     - EvaluationResult: Results from evaluating against one baseline
-    - EvaluationReport: Complete evaluation report
-    - ReportGenerator: Generates reports in various formats
-    - SequentialTester: Sequential testing for early stopping in evaluation
 """
 
 from alpha_zero.evaluation.baselines import (
@@ -64,14 +55,6 @@ from alpha_zero.evaluation.evaluator import (
     GameResult,
     ModelEvaluator,
 )
-from alpha_zero.evaluation.reports import EvaluationReport, ReportGenerator
-from alpha_zero.evaluation.sequential_testing import (
-    EvaluationDecision,
-    SequentialTester,
-    SequentialTestingConfig,
-    SequentialTestResult,
-    get_sequential_tester,
-)
 
 __all__ = [
     "BaselineConfig",
@@ -86,9 +69,7 @@ __all__ = [
     # Configuration
     "EvaluationConfig",
     # Sequential Testing (Phase 6)
-    "EvaluationDecision",
     # Reports
-    "EvaluationReport",
     "EvaluationResult",
     "GameResult",
     "HeuristicPlayer",
@@ -97,9 +78,4 @@ __all__ = [
     "ModelEvaluator",
     "NeuralNetworkPlayer",
     "RandomPlayer",
-    "ReportGenerator",
-    "SequentialTestResult",
-    "SequentialTester",
-    "SequentialTestingConfig",
-    "get_sequential_tester",
 ]

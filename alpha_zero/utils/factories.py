@@ -17,7 +17,11 @@ Usage:
         create_llm_client,
     )
 
-    network = create_network(config.network, board_size=16, action_space_size=356)
+    network = create_network(
+        config.network,
+        board_size=16,
+        action_space_size=DEFAULT_ACTION_SPACE_SIZE,  # alpha_zero.utils.constants
+    )
     mcts = create_mcts(config.mcts, network, device="cuda")
     env = create_environment(config.environment)
 """
@@ -31,6 +35,7 @@ from typing import TYPE_CHECKING, Any
 
 import torch
 
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 from alpha_zero.utils.registry import default_registry
 
 if TYPE_CHECKING:
@@ -666,7 +671,7 @@ def create_replay_buffer(
 def create_simultaneous_mcts(
     config: SimultaneousMCTSConfig | None = None,
     num_players: int = 2,
-    action_space_size: int = 356,
+    action_space_size: int = DEFAULT_ACTION_SPACE_SIZE,
 ) -> DecoupledUCT:
     """Create Decoupled UCT (DUCT) for simultaneous-move games.
 

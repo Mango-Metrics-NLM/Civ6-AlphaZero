@@ -98,8 +98,19 @@
           {
             "type": "command",
             "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse_governance.sh",
-            "timeout": 15,
+            "timeout": 60,
             "statusMessage": "Validating governance..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/posttooluse_governance.sh",
+            "timeout": 60,
+            "statusMessage": "Checking debt ratchet..."
           }
         ]
       }

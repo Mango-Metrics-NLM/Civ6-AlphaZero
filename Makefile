@@ -2,9 +2,9 @@
 #
 # Usage:
 #   make help              - Show available targets
-#   make build-all         - Build all container images
-#   make push              - Push images to Artifact Registry
-#   make local-test        - Run local integration test
+#   make build-all         - Build the deployed image (dockerfiles/Dockerfile.vertex)
+#   make push              - Push it to Artifact Registry
+#   make local-smoke       - Dry-run the deployed self-play worker
 #   make deploy-pipeline   - Deploy Vertex AI pipeline
 
 # ============================================================================
@@ -20,15 +20,9 @@ ARTIFACT_REGISTRY ?= $(REGION)-docker.pkg.dev/$(PROJECT_ID)/civ6-alphazero
 # Image tags
 VERSION ?= latest
 BASE_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-base:$(VERSION)
-SELFPLAY_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-selfplay:$(VERSION)
-TRAINER_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-trainer:$(VERSION)
-EVALUATOR_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-evaluator:$(VERSION)
 
 # Local image names (for development)
 LOCAL_BASE_IMAGE ?= civ6-alphazero-base:$(VERSION)
-LOCAL_SELFPLAY_IMAGE ?= civ6-selfplay:$(VERSION)
-LOCAL_TRAINER_IMAGE ?= civ6-trainer:$(VERSION)
-LOCAL_EVALUATOR_IMAGE ?= civ6-evaluator:$(VERSION)
 
 # Python
 PYTHON ?= python3
@@ -67,28 +61,23 @@ help:
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
-	@echo "  make test-all          Run all tests with coverage"
+	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
+	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
 	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
 	@echo "Docker:"
-	@echo "  make build-base        Build base image"
-	@echo "  make build-selfplay    Build self-play worker image"
-	@echo "  make build-trainer     Build trainer image"
-	@echo "  make build-evaluator   Build evaluator image"
-	@echo "  make build-all         Build all images"
-	@echo "  make push              Push all images to Artifact Registry"
+	@echo "  make build-all         Build the deployed image (dockerfiles/Dockerfile.vertex)"
+	@echo "  make push              Push it to Artifact Registry"
 	@echo ""
 	@echo "Local Testing:"
-	@echo "  make local-test        Run local docker-compose test"
-	@echo "  make local-smoke       Run smoke test (1 game + 1 step)"
-	@echo "  make local-down        Stop local containers"
+	@echo "  make local-smoke       Dry-run the deployed self-play worker"
 	@echo ""
 	@echo "Vertex AI:"
-	@echo "  make deploy-pipeline   Deploy training pipeline"
-	@echo "  make run-iteration     Run single training iteration"
-	@echo "  make estimate-cost     Estimate costs for configuration"
+	@echo "  make run-iteration     Run single training iteration (infra.vertex_launcher, LEGACY)"
+	@echo "  make deploy-pipeline   NOT IMPLEMENTED - use alpha_zero.cloud.gcp.vertex_orchestrator"
+	@echo "  make estimate-cost     NOT IMPLEMENTED - see docs/GCP_INFRA.md"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  PROJECT_ID=$(PROJECT_ID)"
@@ -149,7 +138,6 @@ test-integration:
 test-all:
 	$(PYTHON) -m pytest tests/unit/ tests/sanity/ tests/integration/ tests/cloud/unit/ tests/regression/ \
 		-m "not slow and not requires_env" \
-		--ignore=tests/unit/test_distributed \
 		--cov=alpha_zero --cov-report=term-missing --cov-report=html \
 		--cov-fail-under=85
 
@@ -164,6 +152,20 @@ test-sanity:
 .PHONY: test-cloud
 test-cloud:
 	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short
+
+# Mirrors CI's `cloud-tests` job, which since 2026-09-02 also MEASURES the
+# deployed path. alpha_zero/cloud/* is omitted from the repo-wide gate, so until
+# this floor existed no job measured it at all. A separate coverage config is
+# required, not cosmetic: the repo-wide one omits the very package under test,
+# and `coverage json` without --rcfile reads pyproject.toml and reports nothing.
+.PHONY: test-cloud-coverage
+test-cloud-coverage:
+	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x \
+		--cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-report=
+	$(PYTHON) -m pytest tests/cloud/smoke/ -v --tb=short \
+		--cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-append --cov-report=
+	$(PYTHON) -m coverage json --rcfile=.coveragerc-cloud -o coverage-cloud.json
+	$(PYTHON) scripts/check_coverage_floors.py --report coverage-cloud.json --package alpha_zero/cloud
 
 # Mirrors CI's `security` job, which runs BOTH the pytest suite and a bandit
 # scan. The bandit half was missing entirely, so `make verify` could pass while
@@ -304,8 +306,8 @@ hooks-install:
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
 .PHONY: verify
-verify: lint-check typecheck test test-security security-secrets test-governance validate test-all eval-llm
-	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage and eval gates"
+verify: lint-check typecheck test test-security security-secrets test-governance validate test-all test-cloud-coverage eval-llm
+	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage (global + cloud floor) and eval gates"
 
 .PHONY: eval-llm
 eval-llm:
@@ -331,41 +333,15 @@ publish-spaces:
 # ============================================================================
 # Docker Build
 # ============================================================================
-
-.PHONY: build-base
-build-base:
-	docker build \
-		-f dockerfiles/Dockerfile.base \
-		-t $(LOCAL_BASE_IMAGE) \
-		.
-
-.PHONY: build-selfplay
-build-selfplay: build-base
-	docker build \
-		-f dockerfiles/Dockerfile.selfplay \
-		--build-arg BASE_IMAGE=$(LOCAL_BASE_IMAGE) \
-		-t $(LOCAL_SELFPLAY_IMAGE) \
-		.
-
-.PHONY: build-trainer
-build-trainer: build-base
-	docker build \
-		-f dockerfiles/Dockerfile.trainer \
-		--build-arg BASE_IMAGE=$(LOCAL_BASE_IMAGE) \
-		-t $(LOCAL_TRAINER_IMAGE) \
-		.
-
-.PHONY: build-evaluator
-build-evaluator: build-base
-	docker build \
-		-f dockerfiles/Dockerfile.evaluator \
-		--build-arg BASE_IMAGE=$(LOCAL_BASE_IMAGE) \
-		-t $(LOCAL_EVALUATOR_IMAGE) \
-		.
+# The deployed image is dockerfiles/Dockerfile.vertex, built by cloudbuild.yaml
+# (`make deploy-pipeline`). The per-role images (base/selfplay/trainer/evaluator)
+# and the LEGACY alpha_zero.cloud.{selfplay_worker,trainer,evaluator} modules they
+# entrypointed were removed on 2026-09-02 as dead code; nothing built them.
 
 .PHONY: build-all
-build-all: build-base build-selfplay build-trainer build-evaluator
-	@echo "All images built successfully"
+build-all:
+	docker build -f dockerfiles/Dockerfile.vertex -t $(LOCAL_BASE_IMAGE) .
+	@echo "Built $(LOCAL_BASE_IMAGE) from dockerfiles/Dockerfile.vertex"
 
 # ============================================================================
 # Docker Push
@@ -381,58 +357,26 @@ setup-artifact-registry:
 		|| true
 	gcloud auth configure-docker $(REGION)-docker.pkg.dev
 
-.PHONY: push-base
-push-base:
+.PHONY: push
+push: build-all
 	docker tag $(LOCAL_BASE_IMAGE) $(BASE_IMAGE)
 	docker push $(BASE_IMAGE)
-
-.PHONY: push-selfplay
-push-selfplay:
-	docker tag $(LOCAL_SELFPLAY_IMAGE) $(SELFPLAY_IMAGE)
-	docker push $(SELFPLAY_IMAGE)
-
-.PHONY: push-trainer
-push-trainer:
-	docker tag $(LOCAL_TRAINER_IMAGE) $(TRAINER_IMAGE)
-	docker push $(TRAINER_IMAGE)
-
-.PHONY: push-evaluator
-push-evaluator:
-	docker tag $(LOCAL_EVALUATOR_IMAGE) $(EVALUATOR_IMAGE)
-	docker push $(EVALUATOR_IMAGE)
-
-.PHONY: push
-push: push-base push-selfplay push-trainer push-evaluator
-	@echo "All images pushed to $(ARTIFACT_REGISTRY)"
+	@echo "Pushed $(BASE_IMAGE)"
 
 # ============================================================================
 # Local Testing
 # ============================================================================
-
-.PHONY: local-test
-local-test:
-	docker-compose up -d
-	@echo "Waiting for services to start..."
-	sleep 10
-	docker-compose logs -f trainer
+# `make local-test` / `make local-down` (docker-compose over the per-role images)
+# were removed with those images on 2026-09-02. `local-smoke` survives, but it no
+# longer goes through docker at all: it is the deployed worker's own dry run.
 
 .PHONY: local-smoke
 local-smoke:
-	@echo "Running local smoke test..."
-	CIV6_STORAGE_BACKEND=local \
-	CIV6_STORAGE_BASE_PATH=./test_storage \
-	$(PYTHON) -m alpha_zero.cloud.selfplay_worker \
-		--num-games=1 \
-		--iteration=0 \
-		--worker-id=0 \
-		--num-simulations=10 \
-		--device=cpu \
-		--dry-run
+	@echo "Running local smoke test (deployed self-play worker, dry run)..."
+	CIV6_STORAGE_BACKEND=local CIV6_STORAGE_BASE_PATH=./test_storage \
+	$(PYTHON) -m alpha_zero.cloud.gcp.selfplay_worker \
+		--worker_id 0 --model_version 0 --iteration 0 --games 1 --dry_run
 	@echo "Smoke test passed"
-
-.PHONY: local-down
-local-down:
-	docker-compose down -v
 
 .PHONY: clean-test-storage
 clean-test-storage:
@@ -474,6 +418,13 @@ deploy-pipeline:
 	@echo "Use: $(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator --help"
 	@exit 1
 
+# LEGACY, and only partly working. `infra/vertex_launcher.py` is not the deployed
+# path -- cloudbuild.yaml builds only dockerfiles/Dockerfile.vertex, which
+# entrypoints alpha_zero.cloud.gcp.entrypoint. Its --dry-run works; a real submit
+# does not: the submit path imports `get_machine_profile` from
+# alpha_zero.cloud.config, which does not exist (verified against the default
+# branch, so this predates the 2026-09-02 deletion). Use
+# `$(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator` for real runs.
 .PHONY: run-iteration
 run-iteration:
 	@echo "Running training iteration $(ITERATION)..."
@@ -506,11 +457,19 @@ run-evaluator:
 		--iteration=$(ITERATION) \
 		--num-games=$(EVAL_GAMES)
 
+# BROKEN: `CloudConfig.estimate_iteration_cost()` does not exist and never has
+# (checked against the default branch), so this target has always raised
+# AttributeError. Kept with the failure made explicit rather than silently
+# advertising a number the code cannot produce. The live estimator is
+# per-job, not per-iteration: `alpha_zero.cloud.gcp.cost.CostEstimator
+# .estimate_job_cost(machine_type, accelerator_type, count, hours, is_spot)`.
+# Measured per-iteration costs are tabulated in docs/GCP_INFRA.md.
 .PHONY: estimate-cost
 estimate-cost:
-	$(PYTHON) -c "from alpha_zero.cloud.config import CloudConfig; \
-		c = CloudConfig.from_env(); \
-		print('Estimated cost per iteration:', c.estimate_iteration_cost())"
+	@echo "estimate-cost is not implemented: CloudConfig has no estimate_iteration_cost()."
+	@echo "Per-job estimates: alpha_zero.cloud.gcp.cost.CostEstimator.estimate_job_cost(...)"
+	@echo "Measured per-iteration costs: docs/GCP_INFRA.md"
+	@exit 1
 
 # ============================================================================
 # Utilities
@@ -541,11 +500,12 @@ clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	find . -type f -name "*.pyc" -delete
 
+# `docker-compose down -v` was removed on 2026-09-02 with docker-compose.yml and
+# the per-role images it composed; there is no local stack left to tear down.
 .PHONY: clean-all
 clean-all: clean clean-test-storage
-	docker-compose down -v || true
-	docker rmi $(LOCAL_BASE_IMAGE) $(LOCAL_SELFPLAY_IMAGE) \
-		$(LOCAL_TRAINER_IMAGE) $(LOCAL_EVALUATOR_IMAGE) 2>/dev/null || true
+	rm -f coverage-cloud.json
+	docker rmi $(LOCAL_BASE_IMAGE) 2>/dev/null || true
 
 # ============================================================================
 # Default target

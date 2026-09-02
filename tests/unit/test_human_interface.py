@@ -2,10 +2,11 @@
 
 Tests cover:
 - Configuration loading and validation
-- Input parsing and handling
 - Game controller turn management
-- Visualization rendering
 - Replay recording and playback
+
+The input-handler and visualizer tests went with
+``alpha_zero/human_interface/{input_handler,visualizer}.py`` (removed 2026-09-02).
 """
 
 import tempfile
@@ -25,18 +26,12 @@ from alpha_zero.human_interface.game_controller import (
     GamePhase,
     TurnResult,
 )
-from alpha_zero.human_interface.input_handler import (
-    ActionParser,
-    ActionType,
-    HumanInputHandler,
-)
 from alpha_zero.human_interface.replay import (
     GameRecorder,
     GameRecording,
     GameReplay,
     ReplayManager,
 )
-from alpha_zero.human_interface.visualizer import StateVisualizer
 
 
 class TestHumanInterfaceConfig:
@@ -116,160 +111,6 @@ class TestHumanInterfaceConfig:
 
             assert loaded.thinking_time_seconds == 25.0
             assert loaded.confirm_moves is False
-
-
-class TestActionParser:
-    """Tests for ActionParser."""
-
-    @pytest.fixture
-    def parser(self):
-        """Create parser with 10x10 board."""
-        return ActionParser(board_size=(10, 10))
-
-    def test_parse_coordinate_a1(self, parser):
-        """Test parsing A1 coordinate."""
-        result = parser.parse("A1")
-
-        assert result.action_type == ActionType.MOVE
-        assert result.action_index == 0
-        assert result.coordinate == "A1"
-
-    def test_parse_coordinate_b3(self, parser):
-        """Test parsing B3 coordinate."""
-        result = parser.parse("B3")
-
-        assert result.action_type == ActionType.MOVE
-        assert result.action_index == 2 * 10 + 1  # row 2, col 1
-        assert result.coordinate == "B3"
-
-    def test_parse_coordinate_lowercase(self, parser):
-        """Test lowercase coordinate."""
-        result = parser.parse("c5")
-
-        assert result.action_type == ActionType.MOVE
-        assert result.coordinate == "C5"
-
-    def test_parse_coordinate_out_of_bounds(self, parser):
-        """Test out of bounds coordinate."""
-        result = parser.parse("Z99")
-
-        assert result.action_type == ActionType.INVALID
-        assert "out of bounds" in result.error_message.lower()
-
-    def test_parse_invalid_format(self, parser):
-        """Test invalid format."""
-        result = parser.parse("xyz")
-
-        assert result.action_type == ActionType.INVALID
-
-    def test_parse_with_valid_actions(self, parser):
-        """Test parsing with valid action list."""
-        result = parser.parse("A1", valid_actions=[0, 1, 2])
-        assert result.action_type == ActionType.MOVE
-
-        result = parser.parse("A2", valid_actions=[0, 1, 2])
-        assert result.action_type == ActionType.INVALID
-        assert "not a valid move" in result.error_message.lower()
-
-    def test_parse_undo_command(self, parser):
-        """Test undo command."""
-        result = parser.parse("undo")
-        assert result.action_type == ActionType.UNDO
-
-        result = parser.parse("u")
-        assert result.action_type == ActionType.UNDO
-
-    def test_parse_resign_command(self, parser):
-        """Test resign command."""
-        result = parser.parse("resign")
-        assert result.action_type == ActionType.RESIGN
-
-        result = parser.parse("q")
-        assert result.action_type == ActionType.RESIGN
-
-    def test_parse_help_command(self, parser):
-        """Test help command."""
-        result = parser.parse("help")
-        assert result.action_type == ActionType.HELP
-
-        result = parser.parse("?")
-        assert result.action_type == ActionType.HELP
-
-    def test_index_to_coordinate(self, parser):
-        """Test index to coordinate conversion."""
-        assert parser.index_to_coordinate(0) == "A1"
-        assert parser.index_to_coordinate(11) == "B2"
-        assert parser.index_to_coordinate(99) == "J10"
-
-    def test_coordinate_to_index(self, parser):
-        """Test coordinate to index conversion."""
-        assert parser.coordinate_to_index("A1") == 0
-        assert parser.coordinate_to_index("B2") == 11
-        assert parser.coordinate_to_index("J10") == 99
-
-
-class TestActionParserIndexMode:
-    """Tests for ActionParser in index mode."""
-
-    @pytest.fixture
-    def parser(self):
-        """Create parser in index mode."""
-        return ActionParser(board_size=(10, 10), input_mode=InputMode.INDEX)
-
-    def test_parse_index(self, parser):
-        """Test parsing index."""
-        result = parser.parse("0")
-
-        assert result.action_type == ActionType.MOVE
-        assert result.action_index == 0
-        assert result.coordinate == "A1"
-
-    def test_parse_index_with_validation(self, parser):
-        """Test parsing with valid actions."""
-        result = parser.parse("5", valid_actions=[0, 5, 10])
-        assert result.action_type == ActionType.MOVE
-
-        result = parser.parse("7", valid_actions=[0, 5, 10])
-        assert result.action_type == ActionType.INVALID
-
-
-class TestHumanInputHandler:
-    """Tests for HumanInputHandler."""
-
-    @pytest.fixture
-    def handler(self):
-        """Create input handler."""
-        config = HumanInterfaceConfig(confirm_moves=False)
-        return HumanInputHandler(config, board_size=(10, 10))
-
-    def test_initialization(self, handler):
-        """Test handler initialization."""
-        assert handler.board_size == (10, 10)
-
-    def test_show_help(self, handler):
-        """Test help text generation."""
-        help_text = handler.show_help()
-
-        assert "undo" in help_text.lower()
-        assert "resign" in help_text.lower()
-        assert "help" in help_text.lower()
-
-    def test_show_valid_moves(self, handler):
-        """Test valid moves display."""
-        valid_actions = [0, 1, 2, 10, 11]
-        result = handler.show_valid_moves(valid_actions)
-
-        assert "A1" in result
-        assert "B1" in result
-
-    def test_get_action_with_mock_input(self, handler):
-        """Test get_action with mocked input."""
-        handler.set_input_function(lambda prompt: "A1")
-
-        result = handler.get_action([0, 1, 2])
-
-        assert result.action_type == ActionType.MOVE
-        assert result.action_index == 0
 
 
 class TestTurnResult:
@@ -480,69 +321,6 @@ class TestTurnOwnership:
         controller._execute_move(1, 0, 0.0)
 
         assert controller.current_state.current_player == 1
-
-
-class TestStateVisualizer:
-    """Tests for StateVisualizer."""
-
-    @pytest.fixture
-    def visualizer(self):
-        """Create visualizer."""
-        config = HumanInterfaceConfig()
-        return StateVisualizer(config)
-
-    def test_initialization(self, visualizer):
-        """Test visualizer initialization."""
-        assert visualizer._use_colors is True
-
-    def test_render_board(self, visualizer):
-        """Test board rendering."""
-        observation = np.zeros((3, 5, 5))
-        observation[0, 0, 0] = 1  # Player 1 at A1
-        observation[0, 2, 2] = -1  # Player 2 at C3
-
-        output = visualizer.render_board(observation, valid_actions=[1, 2, 3])
-
-        # Should contain coordinate labels
-        assert "A" in output or "1" in output
-
-    def test_render_board_without_colors(self, visualizer):
-        """Test board rendering without colors."""
-        visualizer.disable_colors()
-
-        observation = np.zeros((3, 5, 5))
-        output = visualizer.render_board(observation)
-
-        # Should not contain ANSI escape codes
-        assert "\033[" not in output
-
-    def test_render_evaluation(self, visualizer):
-        """Test evaluation rendering."""
-        output = visualizer.render_evaluation(0.3)
-
-        assert "Evaluation" in output
-
-    def test_render_game_info(self, visualizer):
-        """Test game info rendering."""
-        output = visualizer.render_game_info(
-            turn_number=5,
-            current_player=0,
-            is_human_turn=True,
-            valid_move_count=10,
-        )
-
-        assert "Turn 5" in output
-        assert "Your turn" in output
-
-    def test_render_game_over(self, visualizer):
-        """Test game over rendering."""
-        output = visualizer.render_game_over(
-            winner=0,
-            human_player=0,
-            summary={"total_turns": 10},
-        )
-
-        assert "WIN" in output.upper()
 
 
 class TestGameRecording:

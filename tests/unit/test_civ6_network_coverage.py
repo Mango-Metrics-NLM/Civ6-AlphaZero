@@ -23,6 +23,7 @@ import warnings
 import pytest
 import torch
 
+from alpha_zero.core.civ6_actions import MicroCivActionSpace
 from alpha_zero.core.civ6_network import (
     AttentionSpatialEncoder,
     Civ6Network,
@@ -106,7 +107,8 @@ class TestNetworkConfig:
         assert cfg.num_res_blocks == 6
         assert cfg.num_filters == 64
         assert cfg.fc_hidden_dim == 256
-        assert cfg.action_space_size == 381
+        # Derived from the environment's slot arithmetic (376), not a literal.
+        assert cfg.action_space_size == MicroCivActionSpace().total_size
         assert cfg.value_head_hidden == 128
         assert cfg.dropout == 0.0
         assert cfg.num_attention_heads == 4
@@ -326,7 +328,7 @@ class TestMicroCivNetworkExtended:
     def test_default_params(self):
         net = MicroCivNetwork()
         assert net.config.spatial_size == 16
-        assert net.config.action_space_size == 381
+        assert net.config.action_space_size == MicroCivActionSpace().total_size
         assert net.num_players == 2
 
     def test_custom_board_size(self):

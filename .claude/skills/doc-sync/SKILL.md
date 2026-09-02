@@ -21,8 +21,10 @@ python scripts/check_doc_sync.py
 
 The error code tells you what to fix:
 
-- **D1** — align the version across `pyproject.toml`, `alpha_zero/__init__.py`,
-  and `setup.py` (the packaging version is authoritative).
+- **D1** — align the version across `pyproject.toml` and
+  `alpha_zero/__init__.py` (the packaging version is authoritative). `setup.py`
+  is checked too, but only if it exists — it was removed from this branch, so
+  do not go looking for it.
 - **D2** — update `docs/MODULE_REFERENCE.md` counts and the declared submodule
   count to match the filesystem.
 - **D3** — make the coverage-gate number match `pyproject` `fail_under`; historical

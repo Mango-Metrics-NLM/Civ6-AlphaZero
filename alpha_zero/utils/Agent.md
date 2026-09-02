@@ -54,7 +54,6 @@ This module provides the foundational utilities consumed by all other modules:
 | `curriculum_learning.py` | CurriculumManager, AdaptiveDifficultyController |
 | `enhanced_rewards.py` | EnhancedRewardShaper, WinConditionEvaluator |
 | `environment_tuning.py` | TunedEnvironmentWrapper, EarlyTerminationChecker |
-| `training_config_enhanced.py` | EnhancedTrainingConfig, ResourceManager, ParameterSchedule |
 | `rag_client.py` | RAGClient, thin wrapper for RAG pipeline (optional) |
 | `reward_shaping.py` | RewardShaper for intermediate reward signals |
 | `checkpoint.py` | safe_load_checkpoint for secure deserialization |
@@ -62,10 +61,8 @@ This module provides the foundational utilities consumed by all other modules:
 | `memory_guard.py` | MemoryGuard for replay buffer memory limits |
 | `timeout_config.py` | Centralized timeout configuration |
 | `knowledge_base.py` | Local knowledge base utilities |
-| `simple_mcts.py` | SimpleMCTS for testing (legacy) |
 | `benchmarks.py` | Performance benchmarking utilities |
 | `compat.py` | Compatibility shims for cross-version support |
-| `training_diagnostics.py` | Training diagnostic utilities |
 
 ---
 

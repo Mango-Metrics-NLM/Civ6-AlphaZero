@@ -98,8 +98,11 @@ inventory is [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md).
   per-player value vectors.
 - **MLflow experiment tracking** (`alpha_zero/monitoring/`) — the sole tracker.
 - **Optuna hyperparameter search** via `run_sweep.py` and `configs/sweep_muzero.yaml`.
-- **Cloud training** on Google Cloud Vertex AI (self-play / trainer / evaluator
-  workers, GCS-backed replay buffer, Spot-VM preemption handling).
+- **Cloud training** on Google Cloud Vertex AI — one image
+  (`dockerfiles/Dockerfile.vertex`) entrypointed by `alpha_zero.cloud.gcp.entrypoint`,
+  which routes `--mode` to the `selfplay`, `training`, `evaluation` and `tournament`
+  workers in `alpha_zero/cloud/gcp/`. The orchestrator runs locally and dispatches
+  those jobs. GCS-backed replay buffer, Spot-VM preemption handling.
 - **LLM eval gate** for the strategy advisor (`make eval-llm`, `configs/eval/`).
 - **Live Civ6 gameplay** over a headless FireTuner socket bridge.
 
@@ -216,10 +219,16 @@ plus every unit ply. `--save_interval` matters too — at its default of 10, a
 ### Other entry points
 
 ```bash
-python -m alpha_zero.web --preset dev          # Human-vs-AI web interface
-python -m alpha_zero.cloud.gcp --help          # Vertex AI job launcher
-python -m alpha_zero.training_civ6 --dry_run   # MicroCiv training smoke test
+python -m alpha_zero.web --preset dev                        # Human-vs-AI web interface
+python -m alpha_zero.cloud.gcp.vertex_orchestrator --help    # Vertex AI job launcher
+python -m alpha_zero.cloud.gcp.selfplay_worker --dry_run     # deployed worker smoke test
+python -m alpha_zero.training_civ6 --dry_run                 # MicroCiv training smoke test
 ```
+
+Inside the container, `alpha_zero.cloud.gcp.entrypoint` routes `--mode` to one of
+`selfplay`, `training`, `evaluation` or `tournament`; `--mode=orchestrator` is
+deliberately refused there, because the orchestrator runs locally and dispatches
+those jobs.
 
 ### Top-level runners
 
@@ -257,24 +266,42 @@ mlflow ui --backend-store-uri ./mlruns --port 5000   # inspect training runs
 ## Testing & quality gates
 
 ```bash
-make verify          # every CI gate in one pass — run before opening a PR
-make test            # the four suites CI runs
-make test-all        # coverage, mirroring CI's coverage job (gate: 85%)
-make lint            # ruff
-make typecheck       # mypy, exactly as CI runs it
-make validate        # governance validators (openspec, kb, skills, doc-sync)
-make eval-llm        # LLM eval gate (offline)
-make hooks-install   # install pre-commit + the git pre-commit / pre-push hooks
+make verify              # every CI gate in one pass — run before opening a PR
+make test                # the suites CI runs
+make test-all            # coverage, mirroring CI's coverage job (gate: 85%)
+make test-cloud-coverage # the deployed path, against coverage-floors.json
+make lint                # ruff
+make typecheck           # mypy, exactly as CI runs it
+make validate            # governance validators (openspec, kb, skills, agents, doc-sync)
+make security-secrets    # gitleaks over the committable tree + this branch's history
+make eval-llm            # LLM eval gate (offline)
+make hooks-install       # install pre-commit + the git pre-commit / pre-push hooks
 ```
 
 CI enforces a **coverage gate of 85%** on `alpha_zero/` (`--cov-fail-under=85`,
-matching `pyproject.toml` `fail_under`). Tests live under `tests/` (`unit/`,
-`integration/`, `e2e/`, `cloud/`, `governance/`, and more). Check the current CI
-status via the badge above rather than a hardcoded count.
+matching `pyproject.toml` `fail_under`). `alpha_zero/cloud/` — the deployed path —
+is omitted from that gate and measured separately against a per-package floor in
+[`coverage-floors.json`](coverage-floors.json), using `.coveragerc-cloud`. A floor
+may only ever be raised. Tests live under `tests/` (`unit/`, `integration/`,
+`e2e/`, `cloud/`, `governance/`, `regression/`, `security/`, and more). Check the
+current CI status via the badge above rather than a hardcoded count.
 
 Governance validators keep the docs and harness honest — `check_doc_sync.py`
 fails the build on version drift, stale module counts, retired-tooling references,
 unknown extras, or broken links.
+
+### Debt and coverage tooling
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/audit_import_graph.py` | AST import graph — lists `alpha_zero/` modules nothing outside `tests/` imports (`--json`, `--package`) |
+| `scripts/measure_debt.py` | Emits the tracked debt metrics as JSON; `--compare` exits 1 on any regression |
+| `scripts/check_coverage_floors.py` | Enforces the per-package floors in `coverage-floors.json` against a `coverage json` report |
+
+The baseline these compare against is
+`docs/evidence/tech_debt_baseline/baseline.json`, held by
+`tests/regression/test_debt_ratchet.py`: a metric may fall (and the baseline falls
+with it in the same PR); it may never rise.
 
 ## Documentation
 

@@ -103,9 +103,10 @@ logs/civ6az/                  # Training logs
 | `CIV6AZ_GCS_BUCKET` | `civ6az-training` | Required |
 | `CIV6AZ_CONTAINER_IMAGE_URI` | `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized` | Required |
 | `CIV6AZ_ENCODER_TYPE` | `patch_embed` | Default |
-| `WANDB_ENABLED` | `true` | Optional |
-| `WANDB_PROJECT` | `civ6-alphazero` | Optional |
-| `WANDB_MODE` | `online` | Optional |
+| `CIV6AZ_MLFLOW_ENABLED` | `true` | Optional |
+| `CIV6AZ_MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | Optional |
+| `CIV6AZ_MLFLOW_EXPERIMENT_NAME` | `civ6-alphazero` | Optional |
+| ~~`WANDB_ENABLED` / `WANDB_PROJECT` / `WANDB_MODE`~~ | — | **Legacy.** W&B was retired on 2026-07-13; MLflow is the sole tracker. `resolve_tracker_enabled()` still honours `WANDB_ENABLED` as a last-resort fallback and warns. The iteration-49 run above predates the switch and used them. |
 
 ## IAM & Service Accounts
 
