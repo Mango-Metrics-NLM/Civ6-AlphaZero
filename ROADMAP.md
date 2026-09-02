@@ -47,6 +47,12 @@ A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–
 
 Make N-player training real and self-play fast; pay down debt. *(Active.)*
 
+> **Order of work (2026-09-02):** `kb/specs/20260902-validated-learning-plan.md`.
+> The bullets below are M4's inventory; that spec sequences them behind a draw-rate
+> fix (measured: `docs/evidence/draw_rate_sweep/`) and a seeded learning-trend run,
+> because none of the numbers below can be read until the training loop is shown to
+> learn at a configuration where the promotion gate is reachable.
+
 - Wire `validate_encoder_state` into the cloud workers to prevent silent architecture cross-loading (done 2026-08-10).
 - Complete 800-game local GPU A/B arena comparison and publish the hex-crystalline encoder to the Hugging Face Hub (done 2026-08-10).
 - Run and validate 3–4 player training (pipeline landed 2026-07-05:

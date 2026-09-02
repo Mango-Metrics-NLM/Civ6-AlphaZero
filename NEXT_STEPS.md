@@ -1,5 +1,16 @@
 # Next Steps — Live Bridge (v1.8.0)
 
+> **What now, across the whole project (2026-09-02):**
+> `kb/specs/20260902-validated-learning-plan.md`. It is the single sequenced list,
+> built from verification passes and one measurement
+> (`docs/evidence/draw_rate_sweep/`), and it supersedes the "Recommended Plan" in
+> `docs/NEXT_STEPS_CASE_2026-08.md`. Its first-order finding: the training loop has
+> never been shown to learn because ~70% of games at the shipped arena configuration
+> end in a 1–1 city tie, and the turn limit — not the board size — is the lever
+> (random-play draws at board 8: 0.68 / 0.47 / 0.37 at 30 / 60 / 100 turns). Item 3
+> below (a trained checkpoint in the live game) is sequenced after that plan's
+> validation runs.
+>
 > **Scope note.** This document covers the live Civ6 bridge only. The other open
 > track is tech-debt reduction and hardening: its Core scope landed on 2026-09-02
 > (44 dead modules / 21,903 lines deleted, the four per-role Dockerfiles,
