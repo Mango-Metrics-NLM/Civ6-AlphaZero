@@ -143,13 +143,30 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]"
+          pip install -e ".[dev]" pytest-cov
 
+      # alpha_zero/cloud/* is omitted from the global gate, so the deployed path
+      # was unmeasured by any job. These tests already exercised it; they now
+      # also measure it, against the per-package floor in coverage-floors.json.
+      # A separate coverage config is used because the repo-wide one omits the
+      # very package being measured here.
       - name: Run cloud unit tests
-        run: pytest tests/cloud/unit/ -v --tb=short -x
+        run: >
+          pytest tests/cloud/unit/ -v --tb=short -x
+          --cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-report=
 
       - name: Run cloud smoke tests
-        run: pytest tests/cloud/smoke/ -v --tb=short
+        run: >
+          pytest tests/cloud/smoke/ -v --tb=short
+          --cov=alpha_zero.cloud --cov-config=.coveragerc-cloud --cov-append --cov-report=
+
+      # --rcfile is required, not cosmetic: without it `coverage json` reads
+      # pyproject.toml, whose omit list drops alpha_zero/cloud/* — the report
+      # comes back empty and the floor check has nothing to measure.
+      - name: Enforce cloud coverage floor
+        run: |
+          coverage json --rcfile=.coveragerc-cloud -o coverage-cloud.json
+          python scripts/check_coverage_floors.py --report coverage-cloud.json --package alpha_zero/cloud
 
   security:
     name: Security Scan

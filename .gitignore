@@ -533,3 +533,6 @@ test_results/
 eval_results/
 release-staging*/
 dataset-export/
+
+# Per-package coverage report produced by CI's cloud floor check
+coverage-cloud.json
