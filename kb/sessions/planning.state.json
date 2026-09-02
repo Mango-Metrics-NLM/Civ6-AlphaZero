@@ -1,24 +1,26 @@
 {
     "last_session_id": "session_01EcSsbbTYiSkmZsMVyipm7G",
-    "last_timestamp": "2026-09-02T00:00:00Z",
-    "current_focus": "Tech-debt reduction and hardening plan — handed off to DEV-SQE, blocked on maintainer authorizations (spec §8)",
+    "last_timestamp": "2026-09-02T12:40:00Z",
+    "current_focus": "Tech-debt reduction and hardening plan v2 (post adversarial review) — handed off to DEV-SQE, blocked on maintainer authorizations (spec §9)",
     "resume_pointers": {
-        "current_task": "Await maintainer answer on kb/specs/20260902-tech-debt-hardening.md §8 (deletion list incl. mechanics/ yes/no; architectural authorization for WS3.2, WS5, WS7.2)",
+        "current_task": "Await maintainer answers on kb/specs/20260902-tech-debt-hardening.md §9: Tier A blanket deletion (44 modules / 19,882 lines), Tier B rows B1-B14, architectural go-ahead for WS3.2/WS3.4/WS5/WS7.1, maintainer-only actions",
         "blocked_on": [
-            "spec §8.1 deletion authorization (~9,000 lines, plus separate mechanics/ 5,863)",
-            "spec §8.2 architectural authorization (WS3.2 env prefix, WS5 decompositions, WS7.2 entry points)",
-            "WS0 W&B key rotation (human action)"
+            "spec §9.1 Tier A blanket authorization + fourteen Tier B yes/no rows",
+            "spec §9.3 architectural authorization (WS3.2 env prefix, WS3.4 project-id fail-loud, WS5 decompositions, WS7.1 entry points)",
+            "spec §9.5-9.6 maintainer-only: W&B key rotation, close #72/#69/#49/#32, Dependabot merges, default-branch decision, charter amendments (Python 3.11, infra/vertex_launcher, mechanics)"
         ],
         "next_steps": [
-            "If authorizations withheld: scope DEV-SQE to WS0, WS1, WS4.1-4.2, WS4.6",
-            "After WS1.1 red draft PR reports real cloud/gcp coverage, re-plan WS1 tiers against the measured number, not the derived 83.8%",
-            "After WS2 lands, re-measure spec §2 and update CLAUDE.md §5.2/§5.3 with the rule-stated counts",
-            "Open one OpenSpec change per workstream as DEV-SQE picks it up (openspec-propose skill)"
+            "DEV-SQE may start today without authorization: WS-M (measure_debt.py + debt ratchet), WS1.1-1.4 on the current tree, WS3.1 (381 fix + checkpoint inventory), WS4.1-4.2 (checkpoint inventory, weights_only), WS4.6 (workflow/hook config)",
+            "After Tier A lands: re-run scripts/audit_import_graph.py and coverage, set coverage-floors.json from the measured post-deletion number, then WS1.5-1.6",
+            "Before WS5.5-5.7: the mock.patch enumeration test must pass on the current tree; otherwise re-record the 2026-08-30 decision and stop",
+            "After Core scope: re-measure spec §2 via scripts/measure_debt.py and update CLAUDE.md §5.2/§5.3 with command-cited counts",
+            "One OpenSpec change per workstream as DEV-SQE picks it up (openspec-propose skill)"
         ]
     },
     "context_files": [
         "kb/specs/20260902-tech-debt-hardening.md",
-        "kb/handoffs/20260902-planning-to-devsqe-tech-debt-hardening.md",
+        "kb/handoffs/20260902-planning-to-devsqe-tech-debt-hardening-v2.md",
+        "scripts/audit_import_graph.py",
         "CLAUDE.md",
         "PROJECT_CHARTER.md",
         "docs/runbooks/secret-scanning.md",
