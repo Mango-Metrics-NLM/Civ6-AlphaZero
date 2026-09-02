@@ -1,3 +1,13 @@
+# DEV-SQE Log
+
+## 2026-09-02 - Tech-debt plan, Core scope implemented
+- **Session:** session_01EcSsbbTYiSkmZsMVyipm7G
+- **Focus:** Execute the Core scope of `kb/specs/20260902-tech-debt-hardening.md` v2 across five commits on `claude/tech-debt-hardening-plan-xrn9sp` (PR #116).
+- **Shipped:** WS-M (`measure_debt.py` + debt ratchet against a committed baseline); WS4.6 (least-privilege workflows, SHA-pinned release action, `--strict-markers`, and a push guard that now resolves the real default branch — it had only ever compared against the literal `main`, and a bash precedence bug meant a commit while on main was never denied); WS3.1 (the live `action_space_size` default was 381 against an environment width of 376, in `NetworkConfig`, `civ6_local`, `MuZeroConfig` and the N-player head); WS4.1-4.2 (both checkpoint loaders silently retried failed safe loads with `weights_only=False`; opt-in now explicit, single unsafe call in the new leaf module `utils/safe_load.py`); WS2 (Tier A: 44 modules / 21,903 lines with no live importer, plus the four Dockerfiles, `docker-compose.yml` and `setup.py` that only served them); WS1 (`alpha_zero.cloud` measured against a 58% floor in the `cloud-tests` job, plus an omit-list ratchet test).
+- **Verified:** global coverage 89.84% (gate 85%), 11,445 tests pass; unit 9,921, integration 580, cloud 846, regression 125, governance 91, scripts+e2e 239; ruff, ruff format, mypy (328 files) and all four governance validators clean. Every new gate shipped with a recorded negative control.
+- **Gotchas found:** deleting dead code that *was* tested lowers reported coverage (34 dead modules sat inside the measurement), so a floor must be measured after deletion; `coverage json` without `--rcfile` re-applies pyproject's omit list and reports "No data to report", making a floor check look green; local suites need `OMP_NUM_THREADS=2` or two tests wedge on the OpenMP spin-wait.
+- **Next:** Pre-PR review. Outstanding for the maintainer: the GCS champion-lineage inventory before the safe-load default reaches production, Tier B's fourteen rows, and WS5/WS3.2/WS6/WS7.
+
 # DEV-SQE Session Log
 
 ## 2026-08-30 - Review found the gates did not gate; all 13 findings fixed (PR #115)
