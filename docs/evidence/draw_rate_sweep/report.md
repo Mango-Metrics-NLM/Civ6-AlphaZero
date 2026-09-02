@@ -75,8 +75,11 @@ Raw counts: `draw_rate_sweep.json`.
 
 ## A second finding, found in the run's own log
 
-The run emitted **18,103** `Invalid move to (x, y)` warnings across 720 games, ~25
-per game. The action mask (`core/civ6_actions.py:629-635`) marks a move legal when
+The run emitted **18,103** `Invalid move to (x, y)` warnings across 720 games — ~25
+per game averaged over all cells, but that average is dominated by the long 100-turn
+and 16×16 games. An independent re-run measured it per cell: **~3 per game at 8/20,
+~6 at the shipped 8/30 (3% of actions), ~22 at 8/60**, and every rejection inspected
+(5,700 actions) had a unit standing on the target tile. The action mask (`core/civ6_actions.py:629-635`) marks a move legal when
 the target tile is on-board and not a mountain; the executor
 (`envs/microciv.py:807-818`) additionally rejects tiles occupied by **any unit**,
 and on rejection sets the moving unit's `moves_remaining` to 0

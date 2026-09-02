@@ -1,5 +1,11 @@
 # Next Steps — The Case (2026-08-27)
 
+> **Superseded (2026-09-02).** Phase 1 below landed as PR #113. The remaining plan is
+> replaced by `kb/specs/20260902-validated-learning-plan.md`, which measured the draw-rate
+> hypothesis this document left open (`docs/evidence/draw_rate_sweep/`) and re-sequenced
+> the work behind it. The findings table (F1–F9) remains a valid record of what was true on
+> `7b7112b`; do not take the "Recommended Plan" section as current.
+
 > **Method.** This document was produced by scanning the codebase and documentation with
 > three parallel verification agents (batch self-play status; fog-of-war and N-player
 > gaps; repository health and debt), synthesizing a position, and then submitting the
