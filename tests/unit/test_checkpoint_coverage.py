@@ -69,7 +69,18 @@ class TestSafeLoadCheckpoint:
         assert result.loaded_safely is True
 
     @patch("torch.load")
-    def test_safe_load_fallback_to_unsafe(self, mock_load, tmp_path):
+    def test_safe_load_fallback_to_unsafe_requires_opt_in(self, mock_load, tmp_path):
+        """The unsafe fallback happens only when the caller asks for it.
+
+        Until 2026-09-02 this test called ``safe_load_checkpoint`` with defaults
+        and asserted the downgrade, because the loader retried with
+        ``weights_only=False`` on *any* failure — arbitrary code execution from a
+        malformed or hostile checkpoint, reached without the caller saying so.
+        The retry now requires ``allow_unsafe_fallback=True`` (or
+        ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT``), so this test pins the authorised
+        path; ``tests/unit/test_utils/test_safe_load_checkpoint_hardening.py``
+        pins that the default raises instead.
+        """
         ckpt_path = tmp_path / "model.pt"
         ckpt_path.write_bytes(b"fake checkpoint data")
 
@@ -81,7 +92,7 @@ class TestSafeLoadCheckpoint:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = safe_load_checkpoint(ckpt_path, map_location="cpu")
+            result = safe_load_checkpoint(ckpt_path, map_location="cpu", allow_unsafe_fallback=True)
 
         assert result.loaded_safely is False
         assert len(result.warnings) == 1

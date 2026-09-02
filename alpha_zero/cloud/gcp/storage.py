@@ -40,37 +40,34 @@ def _torch_load_compat(
     buffer: io.BytesIO,
     *,
     map_location: str = "cpu",
-    weights_only: bool = True,
+    allow_unsafe: bool = False,
 ) -> Any:
-    """Load PyTorch checkpoint with backwards compatibility.
+    """Load a PyTorch checkpoint from a buffer through the repo's one safe loader.
 
-    Handles compatibility for PyTorch versions that don't support the
-    `weights_only` parameter (added in PyTorch 1.13+, enforced in 2.0+).
+    Historically this retried *without* ``weights_only`` for pre-1.13 torch and
+    callers passed ``weights_only=False`` outright. torch >= 1.13 is a hard
+    requirement (CLAUDE.md 2.1), so the retry was dead code, and the payloads
+    this module writes (state dicts, optimizer state, a dict of primitive
+    ``model_config`` values, ``step``/``epoch``/``timestamp``) all load under
+    ``weights_only=True``.
 
     Args:
         buffer: BytesIO buffer containing the checkpoint.
         map_location: Device to load tensors to.
-        weights_only: If True, only load tensor data (safer). If False,
-            allows loading arbitrary Python objects (needed for checkpoints
-            with optimizer state and custom objects).
+        allow_unsafe: Authorise a ``weights_only=False`` load when the safe
+            load is rejected. The ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1``
+            environment variable has the same effect process-wide.
 
     Returns:
         Loaded checkpoint data.
 
-    Note:
-        When weights_only=False, this can execute arbitrary code if the
-        checkpoint contains malicious pickled objects. Only use with
-        trusted data sources (e.g., checkpoints you generated yourself).
+    Raises:
+        alpha_zero.core.checkpoint_utils.UnsafeCheckpointError: If the safe
+            load is rejected and unsafe loading was not authorised.
     """
-    import torch
+    from alpha_zero.core.checkpoint_utils import safe_torch_load
 
-    try:
-        # Try with weights_only parameter (PyTorch 1.13+)
-        return torch.load(buffer, map_location=map_location, weights_only=weights_only)
-    except TypeError:
-        # Fallback for older PyTorch versions without weights_only
-        buffer.seek(0)  # Reset buffer position after failed attempt
-        return torch.load(buffer, map_location=map_location)
+    return safe_torch_load(buffer, map_location=map_location, allow_unsafe=allow_unsafe)
 
 
 # =============================================================================
@@ -546,8 +543,10 @@ class GCSModelStorage:
         model_path = self._paths.model_path(version)
         model_bytes = self.backend.download_blob(self._bucket, model_path)
         buffer = io.BytesIO(model_bytes)
-        # Use weights_only=False to support both new format (dict) and legacy format
-        checkpoint = _torch_load_compat(buffer, map_location="cpu", weights_only=False)
+        # Both formats (dict with state_dict + primitive model_config, or a bare
+        # state_dict) load under weights_only=True. A model that needs
+        # arbitrary unpickling requires CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1.
+        checkpoint = _torch_load_compat(buffer, map_location="cpu")
 
         # Handle both new format (dict with state_dict + model_config) and legacy format
         if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
@@ -979,8 +978,9 @@ class GCSCheckpointStorage:
         try:
             data = self.backend.download_blob(self._bucket, ckpt_path)
             buffer = io.BytesIO(data)
-            # weights_only=False needed for optimizer state and training metadata
-            checkpoint = _torch_load_compat(buffer, map_location="cpu", weights_only=False)
+            # Optimizer state is tensors + primitives and the metadata written
+            # by save_checkpoint is primitives, so weights_only=True suffices.
+            checkpoint = _torch_load_compat(buffer, map_location="cpu")
             logger.info(
                 "Loaded checkpoint from %s (step %d)", ckpt_path, checkpoint.get("step", -1)
             )

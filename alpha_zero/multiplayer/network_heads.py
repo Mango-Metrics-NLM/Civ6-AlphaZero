@@ -25,6 +25,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,7 +55,7 @@ class NPlayerNetworkConfig:
     num_filters: int = 64
     fc_hidden_dim: int = 256
     value_head_hidden: int = 128
-    action_space_size: int = 381
+    action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
     shared_value_trunk: bool = True
 
 

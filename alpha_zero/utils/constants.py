@@ -575,6 +575,31 @@ LOGGING = LoggingConstants()
 PATHS = PathConstants()
 
 
+def default_action_space_size() -> int:
+    """Return the MicroCiv action-space size every live default must agree on.
+
+    This is the single dynamic source for ``action_space_size`` defaults in
+    ``NetworkConfig``, ``MuZeroConfig``, ``NPlayerNetworkConfig``,
+    ``MicroCivNetwork``, the Civ6 bridge network builder and the DUCT factory.
+    It is derived from the same per-slot arithmetic as
+    ``alpha_zero.core.civ6_actions.MicroCivActionSpace.total_size`` (376 at the
+    shipped ``max_units=20`` / ``max_cities=5`` / three unit types), so the two
+    cannot drift independently. Before this existed, the live defaults carried a
+    hand-copied ``381`` -- five wider than the environment -- which built policy
+    heads whose last five logits could never be selected.
+
+    Callers that pass ``action_space_size`` explicitly still win: a checkpoint
+    saved with a 381-wide head loads unchanged when the caller says ``381``.
+    """
+    return ACTION_SPACE.compute_microciv_action_space_size()
+
+
+#: Import-time snapshot of :func:`default_action_space_size` for use as a plain
+#: default in signatures and dataclass fields. Use the function when the value
+#: must be recomputed; use this when a constant expression is required.
+DEFAULT_ACTION_SPACE_SIZE: int = default_action_space_size()
+
+
 def get_all_constants() -> dict[str, Any]:
     """Get all constants as a dictionary.
 

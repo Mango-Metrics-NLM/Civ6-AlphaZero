@@ -22,6 +22,13 @@ from typing import Any
 
 import torch
 
+from alpha_zero.utils.safe_load import (
+    UNSAFE_CHECKPOINT_ENV_VAR,
+    UnsafeCheckpointError,
+    safe_torch_load,
+    unsafe_checkpoint_loading_allowed,
+)
+
 # Module logger
 logger = logging.getLogger(__name__)
 
@@ -55,13 +62,23 @@ def safe_load_checkpoint(
     path: str | Path,
     map_location: str | torch.device | None = "cpu",
     strict_security: bool = False,
-    allow_unsafe_fallback: bool = True,
+    allow_unsafe_fallback: bool = False,
 ) -> CheckpointLoadResult:
     """Load a checkpoint file with security best practices.
 
-    This function attempts to load checkpoints safely using weights_only=True.
-    If that fails (e.g., for checkpoints with optimizer state or custom objects),
-    it can fall back to weights_only=False with appropriate warnings.
+    Attempts ``weights_only=True`` first. There is **no automatic downgrade**:
+    if torch's tensor-only unpickler rejects the payload, this raises
+    :class:`~alpha_zero.utils.safe_load.UnsafeCheckpointError` unless unsafe
+    loading has been authorised -- by ``allow_unsafe_fallback=True`` or by
+    ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1`` in the environment (read at call
+    time). An authorised unsafe load is logged at WARNING and reported in the
+    result's ``loaded_safely=False`` / ``warnings``.
+
+    Before 2026-09-02 ``allow_unsafe_fallback`` defaulted to ``True`` and the
+    six live callers (``MicroCivNetwork.load``/``Civ6Network.load``/
+    ``MuZeroNetwork.load``, the two learners and ``MuZeroTrainer``) passed it
+    explicitly, so every checkpoint in the repo was unpickled with arbitrary
+    code execution the moment the safe path failed.
 
     Args:
         path: Path to the checkpoint file.
@@ -72,16 +89,19 @@ def safe_load_checkpoint(
             saved from, which makes a GPU-trained checkpoint unloadable on a
             CPU-only machine — the caller must opt into that explicitly rather
             than get it by default.
-        strict_security: If True, never fall back to unsafe loading.
-            Raises an error if safe loading fails.
-        allow_unsafe_fallback: If True (default), fall back to unsafe loading
-            when safe loading fails. Ignored if strict_security=True.
+        strict_security: If True, never load unsafely, even when the
+            environment variable is set. Raises if safe loading fails.
+        allow_unsafe_fallback: Per-call opt-in to ``weights_only=False`` when
+            the safe load is rejected. Default ``False``. The name is kept for
+            backwards compatibility; it is honoured together with the
+            environment variable.
 
     Returns:
         CheckpointLoadResult with the loaded data and safety metadata.
 
     Raises:
-        RuntimeError: If strict_security=True and safe loading fails.
+        UnsafeCheckpointError: (a ``RuntimeError``) if safe loading fails and
+            unsafe loading is not authorised, or ``strict_security=True``.
         FileNotFoundError: If checkpoint file doesn't exist.
 
     Example:
@@ -106,34 +126,40 @@ def safe_load_checkpoint(
             warnings=result_warnings,
         )
     except Exception as e:
-        safe_load_error = str(e)
+        safe_load_error = e
         logger.debug(f"Safe loading failed: {safe_load_error}")
 
-    # If strict security is enabled, don't fall back
+    # strict_security wins over every opt-in, including the environment.
     if strict_security:
-        raise RuntimeError(
+        raise UnsafeCheckpointError(
             f"Cannot load checkpoint safely (weights_only=True). "
-            f"Error: {safe_load_error}. "
-            f"Set strict_security=False to allow unsafe loading from trusted sources."
-        )
+            f"Error: {safe_load_error}. strict_security=True forbids unsafe loading "
+            f"of {path}."
+        ) from safe_load_error
 
-    # Fall back to unsafe loading if allowed
-    if not allow_unsafe_fallback:
-        raise RuntimeError(
-            f"Safe loading failed and fallback is disabled. Error: {safe_load_error}"
-        )
+    if not unsafe_checkpoint_loading_allowed(allow_unsafe_fallback):
+        raise UnsafeCheckpointError(
+            f"Safe loading failed and fallback is disabled for {path}. "
+            f"Error: {safe_load_error}. Automatic fallback to weights_only=False has "
+            "been removed because it executes arbitrary code from the file. If this "
+            "checkpoint comes from a trusted source, pass allow_unsafe_fallback=True "
+            f"or set {UNSAFE_CHECKPOINT_ENV_VAR}=1."
+        ) from safe_load_error
 
-    # Warn about unsafe loading
+    # Authorised unsafe load. safe_torch_load owns the single weights_only=False
+    # site in the repo and logs the WARNING; the UserWarning keeps the
+    # historical contract for callers that filter on it.
+    authority = (
+        "allow_unsafe_fallback=True" if allow_unsafe_fallback else f"{UNSAFE_CHECKPOINT_ENV_VAR}=1"
+    )
     warning_msg = (
-        f"Loading checkpoint with weights_only=False. "
+        f"Loading checkpoint with weights_only=False (authorised by {authority}). "
         f"Only load checkpoints from trusted sources. Path: {path}"
     )
     result_warnings.append(warning_msg)
     warnings.warn(warning_msg, UserWarning, stacklevel=2)
-    logger.warning(warning_msg)
 
-    # Load with weights_only=False (unsafe but necessary for some checkpoints)
-    data = torch.load(path, map_location=map_location, weights_only=False)
+    data = safe_torch_load(path, map_location=map_location, allow_unsafe=True)
     logger.info(f"Loaded checkpoint (weights_only=False): {path}")
 
     return CheckpointLoadResult(

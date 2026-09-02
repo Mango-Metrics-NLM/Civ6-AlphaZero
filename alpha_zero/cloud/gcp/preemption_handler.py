@@ -269,7 +269,7 @@ class PreemptionHandler:
             # map_location="cpu" keeps a GPU-written checkpoint loadable on a
             # CPU-only replacement worker after preemption.
             model.load_state_dict(
-                torch.load(resume_state.checkpoint_path, map_location="cpu")
+                torch.load(resume_state.checkpoint_path, map_location="cpu", weights_only=True)
             )
     """
 

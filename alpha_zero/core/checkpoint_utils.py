@@ -12,6 +12,19 @@ Example:
     >>> # Load a network
     >>> checkpoint = load_checkpoint("checkpoint.pt", device="cuda")
     >>> network = NetworkClass.from_checkpoint(checkpoint)
+
+Security:
+    Every load goes through :func:`alpha_zero.utils.safe_load.safe_torch_load`
+    (re-exported here), which calls ``torch.load(..., weights_only=True)`` and
+    **never downgrades on its own**. A checkpoint that the tensor-only
+    unpickler rejects raises :class:`UnsafeCheckpointError` naming the file and
+    the two ways to opt in: the ``allow_unsafe=True`` keyword, or the
+    process-wide environment variable ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1`` (read
+    at call time). Either opt-in logs a WARNING and loads with
+    ``weights_only=False``, which can execute arbitrary code from the file --
+    use it only for checkpoints you produced. The helper lives in a leaf module
+    so ``alpha_zero.utils.checkpoint`` can share it without a ``utils -> core``
+    import cycle.
 """
 
 from __future__ import annotations
@@ -25,9 +38,30 @@ from typing import Any, TypeVar
 import torch
 from torch import nn
 
+from alpha_zero.utils.safe_load import (
+    UNSAFE_CHECKPOINT_ENV_VAR,
+    UnsafeCheckpointError,
+    safe_torch_load,
+    unsafe_checkpoint_loading_allowed,
+)
+
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=nn.Module)
+
+__all__ = [
+    "UNSAFE_CHECKPOINT_ENV_VAR",
+    "VALID_REDUCTIONS",
+    "UnsafeCheckpointError",
+    "get_checkpoint_info",
+    "load_checkpoint",
+    "load_state_dict_into_network",
+    "safe_torch_load",
+    "save_checkpoint",
+    "serialize_config",
+    "unsafe_checkpoint_loading_allowed",
+    "validate_reduction",
+]
 
 
 # =============================================================================
@@ -140,37 +174,44 @@ def load_checkpoint(
     device: str = "cpu",
     *,
     weights_only: bool = True,
+    allow_unsafe: bool = False,
 ) -> dict[str, Any]:
     """Load a checkpoint from disk.
 
-    Uses safe loading by default (weights_only=True) to prevent
-    arbitrary code execution.
+    Safe by default (``weights_only=True``). There is **no** automatic downgrade
+    to ``weights_only=False``: a checkpoint the safe unpickler rejects raises
+    :class:`UnsafeCheckpointError` unless the caller opts in.
 
     Args:
         path: Path to the checkpoint file.
         device: Device to load tensors to ("cpu", "cuda", etc.).
-        weights_only: If True, only load tensor weights (safer).
+        weights_only: Deprecated. ``False`` is treated as ``allow_unsafe=True``
+            (kept so existing call sites keep working); prefer ``allow_unsafe``.
+        allow_unsafe: Authorise a ``weights_only=False`` load if the safe load
+            is rejected. ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1`` in the environment
+            has the same effect for the whole process.
 
     Returns:
         Checkpoint dictionary with "config" and "state_dict" keys.
 
     Raises:
         FileNotFoundError: If checkpoint file doesn't exist.
+        UnsafeCheckpointError: If the safe load is rejected and unsafe loading
+            was not authorised.
     """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-    try:
-        checkpoint = torch.load(
+    if not weights_only:
+        logger.warning(
+            "load_checkpoint(weights_only=False) is deprecated; treating it as "
+            "allow_unsafe=True for %s",
             path,
-            map_location=device,
-            weights_only=weights_only,
         )
-    except Exception:
-        # Fall back to unsafe loading for legacy checkpoints
-        logger.warning("Safe loading failed for %s, falling back to unsafe load", path)
-        checkpoint = torch.load(path, map_location=device, weights_only=False)
+        allow_unsafe = True
+
+    checkpoint = safe_torch_load(path, map_location=device, allow_unsafe=allow_unsafe)
 
     logger.debug("Loaded checkpoint from %s", path)
     return dict(checkpoint)
@@ -226,21 +267,28 @@ def validate_reduction(reduction: str) -> None:
 # =============================================================================
 
 
-def get_checkpoint_info(path: str | Path) -> dict[str, Any]:
+def get_checkpoint_info(path: str | Path, *, allow_unsafe: bool = False) -> dict[str, Any]:
     """Get metadata about a checkpoint without fully loading it.
 
     Args:
         path: Path to the checkpoint file.
+        allow_unsafe: Authorise ``weights_only=False`` if the safe load is
+            rejected (see :func:`safe_torch_load`). Inspecting a file is not a
+            reason to run code from it, so the default is the safe loader.
 
     Returns:
         Dictionary with checkpoint metadata (network_type, config keys, etc.)
+
+    Raises:
+        FileNotFoundError: If checkpoint file doesn't exist.
+        UnsafeCheckpointError: If the safe load is rejected without opt-in.
     """
     path = Path(path)
     if not path.exists():
         raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-    # Load with map_location to avoid loading to GPU
-    checkpoint = torch.load(path, map_location="cpu", weights_only=False)
+    # map_location="cpu" so inspecting never allocates on a GPU.
+    checkpoint = safe_torch_load(path, map_location="cpu", allow_unsafe=allow_unsafe)
 
     info = {
         "path": str(path),
@@ -251,8 +299,13 @@ def get_checkpoint_info(path: str | Path) -> dict[str, Any]:
     if "network_type" in checkpoint:
         info["network_type"] = checkpoint["network_type"]
 
-    if "config" in checkpoint:
-        info["config_keys"] = list(checkpoint["config"].keys())
+    # A config saved as a dataclass *instance* (legacy, needs allow_unsafe)
+    # has no keys; report its type instead of crashing on the metadata read.
+    config = checkpoint.get("config")
+    if isinstance(config, dict):
+        info["config_keys"] = list(config.keys())
+    elif config is not None:
+        info["config_type"] = type(config).__name__
 
     if "state_dict" in checkpoint:
         info["num_parameters"] = sum(p.numel() for p in checkpoint["state_dict"].values())

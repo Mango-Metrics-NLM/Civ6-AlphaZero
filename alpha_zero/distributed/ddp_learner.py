@@ -788,12 +788,9 @@ class DDPLearner(Learner):
 
         from alpha_zero.utils.checkpoint import safe_load_checkpoint
 
-        result = safe_load_checkpoint(
-            path,
-            map_location=self.config.device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=self.config.device)
         checkpoint = result.data
 
         # Validate checkpoint structure

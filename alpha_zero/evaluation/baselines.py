@@ -577,15 +577,16 @@ class NeuralNetworkPlayer:
         Returns:
             NeuralNetworkPlayer instance
         """
-        import torch
-
+        from alpha_zero.core.checkpoint_utils import safe_torch_load
         from alpha_zero.core.civ6_network import MicroCivNetwork
 
         path = Path(checkpoint_path)
         if not path.exists():
             raise FileNotFoundError(f"Checkpoint not found: {path}")
 
-        checkpoint = torch.load(path, map_location=device)
+        # ``network_config`` is a dict of primitives, so weights_only=True
+        # suffices; a legacy pickle needs CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1.
+        checkpoint = safe_torch_load(path, map_location=device)
 
         # Extract network config from checkpoint
         network_config = checkpoint.get("network_config", {})

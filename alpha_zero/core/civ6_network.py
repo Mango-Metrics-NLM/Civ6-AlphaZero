@@ -18,6 +18,7 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -62,7 +63,11 @@ class NetworkConfig:
     fc_hidden_dim: int = 256
 
     # Output dimensions
-    action_space_size: int = 381  # MicroCiv default
+    # MicroCiv default, derived from the environment's own slot arithmetic
+    # (see alpha_zero.utils.constants.default_action_space_size). Explicit
+    # values still win, so 381-wide legacy checkpoints load when the caller
+    # passes 381.
+    action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
     value_head_hidden: int = 128
 
     # Number of players. Load-bearing for the *shape* of the value head:
@@ -502,12 +507,9 @@ class Civ6Network(nn.Module):
         Note:
             Only load checkpoints from trusted sources.
         """
-        result = safe_load_checkpoint(
-            path,
-            map_location=device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=device)
         checkpoint = result.data
         config_dict = checkpoint["config"]
         if isinstance(config_dict, dict):
@@ -541,7 +543,7 @@ class MicroCivNetwork(Civ6Network):
     def __init__(
         self,
         board_size: int = 16,
-        action_space_size: int = 381,
+        action_space_size: int = DEFAULT_ACTION_SPACE_SIZE,
         num_res_blocks: int = 6,
         num_filters: int = 64,
         spatial_channels: int = 13,
@@ -1518,12 +1520,9 @@ class Civ6NetworkV2(nn.Module):
         Note:
             Only load checkpoints from trusted sources.
         """
-        result = safe_load_checkpoint(
-            path,
-            map_location=device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=device)
         checkpoint = result.data
         config_dict = checkpoint["config"]
 
@@ -1566,12 +1565,9 @@ class Civ6NetworkV2(nn.Module):
         Note:
             Only load checkpoints from trusted sources.
         """
-        result = safe_load_checkpoint(
-            path,
-            map_location=device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=device)
         checkpoint = result.data
         config_dict = checkpoint["config"]
 

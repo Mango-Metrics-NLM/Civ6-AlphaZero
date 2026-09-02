@@ -41,6 +41,7 @@ from alpha_zero.core.losses import (
     scalar_to_categorical,
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ class MuZeroConfig:
     num_res_blocks: int = 6
     num_filters: int = 64
     fc_hidden_dim: int = 256
-    action_space_size: int = 381
+    action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
     value_head_hidden: int = 128
     dropout: float = 0.0
 
@@ -881,12 +882,9 @@ class MuZeroNetwork(nn.Module):
         Note:
             Only load checkpoints from trusted sources.
         """
-        result = safe_load_checkpoint(
-            path,
-            map_location=device,
-            strict_security=False,
-            allow_unsafe_fallback=True,
-        )
+        # No per-call unsafe opt-in: a checkpoint the tensor-only unpickler
+        # rejects raises unless CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1 is set.
+        result = safe_load_checkpoint(path, map_location=device)
         checkpoint = result.data
         config_dict = checkpoint["config"]
 
