@@ -80,4 +80,6 @@ out = {
     "elapsed_s": round(time.time() - t0, 1),
     "rows": results,
 }
-json.dump(out, open(sys.argv[2] if len(sys.argv) > 2 else "draw_sweep.json", "w"), indent=2)
+out_path = sys.argv[2] if len(sys.argv) > 2 else "draw_sweep.json"
+with open(out_path, "w") as fh:
+    json.dump(out, fh, indent=2)

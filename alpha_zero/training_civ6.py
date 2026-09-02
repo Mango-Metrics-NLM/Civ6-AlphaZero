@@ -179,6 +179,13 @@ def resume_network_weights(
     Raises:
         ValueError: If the checkpoint has no ``state_dict``, or its parameter
             shapes do not match ``network``.
+        FileNotFoundError: If ``resume_path`` does not exist. I/O failures are
+            re-raised as-is by the loader rather than being reported as a
+            checkpoint problem, so a typo'd path says so plainly.
+        UnsafeCheckpointError: If the tensor-only unpickler rejects the payload
+            and unsafe loading has not been authorised (via
+            ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1``). This is deliberate: a failed
+            safe load never downgrades on its own.
     """
     result = safe_load_checkpoint(resume_path, map_location=device)
     checkpoint = result.data
@@ -1000,6 +1007,12 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # environment, and a mismatched checkpoint is refused rather than dictating
     # the architecture.
     start_iteration = config.start_iteration
+    if start_iteration < 0:
+        # Caught before the resume block so no misleading "Resuming at
+        # iteration -4" line is logged first. A negative index would also name
+        # checkpoints `checkpoint_-4.pt` and skip the iteration-0 SimpleMCTS
+        # bootstrap, neither of which fails loudly on its own.
+        raise ValueError(f"--start_iteration must be >= 0, got {start_iteration}.")
     if config.resume_from:
         resume_network_weights(network, config.resume_from, device=config.device)
         if start_iteration == 0:

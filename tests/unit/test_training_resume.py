@@ -112,6 +112,31 @@ class TestResumeConfig:
         assert config.resume_from is None
         assert config.start_iteration == 0
 
+    def test_negative_start_iteration_is_refused(self, tmp_path) -> None:
+        """A negative index fails silently in two ways, so it is rejected up front.
+
+        `range(-5, 20)` would name the first checkpoint `checkpoint_-4.pt` and,
+        because `use_simple = iteration == 0` never fires, would skip the
+        SimpleMCTS bootstrap and run an untrained network through the neural
+        search instead. Neither raises on its own.
+        """
+        from alpha_zero.training_civ6 import train
+
+        config = TrainingConfig(
+            board_size=BOARD,
+            max_turns=4,
+            num_simulations=2,
+            num_games_per_iteration=1,
+            num_iterations=5,
+            start_iteration=-1,
+            checkpoint_dir=str(tmp_path / "ckpt"),
+            log_dir=str(tmp_path / "logs"),
+            device="cpu",
+            seed=1,
+        )
+        with pytest.raises(ValueError, match="must be >= 0"):
+            train(config)
+
     def test_start_iteration_at_or_past_the_total_is_an_error(self, tmp_path) -> None:
         """`--num_iterations` is the end of the run, not a count of extra ones.
 
