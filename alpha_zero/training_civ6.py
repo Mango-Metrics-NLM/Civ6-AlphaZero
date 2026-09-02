@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import re
 import time
 from collections import deque
 from dataclasses import dataclass, replace
@@ -39,6 +40,7 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
+from alpha_zero.utils.checkpoint import safe_load_checkpoint
 from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
 
 # Configure logging
@@ -112,6 +114,11 @@ class TrainingConfig:
     checkpoint_dir: str = "checkpoints/civ6"
     log_dir: str = "logs/civ6"
     save_interval: int = 10
+    # Resume. `resume_from` restores network weights only -- see
+    # `resume_network_weights` for what is deliberately not restored.
+    # `start_iteration` is the loop index to begin at; 0 means "from the top".
+    resume_from: str | None = None
+    start_iteration: int = 0
 
     # Device. "auto" is resolved to a concrete device in __post_init__ rather
     # than probed at import time, so constructing a TrainingConfig on a GPU box
@@ -122,6 +129,85 @@ class TrainingConfig:
         # Resolve rather than merely warn: an unresolved "cuda" on a CPU-only
         # host would otherwise crash later inside .to().
         self.device = resolve_device_str(self.device)
+
+
+#: ``checkpoint_<N>.pt`` is written *after* the iteration at loop index
+#: ``N - 1`` completes, so resuming from it means starting at loop index ``N``.
+#: That off-by-one is the whole reason this is a named pattern rather than an
+#: inline regex: guessing it wrong silently overwrites earlier checkpoints.
+_CHECKPOINT_ITERATION_RE = re.compile(r"^checkpoint_(\d+)\.pt$")
+
+
+def infer_start_iteration(resume_path: str) -> int | None:
+    """Return the loop index to resume at, or ``None`` if the name says nothing.
+
+    Args:
+        resume_path: Path to a checkpoint, e.g. ``.../checkpoint_7.pt``.
+
+    Returns:
+        The loop index to resume at (``7`` for ``checkpoint_7.pt``), or ``None``
+        for any other name -- ``latest.pt`` carries no iteration number, so the
+        caller must be told rather than given a guess.
+    """
+    match = _CHECKPOINT_ITERATION_RE.match(os.path.basename(resume_path))
+    return int(match.group(1)) if match else None
+
+
+def resume_network_weights(
+    network: nn.Module,
+    resume_path: str,
+    *,
+    device: str = "cpu",
+) -> None:
+    """Load weights from a checkpoint into an already-constructed network.
+
+    The network is built from the *environment's* action space and spatial
+    channel count, never from the checkpoint's own saved config, so a checkpoint
+    trained at a different board size or player count is rejected here instead
+    of being silently cross-loaded. The compatibility check is
+    ``load_state_dict`` itself rather than a hand-written comparison of config
+    keys, so it cannot drift out of step with the real architecture.
+
+    Restores **weights only**. Optimizer moments, the replay buffer and its
+    accumulated games are not restored; the caller is expected to say so.
+
+    Args:
+        network: The network to load into, already on ``device``.
+        resume_path: Path to a checkpoint written by this script.
+        device: Device to map the checkpoint onto.
+
+    Raises:
+        ValueError: If the checkpoint has no ``state_dict``, or its parameter
+            shapes do not match ``network``.
+        FileNotFoundError: If ``resume_path`` does not exist. I/O failures are
+            re-raised as-is by the loader rather than being reported as a
+            checkpoint problem, so a typo'd path says so plainly.
+        UnsafeCheckpointError: If the tensor-only unpickler rejects the payload
+            and unsafe loading has not been authorised (via
+            ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1``). This is deliberate: a failed
+            safe load never downgrades on its own.
+    """
+    result = safe_load_checkpoint(resume_path, map_location=device)
+    checkpoint = result.data
+    if not isinstance(checkpoint, dict) or "state_dict" not in checkpoint:
+        raise ValueError(
+            f"{resume_path} is not a checkpoint written by this trainer: "
+            "expected a dict with a 'state_dict' key."
+        )
+    try:
+        network.load_state_dict(checkpoint["state_dict"])
+    except RuntimeError as exc:
+        raise ValueError(
+            f"{resume_path} does not match the network this run builds. The "
+            "usual cause is a different --board_size, --num_players or action "
+            "space than the checkpoint was trained with."
+        ) from exc
+    if not result.loaded_safely:
+        logger.warning(
+            "Checkpoint %s was loaded with weights_only=False. Only do this for "
+            "checkpoints you trust.",
+            resume_path,
+        )
 
 
 #: Evaluation games played per checkpoint on a normal (non-dry) run.
@@ -917,6 +1003,41 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     )
     logger.info(f"Device: {config.device}")
 
+    # Resume. Done after construction so the network is built from the
+    # environment, and a mismatched checkpoint is refused rather than dictating
+    # the architecture.
+    start_iteration = config.start_iteration
+    if start_iteration < 0:
+        # Caught before the resume block so no misleading "Resuming at
+        # iteration -4" line is logged first. A negative index would also name
+        # checkpoints `checkpoint_-4.pt` and skip the iteration-0 SimpleMCTS
+        # bootstrap, neither of which fails loudly on its own.
+        raise ValueError(f"--start_iteration must be >= 0, got {start_iteration}.")
+    if config.resume_from:
+        resume_network_weights(network, config.resume_from, device=config.device)
+        if start_iteration == 0:
+            inferred = infer_start_iteration(config.resume_from)
+            if inferred is None:
+                logger.warning(
+                    "--resume_from %s: the file name carries no iteration number "
+                    "and --start_iteration was not given, so numbering restarts "
+                    "at 1 and existing checkpoints in %s will be overwritten.",
+                    config.resume_from,
+                    config.checkpoint_dir,
+                )
+            else:
+                start_iteration = inferred
+        logger.info(
+            "Resuming from %s at iteration %d",
+            config.resume_from,
+            start_iteration + 1,
+        )
+        logger.warning(
+            "Resume restores network weights only: optimizer moments and the "
+            "replay buffer are not restored, so the first resumed iteration "
+            "trains on freshly generated games alone.",
+        )
+
     # Initialize optimizer
     optimizer = optim.Adam(
         network.parameters(),
@@ -938,7 +1059,14 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         DRY_RUN_PROFILE.num_games_per_iteration if dry_run else config.num_games_per_iteration
     )
 
-    for iteration in range(num_iterations):
+    if start_iteration >= num_iterations:
+        raise ValueError(
+            f"Nothing to do: --start_iteration {start_iteration} is not less "
+            f"than the total --num_iterations {num_iterations}. The total is "
+            "the end of the run, not a count of additional iterations."
+        )
+
+    for iteration in range(start_iteration, num_iterations):
         logger.info(f"\n{'=' * 50}")
         logger.info(f"Iteration {iteration + 1}/{num_iterations}")
         logger.info(f"{'=' * 50}")
@@ -1068,6 +1196,27 @@ def main() -> None:
     parser.add_argument("--num_res_blocks", type=int, default=6)
     parser.add_argument("--num_filters", type=int, default=64)
     parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/civ6")
+    parser.add_argument(
+        "--resume_from",
+        type=str,
+        default=None,
+        help=(
+            "Checkpoint to start from, e.g. checkpoints/civ6/checkpoint_7.pt. "
+            "Restores network weights ONLY -- optimizer moments and the replay "
+            "buffer are not restored. The starting iteration is read from the "
+            "file name unless --start_iteration says otherwise."
+        ),
+    )
+    parser.add_argument(
+        "--start_iteration",
+        type=int,
+        default=0,
+        help=(
+            "Loop index to begin at, overriding what --resume_from's file name "
+            "implies. --num_iterations remains the END of the run, not a count "
+            "of additional iterations."
+        ),
+    )
     parser.add_argument("--dry_run", action="store_true", help="Quick test run")
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
@@ -1095,6 +1244,8 @@ def main() -> None:
         num_res_blocks=args.num_res_blocks,
         num_filters=args.num_filters,
         checkpoint_dir=args.checkpoint_dir,
+        resume_from=args.resume_from,
+        start_iteration=args.start_iteration,
         max_turns=args.max_turns,
         save_interval=args.save_interval,
         device=args.device or "auto",
