@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 
 import pytest
 
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 from alpha_zero.envs.chess_actions import move_to_index
 from alpha_zero.envs.chess_env import ChessEnv
 from alpha_zero.orchestrator.chess_advisor import ChessAdvisor, ChessAdvisorConfig

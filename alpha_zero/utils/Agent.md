@@ -57,6 +57,7 @@ This module provides the foundational utilities consumed by all other modules:
 | `rag_client.py` | RAGClient, thin wrapper for RAG pipeline (optional) |
 | `reward_shaping.py` | RewardShaper for intermediate reward signals |
 | `checkpoint.py` | safe_load_checkpoint for secure deserialization |
+| `seeding.py` | `derive_seed`, `SeedStream` — per-stream seeds derived by name from one run seed (BLAKE2b, so it is stable across processes and platforms) |
 | `constants.py` | Namespace objects for game/distributed/training constants |
 | `memory_guard.py` | MemoryGuard for replay buffer memory limits |
 | `timeout_config.py` | Centralized timeout configuration |

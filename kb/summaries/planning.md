@@ -1,5 +1,12 @@
 # Planning Log
 
+## 2026-09-04 - 2026 coding-standards audit
+- **Session:** session_01KZPsP2Mvg333p1akDqpLTG
+- **Focus:** "Is this project meeting 2026 best coding standards?" Six parallel read-only audit passes (CI/supply chain, application security, code quality/architecture, test suite, docs/governance, and a primary-source 2026 rubric), with every gate-integrity and high-severity claim reproduced by hand before acceptance.
+- **Decisions:** Verdict is no: 2.3/5 overall. Process discipline (negative-controlled gates, seeded reproducibility, clean ruff/mypy/format) scores 4; supply chain, vulnerability posture, release engineering and the deployed public surface score 1–2. Ten gates are green-but-fail-open, two reproduced here: the dead-code ratchet drops 53→30 modules when a `build/` dir exists (`audit_import_graph.py` `SKIP_PARTS`), and the package deprecates itself on import (`utils/__init__.py:30`). Also reproduced: `pip install -e '.[dev]'` fails on `chess`; the push guard passes `bash -c` wrappers; zero git tags exist so `release.yml` has never run; the inference endpoint is `allUsers` with no auth layer; `uv.lock` is stale and unconsumed.
+- **Output:** `docs/audits/2026-09-04-standards-audit.md` (scorecard, findings with file:line and confidence tags, 23-item remediation plan in now/month/quarter tiers, reproduction log, sources). No code changed.
+- **Next:** Maintainer decides which of the ten "now" items (S-sized) to authorize; W&B key rotation and closing the `allUsers` binding are the two that need no design discussion. The tech-debt and validated-learning specs remain the sequenced plan; this audit is the standards overlay on them.
+
 ## 2026-09-02 - Validated-learning plan (v2 after adversarial review)
 - **Session:** session_01AQAVGXog3wGfPaqu4XHfXX
 - **Focus:** "What are the logical next steps?" answered first from the docs, then re-derived by four verification agents, one measurement, a literature check, and an adversarial review. The four overlapping next-step lists (CLAUDE.md §13, ROADMAP M4, NEXT_STEPS.md, NEXT_STEPS_CASE) collapse into one sequenced spec.

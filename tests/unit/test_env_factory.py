@@ -101,6 +101,20 @@ class TestObservationShapes:
 # ---------------------------------------------------------------------------
 
 
+def _skip_if_preset_unavailable(preset: str) -> None:
+    """Skip a preset whose backing environment needs an optional extra.
+
+    ``chess`` is in ``GAMEPLAY_PRESETS`` but ``alpha_zero.envs.chess_env``
+    imports the optional ``chess`` distribution, which is no longer part of the
+    ``dev`` extra: its sdist fails to build on Debian/Ubuntu setuptools, and a
+    failing extra aborted the whole install. Parametrising over the preset list
+    is right -- the list is the source of truth -- so the skip belongs here
+    rather than in a hand-maintained subset that would drift from it.
+    """
+    if preset == "chess":
+        pytest.importorskip("chess", reason="requires the 'chess' extra")
+
+
 class TestParameterPropagation:
     """Factory correctly threads board_size, max_turns, and seed."""
 
@@ -117,6 +131,7 @@ class TestParameterPropagation:
     @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
     def test_seed_propagation(self, preset: str) -> None:
         """Two envs with same seed should produce identical initial states."""
+        _skip_if_preset_unavailable(preset)
         env1 = create_game_env(board_size=6, max_turns=10, gameplay_preset=preset, seed=42)
         env2 = create_game_env(board_size=6, max_turns=10, gameplay_preset=preset, seed=42)
         obs1, _ = env1.reset()
@@ -129,5 +144,6 @@ class TestParameterPropagation:
     @pytest.mark.parametrize("preset", GAMEPLAY_PRESETS)
     def test_no_seed_defaults_to_none(self, preset: str) -> None:
         """No seed arg should not crash."""
+        _skip_if_preset_unavailable(preset)
         env = create_game_env(board_size=6, max_turns=10, gameplay_preset=preset)
         env.reset()  # Should not raise

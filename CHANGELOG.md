@@ -7,6 +7,202 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — One sign-correct value backup for every search variant (2026-09-04)
+
+A node's value is stored from its own mover's perspective, so backing a leaf
+evaluation up to the root flips the sign only on edges where the acting player
+*changes*. Only `base`/`puct` did that; `gumbel`, `simple`, `muzero` and the
+batch path used plain negamax, which assumes one ply per turn. MicroCiv does not
+work that way: `MicroCivEnv` advances
+`current_player` only inside `_end_turn`, and **145 of 200 seeded steps (72.5%)
+leave the acting player unchanged**. Every one of those edges was signed wrong,
+so the sign of a node's mean value depended on the parity of the depth at which
+its leaves were evaluated, and `value_sum` averaged `+v` and `−v` estimates
+together.
+
+`core/mcts/base.py` was corrected for this on 2026-08-25 and the correction was
+never propagated. `grep -c to_play` per module before this change: `base` 10,
+`puct` 9, **`gumbel` 0, `simple` 0, `muzero` 0** — and `gumbel` is
+`DEFAULT_MCTS_TYPE`, what `cloud/gcp/selfplay_worker.py` takes by default and
+what `cloud/gcp/arena.py` hard-defaults to. The data generator and the promotion
+judge shared the defect.
+
+- **New `alpha_zero/core/mcts/backup.py`** (249 lines) owns the single
+  implementation: `backpropagate_path`, `perspective_sign`,
+  `should_track_to_play`, `env_current_player`, plus backup diagnostics. All
+  five variants call it, and selection now uses the same perspective rule as
+  backup — negating unconditionally there makes PUCT prefer the child that
+  *minimises* the mover's own value.
+- Nodes whose `to_play` is unknown fall back to per-ply alternation, so
+  `MuZeroMCTS` — which searches a learned latent model and cannot observe the
+  mover past the root — is byte-identical and says so at its call site. The
+  fallback no longer mutates the running value, which previously let one unknown
+  node invert every node above it.
+- The `>2-player` guard that `puct` already carried is now on the three variants
+  made `to_play`-aware: a scalar sign flip cannot express a 3-player game, and
+  `--num_players 4` defaults to `gumbel`.
+- Layering: `backup` is layer 0 in `MCTS_LAYERS`, below `base`, because `gumbel`
+  and `muzero` must depend on neither `base` nor each other. The layering test
+  grew from a flat leaf set to an explicit layer map plus a check that every
+  module is assigned a layer, so a new module cannot escape the rule by omission.
+
+### Changed — Gumbel's policy target is the completed-Q distribution, not a one-hot (2026-09-04)
+
+`GumbelMCTS.search` returned a one-hot over the selected action (1 non-zero entry
+of a 376-wide action space), stored verbatim as the policy training target. That
+trains the policy head by cloning a single argmax, discards the search's own
+improvement signal, and keeps the temperature schedule permanently inert, because
+a delta always trips the greedy short-circuit in `select_action`.
+
+Visit counts are the wrong replacement for this search: sequential halving
+allocates the budget equally among survivors, so the root visit distribution is
+near-uniform by construction and the survivors are typically tied. The signal
+lives in the completed Q values and the Gumbel scores.
+
+- `gumbel_ops.build_completed_q_policy` implements Danihelka et al.'s
+  `softmax(logits + sigma(completedQ))`. This is the first use of the `c_scale`
+  config field, declared since 2026 and read nowhere.
+- New config fields on **both** `GumbelMCTSConfig` and `BatchMCTSConfig`:
+  `policy_target` (`completed_q` — the new default — `visit_counts`, or
+  `one_hot`) and `greedy_threshold` (was a fixed module constant). `one_hot`
+  reproduces pre-2026-09 runs exactly. Both are validated in `__post_init__`.
+- The sequential and batch self-play paths share the target, because a trainer
+  reading a rolling replay window cannot tell which worker produced a shard; the
+  batch path had been left on the one-hot entirely.
+- Three tests that asserted the one-hot contract now assert a normalised
+  distribution, with the legacy target covered explicitly through the config flag
+  rather than deleted.
+
+### Fixed — Seeds derive from a stream name, and self-play varies by iteration (2026-09-04)
+
+`training_civ6.py` derived RNG seeds by adding hand-picked offsets to
+`config.seed`. **None of the self-play or evaluation seeds carried an
+`iteration` term** while the DataLoader's did — one of four streams threaded it,
+which is what makes it a bug rather than a design choice. A seeded 20-iteration
+run therefore regenerated the same games twenty times and scored them on the same
+fixed maps, so the seeded learning-trend run the plan is built around could not
+have produced a trend.
+
+- **New `alpha_zero/utils/seeding.py`**: `derive_seed(base, stream, *coords)`
+  hashes a stream *name* plus coordinates with BLAKE2b, and `SeedStream` names
+  the seven streams (`selfplay.env`, `selfplay.search`, `eval.env`,
+  `eval.search`, `eval.opponent`, `replay.sampler`, `data.loader`). Streams
+  cannot collide unless spelled the same, iteration is a parameter rather than a
+  stride, and the mapping is stable across processes (unlike Python's salted
+  `hash`). `derive_seed(None, ...)` returns `None`, so unseeded runs stay
+  unseeded.
+- **Self-play varies with `iteration`; evaluation deliberately does not.**
+  Evaluation is a held-out set: comparing iteration *N* against *N+1* is only
+  meaningful if both were scored on the same positions. `run_self_play` and
+  `evaluate_against_random` take an `iteration` argument, defaulting to 0.
+- `EVAL_SEED_OFFSET` is **deprecated, not deleted** — nothing in the package
+  reads it any more.
+- Behaviour note: seeded runs now draw different streams than before, so action
+  sequences differ. The determinism suite asserts the property (same seed twice
+  is identical, different seeds differ), not any literal value.
+
+### Changed — `MicroCivEnv.clone()` shares immutable terrain (2026-09-04)
+
+`clone()` deep-copied the terrain dict on every call, and MCTS calls it once per
+simulation. Terrain is generated once in `_generate_map` and never mutated
+afterwards, so the clone now shares the reference. Measured over 300 clones per
+configuration: **1,149 µs → 354 µs at `board_size=8`, 3,121 µs → 357 µs at
+`board_size=16`.** `tests/unit/test_microciv_clone.py` plays a seeded game and
+fails if any tile changed, so the invariant this relies on is enforced rather
+than asserted in a comment; the guard fingerprints every `Tile` field rather than
+two hand-picked ones.
+
+### Changed — `pip install -e '.[dev]'` installs something (2026-09-04)
+
+`chess` was in the `dev` extra, its sdist fails to build on current
+Debian/Ubuntu setuptools, and a failing extra aborts the whole install — so the
+command printed in README, CONTRIBUTING and CLAUDE.md installed **nothing**.
+
+- `chess` is out of `dev`; the `[chess]` extra still provides it.
+- Every chess-dependent test module now `pytest.importorskip`s it — the four
+  `tests/unit/test_chess_*`, plus `test_stockfish_opponent`,
+  `test_opponent_protocol`, `test_curriculum` and `test_env_factory` — with
+  matching `E402` per-file ignores for the guards that precede their imports.
+- `alpha_zero/opponents/__init__.py` resolves its exports lazily (PEP 562, the
+  same pattern the root package uses), because eagerly importing
+  `stockfish_opponent` made an optional extra mandatory for any test that merely
+  touched the subpackage.
+- Tracked debt moves accordingly. The baseline regenerated with this change
+  records `pytest_skip_sites` 126 → 140 and `ruff_per_file_ignores` 21 → 25:
+  both increases *are* the guards, i.e. the fix.
+
+### Security — Every workflow action pinned to a SHA; the push guard was inert here (2026-09-04)
+
+- **All 27 `uses:` refs across the three workflows are SHA-pinned** with a
+  version comment (`ci.yml` 20, `deploy_spaces.yml` 4, `release.yml` 3); 26 were
+  on mutable tags. `tests/regression/test_workflow_pinning_regression.py` parses
+  the workflows with `yaml` and fails on any unpinned ref.
+- **The push guard did not protect this repository.** The 2026-09-02 fix resolves
+  the default branch at runtime, but `CIV6AZ_DEFAULT_BRANCH` was set nowhere and
+  `origin/HEAD` is not a symbolic ref in an agent checkout, so it fell through to
+  `main` — and this repository's default branch is
+  `claude/civ6-alphazero-implementation-vMnun`. Pushing to the real default
+  branch was allowed, verified by driving the hook. `.claude/settings.json` now
+  sets `CIV6AZ_DEFAULT_BRANCH` (and `OMP_NUM_THREADS=2`). Same shape as the `jq`
+  bug it replaced: a resolution chain that degrades silently.
+
+### Fixed — Gates that were green while failing open (2026-09-04)
+
+- **The dead-code audit counted a build copy as an external importer.**
+  `scripts/audit_import_graph.py` skipped venvs and egg-info but not `build/`,
+  `dist/`, `.tox/` or `.eggs/`. A build copy holds every package `__init__`
+  importing by *absolute* name under a `build.lib.*` module name, so it is
+  credited as an outside user of the very modules the audit exists to find:
+  53 modules / 24,451 lines read as 30 / 15,120 on an identical tree. The
+  negative control plants a `build/lib/alpha_zero/__init__.py`; its first version
+  planted a *relative* import and passed either way, so it only became a control
+  once the plant matched what a build actually writes.
+- **CI's `pull_request` trigger filtered on `main`,** which is not this
+  repository's default branch, so pull requests into the real default branch
+  produced no `pull_request`-event run at all. The filter is removed rather than
+  re-pointed, so a future branch rename cannot re-create the trap.
+- **`coverage-floors.json` could be lowered silently** — the ratchet was a
+  docstring. `tests/regression/test_coverage_floors_ratchet.py` now compares
+  against the merge base and also refuses a dropped package.
+- **The Makefile exports `OMP_NUM_THREADS ?= 2`.** CLAUDE.md has documented that
+  cap as required for months while nothing set it, so `make verify` — the command
+  the handoff skills mandate — was documented as hanging.
+- Dependabot covers the `docker` ecosystem (three Dockerfiles were in no
+  ecosystem), groups minor and patch bumps into one PR per ecosystem, and adds a
+  release cooldown. The previous configuration produced a standing set of
+  single-package PRs, none of which was ever merged.
+
+### Added — Gates for each of the fixes above (2026-09-04)
+
+85 tests across five files, each written and watched to fail before the fix it
+guards:
+
+- `tests/unit/test_mcts_backup_correctness.py` — a forced-win oracle over a
+  synthetic environment where one player moves *k* consecutive plies and one
+  action is a forced win, parameterised over depth to catch both parities.
+  Reverting the backup fails 6 `gumbel` / 6 `puct` / 6 `simple` cases. The
+  oracle's first version passed **vacuously for `gumbel`**, the variant it
+  existed to protect: with a visit-count target the policy was exactly
+  `[1/3, 1/3, 1/3]` and `np.argmax` broke the tie toward index 0, which was the
+  winning action by coincidence. It now sweeps the winning index and rejects a
+  policy uniform across two or more actions.
+- `tests/unit/test_seeding.py`, `tests/unit/test_microciv_clone.py`,
+  `tests/regression/test_workflow_pinning_regression.py`,
+  `tests/regression/test_coverage_floors_ratchet.py`.
+
+### Added — 2026 standards audit and the correctness-first re-sequencing (2026-09-04)
+
+- [`docs/audits/2026-09-04-standards-audit.md`](docs/audits/2026-09-04-standards-audit.md)
+  — six read-only audit passes over CI/supply chain, application security, code
+  quality, the test suite, docs/governance and a primary-source 2026 rubric,
+  with every gate-integrity and high-severity claim reproduced by hand. Its §0
+  records four corrections to its own findings.
+- `kb/specs/20260904-correctness-first-plan.md` — the re-sequencing the audit
+  forced. It adds one workstream (**WS-S**, search correctness), moves **WS-L**
+  (the seeded learning-trend run) behind it, folds 9 of the audit's 23 items into
+  existing workstreams, and withdraws 2. `kb/specs/20260902-validated-learning-plan.md`
+  is amended in place rather than superseded.
+
 ### Changed (BREAKING) — checkpoints load safely by default (2026-09-02)
 
 Both checkpoint loaders retried a failed safe load with `weights_only=False`,
@@ -660,34 +856,32 @@ because the test covering it asserted the wrong thing.
   numbered ADRs, a PRD status index, and ~19 stale artifacts moved to
   `docs/archive/`. Version aligned to 1.8.0 across packaging and the package.
 
-## [Unreleased] — W&B Retirement Sweep (2026-07-13)
-
-### Changed — Experiment tracking is MLflow-only
+### Changed — Experiment tracking is MLflow-only (W&B retirement sweep, 2026-07-13)
 - **Toggle unification**: `resolve_tracker_enabled()` in `alpha_zero/monitoring/config.py` is the single enablement source with precedence `CIV6AZ_MLFLOW_ENABLED` > `MLFLOW_ENABLED` > legacy `WANDB_ENABLED` (deprecated, warns when deciding). All `from_env()` sites — cloud workers, experiment tracker — honor legacy deployment configs transparently.
 - **Config bridge**: orchestrator `WandbConfig` is now an explicit deprecated bridge — `to_mlflow_config()` maps `project→experiment_name`, list tags → dict tags, `entity` → `wandb.entity` tag, `mode=="disabled"` → off. The orchestrator runs a single tracker (mlflow section wins; wandb section bridges with a DeprecationWarning).
 - **BREAKING/behavior**: `--no-wandb` now disables ALL tracking (both `wandb:` and `mlflow:` config sections); new explicit `--no-tracking` alias added. Previously MLflow kept logging when only `--no-wandb` was passed.
 - Deploy configs (`configs/vertex_*_smoke.yaml`, `cloud_training_v1.yaml`) switched from `WANDB_*` env blocks to `MLFLOW_*`.
 
-### Fixed
+### Fixed — W&B retirement sweep (2026-07-13)
 - **`run_enhanced_training.py --wandb` / `run_muzero_training.py --wandb` crashed with `TypeError`** — they constructed the legacy config shape against the MLflow-aliased class; migrated to `MLflowConfig` + `WandbCompatAdapter` directly.
 - **`WandbCompatAdapter.log()` silently dropped numpy metrics** (`np.int64`, `np.float32`, 0-d arrays); now coerced via `_coerce_metric_value`, with one level of nested-dict flattening (`parent/child`).
 - **MLflow run-group propagation never worked** — `vertex_orchestrator` read `.name`/`.id` off an MLflow run object (metadata lives under `.info.*`); new `WandbCompatAdapter.run_name` property fixes `MLFLOW_RUN_GROUP`/`group=` tag propagation to worker containers.
 - **`utils/factories.create_wandb_logger` mangled list tags** (`dict(list[str])`); now a deprecated wrapper delegating through `to_mlflow_config()`.
 - `WandbCompatAdapter.alert()` also emits `logger.warning` so alerts are visible when MLflow is disabled; `watch_model()` records a `watch_model_requested` tag.
 
-### Removed (BREAKING for out-of-repo importers)
+### Removed — W&B compatibility surfaces (BREAKING for out-of-repo importers, 2026-07-13)
 - `alpha_zero/utils/wandb_logger.py` deprecation shim (removal was promised for v1.6.0). Last compat surface: lazy `alpha_zero.utils.{WandbLogger,get_wandb_logger,init_wandb}` aliases (emit DeprecationWarning).
 - `vertex_jobs._wandb_env_vars` / `resolve_wandb_key_from_secret_manager` / `ensure_wandb_api_key` and the `CIV6AZ_WANDB_SECRET_*` env pathway (zero consumers; nothing reads `WANDB_API_KEY` anymore).
 - Dead module-skipped W&B test suites (~2,300 lines): `test_wandb_logger`, `test_wandb_baseline_metrics`, `test_pbt_dashboarding`, `test_wandb_integration`, `test_orchestrator_wandb`, plus skipped classes in `test_wandb_coordination` (renamed `test_vertex_coordination`, 9 active tests kept) and `test_orchestrator_muzero_config`. Replacement coverage landed FIRST: numpy/`log_reflection_stats`/`run_name`/alert tests in `test_mlflow_logger_adapter`, `test_tracker_enabled_resolution` (precedence matrix), `test_pbt_mlflow_dashboards`, vertex-orchestrator lifecycle tests in `test_orchestrator_mlflow`, and `test_orchestrator_wandb_bridge`.
 
-### Added — Optuna hyperparameter sweeps (replaces W&B sweeps)
+### Added — Optuna hyperparameter sweeps, replacing W&B sweeps (2026-07-13)
 - `alpha_zero/optimizations/hyperparameter_search.py`: reusable `HyperparameterSearch` component — declarative YAML search spaces, `SweepConfig` with `CIV6AZ_SWEEP_*` env overrides (legacy `SWEEP_TIMEOUT_SECONDS` honored), injectable objective/tracker for testing, MLflow per-trial logging, `SubprocessTrainingObjective` with timeout + prune-on-failure semantics.
 - `run_sweep.py` rewritten as a thin CLI over the component (`--config/--n-trials/--study-name/--storage/--dry-run`); `configs/sweep_muzero.yaml` seeds the search space from the historical W&B sweep results. New `tuning` extra (`pip install -e '.[tuning]'`).
 - `run_muzero_training.py` prints a machine-readable `SWEEP_METRICS_JSON=` result line for subprocess objectives.
 - `scripts/setup_secrets.sh` generalized: provisions any named secret (`CIV6AZ_SECRET_NAME`/`CIV6AZ_SECRET_VALUE`), wandb-api-key default removed.
 - With this, no wandb imports remain in `alpha_zero/` or entry points. Two read-only analysis scripts (`compare_training_runs.py`, `search_efficiency_report.py`) keep lazy `wandb.Api()` readers for W&B-hosted *historical* runs — data MLflow cannot serve — and are documented as deprecated.
 
-### Accepted debt
+### Accepted debt — W&B naming (2026-07-13)
 - `TournamentWandbLogger` and serialized `wandb_enabled` config fields keep their names for compat.
 
 ## [1.8.0] — 2026-07-12 — Live Civilization VI Bridge (Headless Socket Transport)

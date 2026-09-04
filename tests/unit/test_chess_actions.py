@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 import chess
 import numpy as np
-import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 

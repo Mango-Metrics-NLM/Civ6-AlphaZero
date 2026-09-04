@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 from unittest.mock import MagicMock
 
 import chess
 import numpy as np
-import pytest
 
 from alpha_zero.envs.chess_actions import ACTION_SPACE_SIZE, move_to_index
 from alpha_zero.envs.chess_env import ChessEnv

@@ -40,6 +40,7 @@ kept for context, not actively updated; archived material lives in
 | Document | Purpose | Status |
 |----------|---------|--------|
 | [`HARNESS_ENGINEERING_ANALYSIS.md`](HARNESS_ENGINEERING_ANALYSIS.md) | Harness-engineering design rationale | Reference |
+| [`audits/2026-09-04-standards-audit.md`](audits/2026-09-04-standards-audit.md) | 2026 coding-standards audit; its §0 records the review corrections and its remediation list is superseded by `kb/specs/20260904-correctness-first-plan.md` | Historical |
 | [`archive/NEXT_STEPS_ANALYSIS.md`](archive/NEXT_STEPS_ANALYSIS.md) | Documentation-drift reconciliation scan (2026-08-11) | Archived — superseded by [`NEXT_STEPS_CASE_2026-08.md`](NEXT_STEPS_CASE_2026-08.md) |
 
 ## Governance & specs

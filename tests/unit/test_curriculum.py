@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 from alpha_zero.opponents.stockfish_opponent import (
     STOCKFISH_ELO_MAX,
     STOCKFISH_SKILL_MAX,

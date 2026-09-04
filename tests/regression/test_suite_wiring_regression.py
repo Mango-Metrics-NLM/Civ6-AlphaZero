@@ -35,9 +35,9 @@ from __future__ import annotations
 import ast
 import re
 import shlex
+import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -356,23 +356,308 @@ class TestTheGateItselfDiscriminates:
 
 
 class TestOptionalDependencyImportsAreGuarded:
-    """`tests/scripts/` failed, rather than skipped, on absent optional extras.
+    """A test module must not import an optional extra at module scope.
 
-    Three tests imported ``pandas``/``mlflow`` directly. Both arrive with the
-    ``monitoring`` extra, which CI's ``.[dev]`` install does not provide, so they
-    were failures -- invisible only because nothing ran the suite. The repo's
-    convention everywhere else is ``pytest.importorskip`` (see
-    ``tests/unit/test_serving/``).
+    Doing so turns an absent extra into a COLLECTION ERROR for the whole module
+    and, because pytest aborts the run, for every other module in the same
+    invocation. Measured: with ``chess`` absent -- it is not in the ``dev`` extra
+    because its sdist fails to build on Debian/Ubuntu setuptools -- ``pytest
+    tests/unit`` collected **0** tests instead of 9,916.
+
+    The previous version read ONE file and grepped for TWO module names, so it
+    could not see the eleven modules with the same defect. It now walks every
+    test module with the AST and derives the allowed set from ``pyproject.toml``,
+    so a new base dependency is permitted automatically and a new optional one is
+    caught automatically -- no hand-kept list to drift.
     """
 
-    @pytest.mark.parametrize("module", ["pandas", "mlflow"])
-    def test_optional_modules_are_not_imported_bare(self, module: str) -> None:
-        source = (REPO_ROOT / "tests" / "scripts" / "test_run_baseline_eval.py").read_text(
-            encoding="utf-8"
+    #: Import name -> distribution name, only where they differ. Anything absent
+    #: falls back to the import name, which is right for most packages.
+    IMPORT_TO_DISTRIBUTION = {
+        "yaml": "pyyaml",
+        "sklearn": "scikit-learn",
+        "PIL": "pillow",
+        "cv2": "opencv-python",
+        "dotenv": "python-dotenv",
+        "attr": "attrs",
+    }
+
+    #: The test runner itself. Everything else that is always importable is
+    #: DERIVED from the repository layout by :meth:`_repo_local_roots`, so adding
+    #: a top-level module or package does not require editing this file.
+    RUNNER_MODULES = frozenset({"pytest", "_pytest", "conftest"})
+
+    @staticmethod
+    def _repo_local_roots() -> set[str]:
+        """Import roots that resolve inside this repository, not from PyPI.
+
+        A test importing ``demos`` or ``run_civ6_ai`` is importing repo-local
+        code that is present by construction; only a *distribution* can be
+        absent. Computed from the tree so a new top-level module is covered
+        automatically.
+        """
+        roots: set[str] = set()
+        for entry in REPO_ROOT.iterdir():
+            if entry.name.startswith("."):
+                continue
+            if entry.is_dir() and (entry / "__init__.py").exists():
+                roots.add(entry.name)
+            elif entry.is_dir() and any(entry.glob("*.py")):
+                # A namespace-style directory (no __init__) is still importable
+                # when the repo root is on sys.path, which conftest arranges.
+                roots.add(entry.name)
+            elif entry.suffix == ".py":
+                roots.add(entry.stem)
+
+        # Modules one level down that tests import after a sys.path insert --
+        # `scripts/gcp_diagnose.py` is imported as bare `gcp_diagnose`. Only
+        # direct children, so this stays a bounded, derived set rather than a
+        # walk of the whole tree.
+        for parent in ("scripts", "infra", "demos", "examples"):
+            directory = REPO_ROOT / parent
+            if directory.is_dir():
+                roots.update(f.stem for f in directory.glob("*.py"))
+        return roots
+
+    @staticmethod
+    def _base_distributions() -> set[str]:
+        """Distributions CI guarantees: base dependencies plus the ``dev`` extra."""
+        import tomllib
+
+        data = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        project = data.get("project", {})
+        specs = list(project.get("dependencies", []))
+        specs += list(project.get("optional-dependencies", {}).get("dev", []))
+        names: set[str] = set()
+        for spec in specs:
+            name = re.split(r"[<>=!\[;~ ]", spec, maxsplit=1)[0].strip().lower()
+            if name:
+                names.add(name.replace("_", "-"))
+        return names
+
+    @staticmethod
+    def _module_scope_imports(tree: ast.Module) -> set[str]:
+        """Top-level import roots only.
+
+        A function-local import is deferred and cannot break collection, so only
+        ``tree.body`` is inspected rather than the whole AST.
+        """
+        roots: set[str] = set()
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                roots.update(alias.name.split(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                roots.add(node.module.split(".")[0])
+        return roots
+
+    @staticmethod
+    def _guarded_names(tree: ast.Module) -> set[str]:
+        """Modules named by any ``pytest.importorskip("...")`` call in the module."""
+        guarded: set[str] = set()
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "importorskip"
+                and node.args
+                and isinstance(node.args[0], ast.Constant)
+                and isinstance(node.args[0].value, str)
+            ):
+                guarded.add(node.args[0].value.split(".")[0])
+        return guarded
+
+    def test_no_test_module_imports_an_optional_extra_bare(self) -> None:
+        base = self._base_distributions()
+        allowed_roots = self._repo_local_roots() | self.RUNNER_MODULES
+        assert base, "pyproject declared no dependencies; this check would be vacuous"
+        offenders: list[str] = []
+
+        for path in sorted((REPO_ROOT / "tests").rglob("test_*.py")):
+            try:
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+            except SyntaxError:  # pragma: no cover - a broken file fails elsewhere
+                continue
+            guarded = self._guarded_names(tree)
+            for root in self._module_scope_imports(tree):
+                if root in allowed_roots or root in guarded:
+                    continue
+                if root in sys.stdlib_module_names:
+                    continue
+                distribution = self.IMPORT_TO_DISTRIBUTION.get(root, root).lower()
+                if distribution.replace("_", "-") in base:
+                    continue
+                offenders.append(f"{path.relative_to(REPO_ROOT)}: import {root}")
+
+        assert not offenders, (
+            "test modules import an optional extra at module scope, which turns an "
+            "absent extra into a collection error for the whole pytest run:\n  "
+            + "\n  ".join(offenders)
+            + "\nGuard each with pytest.importorskip('<module>', reason=...) before the "
+            "import, and add the file to pyproject's per-file E402 ignores."
         )
-        bare = re.search(rf"^\s*import {module}\b", source, re.M)
-        assert bare is None, (
-            f"tests/scripts/test_run_baseline_eval.py imports {module} directly; it "
-            "is an optional extra absent from CI's [dev] install, so this is a "
-            "failure rather than a skip. Use pytest.importorskip."
+
+    def test_the_check_detects_a_planted_bare_import(self, tmp_path: Path) -> None:
+        """Negative control: an unguarded optional import must be visible."""
+        planted = tmp_path / "test_planted.py"
+        planted.write_text("import chess\n\n\ndef test_x():\n    assert chess\n")
+        tree = ast.parse(planted.read_text())
+        assert "chess" in self._module_scope_imports(tree)
+        assert "chess" not in self._guarded_names(tree)
+
+    def test_the_check_accepts_the_guarded_form(self, tmp_path: Path) -> None:
+        """And must not flag the guarded form, or it would forbid its own fix."""
+        planted = tmp_path / "test_guarded.py"
+        planted.write_text("import pytest\n\npytest.importorskip('chess')\n\nimport chess\n")
+        tree = ast.parse(planted.read_text())
+        assert "chess" in self._guarded_names(tree)
+
+
+class TestSearchTestsAssertSomething:
+    """A test on the search path must assert something.
+
+    ``test_performance_better_than_random`` in ``tests/unit/test_gumbel_mcts.py``
+    contained zero assert statements -- its own comment read "just checking it
+    doesn't crash" -- while sitting on ``DEFAULT_MCTS_TYPE``. It could not have
+    detected the value-backup sign defect, the one-hot policy target, or an
+    illegal action, and a repository-wide census counted it as test-quality debt
+    without anyone noticing what it was guarding.
+
+    Scoped to the MCTS suites rather than all of ``tests/``: the repo-wide count
+    is 166 and burning that down is a separate piece of work, but the search is
+    where a silent pass is most expensive.
+
+    Negative control: emptying any test body in these files must fail
+    ``test_no_search_test_is_assertion_free``. Verified by stripping the body of
+    ``test_plays_a_complete_game_producing_valid_policies`` and observing the
+    failure name that test.
+    """
+
+    #: Helper names that assert on the caller's behalf. A test whose body calls
+    #: one of these is doing real checking even with no bare ``assert``.
+    ASSERTING_CALLS = frozenset(
+        {
+            "raises",
+            "warns",
+            "approx",
+            "fail",
+            "assert_called",
+            "assert_called_once",
+            "assert_called_with",
+            "assert_called_once_with",
+            "assert_any_call",
+            "assert_has_calls",
+            "assert_not_called",
+            "assert_array_equal",
+            "assert_allclose",
+            "assert_array_almost_equal",
+        }
+    )
+
+    #: Tests whose contract genuinely IS "this must not raise", listed with the
+    #: reason so the absence of an assertion is a recorded decision rather than
+    #: an oversight -- the same pattern as NOT_GATED and the per-file lint
+    #: ignores. A new entry needs a reason; an empty reason fails the check.
+    ASSERTION_FREE_BY_DESIGN: dict[str, str] = {
+        "tests/unit/test_jax_mcts_adapter.py::test_eval_is_noop": (
+            "the adapter's eval() is a documented no-op; the contract is that "
+            "calling it neither raises nor mutates state"
+        ),
+        "tests/unit/test_jax_mcts_adapter.py::test_train_is_noop": (
+            "same contract as test_eval_is_noop, for train()"
+        ),
+        "tests/unit/test_mcts_backup_correctness.py::"
+        "test_backpropagate_path_is_a_noop_on_an_empty_path": (
+            "an empty search path must be tolerated silently; there is no state "
+            "left to assert on afterwards"
+        ),
+    }
+
+    @staticmethod
+    def _search_test_files() -> list[Path]:
+        return sorted((REPO_ROOT / "tests" / "unit").glob("test_*mcts*.py"))
+
+    @staticmethod
+    def _is_fixture(func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        """A fixture named ``test_*`` is not a test, despite the name."""
+        for decorator in func.decorator_list:
+            node = decorator.func if isinstance(decorator, ast.Call) else decorator
+            if isinstance(node, ast.Attribute) and node.attr == "fixture":
+                return True
+            if isinstance(node, ast.Name) and node.id == "fixture":
+                return True
+        return False
+
+    @classmethod
+    def _asserts_something(cls, func: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+        for node in ast.walk(func):
+            if isinstance(node, ast.Assert):
+                return True
+            if isinstance(node, ast.Raise):
+                return True
+            if isinstance(node, ast.Call):
+                name = ""
+                if isinstance(node.func, ast.Attribute):
+                    name = node.func.attr
+                elif isinstance(node.func, ast.Name):
+                    name = node.func.id
+                if name in cls.ASSERTING_CALLS or name.startswith("assert"):
+                    return True
+            # `with pytest.raises(...)` is an ast.Call, already covered above.
+        return False
+
+    def test_search_suites_are_discoverable(self) -> None:
+        """Guard against the whole class passing because it matched no files."""
+        files = self._search_test_files()
+        assert files, "no tests/unit/test_*mcts*.py files found; this class is vacuous"
+
+    def test_no_search_test_is_assertion_free(self) -> None:
+        offenders: list[str] = []
+        checked = 0
+        for path in self._search_test_files():
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                    continue
+                if not node.name.startswith("test_") or self._is_fixture(node):
+                    continue
+                checked += 1
+                qualified = f"{path.relative_to(REPO_ROOT)}::{node.name}"
+                if qualified in self.ASSERTION_FREE_BY_DESIGN:
+                    continue
+                if not self._asserts_something(node):
+                    offenders.append(qualified)
+
+        assert checked > 0, "no test functions were inspected; the assertion below is vacuous"
+        assert not offenders, (
+            "search tests with no assertion (they pass whatever the search does):\n  "
+            + "\n  ".join(offenders)
+            + "\nAssert the contract the test's name promises, or delete it."
         )
+
+    def test_every_assertion_free_exemption_has_a_reason(self) -> None:
+        """An exemption without a reason is an unrecorded decision."""
+        empty = [name for name, why in self.ASSERTION_FREE_BY_DESIGN.items() if not why.strip()]
+        assert not empty, f"exemptions with no reason: {empty}"
+
+    def test_no_exemption_is_stale(self) -> None:
+        """An exemption for a test that now asserts, or no longer exists, must go."""
+        stale: list[str] = []
+        for qualified in self.ASSERTION_FREE_BY_DESIGN:
+            rel, _, func_name = qualified.partition("::")
+            path = REPO_ROOT / rel
+            if not path.exists():
+                stale.append(f"{qualified} (file is gone)")
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            found = [
+                n
+                for n in ast.walk(tree)
+                if isinstance(n, ast.FunctionDef | ast.AsyncFunctionDef) and n.name == func_name
+            ]
+            if not found:
+                stale.append(f"{qualified} (test is gone)")
+            elif any(self._asserts_something(n) for n in found):
+                stale.append(f"{qualified} (it asserts now -- drop the exemption)")
+        assert not stale, "stale assertion-free exemptions: " + "; ".join(stale)

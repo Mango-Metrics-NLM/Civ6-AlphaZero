@@ -40,6 +40,7 @@ Selection goes through `create_mcts(...)` in `alpha_zero/core/mcts_factory.py` �
 |------|---------------|
 | `mcts_protocols.py` | Typing contracts. A leaf — imports no sibling |
 | `gumbel_ops.py` | `gumbel_sample_actions`, `compute_completed_q`. A leaf, shared by `gumbel` and `muzero` |
+| `backup.py` | `backpropagate_path`, `perspective_sign`, `signed_value`, `env_current_player`. A leaf (imports no sibling), called by every variant so the sign-correct backup has one implementation rather than five |
 | `base.py` | `MCTSConfig`, `MCTSNode`, `_env_current_player`. A leaf, used by `puct` and `simple` only |
 | `puct.py` | `Civ6MCTS` — PUCT with network guidance |
 | `simple.py` | `SimpleMCTS` — random rollout, no network |

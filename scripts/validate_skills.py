@@ -9,8 +9,9 @@ pre-commit nor CI did -- so violations in it accumulated silently.
 Checks (error codes are stable and referenced by ``tests/governance/``):
 
   S1  every ``SKILL.md`` opens with YAML frontmatter whose ``name`` equals the
-      skill's directory name and whose ``description`` is non-empty
-      (a missing ``allowed-tools`` key is a WARNING, not an error)
+      skill's directory name and whose ``description`` is non-vacuous -- not
+      empty, not a quoted-empty string, and not a bare YAML block-scalar
+      indicator (a missing ``allowed-tools`` key is a WARNING, not an error)
   S2  the body has at least one ``## `` section
   S3  every concrete ``kb/...`` path literal referenced in the body exists
   S4  every coverage-percentage literal equals the canonical gate from
@@ -44,6 +45,11 @@ AGENT_SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
 
 _KB_PATH_RE = re.compile(r"kb/[\w./-]+\.\w+")
+# A description that reduces to one of these is the signature of a parser that
+# did not read the value, not of an authored description. ``description: ">"``
+# and ``description: ""`` both used to satisfy the non-empty check *vacuously*,
+# which is the exact failure mode this validator was written to end.
+_VACUOUS_DESCRIPTIONS = frozenset({"", ">", "|", ">-", "|-", ">+", "|+", "-"})
 _COVERAGE_LINE_RE = re.compile(r"coverage|cov-fail-under", re.IGNORECASE)
 _PERCENT_RE = re.compile(r"(?<![\d.])(\d{2,3})\s*%")
 _COV_FLAG_RE = re.compile(r"cov-fail-under[=\s]+(\d{2,3})")
@@ -117,8 +123,25 @@ def _parse_frontmatter(lines: list[str]) -> dict[str, str] | None:
             if value in {">", "|", ">-", "|-", ">+", "|+"}:
                 pending_key = key.strip()
             else:
-                data[key.strip()] = value
+                data[key.strip()] = _scalar_value(value)
     return None  # unterminated frontmatter
+
+
+def _scalar_value(raw: str) -> str:
+    """Normalise one inline frontmatter value: trim, then unquote once.
+
+    Quotes were previously left in place, so ``description: ""`` parsed as the
+    two-character string ``""`` -- non-empty, and therefore passing.
+    """
+    value = raw.strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+        value = value[1:-1].strip()
+    return value
+
+
+def _is_vacuous_description(value: str) -> bool:
+    """True when the description carries no content a reader could use."""
+    return _scalar_value(value) in _VACUOUS_DESCRIPTIONS
 
 
 def _is_concrete_kb_path(candidate: str) -> bool:
@@ -139,8 +162,17 @@ def _validate_skill(skill_md: Path, issues: list[Issue], gate: int | None) -> No
             issues.append(
                 Issue("S1", f"frontmatter name '{name}' != directory '{dir_name}'", skill_md, 1)
             )
-        if not front.get("description"):
-            issues.append(Issue("S1", "frontmatter has no non-empty 'description'", skill_md, 1))
+        description = front.get("description", "")
+        if _is_vacuous_description(description):
+            issues.append(
+                Issue(
+                    "S1",
+                    f"frontmatter 'description' is vacuous ({description!r}) -- a block-scalar "
+                    "indicator or an empty/quoted-empty value is not a description",
+                    skill_md,
+                    1,
+                )
+            )
         if "allowed-tools" not in front:
             issues.append(
                 Issue("S1", "frontmatter has no 'allowed-tools'", skill_md, 1, warning=True)

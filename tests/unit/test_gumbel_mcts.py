@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from alpha_zero.core.civ6_mcts import (
+    POLICY_TARGET_ONE_HOT,
     GumbelMCTS,
     GumbelMCTSConfig,
     GumbelMCTSNode,
@@ -284,13 +285,39 @@ class TestGumbelMCTS:
         # Gumbel MCTS returns one-hot, so sum should be ~1
         assert abs(action_probs.sum() - 1.0) < 1e-5
 
-    def test_search_returns_one_hot(self, mcts, env):
-        """Gumbel MCTS typically returns one-hot policy."""
+    def test_search_returns_a_normalised_policy(self, mcts, env):
+        """The search reports a distribution, not a delta.
+
+        It used to return a one-hot on the selected action, which was stored
+        verbatim as the policy training target: that trains the head by cloning
+        a single argmax and throws away the visit distribution, which is the
+        policy-improvement operator itself. It also kept the temperature
+        schedule permanently inert, because a delta always trips the greedy
+        short-circuit in `select_action`.
+        """
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        # Should have exactly one action with probability ~1
-        assert action_probs.max() > 0.99
+        assert action_probs.min() >= 0.0
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() > 1, (
+            "search returned a delta; the visit distribution carries the "
+            "search's improvement signal and must survive into the target"
+        )
+
+    def test_one_hot_mode_reproduces_the_legacy_target(self, network, env):
+        """The pre-2026-09 behaviour stays reachable for reproducing old runs."""
+        config = GumbelMCTSConfig(
+            num_simulations=16,
+            policy_target=POLICY_TARGET_ONE_HOT,
+        )
+        legacy = GumbelMCTS(network, config, device="cpu")
+
+        env.reset()
+        action_probs, _ = legacy.search(env)
+
+        assert action_probs.max() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() == 1
 
     def test_root_value_bounded(self, mcts, env):
         """Root value is in [-1, 1] range."""
@@ -343,7 +370,8 @@ class TestGumbelMCTS:
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        assert action_probs.max() > 0.99  # Should return one-hot
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() >= 1
 
     def test_simple_search_mode(self, network, env):
         """Simple search mode (no sequential halving) works."""
@@ -357,7 +385,8 @@ class TestGumbelMCTS:
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        assert action_probs.max() > 0.99
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() >= 1
 
     def test_different_seeds_produce_different_results(self, mcts, env):
         """Different random seeds can produce different search results."""
@@ -412,17 +441,44 @@ class TestGumbelMCTSIntegration:
         # Game should end eventually
         assert done or steps == 100
 
-    def test_performance_better_than_random(self, network, env):
-        """Gumbel MCTS should perform better than random over many games."""
-        # This is a weak test - just checking it doesn't crash
-        config = GumbelMCTSConfig(num_simulations=4)
+    def test_plays_a_complete_game_producing_valid_policies(self, network, env):
+        """Every search in a full game returns a legal, normalised policy.
+
+        Renamed from ``test_performance_better_than_random``, which asserted
+        NOTHING -- its own comment said it was "just checking it doesn't crash".
+        It could not have detected a search that returned a delta, an unnormalised
+        vector, or an action the environment rejects, and it was counted in the
+        repository's zero-assert-test census as evidence of test-quality debt
+        while sitting on the default search path.
+
+        The name also promised a comparison against random play that it never
+        made. A real strength comparison needs many seeded games and belongs in
+        an evidence run, not a unit test; what a unit test can hold is the
+        contract every search step must satisfy.
+        """
+        config = GumbelMCTSConfig(num_simulations=4, seed=1234)
         mcts = GumbelMCTS(network, config, device="cpu")
 
+        searches = 0
         for _ in range(3):
             env.reset()
             done = False
             while not done:
-                action_probs, _ = mcts.search(env)
+                action_probs, value = mcts.search(env)
+                searches += 1
+
+                assert action_probs.shape == (env.action_space.n,)
+                assert np.all(action_probs >= 0.0), "policy has a negative probability"
+                assert action_probs.sum() == pytest.approx(1.0), "policy is not normalised"
+                assert -1.0 <= value <= 1.0, f"root value {value} outside [-1, 1]"
+
                 action = mcts.select_action(action_probs, temperature=0)
+                legal = env.get_valid_actions()
+                assert legal[action] > 0, (
+                    f"search selected action {action}, which the environment reports as illegal"
+                )
+
                 _, _, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
+
+        assert searches > 0, "no search ran; the assertions above are vacuous"

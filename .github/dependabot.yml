@@ -1,5 +1,23 @@
+# Dependabot configuration.
+#
+# Rewritten 2026-09-04. The previous version opened 10 pull requests on
+# 2026-07-25 and none of them was ever merged (`git log --author=dependabot`
+# returns nothing), because every bump arrived as its own PR carrying a full CI
+# run and a manual review. Three changes address that directly:
+#
+#   - `groups`: routine minor/patch bumps arrive as ONE pull request per
+#     ecosystem instead of one per package. Majors stay separate, because those
+#     are the ones that need a human to read a changelog.
+#   - `cooldown`: a brand-new release is not proposed immediately, which avoids
+#     churn from versions that are yanked or hotfixed within days.
+#   - `docker`: the two deployed images and the root Dockerfile were covered by
+#     no ecosystem at all, so their base images were never offered an update.
+#
+# Security updates are unaffected by `cooldown` and by the open-PR limit;
+# GitHub raises those regardless.
 version: 2
 updates:
+  # ---- Python -------------------------------------------------------------
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
@@ -7,6 +25,33 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    cooldown:
+      default-days: 7
+    groups:
+      python-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+      # The lint/type toolchain is pinned in five places that must move
+      # together (pyproject, requirements.txt, .pre-commit-config.yaml, the
+      # governance CI job, and an unpinned `pip install ruff` in
+      # deploy_spaces.yml). Grouping them makes that a single reviewable change
+      # instead of a partial bump that leaves the pins disagreeing.
+      dev-toolchain:
+        applies-to: version-updates
+        patterns:
+          - "ruff"
+          - "mypy"
+          - "pytest*"
+          - "types-*"
+
+  # ---- GitHub Actions -----------------------------------------------------
+  # Every `uses:` reference is pinned to a commit SHA
+  # (tests/regression/test_workflow_pinning_regression.py enforces it).
+  # Dependabot understands SHA pins and bumps both the SHA and its trailing
+  # version comment, which is what keeps pinning maintainable rather than
+  # a one-off snapshot that rots.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -15,3 +60,37 @@ updates:
     labels:
       - "dependencies"
       - "ci"
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ---- Container base images ----------------------------------------------
+  # Previously uncovered. `dockerfiles/` holds the deployed Vertex image and the
+  # inference image; the root Dockerfile is a separate directory as far as
+  # Dependabot is concerned, so it needs its own entry.
+  - package-ecosystem: "docker"
+    directory: "/dockerfiles"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    labels:
+      - "dependencies"
+      - "docker"
+    cooldown:
+      default-days: 7
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    labels:
+      - "dependencies"
+      - "docker"
+    cooldown:
+      default-days: 7

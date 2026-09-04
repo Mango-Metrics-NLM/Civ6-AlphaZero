@@ -88,6 +88,7 @@ flowchart TB
         MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator"]:::new
         WebUI["Web UI\nalpha_zero/web/\n(FastAPI + WebSocket game UI)"]:::worker
         Bridge["Civ6 Bridge\nalpha_zero/bridge/\n(file IPC or FireTuner socket)"]:::worker
+        TrainLoop["Local training loop\nalpha_zero/training_civ6.py\n(--seed → utils/seeding.py streams)"]:::worker
     end
 
     VOrch -->|"submit Vertex job"| Entry
@@ -121,6 +122,13 @@ flowchart TB
 | MLflow Monitoring Layer | — (local) | Python / MLflow / SQLite | Experiment tracking (sole tracker) |
 | Web UI | — (local) | FastAPI + WebSocket | Human-vs-AI browser interface |
 | Civ6 Bridge | — (local) | Python / Lua mod | File IPC or headless FireTuner socket |
+| Local training loop | — (local) | Python / PyTorch | Single-process self-play → train → evaluate; `--seed` determines the whole run |
+
+**Shared search internals.** The self-play worker, the arena inside the evaluation worker and
+the local training loop all run searches from `alpha_zero/core/mcts/`, so they share one
+value-backup implementation (`mcts/backup.py`) and one policy target. That is deliberate: a
+trainer reading a rolling replay window cannot tell which worker produced a shard, so a target
+or a sign that differs between paths is unrecoverable downstream.
 
 ---
 
@@ -193,10 +201,20 @@ configuration dataclasses in 2,443 lines until 2026-08-30. It is now
 re-export shim so every historical import path resolves to the same objects.
 
 The layering below is **enforced, not aspirational**: `tests/unit/test_mcts_split_backcompat.py`
-parses module-scope imports and fails if `gumbel` or `muzero` ever import `base`, or if
-`muzero` imports the `gumbel` search module. That is why the shared Gumbel-Top-k helpers
-live in their own leaf module — `MuZeroMCTS` calls them, and putting them in `gumbel.py`
-would have coupled the MuZero variant to the Gumbel variant.
+holds an explicit layer map (`MCTS_LAYERS`), parses module-scope imports, and fails if any
+module imports a sibling at or above its own layer — plus a check that every module in the
+package is assigned a layer, so a new one cannot escape the rule by omission. That is why the
+shared Gumbel-Top-k helpers live in their own leaf module — `MuZeroMCTS` calls them, and putting
+them in `gumbel.py` would have coupled the MuZero variant to the Gumbel variant.
+
+**Layer 0 is `backup.py`, below `base` (added 2026-09-04).** A node's value is stored from its
+own mover's perspective, so the sign flips only on edges where the acting player *changes* —
+and MicroCiv lets a player act many times before yielding (measured: 145 of 200 seeded steps
+leave the acting player unchanged). `base.py` was corrected for that on 2026-08-25 and the other
+four variants were not, so `gumbel` — the default, and what the deployed self-play worker and
+the arena both take — backed values up with the wrong sign. The rule cannot live in `base`,
+because `gumbel` and `muzero` must depend on neither `base` nor each other; it therefore gets
+its own layer beneath it, and all five variants call it.
 
 ```mermaid
 flowchart TD
@@ -205,13 +223,17 @@ flowchart TD
     classDef shim fill:#fdf3e3,stroke:#b45309,color:#7c2d12
     classDef ext fill:#f3f4f6,stroke:#6b7280,color:#374151,stroke-dasharray: 4 3
 
-    subgraph Leaves["Leaves — no sibling imports"]
+    subgraph Leaves["Layer 0 — leaves, no sibling imports"]
+        Backup["backup.py<br/>backpropagate_path · perspective_sign<br/>should_track_to_play · env_current_player"]:::leaf
         Protocols["mcts_protocols.py<br/>MCTSNetwork · MCTSEnvironment<br/>ActionSpace · MuZeroNetworkProtocol"]:::leaf
-        GumbelOps["gumbel_ops.py<br/>gumbel_sample_actions<br/>compute_completed_q"]:::leaf
-        Base["base.py<br/>MCTSConfig · MCTSNode<br/>_env_current_player"]:::leaf
+        GumbelOps["gumbel_ops.py<br/>gumbel_sample_actions · compute_completed_q<br/>build_completed_q_policy"]:::leaf
     end
 
-    subgraph Variants["Search variants"]
+    subgraph Shared["Layer 1 — shared node/config"]
+        Base["base.py<br/>MCTSConfig · MCTSNode<br/>_env_current_player (re-export)"]:::leaf
+    end
+
+    subgraph Variants["Layer 2 — search variants"]
         Puct["puct.py<br/>Civ6MCTS"]:::variant
         Simple["simple.py<br/>SimpleMCTS"]:::variant
         Gumbel["gumbel.py<br/>GumbelMCTS · GumbelMCTSNode<br/>GumbelMCTSConfig"]:::variant
@@ -221,6 +243,11 @@ flowchart TD
     Factory["mcts_factory.py<br/>create_mcts() · _MCTS_REGISTRY<br/><i>unchanged by the split</i>"]:::ext
     Shim["civ6_mcts.py<br/>re-export shim, explicit __all__"]:::shim
 
+    Backup --> Base
+    Backup --> Puct
+    Backup --> Simple
+    Backup --> Gumbel
+    Backup --> MuZero
     Base --> Puct
     Base --> Simple
     Protocols --> Puct
@@ -240,23 +267,83 @@ flowchart TD
     Shim -.->|"lazy import inside create_mcts()"| Factory
 ```
 
-Line counts below were re-measured on 2026-09-02 (`wc -l alpha_zero/core/mcts/*.py`);
-they grew with the 2026-08-30 change that gave every search its own RNG.
+Line counts below were re-measured on 2026-09-04 (`wc -l alpha_zero/core/mcts/*.py`).
 
 | Module | Lines | Contents | Depends on |
 |---|---:|---|---|
+| `backup.py` | 249 | `backpropagate_path`, `perspective_sign`, `should_track_to_play`, `env_current_player`, backup diagnostics | — |
 | `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
-| `gumbel_ops.py` | 112 | `gumbel_sample_actions`, `compute_completed_q` | — |
-| `base.py` | 223 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | — |
-| `puct.py` | 401 | `Civ6MCTS` | `base`, `mcts_protocols` |
-| `simple.py` | 199 | `SimpleMCTS` | `base`, `mcts_protocols` |
-| `gumbel.py` | 572 | `GumbelMCTS`, `GumbelMCTSNode`, `GumbelMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
-| `muzero.py` | 888 | `MuZeroMCTS`, `MuZeroNode`, `MuZeroMCTSConfig` | `gumbel_ops`, `mcts_protocols` |
+| `gumbel_ops.py` | 186 | `gumbel_sample_actions`, `compute_completed_q`, `build_completed_q_policy` | — |
+| `base.py` | 223 | `MCTSConfig`, `MCTSNode`, `_env_current_player` | `backup` |
+| `puct.py` | 397 | `Civ6MCTS` | `backup`, `base`, `mcts_protocols` |
+| `simple.py` | 208 | `SimpleMCTS` | `backup`, `base`, `mcts_protocols` |
+| `gumbel.py` | 718 | `GumbelMCTS`, `GumbelMCTSNode`, `GumbelMCTSConfig` | `backup`, `gumbel_ops`, `mcts_protocols` |
+| `muzero.py` | 899 | `MuZeroMCTS`, `MuZeroNode`, `MuZeroMCTSConfig` | `backup`, `gumbel_ops`, `mcts_protocols` |
+
+**Perspective fallback.** A node whose `to_play` is unknown falls back to per-ply alternation —
+exactly the pre-2026-09-04 behaviour — so `MuZeroMCTS`, which searches a learned latent model and
+cannot observe the acting player past the root, is byte-identical. `should_track_to_play` also
+leaves `to_play` unset above two players, so those games keep per-ply alternation: a scalar sign
+flip cannot express a 3-player game, and `--num_players 4` defaults to `gumbel`.
+`alpha_zero.multiplayer.mcts.NPlayerMCTS` is the search that keeps a real per-player value vector.
 
 **Extension seam.** New variants are added through `create_mcts(...)`'s `_MCTS_REGISTRY`
 (charter Invariant 1); callers never branch on a concrete MCTS type. The split left that
 factory untouched — its lazy import resolves through the shim — so the diff outside the
 moved code is the shim and the documentation.
+
+---
+
+## Level 3 — Component Diagram (Local Training Loop & RNG Streams)
+
+> **Scope:** `alpha_zero/training_civ6.py` and the RNG streams it derives. This is the local
+> counterpart to the Vertex data flow below; the cloud workers seed themselves per worker.
+
+One run seed determines the whole run. `alpha_zero/utils/seeding.py` derives every stream from
+its **name** with BLAKE2b (`derive_seed(base, stream, *coords)`), replacing offset arithmetic
+whose collision-freedom depended on the game count at each call site. Streams cannot collide
+unless they are spelled the same, `iteration` is a coordinate rather than a stride, and the
+mapping is stable across processes. `derive_seed(None, …)` returns `None`, so unseeded runs stay
+unseeded.
+
+```mermaid
+flowchart LR
+    classDef util fill:#067D26,color:#fff,stroke:#055E1C
+    classDef comp fill:#1168BD,color:#fff,stroke:#0E5EA8
+    classDef ext fill:#999,color:#fff,stroke:#6B6B6B
+
+    Seed["--seed N\n(TrainingConfig.seed)"]:::ext
+
+    subgraph Seeding["alpha_zero/utils/seeding.py"]
+        Derive["derive_seed(base, stream, *coords)\nBLAKE2b over name + coordinates"]:::util
+        Streams["SeedStream\nselfplay.env · selfplay.search\neval.env · eval.search · eval.opponent\nreplay.sampler · data.loader"]:::util
+    end
+
+    subgraph Loop["alpha_zero/training_civ6.py"]
+        SelfPlay["run_self_play(iteration)\nvaries per iteration"]:::comp
+        Eval["evaluate_against_random()\nHELD-OUT: fixed maps"]:::comp
+        Buffer["ReplayBuffer.sample\nspans iterations, no coordinate"]:::comp
+        Loader["DataLoader generator\n(seed, iteration)"]:::comp
+    end
+
+    Envs["MicroCivEnv · Civ6MCTS / GumbelMCTS\nrandom opponent"]:::ext
+
+    Seed --> Derive
+    Streams --> Derive
+    Derive -->|"selfplay.*, + iteration, + game_idx"| SelfPlay
+    Derive -->|"eval.*, no iteration"| Eval
+    Derive -->|"replay.sampler"| Buffer
+    Derive -->|"data.loader, + iteration"| Loader
+    SelfPlay --> Envs
+    Eval --> Envs
+```
+
+**Why evaluation does not take an `iteration` coordinate.** Self-play must vary so the learner
+sees new positions; evaluation is a *held-out* set, and comparing iteration *N* against *N+1* is
+only meaningful if both were scored on the same positions. Before 2026-09-04 neither varied —
+only the DataLoader's generator carried `iteration` — so a seeded 20-iteration run regenerated
+the same games twenty times. `EVAL_SEED_OFFSET` remains in `training_civ6.py` as a deprecated
+name that nothing reads.
 
 ---
 
@@ -358,7 +445,10 @@ flowchart TD
 
 ---
 
-*Last revised: 2026-09-02 — Tier A dead-code removal (44 modules / 21,903 lines; the
-four per-role Dockerfiles and `docker-compose.yml` with them), W&B removed from the
-context diagram, one-image container model made explicit.*
+*Last revised: 2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search package
+(one sign-correct value backup for all five variants), `utils/seeding.py` and the local
+training loop added to the container and component views. Previously 2026-09-02: Tier A
+dead-code removal (44 modules / 21,903 lines; the four per-role Dockerfiles and
+`docker-compose.yml` with them), W&B removed from the context diagram, one-image container
+model made explicit.*
 *Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition*

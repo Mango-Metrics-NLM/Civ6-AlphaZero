@@ -42,6 +42,15 @@ from alpha_zero.core.civ6_mcts import (
     compute_completed_q,
     gumbel_sample_actions,
 )
+from alpha_zero.core.mcts.backup import (
+    backpropagate_path,
+    env_current_player,
+    log_backup_diagnostics,
+    should_track_to_play,
+)
+from alpha_zero.core.mcts.gumbel import (
+    POLICY_TARGET_COMPLETED_Q,
+)
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
     DEFAULT_C_VISIT_DIVISOR,
@@ -98,6 +107,8 @@ class BatchMCTSConfig:
     # adding it here makes `create_mcts(..., seed=42)` work with no factory
     # change.
     seed: int | None = None
+    policy_target: str = POLICY_TARGET_COMPLETED_Q
+    greedy_threshold: float = _GREEDY_THRESHOLD
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -174,6 +185,7 @@ class BatchGumbelMCTS:
 
         # Metrics tracking for W&B logging
         self._search_count = 0
+        self._track_to_play = True
         self._log_interval = LOG_SEARCH_STATS_INTERVAL
 
     def search(
@@ -215,7 +227,13 @@ class BatchGumbelMCTS:
         total_evals = 0
 
         # Step 1: Initialize root nodes and get initial evaluations (batched)
-        roots: list[GumbelMCTSNode] = [GumbelMCTSNode() for _ in range(num_envs)]
+        # Above two players a scalar sign flip cannot express the game; fall back
+        # to alternation there, matching Civ6MCTS and GumbelMCTS.
+        self._track_to_play = all(should_track_to_play(env) for env in envs)
+        roots: list[GumbelMCTSNode] = [
+            GumbelMCTSNode(to_play=env_current_player(env) if self._track_to_play else None)
+            for env in envs
+        ]
         observations = [env.get_observation() for env in envs]
 
         # Batch evaluate initial states
@@ -526,6 +544,8 @@ class BatchGumbelMCTS:
         if node is None:
             return None
 
+        # A node describes the state after its action.
+        node.to_play = env_current_player(sim_env) if self._track_to_play else None
         search_path = [root, node]
 
         # Traverse tree until leaf or terminal
@@ -538,6 +558,7 @@ class BatchGumbelMCTS:
                 node = next_node
                 search_path.append(node)
                 _, _reward, terminated, truncated, _ = sim_env.step(action)
+                node.to_play = env_current_player(sim_env) if self._track_to_play else None
             else:
                 # Found a leaf - return pending evaluation
                 obs = sim_env.get_observation()
@@ -620,11 +641,8 @@ class BatchGumbelMCTS:
             search_path: List of nodes from root to leaf.
             value: Value to propagate (from leaf player's perspective).
         """
-        # Propagate from leaf to root, flipping value at each level
-        for node in reversed(search_path):
-            node.visit_count += 1
-            node.value_sum += value
-            value = -value
+        log_backup_diagnostics(search_path, search_name="BatchGumbelMCTS")
+        backpropagate_path(search_path, value)
 
     def select_action(
         self,

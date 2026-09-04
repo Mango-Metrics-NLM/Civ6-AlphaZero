@@ -42,6 +42,7 @@ from alpha_zero.multiplayer.scoring import (
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
+from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 # Configure logging
 logging.basicConfig(
@@ -213,11 +214,14 @@ def resume_network_weights(
 #: Evaluation games played per checkpoint on a normal (non-dry) run.
 DEFAULT_EVAL_GAMES = 20
 
-# Evaluation's RNG streams are derived from `config.seed` plus this offset, so
-# they cannot collide with self-play's (`seed + game_idx` for game_idx <
-# num_games). A named constant rather than a literal: the value is arbitrary,
-# but the *separation* is the point, and a bare number invites someone to reuse
-# it as a per-game offset.
+# Superseded by `alpha_zero.utils.seeding.derive_seed`, which separates RNG
+# streams by NAME rather than by an offset that had to be re-reasoned whenever a
+# call site moved. Retained because it is part of this module's public surface;
+# nothing in the package reads it any more.
+#
+# .. deprecated:: 1.9
+#    Use :class:`~alpha_zero.utils.seeding.SeedStream` and
+#    :func:`~alpha_zero.utils.seeding.derive_seed` instead.
 EVAL_SEED_OFFSET = 1_000_000
 
 #: Config fields that dominate dry-run cost. These are the *inner* dimensions:
@@ -655,6 +659,7 @@ def run_self_play(
     config: TrainingConfig,
     num_games: int,
     use_simple_mcts: bool = False,
+    iteration: int = 0,
 ) -> list[TrainingExample]:
     """Run multiple self-play games.
 
@@ -683,12 +688,13 @@ def run_self_play(
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
-        seed=config.seed,
+        seed=derive_seed(config.seed, SeedStream.SELF_PLAY_ENV, iteration),
     )
 
-    # The search is seeded past the per-game environment range (`seed + i` for
-    # i < num_games) so it does not share a stream with any environment.
-    search_seed = None if config.seed is None else config.seed + num_games
+    # Every stream is derived from a NAME, so none can collide with another, and
+    # every one varies with `iteration`. Before this, self-play seeds carried no
+    # iteration term: a seeded run regenerated the same games every iteration.
+    search_seed = derive_seed(config.seed, SeedStream.SELF_PLAY_SEARCH, iteration)
 
     if use_simple_mcts:
         # SimpleMCTS ignores the network entirely (random rollouts), so skip
@@ -733,7 +739,7 @@ def run_self_play(
                 env,
                 mcts,
                 config,
-                game_seed=None if config.seed is None else config.seed + game_idx,
+                game_seed=derive_seed(config.seed, SeedStream.SELF_PLAY_ENV, iteration, game_idx),
             )
             examples.extend(game_examples)
 
@@ -852,6 +858,7 @@ def evaluate_against_random(
     network: torch.nn.Module,
     config: TrainingConfig,
     num_games: int = 20,
+    iteration: int = 0,
 ) -> float:
     """Evaluate network against random player.
 
@@ -874,19 +881,27 @@ def evaluate_against_random(
         the draw-aware score rate are logged so the figure can be interpreted
         rather than guessed at.
     """
-    # Offsets keep the evaluation's three streams (environment, search, random
-    # opponent) distinct from each other and from self-play's, so a seeded run
-    # replays exactly without any two of them sharing a sequence.
-    eval_seed = None if config.seed is None else config.seed + EVAL_SEED_OFFSET
+    # Named streams keep the evaluation's three sources (environment, search,
+    # random opponent) distinct from each other and from self-play's, so a
+    # seeded run replays exactly without any two sharing a sequence.
+    #
+    # Deliberately NOT varying with `iteration`, unlike self-play. Evaluation is
+    # a HELD-OUT set: comparing iteration N against N+1 is only meaningful if
+    # both were scored on the same positions. Re-drawing the maps each iteration
+    # would add map-difficulty variance to the very curve the learning-trend
+    # check reads, on top of the sampling noise a 20-game probe already carries
+    # (docs/evidence/validation_iteration_zero/ measured one checkpoint spanning
+    # 0.25-0.40 across five probes). Self-play varies so the learner sees new
+    # positions; evaluation is fixed so the score is comparable.
     env = MicroCivEnv(
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
-        seed=eval_seed,
+        seed=derive_seed(config.seed, SeedStream.EVAL_ENV),
     )
     mcts_config = MCTSConfig(
         num_simulations=config.num_simulations // 2,
-        seed=None if eval_seed is None else eval_seed + num_games,
+        seed=derive_seed(config.seed, SeedStream.EVAL_SEARCH),
     )
     # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
     mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
@@ -896,12 +911,12 @@ def evaluate_against_random(
     # The random opponent. Unseeded, this alone was enough to make a 20-game
     # probe unrepeatable -- five probes of one checkpoint spanned 0.25 to 0.40
     # (docs/evidence/validation_iteration_zero/).
-    rng = np.random.default_rng(None if eval_seed is None else eval_seed + 2 * num_games)
+    rng = np.random.default_rng(derive_seed(config.seed, SeedStream.EVAL_OPPONENT))
 
     # Batch-of-1 inference, same as self-play; see run_self_play.
     with inference_thread_limit():
         for game_idx in range(num_games):
-            _obs, _info = env.reset(seed=None if eval_seed is None else eval_seed + game_idx)
+            _obs, _info = env.reset(seed=derive_seed(config.seed, SeedStream.EVAL_ENV, game_idx))
             # Rotate which seat the network occupies across all players.
             network_player = game_idx % config.num_players
 
@@ -1048,9 +1063,10 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # Initialize replay buffer
     replay_buffer = ReplayBuffer(
         max_size=config.replay_buffer_size,
-        # Offset past self-play's and evaluation's ranges so no two streams in
-        # the run share a sequence.
-        seed=None if config.seed is None else config.seed + 2 * EVAL_SEED_OFFSET,
+        # A named stream, so it cannot share a sequence with self-play or
+        # evaluation. The buffer spans iterations, so it takes no iteration
+        # coordinate: re-seeding it per iteration would restart its sampling.
+        seed=derive_seed(config.seed, SeedStream.REPLAY_SAMPLER),
     )
 
     # Training loop
@@ -1077,7 +1093,9 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
 
         # Use simple MCTS for first iteration (no trained network)
         use_simple = iteration == 0
-        examples = run_self_play(network, config, num_games, use_simple_mcts=use_simple)
+        examples = run_self_play(
+            network, config, num_games, use_simple_mcts=use_simple, iteration=iteration
+        )
         replay_buffer.add_game(examples)
 
         self_play_time = time.time() - start_time
@@ -1102,9 +1120,10 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             # Re-derived per iteration so successive iterations shuffle
             # differently while the run as a whole replays.
             loader_generator: torch.Generator | None = None
-            if config.seed is not None:
+            loader_seed = derive_seed(config.seed, SeedStream.DATA_LOADER, iteration)
+            if loader_seed is not None:
                 loader_generator = torch.Generator()
-                loader_generator.manual_seed(config.seed + iteration)
+                loader_generator.manual_seed(loader_seed)
             dataloader = DataLoader(
                 dataset,
                 batch_size=config.batch_size,
@@ -1132,6 +1151,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 network,
                 config,
                 num_games=DRY_RUN_PROFILE.num_eval_games if dry_run else DEFAULT_EVAL_GAMES,
+                iteration=iteration,
             )
             logger.info(f"Win rate vs random: {win_rate:.1%}")
 

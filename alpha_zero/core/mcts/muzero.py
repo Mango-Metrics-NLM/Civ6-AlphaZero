@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F  # noqa: N812
 
+from alpha_zero.core.mcts.backup import backpropagate_path, log_backup_diagnostics
 from alpha_zero.core.mcts.gumbel_ops import compute_completed_q, gumbel_sample_actions
 from alpha_zero.core.mcts.mcts_protocols import MuZeroNetworkProtocol
 from alpha_zero.core.mcts_constants import (
@@ -120,6 +121,10 @@ class MuZeroNode:
     prior: float = 0.0
     visit_count: int = 0
     value_sum: float = 0.0
+    # Always None today: the latent dynamics model cannot report the
+    # acting player. Present so MuZeroNode satisfies the BackupNode
+    # protocol and so a future variant can populate it.
+    to_play: int | None = None
     children: dict[int, MuZeroNode] = field(default_factory=dict)
     parent: MuZeroNode | None = None
     action: int | None = None
@@ -778,10 +783,16 @@ class MuZeroMCTS:
             search_path: List of nodes from root to leaf.
             value: Value to propagate.
         """
-        for node in reversed(search_path):
-            node.visit_count += 1
-            node.value_sum += value
-            value = -value  # Flip for opponent (if applicable)
+        # Delegates to the shared primitive so this rule has one implementation
+        # across every variant. MuZero searches a *learned latent* model: past
+        # the root there is no environment to ask who is to move, so its nodes
+        # carry no ``to_play`` and the shared function applies its documented
+        # per-ply alternation fallback -- byte-identical to the loop this
+        # replaced. If a future MuZero variant can predict the acting player,
+        # populating ``to_play`` is all that is needed to make this correct for
+        # multi-action turns, exactly as it now is for the Gumbel variants.
+        log_backup_diagnostics(search_path, search_name="MuZeroMCTS")
+        backpropagate_path(search_path, value)
 
     def _backpropagate_with_rewards(
         self,

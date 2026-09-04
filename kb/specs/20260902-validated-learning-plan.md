@@ -253,7 +253,17 @@ Ordered by dependency, not by size. Sizes: S ≤ 1 day, M ≤ 1 week, L > 1 week
   (`CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1` is the escape hatch).
 - Answer §9.
 
-### WS-L — Validation Iteration One (local, CPU, **day 1**, no sign-off needed)
+### WS-L — Validation Iteration One (local, CPU, ~~day 1~~, no sign-off needed)
+
+> **AMENDED 2026-09-04 — WS-L is re-sequenced behind WS-S.** See
+> [`20260904-correctness-first-plan.md`](20260904-correctness-first-plan.md) §1. On the code as it
+> stands this run cannot produce the evidence it is designed to produce: the default search negates
+> the value at every ply although 71% of MicroCiv steps do not change the player, its policy target
+> is a one-hot (1 non-zero of 376), and neither the self-play nor the evaluation seed carries an
+> `iteration` term — so a seeded 20-iteration run trains on the same games twenty times and scores
+> them on the same fixed 20 maps. Run WS-L after S1–S4 land; the command below is unchanged.
+> The same correction applies to D0: **re-measure the draw rate after the search is fixed**, since
+> ~70% draws is what two agents that cannot tell a win from a loss would produce.
 
 Depends on nothing in this plan except, ideally, D2 (it changes policy targets; if D2 is
 not merged on day 1, start anyway and note it — the mask defect is 3% of actions).

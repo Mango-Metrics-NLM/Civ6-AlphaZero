@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import torch
 
+from alpha_zero.core.mcts.backup import backpropagate_path, log_backup_diagnostics
 from alpha_zero.core.mcts.base import MCTSConfig, MCTSNode, _env_current_player
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment, MCTSNetwork
 from alpha_zero.utils.device import place_network
@@ -188,19 +189,14 @@ class Civ6MCTS:
                 # Expand leaf node
                 node.expand(policy, action_mask)
 
-            # Backpropagation. `value` is from the perspective of whoever
-            # moves at the leaf, so the sign flips only where the acting player
+            # Backpropagation. `value` is from the perspective of whoever moves
+            # at the leaf, so the sign flips only where the acting player
             # changes - not on every ply. MicroCiv rotates current_player only
-            # in _end_turn, so a player makes many moves per turn.
-            leaf_to_play = search_path[-1].to_play
-            for node in reversed(search_path):
-                if leaf_to_play is None or node.to_play is None:
-                    signed = value
-                    value = -value
-                else:
-                    signed = value if node.to_play == leaf_to_play else -value
-                node.visit_count += 1
-                node.value_sum += signed
+            # in _end_turn, so a player makes many moves per turn. This was the
+            # first variant corrected (2026-08-25); it now shares that rule with
+            # every other variant instead of keeping its own copy.
+            log_backup_diagnostics(search_path, search_name="Civ6MCTS")
+            backpropagate_path(search_path, value)
 
             # Explicit cleanup to prevent memory accumulation
             del sim_env

@@ -1,15 +1,29 @@
 # Next Steps — Live Bridge (v1.8.0)
 
-> **What now, across the whole project (2026-09-02):**
-> `kb/specs/20260902-validated-learning-plan.md`. It is the single sequenced list,
-> built from verification passes and one measurement
-> (`docs/evidence/draw_rate_sweep/`), and it supersedes the "Recommended Plan" in
-> `docs/NEXT_STEPS_CASE_2026-08.md`. Its first-order finding: the training loop has
-> never been shown to learn because ~70% of games at the shipped arena configuration
-> end in a 1–1 city tie, and the turn limit — not the board size — is the lever
-> (random-play draws at board 8: 0.68 / 0.47 / 0.37 at 30 / 60 / 100 turns). Item 3
-> below (a trained checkpoint in the live game) is sequenced after that plan's
-> validation runs.
+> **What now, across the whole project — start here (2026-09-04):**
+> `kb/specs/20260904-correctness-first-plan.md`. It **amends** the sequencing of
+> `kb/specs/20260902-validated-learning-plan.md` (still the source for every
+> workstream's content) and supersedes the 23-item remediation list in
+> [`docs/audits/2026-09-04-standards-audit.md`](docs/audits/2026-09-04-standards-audit.md).
+> Read the two together, in that order.
+>
+> **What the amendment changes.** The learning plan put WS-L — a seeded
+> 20-iteration run, read as the project's learning signal — on day 1. A new
+> workstream **WS-S (search correctness)** now precedes it, because the default
+> search was defective on every deployed path: the value backup ignored who was to
+> move, the policy target was a one-hot, and self-play and evaluation seeds carried
+> no iteration term. A run on that code could not have produced the evidence it was
+> designed to produce. WS-S S1–S4 and S6 landed on 2026-09-04 (see
+> [`CHANGELOG.md`](CHANGELOG.md)); S5 (the A/B evidence seed-overlap memo) is open.
+>
+> It also re-frames the draw rate. The learning plan treats the measured ~70% draws
+> (`docs/evidence/draw_rate_sweep/`: random-play draws at board 8 of 0.68 / 0.47 /
+> 0.37 at 30 / 60 / 100 turns, turn limit rather than board size being the lever) as
+> the root cause. That is what two agents whose search cannot tell a win from a loss
+> would also produce, so **D0 re-measures the draw rate after the search fixes**
+> rather than before, and D1 (`max_turns` on the deployed path) waits for that
+> number. Item 3 below — a trained checkpoint in the live game — is still sequenced
+> after those validation runs.
 >
 > **Scope note.** This document covers the live Civ6 bridge only. The other open
 > track is tech-debt reduction and hardening: its Core scope landed on 2026-09-02

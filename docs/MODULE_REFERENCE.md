@@ -4,15 +4,16 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.8.0, 2026-09-02 (Tier A dead-code removal)
+- **As of:** v1.8.0, 2026-09-04 (`core/mcts/backup.py` and `utils/seeding.py` added;
+  module set unchanged since the 2026-09-02 Tier A dead-code removal)
 - **Submodule count:** 29
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
 
 | Module | Files | Responsibility |
 |--------|------:|----------------|
-| `core` | 35 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero), action space |
-| `utils` | 25 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`) |
+| `core` | 36 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero) sharing one sign-correct value backup (`mcts/backup.py`), action space |
+| `utils` | 26 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`), per-stream seed derivation (`seeding.py`) |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
