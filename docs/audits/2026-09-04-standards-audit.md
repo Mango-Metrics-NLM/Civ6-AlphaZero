@@ -11,6 +11,56 @@ evidence with file:line, not independently re-run · **[Guessing]** = inference.
 
 ---
 
+## 0. Review corrections (added 2026-09-04, after four independent review passes)
+
+**Read this before §1.** This report was reviewed by a falsification pass, a blind-spot pass, a
+plan-reconciliation pass and a process-proportionality pass. They found one omission that
+outweighs everything below, and four factual errors.
+
+**0.1 — This report aimed at the wrong target.** It graded hygiene across six single-dimension
+passes, none of which asked whether the algorithm computes the right number. The default search
+on every deployed path (`GumbelMCTS`) negates the value at every ply unconditionally, but
+**71% of MicroCiv steps do not change the player** (measured), so the sign of a node's Q depends
+on the parity of the depth at which its leaves were evaluated. `core/mcts/base.py:207-222` already
+implements the `to_play`-aware backup and warns at `:150` about exactly this; `grep -c to_play`
+gives `base` 10, `puct` 9, **`gumbel` 0, `simple` 0, `muzero` 0**. The policy target is a one-hot
+(measured: 1 non-zero entry of 376). Self-play and evaluation seeds carry no `iteration` term
+(`training_civ6.py:691,736,880`) while the DataLoader's does (`:1107`), so a seeded run replays
+the same games every iteration. `tests/unit/test_gumbel_mcts.py:216` asserts the flipped value as
+correct, and `test_performance_better_than_random` has zero assertions — this report counted that
+file in its "166 zero-assert tests" statistic and drew a hygiene conclusion from it.
+
+Of this report's 23 remediation items, one touches whether the learner is correct. The full
+analysis and the re-sequenced plan are in
+[`kb/specs/20260904-correctness-first-plan.md`](../../kb/specs/20260904-correctness-first-plan.md),
+which **supersedes §4 below**.
+
+**0.2 — §4 was a third overlapping plan.** Nine of its 23 items are genuinely new; the rest
+restate open workstreams in the two 2026-09-02 specs. Collapsing four overlapping next-step lists
+into one was the point of that planning session.
+
+**0.3 — Corrected facts.**
+
+| §  | Claim as written | Correction |
+|---|---|---|
+| G8 | `coordinator --dry_run` "did not finish in 300 s" | Exits **0 in 517 s** with 26,039 invalid-move warnings. The unbounded-inner-dimension defect is real; "does not complete" is not. |
+| 3.3 | "14 of 15 action refs on mutable tags" | **26 of 27 unpinned** (ci.yml 20, deploy_spaces.yml 4, release.yml 3). |
+| §4.12 | "Route 22 `torch.load` through `safe_load`" sized M | **L, split in three, CONFIRM-FIRST.** The unsafe sites carry optimizer state and config dataclasses that `weights_only=True` refuses; this is a checkpoint-format migration against the GCS champion lineage, plus a wire-format question for pickled trajectory shards read across a rolling window by older and newer trainers. |
+| G9 | PLR0915 "exempts three `main`s" | Six functions (248/168/82/68/64/62 statements). |
+| §4.19 | "Delete the 53 dead modules" | Would delete **Tier C**, which `20260902-tech-debt-hardening.md:290` marks *never delete* and which `WS-N` N1 edits. Restate as Tier B's fourteen authorized rows. |
+| §4.19 | "Bring `cloud/*` into the global coverage gate" | **Dropped.** Re-opens a decision made deliberately (`:26`) and shipped as the per-package floor; the documented arithmetic puts the un-omit at 89.69% → ~83.8%, CI red. |
+
+**0.4 — Eight items were under-authorized**, presented as free actions but CONFIRM-FIRST or
+maintainer-only under CLAUDE.md §3.2: removing the `allUsers` binding, a blocking `pip-audit`,
+push-guard changes, cutting a tag, `pytest-randomly` with an autouse reseed, splitting CLAUDE.md,
+the Python-version matrix, and serving auth.
+
+**What survives review:** the scorecard's shape, the ten fail-open gates (§3.2), the supply-chain
+and release findings (§3.3), and every [Certain] row in §5. The verdict "does not meet the 2026
+bar" stands — but it understated the problem by grading only hygiene.
+
+---
+
 ## 1. Verdict
 
 **No.** The project meets the 2026 bar on *process discipline* — deterministic governance gates,
