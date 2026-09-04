@@ -1,11 +1,12 @@
 {
     "last_session_id": "session_01KZPsP2Mvg333p1akDqpLTG",
-    "last_timestamp": "2026-09-04T21:35:00Z",
-    "current_focus": "PR #118 is PR-ready: CI green on head b715582 (runs 449 push / 450 pull_request, both success), two Copilot review findings addressed. Awaiting human review and merge. The branch carries the 2026 standards audit, the correctness-first plan, the WS-S search fixes (S1-S4, S6), and the harness/supply-chain remediation.",
+    "last_timestamp": "2026-09-04T22:05:00Z",
+    "current_focus": "PR #118 is PR-ready: on head 66393549 every CI job is green across both runs (33921757575 push, 33921759398 pull_request); the pull_request run's Coverage Report was still finishing at 22:05 and the push run's identical job already passed. The only red check is copilot-pull-request-reviewer, which failed with HttpError: Resource not accessible by integration while fetching PR metadata -- a Copilot App authorization failure before any code was read, so not attributable to this diff. Re-run attempted once and refused with the same 403; stood down in one PR comment (issuecomment-5546949203). Awaiting human review and merge. The branch carries the 2026 standards audit, the correctness-first plan, the WS-S search fixes (S1-S4, S6), and the harness/supply-chain remediation.",
     "resume_pointers": {
         "current_task": "Watch PR #118 to merge. On each event re-check CI on the current head, mergeability, and open review threads; act on anything actionable.",
         "blocked_on": [
             "Human review and merge of PR #118",
+            "Maintainer-only: the copilot-pull-request-reviewer check cannot go green from this branch. Its GitHub App lacks pull-request read on this repository (GET /repos/.../pulls/118 returns 403), and the rerun-failed-jobs API refuses for the same reason. Fix is to grant the Copilot app that permission or remove the check.",
             "Maintainer-only (plan 20260904 §9.3): rotate the W&B key reachable at 87cd68a2; remove the allUsers invoker binding on the inference Cloud Run service; tag v1.8.0/v1.9.0 (a tag fires release.yml with contents: write)",
             "S5 decision: re-run or annotate docs/evidence/hexcrystal_ab/ for the reported train/test seed overlap"
         ],
