@@ -1,19 +1,19 @@
 {
     "last_session_id": "session_01KZPsP2Mvg333p1akDqpLTG",
     "last_timestamp": "2026-09-04T19:05:00Z",
-    "current_focus": "2026 coding-standards audit delivered (docs/audits/2026-09-04-standards-audit.md, verdict 2.3/5); awaiting maintainer authorization of the ten 'now' remediations. The validated-learning plan (spec 20260902) and tech-debt plan remain the sequenced work; the audit is the standards overlay on them.",
+    "current_focus": "Standards audit delivered and its correctness findings implemented (WS-S: S1-S4, S6). kb/specs/20260904-correctness-first-plan.md is the current sequence; it amends the 2026-09-02 validated-learning plan by putting WS-S before WS-L, and supersedes the audit's own remediation list. PR #118 open.",
     "resume_pointers": {
-        "current_task": "Maintainer triage of docs/audits/2026-09-04-standards-audit.md §4 'Now' items 1-10; then re-open kb/specs/20260902-validated-learning-plan.md §9 authorizations",
+        "current_task": "Maintainer triage of docs/audits/2026-09-04-standards-audit.md \u00a74 'Now' items 1-10; then re-open kb/specs/20260902-validated-learning-plan.md \u00a79 authorizations",
         "blocked_on": [
-            "audit §4.1: W&B key rotation (maintainer-only, no design needed)",
-            "audit §4.2: remove allUsers invoker binding on the inference Cloud Run service (maintainer-only, infra)",
-            "audit §4.11: lock-strategy decision (uv sync --locked in CI/Docker vs delete uv.lock)",
-            "spec 20260902-validated-learning-plan §9 authorizations (unchanged from 2026-09-02)"
+            "audit \u00a74.1: W&B key rotation (maintainer-only, no design needed)",
+            "audit \u00a74.2: remove allUsers invoker binding on the inference Cloud Run service (maintainer-only, infra)",
+            "audit \u00a74.11: lock-strategy decision (uv sync --locked in CI/Docker vs delete uv.lock)",
+            "spec 20260902-validated-learning-plan \u00a79 authorizations (unchanged from 2026-09-02)"
         ],
         "next_steps": [
-            "DEV-SQE, no authorization needed: audit items 3 (CI PR trigger to the real default branch), 4 (SKIP_PARTS build/dist/.tox + negative control), 5 (chess out of dev extra + importorskip), 6 (pip-audit job), 7 (SHA-pin actions), 8 (web CORS/host defaults), 9 (push-guard wrapper unwrapping), 10 (utils/__init__ off the deprecated logging shim; lazy tensorboard import)",
+            "DEV-SQE, no authorization needed (per 20260904-correctness-first-plan.md \u00a79.5): audit items 3 (CI PR trigger), 4 (SKIP_PARTS + negative control), 5 (chess out of the dev extra + importorskip), 10 (utils/__init__ off the deprecated logging shim). NOTE: item 9 (push-guard hardening) is MAINTAINER-ONLY and item 6 (pip-audit) is CONFIRM-FIRST as a new external service; item 8 (web CORS/host defaults) is a breaking public-interface change. Those three were listed here as free actions before the correctness-first plan classified them.",
             "Then the month tier: safe_load routing for all 22 torch.load + 5 pickle.loads sites, tag v1.8.0/v1.9.0 and fix CHANGELOG, bandit baseline at medium/medium, high-signal ruff rules with burndown lists, pytest-randomly + zero-assert ratchet, CLAUDE.md split to <200 lines with history moved to docs/architecture/adr/",
-            "Continue WS-L / D2 / E1-E4 / N1 from the validated-learning plan in parallel; the audit does not re-sequence them"
+            "WS-L is RE-SEQUENCED behind WS-S (search correctness) by kb/specs/20260904-correctness-first-plan.md \u00a71: on the pre-fix code a seeded run trained on one-hot targets from a parity-scrambled value over the same games each iteration, so it could not produce the learning trend it was designed to read. S1-S4 and S6 landed 2026-09-04; S5 (the A/B evidence seed-overlap memo) is open. D2 / E1-E4 / N1 remain parallel and unaffected. D0 re-measures the draw rate AFTER the search fixes, not before."
         ]
     },
     "context_files": [

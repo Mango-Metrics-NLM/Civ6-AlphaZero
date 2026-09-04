@@ -4,7 +4,7 @@
 **Method:** six parallel read-only audit passes (CI/supply chain, application security, code
 quality/architecture, test suite, docs/governance/DX, and an external 2026-practice rubric built
 from primary sources), with every gate-integrity and high-severity claim reproduced by hand before
-it was accepted. Nothing in the tree was modified except the addition of this file.
+it was accepted. The audit pass itself changed no source code: it added this report and the accompanying planning records under `kb/`. The remediation work it recommends landed in later commits on this branch and is listed in §0.
 
 Confidence tags: **[Certain]** = reproduced by command in this session · **[Likely]** = agent
 evidence with file:line, not independently re-run · **[Guessing]** = inference.
