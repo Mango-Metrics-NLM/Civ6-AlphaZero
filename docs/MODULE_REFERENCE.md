@@ -11,8 +11,8 @@ or removed.
 
 | Module | Files | Responsibility |
 |--------|------:|----------------|
-| `core` | 35 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero), action space |
-| `utils` | 25 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`) |
+| `core` | 36 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero) sharing one sign-correct value backup (`mcts/backup.py`), action space |
+| `utils` | 26 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`), per-stream seed derivation (`seeding.py`) |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |

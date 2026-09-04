@@ -37,7 +37,17 @@ _SHIM_MAP: list[tuple[str, tuple[str, ...]]] = [
     ("alpha_zero.core.mcts.gumbel_ops", ("compute_completed_q", "gumbel_sample_actions")),
     ("alpha_zero.core.mcts.puct", ("Civ6MCTS",)),
     ("alpha_zero.core.mcts.simple", ("SimpleMCTS",)),
-    ("alpha_zero.core.mcts.gumbel", ("GumbelMCTS", "GumbelMCTSConfig", "GumbelMCTSNode")),
+    (
+        "alpha_zero.core.mcts.gumbel",
+        (
+            "GumbelMCTS",
+            "GumbelMCTSConfig",
+            "GumbelMCTSNode",
+            "POLICY_TARGET_ONE_HOT",
+            "POLICY_TARGET_VISIT_COUNTS",
+            "VALID_POLICY_TARGETS",
+        ),
+    ),
     ("alpha_zero.core.mcts.muzero", ("MuZeroMCTS", "MuZeroMCTSConfig", "MuZeroNode")),
 ]
 
@@ -169,9 +179,61 @@ def test_muzero_does_not_import_gumbel_variant() -> None:
     assert "alpha_zero.core.mcts.gumbel_ops" in imports
 
 
-def test_leaf_modules_import_no_sibling_variants() -> None:
-    """``mcts_protocols``, ``gumbel_ops`` and ``base`` sit at the bottom."""
-    for leaf in ("mcts_protocols", "gumbel_ops", "base"):
-        imports = _module_imports(f"alpha_zero/core/mcts/{leaf}.py")
-        siblings = {i for i in imports if i.startswith("alpha_zero.core.mcts.")}
-        assert not siblings, f"{leaf} should be a leaf but imports {siblings}"
+# Layering inside alpha_zero/core/mcts/. A module may import only from a
+# STRICTLY lower layer, never from its own layer or above. Expressed as data so
+# a new module is one edit here rather than a new bespoke assertion.
+#
+# Layer 0 is the true bottom: `backup` owns the sign-correct value backup and
+# the acting-player accessor, which every variant needs. It exists as its own
+# layer precisely because `gumbel` and `muzero` must depend on neither `base`
+# nor each other (CLAUDE.md 2026-08-30), so the shared rule cannot live in
+# `base` without re-creating that dependency.
+MCTS_LAYERS: tuple[tuple[str, ...], ...] = (
+    ("backup", "mcts_protocols", "gumbel_ops"),
+    ("base",),
+    ("puct", "simple", "gumbel", "muzero"),
+)
+
+
+def _layer_of(module: str) -> int | None:
+    for index, layer in enumerate(MCTS_LAYERS):
+        if module in layer:
+            return index
+    return None
+
+
+def test_every_mcts_module_is_assigned_a_layer() -> None:
+    """A new module must be placed in the layering, not silently ungated.
+
+    Without this, adding a module to the package would exempt it from the
+    layering rule below by omission -- the failure mode that let unwired suites
+    accumulate (CLAUDE.md 2026-08-30).
+    """
+    on_disk = {
+        path.stem
+        for path in pathlib.Path("alpha_zero/core/mcts").glob("*.py")
+        if path.stem != "__init__"
+    }
+    assigned = {module for layer in MCTS_LAYERS for module in layer}
+    assert on_disk == assigned, (
+        f"unassigned modules: {sorted(on_disk - assigned)}; "
+        f"assigned but missing from disk: {sorted(assigned - on_disk)}"
+    )
+
+
+def test_mcts_modules_import_only_from_lower_layers() -> None:
+    """No module imports a sibling at or above its own layer."""
+    violations: list[str] = []
+    for index, layer in enumerate(MCTS_LAYERS):
+        for module in layer:
+            imports = _module_imports(f"alpha_zero/core/mcts/{module}.py")
+            for imported in imports:
+                if not imported.startswith("alpha_zero.core.mcts."):
+                    continue
+                sibling = imported.removeprefix("alpha_zero.core.mcts.").split(".")[0]
+                sibling_layer = _layer_of(sibling)
+                if sibling_layer is None or sibling_layer >= index:
+                    violations.append(
+                        f"{module} (layer {index}) imports {sibling} (layer {sibling_layer})"
+                    )
+    assert not violations, "layering violations: " + "; ".join(violations)

@@ -6,6 +6,11 @@ import logging
 
 import numpy as np
 
+from alpha_zero.core.mcts.backup import (
+    backpropagate_path,
+    env_current_player,
+    log_backup_diagnostics,
+)
 from alpha_zero.core.mcts.base import MCTSNode
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment
 from alpha_zero.core.mcts_constants import DEFAULT_ROLLOUT_DEPTH, EPSILON
@@ -64,7 +69,7 @@ class SimpleMCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
-        root = MCTSNode()
+        root = MCTSNode(to_play=env_current_player(env))
         action_mask = env.get_valid_actions()
 
         # Initialize root with uniform policy
@@ -83,6 +88,8 @@ class SimpleMCTS:
                 action, node = node.select_child(self.c_puct)
                 search_path.append(node)
                 _, _, terminated, truncated, _ = sim_env.step(action)
+                # A node describes the state after its action.
+                node.to_play = env_current_player(sim_env)
                 if terminated or truncated:
                     break
 
@@ -106,11 +113,11 @@ class SimpleMCTS:
                 # Random rollout
                 value = self._rollout(sim_env)
 
-            # Backpropagation
-            for node in reversed(search_path):
-                node.visit_count += 1
-                node.value_sum += value
-                value = -value
+            # Backpropagation. `_rollout` and the terminal branch above both
+            # express `value` from the leaf player's perspective, which is the
+            # reference `backpropagate_path` defaults to.
+            log_backup_diagnostics(search_path, search_name="SimpleMCTS")
+            backpropagate_path(search_path, value)
 
         # Get action probabilities
         action_probs = np.zeros(env.action_space.n, dtype=np.float32)

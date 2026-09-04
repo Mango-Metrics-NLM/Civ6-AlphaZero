@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from alpha_zero.core.civ6_mcts import (
+    POLICY_TARGET_ONE_HOT,
     GumbelMCTS,
     GumbelMCTSConfig,
     GumbelMCTSNode,
@@ -284,13 +285,39 @@ class TestGumbelMCTS:
         # Gumbel MCTS returns one-hot, so sum should be ~1
         assert abs(action_probs.sum() - 1.0) < 1e-5
 
-    def test_search_returns_one_hot(self, mcts, env):
-        """Gumbel MCTS typically returns one-hot policy."""
+    def test_search_returns_a_normalised_policy(self, mcts, env):
+        """The search reports a distribution, not a delta.
+
+        It used to return a one-hot on the selected action, which was stored
+        verbatim as the policy training target: that trains the head by cloning
+        a single argmax and throws away the visit distribution, which is the
+        policy-improvement operator itself. It also kept the temperature
+        schedule permanently inert, because a delta always trips the greedy
+        short-circuit in `select_action`.
+        """
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        # Should have exactly one action with probability ~1
-        assert action_probs.max() > 0.99
+        assert action_probs.min() >= 0.0
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() > 1, (
+            "search returned a delta; the visit distribution carries the "
+            "search's improvement signal and must survive into the target"
+        )
+
+    def test_one_hot_mode_reproduces_the_legacy_target(self, network, env):
+        """The pre-2026-09 behaviour stays reachable for reproducing old runs."""
+        config = GumbelMCTSConfig(
+            num_simulations=16,
+            policy_target=POLICY_TARGET_ONE_HOT,
+        )
+        legacy = GumbelMCTS(network, config, device="cpu")
+
+        env.reset()
+        action_probs, _ = legacy.search(env)
+
+        assert action_probs.max() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() == 1
 
     def test_root_value_bounded(self, mcts, env):
         """Root value is in [-1, 1] range."""
@@ -343,7 +370,8 @@ class TestGumbelMCTS:
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        assert action_probs.max() > 0.99  # Should return one-hot
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() >= 1
 
     def test_simple_search_mode(self, network, env):
         """Simple search mode (no sequential halving) works."""
@@ -357,7 +385,8 @@ class TestGumbelMCTS:
         env.reset()
         action_probs, _ = mcts.search(env)
 
-        assert action_probs.max() > 0.99
+        assert action_probs.sum() == pytest.approx(1.0)
+        assert (action_probs > 0).sum() >= 1
 
     def test_different_seeds_produce_different_results(self, mcts, env):
         """Different random seeds can produce different search results."""

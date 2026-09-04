@@ -23,7 +23,14 @@ Name                         Module
 from __future__ import annotations
 
 from alpha_zero.core.mcts.base import MCTSConfig, MCTSNode, _env_current_player
-from alpha_zero.core.mcts.gumbel import GumbelMCTS, GumbelMCTSConfig, GumbelMCTSNode
+from alpha_zero.core.mcts.gumbel import (
+    POLICY_TARGET_ONE_HOT,
+    POLICY_TARGET_VISIT_COUNTS,
+    VALID_POLICY_TARGETS,
+    GumbelMCTS,
+    GumbelMCTSConfig,
+    GumbelMCTSNode,
+)
 from alpha_zero.core.mcts.gumbel_ops import compute_completed_q, gumbel_sample_actions
 from alpha_zero.core.mcts.mcts_protocols import (
     ActionSpace,
@@ -36,6 +43,9 @@ from alpha_zero.core.mcts.puct import Civ6MCTS
 from alpha_zero.core.mcts.simple import SimpleMCTS
 
 __all__ = [
+    "POLICY_TARGET_ONE_HOT",
+    "POLICY_TARGET_VISIT_COUNTS",
+    "VALID_POLICY_TARGETS",
     "ActionSpace",
     "Civ6MCTS",
     "GumbelMCTS",

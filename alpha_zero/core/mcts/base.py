@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from alpha_zero.core.mcts.backup import backpropagate_path, env_current_player
 from alpha_zero.core.mcts_constants import EPSILON
 from alpha_zero.utils.constants import MCTS
 
@@ -51,14 +52,12 @@ class MCTSConfig:
             )
 
 
-def _env_current_player(env: object) -> int | None:
-    """Return the env's acting player, or None when it does not expose one.
-
-    Stub environments in tests often have no current_player; those keep the
-    historical per-ply alternation.
-    """
-    player = getattr(env, "current_player", None)
-    return None if player is None else int(player)
+# The canonical implementation lives in .backup so that the variants which must
+# not depend on this module (gumbel, muzero -- CLAUDE.md 2026-08-30) can share
+# it. Re-exported under the historical private name, which is part of the
+# established import surface: core/mcts/__init__, the civ6_mcts shim, puct, and
+# tests/unit/test_mcts_split_backcompat.py all reference it.
+_env_current_player = env_current_player
 
 
 @dataclass(slots=True)
@@ -207,17 +206,18 @@ class MCTSNode:
         Nodes with an unknown ``to_play`` fall back to per-ply alternation so
         callers that never set it keep their previous behaviour.
 
+        Delegates to :func:`alpha_zero.core.mcts.backup.backpropagate_path` so
+        that this rule has exactly one implementation shared with every other
+        search variant. Behaviour is unchanged.
+
         Args:
             value: Value from this node's perspective.
         """
+        # backpropagate_path consumes a root-first path; walk parents to build it.
+        leaf_to_root: list[MCTSNode] = []
         node: MCTSNode | None = self
-        reference = self.to_play
         while node is not None:
-            if reference is None or node.to_play is None:
-                signed = value
-                value = -value
-            else:
-                signed = value if node.to_play == reference else -value
-            node.visit_count += 1
-            node.value_sum += signed
+            leaf_to_root.append(node)
             node = node.parent
+        leaf_to_root.reverse()
+        backpropagate_path(leaf_to_root, value, reference=self.to_play)

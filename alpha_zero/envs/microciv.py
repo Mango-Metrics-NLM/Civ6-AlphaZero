@@ -945,7 +945,18 @@ class MicroCivEnv(gym.Env):
             num_players=self.num_players,
             fog_of_war=self._fog_of_war_enabled,
         )
-        new_env.terrain = copy.deepcopy(self.terrain)
+        # Terrain is generated once in `_generate_map` and never mutated after
+        # that: the only write to `self.terrain` outside `__init__` is that
+        # generation loop, and no `Tile` attribute is ever assigned anywhere in
+        # this module. Sharing the reference instead of deep-copying it is the
+        # largest single saving in `clone()`, which MCTS calls once per
+        # simulation -- the deepcopy of the tile dict dominated clone cost and
+        # therefore a large share of search wall time.
+        #
+        # `tests/unit/test_microciv_clone.py` guards the invariant this relies
+        # on: if terrain ever becomes mutable, that test fails and this line
+        # must go back to a copy.
+        new_env.terrain = self.terrain
         new_env.units = copy.deepcopy(self.units)
         new_env.cities = copy.deepcopy(self.cities)
         new_env.turn = self.turn
