@@ -1,6 +1,6 @@
 # Civ6 AlphaZero Training Container
 # Supports both self-play and training workers via --mode flag
-FROM pytorch/pytorch:2.5.1-cuda12.4-cudnn9-runtime
+FROM pytorch/pytorch:2.6.0-cuda12.4-cudnn9-runtime
 
 LABEL maintainer="civ6az" \
       description="Civ6 AlphaZero self-play and training worker"
