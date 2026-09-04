@@ -5,6 +5,16 @@
 
 <!-- entries below -->
 
+## 2026-09-04 - Correctness-first branch: search fix, seeding, and the gates that were fail-open (PR #118)
+- **Session:** session_01KZPsP2Mvg333p1akDqpLTG
+- **Validating:** six commits on `claude/2026-standards-audit-7tgk7e` -- the 2026 standards audit, the correctness-first plan, one sign-correct value backup shared by all five MCTS variants, the Danihelka completed-Q policy target, per-stream seed derivation, `MicroCivEnv.clone()` terrain sharing, and the harness/supply-chain fixes (SHA-pinned actions, CI PR trigger, coverage-floor ratchet, dead-code ratchet vs build artifacts, `chess` out of the `dev` extra).
+- **Lint:** pass (`ruff check .` + `ruff format --check .`, whole repo)
+- **Types:** pass (`python -m mypy alpha_zero/` -> 330 files, 0 errors)
+- **Tests:** 10,045 unit+sanity+regression pass / 58 skipped; integration 580; e2e 70; smoke 30; scripts 178; cloud 846+36; security 18; governance 55+. Coverage gate (>=85%) enforced and **green in CI** on head `b715582` (runs 449 push / 450 pull_request, both success); the local coverage run was inconclusive in this sandbox and CI is cited as its gate.
+- **Smoke Tests:** pass (`training_civ6 --dry_run` exit 0; `orchestrator --preset fast --dry_run` exit 0)
+- **Status:** PR-ready (CI green on the current head; two Copilot review findings addressed in `b715582`)
+- **Next:** Maintainer-only items remain open and are named in the plan's §9.3 -- W&B key rotation, the `allUsers` inference binding, tagging `v1.8.0`/`v1.9.0`, and the S5 A/B evidence seed-overlap decision. WS-S item S5 and the `policy_target`/`greedy_threshold` config plumbing (reachable in code only) are the open engineering follow-ups.
+
 ## 2026-07-25 - Code hygiene sweep + gate hardening (PR #104)
 - **Session:** session_018npcgPmnuoRAww3eMeffk7
 - **Validating:** hygiene phases 1-6 (`harden-lint-and-type-gates` OpenSpec change): dead-code deletions (~3,350 ln), five-way pin alignment (ruff 0.15.8 / mypy 1.19.1), whole-repo lint gate, mypy 130→0 + blocking gate, eval-harness enforcing.
