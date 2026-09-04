@@ -1,32 +1,27 @@
 {
-    "last_session_id": "session_01AQAVGXog3wGfPaqu4XHfXX",
-    "last_timestamp": "2026-09-02T22:20:00Z",
-    "current_focus": "Validated-learning plan v2 (post adversarial review) handed off to DEV-SQE; PR #117 open; WS-L can start today, the rest waits on spec §9 authorizations",
+    "last_session_id": "session_01KZPsP2Mvg333p1akDqpLTG",
+    "last_timestamp": "2026-09-04T19:05:00Z",
+    "current_focus": "2026 coding-standards audit delivered (docs/audits/2026-09-04-standards-audit.md, verdict 2.3/5); awaiting maintainer authorization of the ten 'now' remediations. The validated-learning plan (spec 20260902) and tech-debt plan remain the sequenced work; the audit is the standards overlay on them.",
     "resume_pointers": {
-        "current_task": "Await maintainer answers on kb/specs/20260902-validated-learning-plan.md §9: D1 max_turns default sweep (>=9 modules), E5 + WS-C coordinator edits, D3/D4/F1 environment-semantics decisions (OpenSpec each), NG-7 sign-off for WS-C, the 15 PR dispositions in §7",
+        "current_task": "Maintainer triage of docs/audits/2026-09-04-standards-audit.md §4 'Now' items 1-10; then re-open kb/specs/20260902-validated-learning-plan.md §9 authorizations",
         "blocked_on": [
-            "spec §9.2 confirm-first: D1 (>=9 modules + 6 test assertions), F3 (>3 modules)",
-            "spec §9.3 distributed-coordination: E5 (orchestrator_state score_rate), WS-C --max_games/--max_cost_usd loop break, seed threading, ModelMetadata.tags",
-            "spec §9.1 OpenSpec decisions: D3 turn-limit tie-break, D4 city capture, F1 found_city-under-fog semantics",
-            "spec §9.4 NG-7 sign-off before any Vertex spend (WS-C, B3)",
-            "spec §9.5 maintainer-only: W&B key rotation, §7 dispositions of 15 open PRs, GCS champion-lineage inventory"
+            "audit §4.1: W&B key rotation (maintainer-only, no design needed)",
+            "audit §4.2: remove allUsers invoker binding on the inference Cloud Run service (maintainer-only, infra)",
+            "audit §4.11: lock-strategy decision (uv sync --locked in CI/Docker vs delete uv.lock)",
+            "spec 20260902-validated-learning-plan §9 authorizations (unchanged from 2026-09-02)"
         ],
         "next_steps": [
-            "DEV-SQE day 1, no authorization needed: WS-L (OMP_NUM_THREADS=2 python -m alpha_zero.training_civ6 --seed 42 --board_size 8 --max_turns 60 --num_simulations 12 --num_games 20 --num_iterations 20 --save_interval 1), ~4 h CPU; keep the checkpoints for D0",
-            "DEV-SQE in parallel: D2 (mask collision check + seeded random-play regression test with negative control), E1-E4 (ScoreSummary return, eval_<iter>.json, summariser W/D/L+seed parsing, check_learning_trend.py with exit 2 below 3 points), N1 (seed NPlayerMCTS, branch self-play on num_players>2), B1/B2",
-            "After L1: D0 on its checkpoints (2-player) plus 3-player random-play row at n=60; then D1 PR citing D0 if confirm-first is granted",
-            "If L1's slope is not positive, or D0's trained-policy draw rate stays > 40%: D3 enters Core before WS-C; do not run WS-C",
-            "N2 only after D0's 3-player row <= 40% (or D3); F1 needs its own OpenSpec change; F3 after _inject_world is fixed and tested",
-            "One OpenSpec change per environment-semantics decision (openspec-propose skill); VALIDATION-RUN ledger event per committed run"
+            "DEV-SQE, no authorization needed: audit items 3 (CI PR trigger to the real default branch), 4 (SKIP_PARTS build/dist/.tox + negative control), 5 (chess out of dev extra + importorskip), 6 (pip-audit job), 7 (SHA-pin actions), 8 (web CORS/host defaults), 9 (push-guard wrapper unwrapping), 10 (utils/__init__ off the deprecated logging shim; lazy tensorboard import)",
+            "Then the month tier: safe_load routing for all 22 torch.load + 5 pickle.loads sites, tag v1.8.0/v1.9.0 and fix CHANGELOG, bandit baseline at medium/medium, high-signal ruff rules with burndown lists, pytest-randomly + zero-assert ratchet, CLAUDE.md split to <200 lines with history moved to docs/architecture/adr/",
+            "Continue WS-L / D2 / E1-E4 / N1 from the validated-learning plan in parallel; the audit does not re-sequence them"
         ]
     },
     "context_files": [
+        "docs/audits/2026-09-04-standards-audit.md",
         "kb/specs/20260902-validated-learning-plan.md",
-        "kb/handoffs/20260902-planning-to-devsqe-validated-learning-plan.md",
-        "docs/evidence/draw_rate_sweep/report.md",
-        "docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md",
-        "docs/runbooks/promotion-gate.md",
         "kb/specs/20260902-tech-debt-hardening.md",
+        "kb/handoffs/20260902-planning-to-devsqe-validated-learning-plan.md",
+        "docs/runbooks/secret-scanning.md",
         "CLAUDE.md",
         "PROJECT_CHARTER.md"
     ]
