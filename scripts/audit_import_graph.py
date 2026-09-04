@@ -39,7 +39,7 @@ import json
 import logging
 import re
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -64,7 +64,35 @@ DEPLOY_GLOBS = (
     ".github/workflows/*.yaml",
     "infra/**/*.yaml",
 )
-SKIP_PARTS = {".git", "__pycache__", "venv", ".venv", "node_modules", "alpha_zero.egg-info"}
+# Directory names never walked. Two reasons, kept together because missing
+# either has the same consequence: a SECOND copy of the package tree.
+#
+#   - VCS / venv / vendor noise.
+#   - BUILD ARTIFACTS. A setuptools build or an editable install leaves
+#     `build/lib/alpha_zero/` (also `dist/`, `.tox/`, `.eggs/`) holding a copy of
+#     every package `__init__.py`. Those files import with ABSOLUTE names
+#     (`from alpha_zero.x import Y`), but the copy's own module name is
+#     `build.lib.alpha_zero.x` -- so it is credited as an *external* importer of
+#     the real module. Since a package's own `__init__` re-export is
+#     deliberately not a live use (that is how an unused module hides), the
+#     duplicate resurrects exactly the modules the audit exists to find.
+#     Measured on an otherwise identical tree: 53 modules / 24,451 lines became
+#     30 / 15,120, and the debt ratchet passed while the dead code was invisible.
+#     See tests/scripts/test_audit_import_graph.py for the negative control.
+SKIP_PARTS = {
+    ".git",
+    "__pycache__",
+    "venv",
+    ".venv",
+    "node_modules",
+    "alpha_zero.egg-info",
+    "build",
+    "dist",
+    ".tox",
+    ".eggs",
+    ".mypy_cache",
+    ".pytest_cache",
+}
 # Prefix on an importer entry recording that the import was a side-effect import
 # (``import pkg.mod`` / ``importlib.import_module``) rather than a name re-export.
 SIDE_EFFECT_MARKER = "!"
@@ -97,7 +125,23 @@ def _is_test(path: Path) -> bool:
 
 
 def _python_files(root: Path) -> list[Path]:
-    return [p for p in root.rglob("*.py") if not (SKIP_PARTS & set(p.parts))]
+    kept: list[Path] = []
+    skipped_by: Counter[str] = Counter()
+    for candidate in root.rglob("*.py"):
+        hit = SKIP_PARTS & set(candidate.parts)
+        if hit:
+            skipped_by[sorted(hit)[0]] += 1
+            continue
+        kept.append(candidate)
+    if skipped_by:
+        # DEBUG, not INFO: this runs on every ratchet invocation. It exists so a
+        # surprising dead-module count can be explained rather than guessed at.
+        logger.debug(
+            "skipped %d file(s) under %s",
+            sum(skipped_by.values()),
+            ", ".join(f"{name}={count}" for name, count in sorted(skipped_by.items())),
+        )
+    return kept
 
 
 def _resolve_relative(src_mod: str, src_path: Path, level: int, mod: str | None) -> str:

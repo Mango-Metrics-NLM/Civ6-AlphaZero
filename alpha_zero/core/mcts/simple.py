@@ -10,6 +10,7 @@ from alpha_zero.core.mcts.backup import (
     backpropagate_path,
     env_current_player,
     log_backup_diagnostics,
+    should_track_to_play,
 )
 from alpha_zero.core.mcts.base import MCTSNode
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment
@@ -69,7 +70,8 @@ class SimpleMCTS:
         Returns:
             Tuple of (action_probs, root_value).
         """
-        root = MCTSNode(to_play=env_current_player(env))
+        track_to_play = should_track_to_play(env)
+        root = MCTSNode(to_play=env_current_player(env) if track_to_play else None)
         action_mask = env.get_valid_actions()
 
         # Initialize root with uniform policy
@@ -89,7 +91,7 @@ class SimpleMCTS:
                 search_path.append(node)
                 _, _, terminated, truncated, _ = sim_env.step(action)
                 # A node describes the state after its action.
-                node.to_play = env_current_player(sim_env)
+                node.to_play = env_current_player(sim_env) if track_to_play else None
                 if terminated or truncated:
                     break
 

@@ -16,6 +16,8 @@ stay isolated between parent and clone, which the rest of these tests check.
 
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -27,13 +29,26 @@ SEED = 4242
 
 
 def _terrain_fingerprint(env: MicroCivEnv) -> tuple:
-    """A hashable snapshot of every tile, so any mutation shows up."""
-    return tuple(
-        sorted(
-            (pos, tile.terrain_type, tuple(sorted(tile.yields.items())))
-            for pos, tile in env.terrain.items()
-        )
-    )
+    """A hashable snapshot of EVERY tile field, so any mutation shows up.
+
+    Deliberately reflective rather than a hand-picked list of attributes. An
+    earlier version snapshotted only ``terrain_type`` and ``yields`` and was
+    therefore blind to ``Tile.features`` -- the field most likely to become
+    mutable (adding a forest or an improvement). A guard that names its fields
+    protects only the fields someone remembered.
+    """
+
+    def snapshot(tile: object) -> tuple:
+        fields = dataclasses.fields(tile) if dataclasses.is_dataclass(tile) else ()
+        out: list[tuple[str, str]] = []
+        for field in fields:
+            value = getattr(tile, field.name)
+            # repr, not the value: dicts and lists are unhashable, and repr is
+            # sensitive to any change in content or order.
+            out.append((field.name, repr(value)))
+        return tuple(out)
+
+    return tuple(sorted((pos, snapshot(tile)) for pos, tile in env.terrain.items()))
 
 
 @pytest.fixture
@@ -112,3 +127,36 @@ def test_clone_preserves_board_configuration(env: MicroCivEnv) -> None:
     assert twin.num_players == env.num_players
     assert twin.turn == env.turn
     assert twin.current_player == env.current_player
+
+
+def test_the_terrain_guard_detects_a_features_mutation(env: MicroCivEnv) -> None:
+    """Negative control for the guard itself.
+
+    ``clone()`` shares the terrain dict, which is only sound while tiles are
+    immutable. If this test cannot see a mutation, the invariant test above is
+    decoration.
+    """
+    before = _terrain_fingerprint(env)
+    tile = next(iter(env.terrain.values()))
+    if not dataclasses.is_dataclass(tile):  # pragma: no cover - shape guard
+        pytest.skip("Tile is not a dataclass; the reflective fingerprint does not apply")
+
+    mutated_any = False
+    for field in dataclasses.fields(tile):
+        value = getattr(tile, field.name)
+        if isinstance(value, list):
+            value.append("__probe__")
+            mutated_any = True
+            break
+        if isinstance(value, dict):
+            value["__probe__"] = 1
+            mutated_any = True
+            break
+    if not mutated_any:  # pragma: no cover - depends on the Tile shape
+        pytest.skip("no mutable Tile field to probe")
+
+    assert _terrain_fingerprint(env) != before, (
+        "the terrain fingerprint did not notice a mutated tile field, so "
+        "test_terrain_is_never_mutated_during_play cannot protect the sharing "
+        "that MicroCivEnv.clone() relies on"
+    )

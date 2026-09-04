@@ -883,18 +883,25 @@ def evaluate_against_random(
     """
     # Named streams keep the evaluation's three sources (environment, search,
     # random opponent) distinct from each other and from self-play's, so a
-    # seeded run replays exactly without any two sharing a sequence. They also
-    # vary with `iteration`: a fixed evaluation set made the win-rate curve a
-    # repeated probe of the same maps rather than a learning signal.
+    # seeded run replays exactly without any two sharing a sequence.
+    #
+    # Deliberately NOT varying with `iteration`, unlike self-play. Evaluation is
+    # a HELD-OUT set: comparing iteration N against N+1 is only meaningful if
+    # both were scored on the same positions. Re-drawing the maps each iteration
+    # would add map-difficulty variance to the very curve the learning-trend
+    # check reads, on top of the sampling noise a 20-game probe already carries
+    # (docs/evidence/validation_iteration_zero/ measured one checkpoint spanning
+    # 0.25-0.40 across five probes). Self-play varies so the learner sees new
+    # positions; evaluation is fixed so the score is comparable.
     env = MicroCivEnv(
         board_size=config.board_size,
         max_turns=config.max_turns,
         num_players=config.num_players,
-        seed=derive_seed(config.seed, SeedStream.EVAL_ENV, iteration),
+        seed=derive_seed(config.seed, SeedStream.EVAL_ENV),
     )
     mcts_config = MCTSConfig(
         num_simulations=config.num_simulations // 2,
-        seed=derive_seed(config.seed, SeedStream.EVAL_SEARCH, iteration),
+        seed=derive_seed(config.seed, SeedStream.EVAL_SEARCH),
     )
     # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
     mcts = Civ6MCTS(_mcts_network(network, config), mcts_config, device=config.device)  # type: ignore[arg-type]
@@ -904,14 +911,12 @@ def evaluate_against_random(
     # The random opponent. Unseeded, this alone was enough to make a 20-game
     # probe unrepeatable -- five probes of one checkpoint spanned 0.25 to 0.40
     # (docs/evidence/validation_iteration_zero/).
-    rng = np.random.default_rng(derive_seed(config.seed, SeedStream.EVAL_OPPONENT, iteration))
+    rng = np.random.default_rng(derive_seed(config.seed, SeedStream.EVAL_OPPONENT))
 
     # Batch-of-1 inference, same as self-play; see run_self_play.
     with inference_thread_limit():
         for game_idx in range(num_games):
-            _obs, _info = env.reset(
-                seed=derive_seed(config.seed, SeedStream.EVAL_ENV, iteration, game_idx)
-            )
+            _obs, _info = env.reset(seed=derive_seed(config.seed, SeedStream.EVAL_ENV, game_idx))
             # Rotate which seat the network occupies across all players.
             network_player = game_idx % config.num_players
 

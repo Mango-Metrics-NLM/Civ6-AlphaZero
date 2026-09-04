@@ -35,7 +35,15 @@ import torch
 from alpha_zero.core.mcts.backup import backpropagate_path, backup_edge_summary
 
 # Deliberately small: the oracle must be cheap enough to run on every CI job.
-WINNING_ACTION = 0
+#
+# WINNING_ACTION is parameterised, never fixed at 0. An earlier version of this
+# file pinned it to 0 and the oracle passed vacuously for the Gumbel variant:
+# the returned policy was exactly uniform ([1/3, 1/3, 1/3]) and `np.argmax`
+# breaks a tie by returning the LOWEST index, which was the winning action by
+# coincidence. Moving the win to index 1 or 2 failed at every depth. A tie-broken
+# argmax is not evidence, so the winning index is now swept.
+WINNING_ACTIONS = (0, 1, 2)
+WINNING_ACTION = 0  # module-level default for fixtures that do not sweep
 NUM_ACTIONS = 3
 SPATIAL_SHAPE = (2, 3, 3)
 VECTOR_SIZE = 4
@@ -78,10 +86,16 @@ class ConsecutiveTurnEnv:
     # pass simply because no signal ever arrived.
     terminals_reached = 0
 
-    def __init__(self, depth: int, num_actions: int = NUM_ACTIONS) -> None:
+    def __init__(
+        self,
+        depth: int,
+        num_actions: int = NUM_ACTIONS,
+        winning_action: int = WINNING_ACTION,
+    ) -> None:
         if depth < 1:
             raise ValueError(f"depth must be >= 1; got {depth}")
         self.depth = depth
+        self.winning_action = winning_action
         self.action_space = _ActionSpace(num_actions)
         self.current_player = 0
         self._plies = 0
@@ -92,7 +106,7 @@ class ConsecutiveTurnEnv:
         cls.terminals_reached = 0
 
     def clone(self) -> ConsecutiveTurnEnv:
-        twin = ConsecutiveTurnEnv(self.depth, self.action_space.n)
+        twin = ConsecutiveTurnEnv(self.depth, self.action_space.n, self.winning_action)
         twin.current_player = self.current_player
         twin._plies = self._plies
         twin._first_action = self._first_action
@@ -123,7 +137,7 @@ class ConsecutiveTurnEnv:
         if not self.done:
             return {}
         type(self).terminals_reached += 1
-        winner = 0 if self._first_action == WINNING_ACTION else 1
+        winner = 0 if self._first_action == self.winning_action else 1
         return {"winner": winner}
 
 
@@ -195,13 +209,17 @@ SEARCH_BUILDERS = {
 
 @pytest.mark.parametrize("search_name", sorted(SEARCH_BUILDERS))
 @pytest.mark.parametrize("depth", FORCED_WIN_DEPTHS)
-def test_search_prefers_the_winning_action(search_name: str, depth: int) -> None:
-    """The search must pick the action that wins, at every depth parity."""
+@pytest.mark.parametrize("winning_action", WINNING_ACTIONS)
+def test_search_prefers_the_winning_action(
+    search_name: str, depth: int, winning_action: int
+) -> None:
+    """The search must pick the action that wins, at every depth and every index."""
     ConsecutiveTurnEnv.reset_terminal_counter()
-    env = ConsecutiveTurnEnv(depth=depth)
+    env = ConsecutiveTurnEnv(depth=depth, winning_action=winning_action)
     search = SEARCH_BUILDERS[search_name](num_simulations=SEARCH_SIMULATIONS)
 
     policy, _value = search.search(env)
+    policy = np.asarray(policy)
 
     assert ConsecutiveTurnEnv.terminals_reached > 0, (
         f"{search_name} at depth {depth} never reached a terminal state, so the "
@@ -209,10 +227,23 @@ def test_search_prefers_the_winning_action(search_name: str, depth: int) -> None
         "fail at random. Raise SEARCH_SIMULATIONS or lower the depth."
     )
 
-    chosen = int(np.asarray(policy).argmax())
-    assert chosen == WINNING_ACTION, (
+    # A uniform policy carries no answer. Without this, `argmax` silently returns
+    # index 0 and the test passes whenever the win happens to sit there -- which
+    # is exactly how this oracle was vacuous for the Gumbel variant.
+    considered = policy[policy > 0]
+    assert considered.size > 0, f"{search_name} returned an all-zero policy"
+    # A single non-zero entry is maximal information, not a tie -- only a TIE
+    # across two or more actions is uninformative.
+    assert not (considered.size > 1 and np.allclose(considered, considered[0])), (
+        f"{search_name} at depth {depth} returned a policy that is uniform over "
+        f"{considered.size} actions ({policy.round(3)}). It contains no preference, "
+        "so any assertion on its argmax is decided by tie-breaking, not by search."
+    )
+
+    chosen = int(policy.argmax())
+    assert chosen == winning_action, (
         f"{search_name} at depth {depth} chose action {chosen}, "
-        f"but action {WINNING_ACTION} is a forced win for the player to move. "
+        f"but action {winning_action} is a forced win for the player to move. "
         "A value backup that flips on same-player edges inverts the sign at odd depth."
     )
 
@@ -264,3 +295,43 @@ def test_backpropagate_path_is_a_noop_on_an_empty_path() -> None:
 def test_backup_edge_summary_counts_edges() -> None:
     same, changed, unknown = backup_edge_summary([_Node(0), _Node(0), _Node(1), _Node(None)])
     assert (same, changed, unknown) == (1, 1, 1)
+
+
+# --- Partially-populated paths -----------------------------------------------
+#
+# `backpropagate_path` is exported from `core/mcts` and the `civ6_mcts` shim, so
+# a future caller may populate `to_play` on some nodes and not others. The
+# original implementation applied the alternation fallback to a RUNNING value,
+# so a single unknown node inverted every node above it -- the root of a
+# `(known, unknown, known)` path was signed -1 when it should have been +1.
+# Signing each node independently from the leaf's perspective keeps the loss of
+# information local to the node that cannot be signed.
+
+
+def test_an_unknown_node_does_not_invert_its_ancestors() -> None:
+    path = [_Node(0), _Node(None), _Node(0)]
+    backpropagate_path(path, 1.0)
+    assert [n.value_sum for n in path] == [1.0, 1.0, 1.0], (
+        "an unknown intermediate node inverted the root; the fallback must stay local"
+    )
+
+
+def test_an_unknown_node_does_not_disturb_a_known_opponent_ancestor() -> None:
+    path = [_Node(1), _Node(None), _Node(0)]
+    backpropagate_path(path, 1.0)
+    # Root is the opponent of the leaf player, so it is negated; the unknown
+    # node is credited the leaf's own value; the leaf keeps +1.
+    assert [n.value_sum for n in path] == [-1.0, 1.0, 1.0]
+
+
+def test_two_unknown_nodes_do_not_compound() -> None:
+    path = [_Node(0), _Node(0), _Node(None), _Node(0)]
+    backpropagate_path(path, 1.0)
+    assert [n.value_sum for n in path] == [1.0, 1.0, 1.0, 1.0]
+
+
+def test_all_unknown_still_alternates() -> None:
+    """The historical behaviour is preserved exactly when nothing is tracked."""
+    path = [_Node(None), _Node(None), _Node(None)]
+    backpropagate_path(path, 1.0)
+    assert [n.value_sum for n in path] == [1.0, -1.0, 1.0]

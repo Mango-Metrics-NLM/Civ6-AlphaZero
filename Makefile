@@ -11,6 +11,17 @@
 # Configuration
 # ============================================================================
 
+# Torch intra-op threads for every test target below.
+#
+# Without this cap, two tests wedge in `torch.conv2d` on the OpenMP spin-wait and
+# hit the 120 s pytest timeout: CLAUDE.md's build table has documented that for
+# months, but nothing actually set it, so the one command the handoff skills
+# mandate (`make verify`) was documented as hanging. `?=` so a caller can raise
+# it on a bigger machine (`OMP_NUM_THREADS=8 make test`) and `export` so every
+# recipe and every child process inherits it.
+OMP_NUM_THREADS ?= 2
+export OMP_NUM_THREADS
+
 # GCP Configuration (override with environment variables)
 PROJECT_ID ?= $(shell gcloud config get-value project 2>/dev/null)
 REGION ?= us-central1

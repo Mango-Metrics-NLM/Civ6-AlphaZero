@@ -17,8 +17,13 @@ from alpha_zero.core.mcts.backup import (
     env_current_player,
     log_backup_diagnostics,
     perspective_sign,
+    should_track_to_play,
 )
-from alpha_zero.core.mcts.gumbel_ops import compute_completed_q, gumbel_sample_actions
+from alpha_zero.core.mcts.gumbel_ops import (
+    build_completed_q_policy,
+    compute_completed_q,
+    gumbel_sample_actions,
+)
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment, MCTSNetwork
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
@@ -40,9 +45,12 @@ logger = logging.getLogger(__name__)
 #: single argmax, and it also kept the temperature schedule permanently inert
 #: because a delta always trips the greedy short-circuit. Retained so an
 #: existing run can be reproduced exactly.
+POLICY_TARGET_COMPLETED_Q = "completed_q"
 POLICY_TARGET_VISIT_COUNTS = "visit_counts"
 POLICY_TARGET_ONE_HOT = "one_hot"
-VALID_POLICY_TARGETS = frozenset({POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT})
+VALID_POLICY_TARGETS = frozenset(
+    {POLICY_TARGET_COMPLETED_Q, POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT}
+)
 
 
 @dataclass(slots=True)
@@ -87,7 +95,7 @@ class GumbelMCTSConfig:
     # adding it here makes `create_mcts(..., seed=42)` work with no factory
     # change.
     seed: int | None = None
-    policy_target: str = POLICY_TARGET_VISIT_COUNTS
+    policy_target: str = POLICY_TARGET_COMPLETED_Q
     greedy_threshold: float = GREEDY_THRESHOLD
 
     def __post_init__(self) -> None:
@@ -293,7 +301,10 @@ class GumbelMCTS:
             Tuple of (action_probs, root_value).
         """
         # Create root node
-        root = GumbelMCTSNode(to_play=env_current_player(env))
+        # Above two players a scalar sign flip cannot express the game; fall
+        # back to alternation there, as Civ6MCTS already does.
+        self._track_to_play = should_track_to_play(env)
+        root = GumbelMCTSNode(to_play=env_current_player(env) if self._track_to_play else None)
 
         # Get initial policy and value from network
         obs = env.get_observation()
@@ -363,6 +374,41 @@ class GumbelMCTS:
         action_probs = np.zeros(action_space_size, dtype=np.float32)
 
         if self.config.policy_target == POLICY_TARGET_ONE_HOT:
+            action_probs[best_action] = 1.0
+            return action_probs
+
+        if self.config.policy_target == POLICY_TARGET_COMPLETED_Q:
+            priors = np.zeros(action_space_size, dtype=np.float32)
+            visits = np.zeros(action_space_size, dtype=np.float32)
+            qs = np.zeros(action_space_size, dtype=np.float32)
+            for action, child in root.children.items():
+                if not 0 <= action < action_space_size:
+                    continue
+                priors[action] = child.prior
+                visits[action] = child.visit_count
+                # Same perspective rule the selector uses: a child's stored value
+                # is from ITS mover's point of view.
+                sign = perspective_sign(root.to_play, child.to_play)
+                qs[action] = sign * child.value if child.visit_count > 0 else 0.0
+            improved = build_completed_q_policy(
+                priors=priors,
+                visit_counts=visits,
+                q_values=qs,
+                root_value=root.value,
+                c_visit=self.config.c_visit,
+                c_scale=self.config.c_scale,
+            )
+            if improved.sum() > 0.0:
+                logger.debug(
+                    "completed-Q policy target: %d non-zero, max=%.4f, argmax=%d, chosen=%d",
+                    int((improved > 0).sum()),
+                    float(improved.max()),
+                    int(improved.argmax()),
+                    best_action,
+                )
+                return improved
+            # The search considered nothing (e.g. a one-simulation budget); the
+            # selected action is all the information there is.
             action_probs[best_action] = 1.0
             return action_probs
 
@@ -543,7 +589,7 @@ class GumbelMCTS:
 
         # A node describes the state *after* its action, so read the acting
         # player once the step has been applied.
-        node.to_play = env_current_player(sim_env)
+        node.to_play = env_current_player(sim_env) if self._track_to_play else None
         search_path = [root, node]
 
         # Continue traversing/expanding tree
@@ -556,7 +602,7 @@ class GumbelMCTS:
                 node = next_node
                 search_path.append(node)
                 _, _reward, terminated, truncated, _ = sim_env.step(action)
-                node.to_play = env_current_player(sim_env)
+                node.to_play = env_current_player(sim_env) if self._track_to_play else None
             else:
                 # Expansion and evaluation
                 obs = sim_env.get_observation()

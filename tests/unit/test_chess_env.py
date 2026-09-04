@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 import chess
 import numpy as np
-import pytest
 
 from alpha_zero.envs.chess_actions import ACTION_SPACE_SIZE, move_to_index
 from alpha_zero.envs.chess_encoder import channels_for_history

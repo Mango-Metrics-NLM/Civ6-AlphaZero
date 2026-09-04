@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
+
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 from alpha_zero.opponents import StockfishOpponent, StockfishOpponentConfig
 
 

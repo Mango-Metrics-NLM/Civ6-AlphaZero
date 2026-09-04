@@ -110,3 +110,77 @@ def compute_completed_q(
     completed_q = q_value + sigma * root_value
 
     return completed_q
+
+
+def build_completed_q_policy(
+    *,
+    priors: np.ndarray,
+    visit_counts: np.ndarray,
+    q_values: np.ndarray,
+    root_value: float,
+    c_visit: float,
+    c_scale: float,
+) -> np.ndarray:
+    """Return Gumbel MuZero's improved policy ``softmax(logits + sigma(completedQ))``.
+
+    Why not visit counts
+    --------------------
+    Normalised visit counts are AlphaZero's policy-improvement operator, and they
+    are the wrong one here. Sequential halving allocates the budget *equally*
+    among the survivors of each round, so the root visit distribution is close to
+    uniform over the candidate set by construction and the final survivors are
+    typically tied. Measured on a synthetic forced-win position, the visit
+    distribution was exactly ``[1/3, 1/3, 1/3]`` while the search had in fact
+    identified the winning move: the answer lives in the completed Q values and
+    the Gumbel scores, and a visit-count target throws it away.
+
+    Danihelka et al. (2022) define the improved policy over the *completed* Q
+    values instead, which is what this builds.
+
+    Args:
+        priors: Network prior over the whole action space.
+        visit_counts: Root child visit counts, aligned with ``priors``. Actions
+            the search never considered must be zero.
+        q_values: Root child Q values from the acting player's perspective,
+            aligned with ``priors``.
+        root_value: The root's own value estimate, used to complete the Q value
+            of an action the search did not visit.
+        c_visit: Visit constant of the monotonic transform.
+        c_scale: Scale constant of the monotonic transform. Previously declared
+            on the config and read nowhere; this is its intended use.
+
+    Returns:
+        A probability vector over the action space. Mass is placed only on
+        actions the search considered; if it considered none, an empty (all
+        zero) vector is returned and the caller decides the fallback.
+    """
+    considered = visit_counts > 0
+    if not considered.any():
+        return np.zeros_like(priors, dtype=np.float32)
+
+    max_visits = float(visit_counts.max())
+    completed = np.array(
+        [
+            compute_completed_q(float(q), int(n), int(max_visits), root_value)
+            for q, n in zip(q_values, visit_counts, strict=False)
+        ],
+        dtype=np.float64,
+    )
+
+    # The paper's monotonic transform: larger budgets let the searched values
+    # outweigh the prior, which is exactly the behaviour a policy target wants.
+    sigma = (c_visit + max_visits) * c_scale
+    logits = np.log(np.maximum(priors.astype(np.float64), EPSILON))
+    scores = logits + sigma * completed
+
+    # Restrict to the considered set before the softmax: an action the search
+    # never looked at has no completed Q to speak of, and including it would let
+    # the raw prior leak into a target that is supposed to be search-improved.
+    scores = np.where(considered, scores, -np.inf)
+    scores -= scores[considered].max()  # shift for numerical stability
+    exp = np.where(considered, np.exp(scores), 0.0)
+    total = exp.sum()
+    if total <= 0.0:
+        return np.zeros_like(priors, dtype=np.float32)
+    normalised: np.ndarray = (exp / total).astype(np.float32)
+    return normalised

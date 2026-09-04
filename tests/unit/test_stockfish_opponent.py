@@ -10,12 +10,15 @@ the ``STOCKFISH_PATH`` env var; if unset it is skipped.
 
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 import os
 from unittest.mock import MagicMock, patch
 
 import chess
 import chess.engine
-import pytest
 
 from alpha_zero.envs.chess_actions import (
     ACTION_SPACE_SIZE,

@@ -186,3 +186,55 @@ def test_workflow_reference_counts_as_a_deploy_ref(tmp_path: Path) -> None:
     )
     reported = _by_module(aig.audit(tmp_path))
     assert reported["alpha_zero.ci_only"].deploy_refs == [".github/workflows/ci.yml"]
+
+
+# --- Build artifacts must not resurrect dead modules -------------------------
+#
+# A setuptools build or an editable install leaves `build/lib/alpha_zero/`: a
+# second copy of every package `__init__.py`. Those copies import with ABSOLUTE
+# names, but their own module name is `build.lib.alpha_zero.*`, so the audit
+# credits them as EXTERNAL importers of the real modules. Because a package's
+# own `__init__` re-export is deliberately not a live use
+# (test_own_package_init_does_not_count_as_live_importer), the duplicate
+# resurrects precisely the modules this audit exists to find. Measured on the
+# real tree before the fix: 53 modules / 24,451 lines became 30 / 15,120, and
+# the debt ratchet passed while the dead code was invisible -- a fail-open gate.
+#
+# The absolute import in the planted copy is the whole point: a relative import
+# (`from .hidden import H`) resolves to `build.lib.alpha_zero.p.hidden` and this
+# test would pass whether or not the fix is present.
+
+
+@pytest.mark.parametrize("artifact_dir", ["build/lib", "dist", ".tox/py311/lib", ".eggs"])
+def test_build_artifact_copy_does_not_hide_a_dead_module(tmp_path: Path, artifact_dir: str) -> None:
+    """A copy of the package under a build directory must change nothing."""
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    _write(tmp_path, "alpha_zero/p/__init__.py", "from alpha_zero.p.hidden import H\n")
+    _write(tmp_path, "alpha_zero/p/hidden.py", "class H: ...\n")
+
+    before = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.p.hidden" in before, "fixture is wrong: the module should start dead"
+
+    # Exactly what a build leaves behind, absolute imports included.
+    _write(tmp_path, f"{artifact_dir}/alpha_zero/__init__.py", "")
+    _write(
+        tmp_path,
+        f"{artifact_dir}/alpha_zero/p/__init__.py",
+        "from alpha_zero.p.hidden import H\n",
+    )
+    _write(tmp_path, f"{artifact_dir}/alpha_zero/p/hidden.py", "class H: ...\n")
+
+    after = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.p.hidden" in after, (
+        f"a copy of the package under {artifact_dir}/ hid a dead module -- "
+        "SKIP_PARTS must exclude build artifact directories"
+    )
+    assert set(before) == set(after), (
+        f"the dead set changed when {artifact_dir}/ appeared: {sorted(set(before) ^ set(after))}"
+    )
+
+
+def test_skip_parts_covers_the_known_build_artifact_directories() -> None:
+    """Pin the set itself, so removing an entry fails here rather than silently."""
+    for required in ("build", "dist", ".tox", ".eggs"):
+        assert required in aig.SKIP_PARTS, f"{required!r} missing from SKIP_PARTS"

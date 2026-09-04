@@ -43,7 +43,9 @@ __all__ = [
     "backpropagate_path",
     "backup_edge_summary",
     "env_current_player",
+    "log_backup_diagnostics",
     "perspective_sign",
+    "should_track_to_play",
     "signed_value",
 ]
 
@@ -153,15 +155,33 @@ def backpropagate_path(
     if reference is None:
         reference = getattr(path[-1], "to_play", None)
 
-    value = leaf_value
+    # Two regimes, chosen once from the leaf rather than per node.
+    #
+    # When the leaf's player is unknown the caller is not tracking perspective at
+    # all, so the whole path alternates -- exactly the historical behaviour, and
+    # what MuZero (a learned latent model with no observable mover) still gets.
+    #
+    # When it IS known, each node is signed independently from its own player. A
+    # per-node fallback that flipped a running value would make one unknown node
+    # invert every node above it, so a partially-populated path would corrupt the
+    # root rather than merely lose information about one node. Signing
+    # independently keeps the damage local to the node that cannot be signed.
+    if reference is None:
+        value = leaf_value
+        for node in reversed(path):
+            node.visit_count += 1
+            node.value_sum += value
+            value = -value
+        return
+
     for node in reversed(path):
         node_to_play = getattr(node, "to_play", None)
-        if reference is None or node_to_play is None:
-            # Unknown perspective: preserve the historical per-ply alternation.
-            signed = value
-            value = -value
+        if node_to_play is None:
+            # Unknown for this node only: credit the leaf's own perspective
+            # rather than guessing, and leave its ancestors untouched.
+            signed = leaf_value
         else:
-            signed = signed_value(value, node_to_play, reference)
+            signed = signed_value(leaf_value, node_to_play, reference)
         node.visit_count += 1
         node.value_sum += signed
 
@@ -207,3 +227,23 @@ def log_backup_diagnostics(path: Sequence[BackupNode], *, search_name: str) -> N
         changed,
         unknown,
     )
+
+
+def should_track_to_play(env: object) -> bool:
+    """Whether sign-correct backup is valid for this environment.
+
+    A scalar value flipped between two perspectives cannot express a game with
+    more than two players: "not mine" is not the same as "the opponent's" once
+    there are several opponents. Above two players the variants therefore leave
+    ``to_play`` unset and fall back to per-ply alternation, which keeps
+    >2-player behaviour exactly as it was before sign-correct backup existed.
+    ``alpha_zero.multiplayer.mcts.NPlayerMCTS`` is the search that keeps a real
+    per-player value vector.
+
+    Args:
+        env: The environment being searched.
+
+    Returns:
+        ``True`` when the environment has at most two players (or does not say).
+    """
+    return int(getattr(env, "num_players", 2) or 2) <= 2

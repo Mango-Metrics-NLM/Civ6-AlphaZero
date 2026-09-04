@@ -141,7 +141,9 @@
   "env": {
     "PYTHONDONTWRITEBYTECODE": "1",
     "RUFF_CACHE_DIR": ".ruff_cache",
-    "PYTEST_TIMEOUT": "300"
+    "PYTEST_TIMEOUT": "300",
+    "CIV6AZ_DEFAULT_BRANCH": "claude/civ6-alphazero-implementation-vMnun",
+    "OMP_NUM_THREADS": "2"
   },
   "enableAllProjectMcpServers": true
 }
