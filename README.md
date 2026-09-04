@@ -28,6 +28,7 @@ live game through a headless FireTuner socket bridge.
 
 - [Overview](#overview)
 - [Key features](#key-features)
+- [Hugging Face Hub](#-hugging-face-hub)
 - [Architecture](#architecture)
 - [Installation](#installation)
 - [Usage](#usage)
@@ -38,6 +39,50 @@ live game through a headless FireTuner socket bridge.
 - [License](#license)
 
 ## Overview
+
+Civilization VI is a 4X strategy game with an astronomical state space
+(~10^200 states, ~10^6 actions per turn). This project applies the AlphaZero
+recipe — self-play, MCTS, and a policy/value network — to that domain:
+
+- **MicroCiv** is a simplified, fast 4X environment used for Phase 1 training.
+- The **neural network** (ResNet / transformer backbone) outputs a policy
+  distribution and a value estimate that guide **MCTS** (Gumbel, DUCT, and MuZero
+  variants). Every variant backs values up through one shared, sign-correct
+  implementation (`alpha_zero/core/mcts/backup.py`): MicroCiv lets a player act
+  many times before yielding, so the perspective flips only on edges where the
+  acting player changes, not on every ply.
+- Training data (state, policy, value) accumulates in replay buffers; a learner
+  samples batches for gradient updates.
+- A **bridge** connects the trained agent to real Civilization VI over a socket,
+  so the same policy that trains on MicroCiv can drive the full game.
+
+The project is organized into 29 submodules under `alpha_zero/`; the authoritative
+inventory is [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md).
+
+## Key features
+
+- **Self-play training** with a unified orchestrator and configurable presets.
+- **MCTS variants**: Gumbel MCTS (default), PUCT, random-rollout Simple, DUCT for
+  simultaneous actions, and MuZero-style learned-model search — one module each
+  under `alpha_zero/core/mcts/`, sharing one value backup. Gumbel's policy target
+  is the completed-Q distribution of Danihelka et al.; `policy_target` and
+  `greedy_threshold` on `GumbelMCTSConfig` / `BatchMCTSConfig` select the
+  alternatives (`visit_counts`, `one_hot`).
+- **Reproducible runs**: `--seed` reaches every RNG stream, each derived by name
+  from `alpha_zero/utils/seeding.py`. Self-play varies with the training
+  iteration; evaluation is a fixed held-out set, so scores stay comparable
+  across iterations.
+- **N-player support** (2–8 players): Max-N, Paranoid, and Best-Reply search with
+  per-player value vectors.
+- **MLflow experiment tracking** (`alpha_zero/monitoring/`) — the sole tracker.
+- **Optuna hyperparameter search** via `run_sweep.py` and `configs/sweep_muzero.yaml`.
+- **Cloud training** on Google Cloud Vertex AI — one image
+  (`dockerfiles/Dockerfile.vertex`) entrypointed by `alpha_zero.cloud.gcp.entrypoint`,
+  which routes `--mode` to the `selfplay`, `training`, `evaluation` and `tournament`
+  workers in `alpha_zero/cloud/gcp/`. The orchestrator runs locally and dispatches
+  those jobs. GCS-backed replay buffer, Spot-VM preemption handling.
+- **LLM eval gate** for the strategy advisor (`make eval-llm`, `configs/eval/`).
+- **Live Civ6 gameplay** over a headless FireTuner socket bridge.
 
 ## 🤗 Hugging Face Hub
 
@@ -70,41 +115,6 @@ python scripts/export_dataset.py --type elo --source-path ./results
 ```
 
 See [`docs/HF_PUBLISHING.md`](docs/HF_PUBLISHING.md) for the full publishing guide.
-
-## Key Features
-
-Civilization VI is a 4X strategy game with an astronomical state space
-(~10^200 states, ~10^6 actions per turn). This project applies the AlphaZero
-recipe — self-play, MCTS, and a policy/value network — to that domain:
-
-- **MicroCiv** is a simplified, fast 4X environment used for Phase 1 training.
-- The **neural network** (ResNet / transformer backbone) outputs a policy
-  distribution and a value estimate that guide **MCTS** (Gumbel, DUCT, and MuZero
-  variants).
-- Training data (state, policy, value) accumulates in replay buffers; a learner
-  samples batches for gradient updates.
-- A **bridge** connects the trained agent to real Civilization VI over a socket,
-  so the same policy that trains on MicroCiv can drive the full game.
-
-The project is organized into 29 submodules under `alpha_zero/`; the authoritative
-inventory is [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md).
-
-## Key features
-
-- **Self-play training** with a unified orchestrator and configurable presets.
-- **MCTS variants**: Gumbel MCTS (default), DUCT for simultaneous actions, and
-  MuZero-style learned-model search.
-- **N-player support** (2–8 players): Max-N, Paranoid, and Best-Reply search with
-  per-player value vectors.
-- **MLflow experiment tracking** (`alpha_zero/monitoring/`) — the sole tracker.
-- **Optuna hyperparameter search** via `run_sweep.py` and `configs/sweep_muzero.yaml`.
-- **Cloud training** on Google Cloud Vertex AI — one image
-  (`dockerfiles/Dockerfile.vertex`) entrypointed by `alpha_zero.cloud.gcp.entrypoint`,
-  which routes `--mode` to the `selfplay`, `training`, `evaluation` and `tournament`
-  workers in `alpha_zero/cloud/gcp/`. The orchestrator runs locally and dispatches
-  those jobs. GCS-backed replay buffer, Spot-VM preemption handling.
-- **LLM eval gate** for the strategy advisor (`make eval-llm`, `configs/eval/`).
-- **Live Civ6 gameplay** over a headless FireTuner socket bridge.
 
 ## Architecture
 
@@ -152,6 +162,12 @@ Optional extras (installable individually or together with `.[all]`):
 | `eval` | LLM eval harness (`make eval-llm`) |
 | `all` | Everything above |
 
+`dev` deliberately does **not** pull `chess`: its sdist fails to build on current
+Debian/Ubuntu setuptools, and because a failing extra aborts the whole install,
+`pip install -e '.[dev]'` used to install nothing. The chess-benchmark test
+modules `pytest.importorskip("chess")`, so the suite collects without it; install
+`.[chess]` to run them.
+
 There are **no** installed console scripts — run everything via `python -m`.
 
 ## Usage
@@ -193,7 +209,10 @@ CIV6AZ_WEB_CHECKPOINT=checkpoints/civ6/latest.pt \
 
 Then open the UI, start a game against **Neural Network (Hard)**, and play.
 
-**What to expect, measured on this configuration (CPU, 2-core container):**
+**What to expect, measured on this configuration (CPU, 2-core container).** These
+figures were taken **before** the 2026-09-04 search fixes (sign-correct value
+backup, completed-Q policy target, per-iteration self-play seeds), so treat them
+as a wall-clock guide and re-run rather than quoting the win rates:
 
 | | Observed |
 |---|---|
@@ -221,8 +240,18 @@ plus every unit ply. `--save_interval` matters too — at its default of 10, a
 ```bash
 python -m alpha_zero.web --preset dev                        # Human-vs-AI web interface
 python -m alpha_zero.cloud.gcp.vertex_orchestrator --help    # Vertex AI job launcher
-python -m alpha_zero.cloud.gcp.selfplay_worker --dry_run     # deployed worker smoke test
 python -m alpha_zero.training_civ6 --dry_run                 # MicroCiv training smoke test
+make local-smoke                                             # deployed self-play worker, dry run
+```
+
+`make local-smoke` is the deployed worker's own dry run — the worker requires
+`--worker_id`, `--model_version` and `--iteration`, so `--dry_run` on its own
+exits with an argparse error:
+
+```bash
+CIV6_STORAGE_BACKEND=local CIV6_STORAGE_BASE_PATH=./test_storage \
+    python -m alpha_zero.cloud.gcp.selfplay_worker \
+    --worker_id 0 --model_version 0 --iteration 0 --games 1 --dry_run
 ```
 
 Inside the container, `alpha_zero.cloud.gcp.entrypoint` routes `--mode` to one of
@@ -278,11 +307,18 @@ make eval-llm            # LLM eval gate (offline)
 make hooks-install       # install pre-commit + the git pre-commit / pre-push hooks
 ```
 
+The Makefile exports `OMP_NUM_THREADS ?= 2` for every target. Without that cap
+two tests wedge in `torch.conv2d` on the OpenMP spin-wait and hit the pytest
+timeout; raise it on a bigger machine with `OMP_NUM_THREADS=8 make test`. Use the
+same variable when running `pytest` directly.
+
 CI enforces a **coverage gate of 85%** on `alpha_zero/` (`--cov-fail-under=85`,
 matching `pyproject.toml` `fail_under`). `alpha_zero/cloud/` — the deployed path —
 is omitted from that gate and measured separately against a per-package floor in
 [`coverage-floors.json`](coverage-floors.json), using `.coveragerc-cloud`. A floor
-may only ever be raised. Tests live under `tests/` (`unit/`, `integration/`,
+may only ever be raised, and `tests/regression/test_coverage_floors_ratchet.py`
+enforces that against the merge base (it also refuses a dropped package). Tests
+live under `tests/` (`unit/`, `integration/`,
 `e2e/`, `cloud/`, `governance/`, `regression/`, `security/`, and more). Check the
 current CI status via the badge above rather than a hardcoded count.
 
@@ -294,7 +330,7 @@ unknown extras, or broken links.
 
 | Script | Purpose |
 |--------|---------|
-| `scripts/audit_import_graph.py` | AST import graph — lists `alpha_zero/` modules nothing outside `tests/` imports (`--json`, `--package`) |
+| `scripts/audit_import_graph.py` | AST import graph — lists `alpha_zero/` modules nothing outside `tests/` imports (`--json`, `--package`). Skips `build/`, `dist/`, `.tox/`, `.eggs/`: a build copy of the package is credited as an external importer and hides the dead modules |
 | `scripts/measure_debt.py` | Emits the tracked debt metrics as JSON; `--compare` exits 1 on any regression |
 | `scripts/check_coverage_floors.py` | Enforces the per-package floors in `coverage-floors.json` against a `coverage json` report |
 

@@ -441,17 +441,44 @@ class TestGumbelMCTSIntegration:
         # Game should end eventually
         assert done or steps == 100
 
-    def test_performance_better_than_random(self, network, env):
-        """Gumbel MCTS should perform better than random over many games."""
-        # This is a weak test - just checking it doesn't crash
-        config = GumbelMCTSConfig(num_simulations=4)
+    def test_plays_a_complete_game_producing_valid_policies(self, network, env):
+        """Every search in a full game returns a legal, normalised policy.
+
+        Renamed from ``test_performance_better_than_random``, which asserted
+        NOTHING -- its own comment said it was "just checking it doesn't crash".
+        It could not have detected a search that returned a delta, an unnormalised
+        vector, or an action the environment rejects, and it was counted in the
+        repository's zero-assert-test census as evidence of test-quality debt
+        while sitting on the default search path.
+
+        The name also promised a comparison against random play that it never
+        made. A real strength comparison needs many seeded games and belongs in
+        an evidence run, not a unit test; what a unit test can hold is the
+        contract every search step must satisfy.
+        """
+        config = GumbelMCTSConfig(num_simulations=4, seed=1234)
         mcts = GumbelMCTS(network, config, device="cpu")
 
+        searches = 0
         for _ in range(3):
             env.reset()
             done = False
             while not done:
-                action_probs, _ = mcts.search(env)
+                action_probs, value = mcts.search(env)
+                searches += 1
+
+                assert action_probs.shape == (env.action_space.n,)
+                assert np.all(action_probs >= 0.0), "policy has a negative probability"
+                assert action_probs.sum() == pytest.approx(1.0), "policy is not normalised"
+                assert -1.0 <= value <= 1.0, f"root value {value} outside [-1, 1]"
+
                 action = mcts.select_action(action_probs, temperature=0)
+                legal = env.get_valid_actions()
+                assert legal[action] > 0, (
+                    f"search selected action {action}, which the environment reports as illegal"
+                )
+
                 _, _, terminated, truncated, _ = env.step(action)
                 done = terminated or truncated
+
+        assert searches > 0, "no search ran; the assertions above are vacuous"

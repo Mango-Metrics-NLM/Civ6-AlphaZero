@@ -197,6 +197,7 @@ max-statements = 100
 "tests/unit/test_stockfish_opponent.py" = ["E402"]  # same
 "tests/unit/test_opponent_protocol.py" = ["E402"]  # same
 "tests/unit/test_curriculum.py" = ["E402"]  # same
+"tests/integration/test_chess_*.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
 # PLR0915 burndown (max-statements = 100). Three `main` functions exceed it, at 248,
 # 168 and 134 statements; all are known decomposition targets, deferred with the rest

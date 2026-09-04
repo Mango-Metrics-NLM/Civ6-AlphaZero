@@ -4,7 +4,8 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.8.0, 2026-09-02 (Tier A dead-code removal)
+- **As of:** v1.8.0, 2026-09-04 (`core/mcts/backup.py` and `utils/seeding.py` added;
+  module set unchanged since the 2026-09-02 Tier A dead-code removal)
 - **Submodule count:** 29
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).

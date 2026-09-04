@@ -47,11 +47,21 @@ A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–
 
 Make N-player training real and self-play fast; pay down debt. *(Active.)*
 
-> **Order of work (2026-09-02):** `kb/specs/20260902-validated-learning-plan.md`.
-> The bullets below are M4's inventory; that spec sequences them behind a draw-rate
-> fix (measured: `docs/evidence/draw_rate_sweep/`) and a seeded learning-trend run,
-> because none of the numbers below can be read until the training loop is shown to
-> learn at a configuration where the promotion gate is reachable.
+> **Order of work (2026-09-04):** `kb/specs/20260904-correctness-first-plan.md`,
+> which amends the sequencing of `kb/specs/20260902-validated-learning-plan.md`
+> (still the source for each workstream's content) and supersedes the remediation
+> list in [`docs/audits/2026-09-04-standards-audit.md`](docs/audits/2026-09-04-standards-audit.md).
+> The bullets below are M4's inventory; those specs sequence them.
+>
+> The 2026-09-02 order put a seeded learning-trend run first, behind a draw-rate
+> fix (measured: `docs/evidence/draw_rate_sweep/`). A new workstream **WS-S
+> (search correctness)** now comes before both: the default search was defective on
+> every deployed path — wrong-signed value backup, a one-hot policy target, and
+> self-play/evaluation seeds with no iteration term — so no number produced by it
+> was evidence of anything, and ~70% draws is what two agents that cannot tell a win
+> from a loss would produce. S1–S4 and S6 landed on 2026-09-04
+> ([`CHANGELOG.md`](CHANGELOG.md)); the learning run and the draw-rate re-measure
+> follow on the fixed code.
 
 - Wire `validate_encoder_state` into the cloud workers to prevent silent architecture cross-loading (done 2026-08-10).
 - Complete 800-game local GPU A/B arena comparison and publish the hex-crystalline encoder to the Hugging Face Hub (done 2026-08-10).

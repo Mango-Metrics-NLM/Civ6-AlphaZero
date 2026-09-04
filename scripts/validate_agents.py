@@ -178,7 +178,7 @@ def _validate_all(issues: list[Issue], gate: int | None) -> None:
     seen: set[Path] = set()
     logger.debug("package root: %s | coverage gate: %s", PACKAGE_ROOT, gate)
 
-    # A5 -- every importable package must document its owner.
+    # A5 -- every importable top-level package must document its owner.
     if PACKAGE_ROOT.is_dir():
         for package in sorted(p for p in PACKAGE_ROOT.iterdir() if p.is_dir()):
             if not (package / "__init__.py").is_file():
@@ -190,9 +190,22 @@ def _validate_all(issues: list[Issue], gate: int | None) -> None:
             seen.add(agent_md)
             _validate_agent_doc(agent_md, issues, gate)
 
+    # A5 only *requires* a document at the top level, but a document that exists
+    # anywhere must still be correct. `alpha_zero/core/mcts/Agent.md` was written
+    # for a nested subpackage and was therefore scanned by nothing at all -- an
+    # unvalidated governance document is worse than a missing one, because it
+    # reads as covered. `rglob` order is filesystem-dependent, so it is sorted:
+    # unsorted validator output makes a CI failure unreproducible.
+    if PACKAGE_ROOT.is_dir():
+        for agent_md in sorted(PACKAGE_ROOT.rglob("Agent.md")):
+            if agent_md.is_file() and agent_md not in seen:
+                seen.add(agent_md)
+                _validate_agent_doc(agent_md, issues, gate)
+
     for extra in EXTRA_AGENT_DIRS:
         agent_md = REPO_ROOT / extra / "Agent.md"
         if agent_md.is_file() and agent_md not in seen:
+            seen.add(agent_md)
             _validate_agent_doc(agent_md, issues, gate)
 
 
@@ -205,6 +218,18 @@ def main(argv: list[str] | None = None) -> int:
         "--verbose",
         action="store_true",
         help="log every document scanned and the resolved coverage gate (stderr)",
+    )
+    parser.add_argument(
+        "--max-warnings",
+        type=int,
+        default=None,
+        dest="max_warnings",
+        help=(
+            "fail (exit 1) when the WARNING count exceeds N. The A3 conventional-section "
+            "warnings are advisory by design -- filling them in is a content-writing "
+            "exercise, not a validation one -- so the ratchet keeps the count from growing "
+            "instead of pretending the docs are complete."
+        ),
     )
     args = parser.parse_args(argv)
 
@@ -239,17 +264,20 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     errors = [i for i in issues if not i.warning]
+    warnings = [i for i in issues if i.warning]
     logger.debug(
         "finished: %d issue(s) -- %d error(s), %d warning(s)",
         len(issues),
         len(errors),
-        len(issues) - len(errors),
+        len(warnings),
     )
+    over_budget = args.max_warnings is not None and len(warnings) > args.max_warnings
     if args.as_json:
         print(
             json.dumps(
                 {
-                    "ok": not errors,
+                    "ok": not errors and not over_budget,
+                    "warning_count": len(warnings),
                     "issues": [
                         {
                             "code": i.code,
@@ -264,14 +292,21 @@ def main(argv: list[str] | None = None) -> int:
                 indent=2,
             )
         )
-        return 1 if errors else 0
+        return 1 if (errors or over_budget) else 0
 
     for issue in issues:
         print(issue.render(), file=sys.stderr)
     if errors:
         return 1
+    if over_budget:
+        print(
+            f"agents: {len(warnings)} warning(s) exceeds the ratchet of {args.max_warnings}. "
+            "Add the missing sections, or raise the baseline only with a recorded reason.",
+            file=sys.stderr,
+        )
+        return 1
     if not args.quiet:
-        print("agents: OK")
+        print(f"agents: OK ({len(warnings)} warning(s))" if warnings else "agents: OK")
     return 0
 
 

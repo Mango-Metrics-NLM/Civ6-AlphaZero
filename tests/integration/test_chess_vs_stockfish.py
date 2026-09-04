@@ -12,6 +12,8 @@ import os
 import numpy as np
 import pytest
 
+pytest.importorskip("chess", reason="requires the 'chess' extra")
+
 from alpha_zero.envs.chess_env import ChessEnv
 from alpha_zero.opponents.stockfish_opponent import (
     StockfishOpponent,

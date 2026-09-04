@@ -1,0 +1,26 @@
+{
+  "_comment": [
+    "Ratchet baseline for validate_agents.py A3 conventional-section WARNINGs.",
+    "These warnings are advisory by design: filling in the missing sections is a",
+    "content-writing exercise (each one is a table of real per-module facts), not a",
+    "validation one, so promoting them to errors would either block the branch or",
+    "invite six docs' worth of invented filler. The ratchet is the honest middle:",
+    "the count may go DOWN, never up.",
+    "",
+    "To lower it: write the missing sections, re-run",
+    "  python scripts/validate_agents.py --json | python -c \"import json,sys; print(json.load(sys.stdin)['warning_count'])\"",
+    "and set max_warnings to the new measured number in the same change.",
+    "Raising it requires a recorded reason in this file."
+  ],
+  "max_warnings": 22,
+  "measured_on": "2026-09-04",
+  "measured_by": "python scripts/validate_agents.py --json",
+  "docs_with_warnings": [
+    "alpha_zero/cloud/Agent.md",
+    "alpha_zero/hexcrystal/Agent.md",
+    "alpha_zero/inference/Agent.md",
+    "alpha_zero/opponents/Agent.md",
+    "alpha_zero/serving/Agent.md",
+    "tests/Agent.md"
+  ]
+}
