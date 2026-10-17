@@ -17,7 +17,7 @@
 #       --worker_id=0 --model_version=1 --iteration=1 --games=1
 
 # Base image: PyTorch with CUDA 12 and Python 3.12 (compatible with T4, L4, A100)
-FROM nvcr.io/nvidia/pytorch:24.09-py3
+FROM nvcr.io/nvidia/pytorch:26.09-py3
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
