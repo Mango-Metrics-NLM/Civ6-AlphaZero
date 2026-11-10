@@ -3,10 +3,9 @@
 > **Status: STABLE / SLOW-CHANGING.** This document is the north-star that humans and AI
 > agents (and sub-agents) read first to stay on track. It changes rarely and only by
 > deliberate decision — not per task. Day-to-day, changeable work lives in
-> [`NEXT_STEPS.md`](NEXT_STEPS.md) (with the current reconciliation in
-> [`docs/NEXT_STEPS_CASE_2026-08.md`](docs/NEXT_STEPS_CASE_2026-08.md));
-> architecture detail in [`docs/architecture/C4_ARCHITECTURE.md`](docs/architecture/C4_ARCHITECTURE.md)
-> and [`docs/architecture.md`](docs/architecture.md). If a task seems to require changing
+> [`ROADMAP.md`](ROADMAP.md) (Now / Next / Later) and the open change under
+> [`openspec/changes/`](openspec/changes/); architecture detail in
+> [`docs/architecture/C4_ARCHITECTURE.md`](docs/architecture/C4_ARCHITECTURE.md). If a task seems to require changing
 > this charter, **stop and raise it explicitly** rather than editing it in passing.
 >
 > **Charter integrity is governed by §7 (Amendment Protocol).** Amendments are budgeted.
@@ -26,7 +25,7 @@ trains against the real Civ6 game** (MicroCiv is the sole training environment, 
 and the **core learning loop never depends on an LLM** (all LLM guidance is opt-in,
 default-off, and fail-safe, NG-2). The charter has **0 active carve-outs** against a
 budget of 2 per non-goal across 7 non-goals; the last full charter review was
-**2026-07-13** (initial ratification). Execution detail lives in `NEXT_STEPS.md`; this
+**2026-07-13** (initial ratification). Execution detail lives in `ROADMAP.md` (Now / Next / Later); this
 document defines intent, boundaries, and invariants only.
 
 ---
@@ -47,12 +46,14 @@ strategy game, not just a board game.
 ## 2. Mission (what we are building)
 
 - **Learn from self-play.** Train MicroCiv agents whose loss decreases and which earn
-  promotion over incumbent champions — verifiable via
-  `scripts/validate_convergence.py` and the promotion lineage in GCS (269 model
-  versions, v0–v268).
+  promotion over incumbent champions. **Validation status (2026-11-10):** not yet
+  demonstrated — every committed run predates the 2026-09-04 search-correctness fixes
+  (`docs/evidence/README.md`); the first post-fix run is specified in
+  `docs/EVALUATION.md` §7.
 - **Search efficiently.** Pluggable MCTS behind one factory — `create_mcts(...)` with
-  GumbelMCTS as the default (~13× faster than Civ6MCTS) and batched self-play
-  (`BatchGumbelMCTS` + `VectorizedMicroCivEnv`, 5–10× throughput).
+  GumbelMCTS as the default and batched self-play (`BatchGumbelMCTS` +
+  `VectorizedMicroCivEnv`); throughput gains are targets until a committed benchmark
+  artifact measures them.
 - **Train at scale.** A 3-phase distributed pipeline (self-play → train → eval) on
   Vertex AI — `infra/vertex_launcher.py`, containerized workers, completed 50-iteration
   production runs.
@@ -125,7 +126,8 @@ scope; they may never relax an invariant.)*
    registry in `alpha_zero/core/mcts_factory.py`, the encoder registry,
    `alpha_zero/storage/factory.py` against the abstract `StorageBackend`); callers are
    not edited per addition and do not branch on concrete component types.
-2. **Compatibility** — every code path runs on CPU-only Python ≥ 3.10 with Linux CI
+2. **Compatibility** — every code path runs on CPU-only Python ≥ 3.11 (the floor
+   `pyproject.toml` enforces; raised from 3.10 on 2026-11-10 to match it) with Linux CI
    green; the documented Windows deselect list is the only permitted platform
    divergence.
 3. **Testability** — the full suite stays green with line coverage ≥ 85%, enforced by
@@ -153,7 +155,7 @@ scope; they may never relax an invariant.)*
 > Detailed milestones live in [`ROADMAP.md`](ROADMAP.md); keep the two aligned —
 > milestone detail changes there, not here.
 
-- **M1 — Learning Core:** AlphaZero on MicroCiv; convergence proven end-to-end. *(delivered)*
+- **M1 — Learning Core:** AlphaZero on MicroCiv, built end-to-end. *(delivered; learning not yet validated on the corrected search — see `ROADMAP.md`'s validation column)*
 - **M2 — Scale & Observability:** Vertex AI 3-phase pipeline, GCS storage, MLflow monitoring. *(delivered)*
 - **M3 — Live Game Bridge:** agent plays real Civ6 headlessly via the FireTuner socket. *(delivered)*
 - **M4 — Multiplayer & Throughput:** N-player training runs, batch self-play in cloud, test-debt paydown, coverage re-tighten. *(active)*
@@ -164,11 +166,11 @@ scope; they may never relax an invariant.)*
 - Read this **before** planning a task; keep changes consistent with §3 scope and §4
   invariants.
 - Authority order when documents disagree: this charter (what and what-not) →
-  `CLAUDE.md` (how: gates, permissions, KB workflow) → `NEXT_STEPS.md` +
-  `docs/NEXT_STEPS_CASE_2026-08.md` (what now) → `ROADMAP.md` (what next) →
-  `docs/architecture/C4_ARCHITECTURE.md`, `docs/architecture.md`,
-  `docs/MODULE_REFERENCE.md` (how it is built).
-- Put concrete, changeable to-dos in `NEXT_STEPS.md`, not here.
+  `CLAUDE.md` (how: gates, permissions, KB workflow) → `ROADMAP.md` Now / Next / Later
+  and the open OpenSpec change (what now and what next) →
+  `docs/architecture/C4_ARCHITECTURE.md`, `docs/MODULE_REFERENCE.md` (how it is built).
+- Put concrete, changeable to-dos in `ROADMAP.md`'s Now / Next / Later or a GitHub
+  issue, not here.
 - When a change would violate an invariant or expand scope, **surface it for a human
   decision** — do not implement first and ratify later.
 - Agents must treat the §7 budgets as hard constraints: if a proposed task requires a
@@ -260,5 +262,5 @@ ratifications · last full review: 2026-07-13 (initial ratification).
 
 ---
 
-*Instantiated from [`templates/PROJECT_CHARTER_TEMPLATE.md`](templates/PROJECT_CHARTER_TEMPLATE.md)
+*Instantiated from [`docs/templates/PROJECT_CHARTER_TEMPLATE.md`](docs/templates/PROJECT_CHARTER_TEMPLATE.md)
 at v1.8.0, 2026-07-13.*
