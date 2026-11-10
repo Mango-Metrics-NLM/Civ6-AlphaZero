@@ -216,10 +216,13 @@ class TestParameterisedDefaults:
     def test_promotion_threshold_is_a_module_constant(self) -> None:
         assert 0.0 < comparator.DEFAULT_PROMOTION_THRESHOLD < 1.0
 
-    def test_wandb_project_default_is_overridable(self) -> None:
-        """The entity is no longer baked into the source."""
-        assert isinstance(comparator.DEFAULT_WANDB_PROJECT, str)
-        assert comparator.DEFAULT_WANDB_PROJECT
+    def test_wandb_project_has_no_built_in_default(self) -> None:
+        """No entity is baked into the source: the path comes from the environment or --project."""
+        assert comparator.DEFAULT_WANDB_PROJECT is None or isinstance(
+            comparator.DEFAULT_WANDB_PROJECT, str
+        )
+        with pytest.raises(ValueError, match="CIV6AZ_WANDB_PROJECT"):
+            comparator.fetch_wandb_metrics("run-id", project=None)
 
     def test_metric_key_table_covers_every_reported_series(self) -> None:
         expected = {
