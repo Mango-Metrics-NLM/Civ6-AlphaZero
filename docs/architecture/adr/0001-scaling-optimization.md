@@ -54,7 +54,7 @@ graph LR
 flowchart LR
     SM["Secret Manager<br/>(WANDB_API_KEY)"] --> VJ["Vertex Jobs"]
     VJ --> SP["Self-Play Workers<br/>(T4 Spot × N)"]
-    SP --> GCS["GCS Bucket<br/>gs://civ6az-training"]
+    SP --> GCS["GCS Bucket<br/>gs://<training-bucket>"]
     GCS --> TR["Training Worker<br/>(T4 × 1)"]
     TR --> GCS
     GCS --> EV["Eval Worker<br/>(CPU × 1)"]

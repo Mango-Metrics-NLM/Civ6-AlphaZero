@@ -34,10 +34,7 @@ from __future__ import annotations
 import argparse
 import logging
 import struct
-import sys
 import time
-from pathlib import Path
-from typing import Any
 
 import numpy as np
 import torch
@@ -59,6 +56,7 @@ ACTION_MASK_BYTES = (ACTION_SPACE_SIZE + 7) // 8  # 47
 # Binary deserialization helpers
 # ---------------------------------------------------------------------------
 
+
 def unpack_spatial_tensor(blob: bytes) -> np.ndarray:
     """Unpack spatial tensor from little-endian f32 bytes.
 
@@ -70,9 +68,7 @@ def unpack_spatial_tensor(blob: bytes) -> np.ndarray:
     """
     expected = SPATIAL_CHANNELS * BOARD_SIZE * BOARD_SIZE
     if len(blob) != expected * 4:
-        raise ValueError(
-            f"spatial_tensor blob is {len(blob)} bytes, expected {expected * 4}"
-        )
+        raise ValueError(f"spatial_tensor blob is {len(blob)} bytes, expected {expected * 4}")
     flat = np.frombuffer(blob, dtype="<f4")  # little-endian float32
     return flat.reshape(SPATIAL_CHANNELS, BOARD_SIZE, BOARD_SIZE).copy()
 
@@ -87,9 +83,7 @@ def unpack_vector_features(blob: bytes) -> np.ndarray:
         numpy array of shape (64,) float32.
     """
     if len(blob) != VECTOR_DIM * 4:
-        raise ValueError(
-            f"vector_features blob is {len(blob)} bytes, expected {VECTOR_DIM * 4}"
-        )
+        raise ValueError(f"vector_features blob is {len(blob)} bytes, expected {VECTOR_DIM * 4}")
     return np.frombuffer(blob, dtype="<f4").copy()
 
 
@@ -103,9 +97,7 @@ def unpack_action_mask(blob: bytes) -> np.ndarray:
         numpy array of shape (376,) float32 with 0.0 or 1.0 values.
     """
     if len(blob) != ACTION_MASK_BYTES:
-        raise ValueError(
-            f"action_mask blob is {len(blob)} bytes, expected {ACTION_MASK_BYTES}"
-        )
+        raise ValueError(f"action_mask blob is {len(blob)} bytes, expected {ACTION_MASK_BYTES}")
     mask = np.zeros(ACTION_SPACE_SIZE, dtype=np.float32)
     for i in range(ACTION_SPACE_SIZE):
         byte_idx = i // 8
@@ -143,6 +135,7 @@ def pack_value(value: float) -> bytes:
 # AI Service class
 # ---------------------------------------------------------------------------
 
+
 class AiService:
     """Connects AlphaZero inference to SpacetimeDB.
 
@@ -172,8 +165,8 @@ class AiService:
 
     def load_model(self) -> None:
         """Load the neural network and create MCTS instance."""
-        from alpha_zero.core.transformer_network import Civ6TransformerNetwork
         from alpha_zero.core.mcts_factory import create_mcts
+        from alpha_zero.core.transformer_network import Civ6TransformerNetwork
 
         logger.info("Loading model from %s", self.model_path)
 
@@ -207,7 +200,9 @@ class AiService:
 
         logger.info(
             "Model loaded: %s, MCTS sims=%d, device=%s",
-            self.model_version, self.mcts_sims, self.device,
+            self.model_version,
+            self.mcts_sims,
+            self.device,
         )
 
     def process_turn_request(
@@ -236,11 +231,6 @@ class AiService:
         vector = unpack_vector_features(vector_blob)
         action_mask = unpack_action_mask(mask_blob)
 
-        # Convert to tensors
-        spatial_t = torch.from_numpy(spatial).unsqueeze(0).to(self.device)
-        vector_t = torch.from_numpy(vector).unsqueeze(0).to(self.device)
-        mask_t = torch.from_numpy(action_mask).unsqueeze(0).to(self.device)
-
         # Build a lightweight env-like wrapper for MCTS
         # GumbelMCTS expects an object with get_observation() and step()
         # We create a minimal shim here
@@ -257,7 +247,8 @@ class AiService:
             logger.warning(
                 "MCTS selected invalid action %d for game %d, "
                 "falling back to argmax of masked policy",
-                action, game_id,
+                action,
+                game_id,
             )
             masked = action_probs * action_mask
             if masked.sum() > 0:
@@ -268,7 +259,10 @@ class AiService:
 
         logger.info(
             "Game %d: selected action %d (value=%.3f, %d valid actions)",
-            game_id, action, root_value, int(action_mask.sum()),
+            game_id,
+            action,
+            root_value,
+            int(action_mask.sum()),
         )
 
         return action, action_probs, float(root_value)
@@ -323,7 +317,9 @@ class AiService:
 
         logger.info(
             "AI service ready: host=%s, db=%s, model=%s",
-            host, db_name, self.model_version,
+            host,
+            db_name,
+            self.model_version,
         )
 
         # Polling fallback (if SDK loop is not available)
@@ -355,6 +351,7 @@ class _EnvShim:
 
         # Mimic MicroCivEnv interface
         from gymnasium import spaces
+
         self.action_space = spaces.Discrete(ACTION_SPACE_SIZE)
 
     def get_observation(self) -> dict[str, np.ndarray]:
@@ -367,7 +364,7 @@ class _EnvShim:
     def get_valid_actions(self) -> np.ndarray:
         return self.action_mask
 
-    def clone(self) -> "_EnvShim":
+    def clone(self) -> _EnvShim:
         return _EnvShim(
             self.spatial.copy(),
             self.vector.copy(),
@@ -379,29 +376,16 @@ class _EnvShim:
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Civ6 AlphaZero AI Service for SpacetimeDB"
-    )
-    parser.add_argument(
-        "--host", default="http://localhost:3000", help="SpacetimeDB host URL"
-    )
-    parser.add_argument(
-        "--db-name", default="civ6az", help="SpacetimeDB database name"
-    )
+    parser = argparse.ArgumentParser(description="Civ6 AlphaZero AI Service for SpacetimeDB")
+    parser.add_argument("--host", default="http://localhost:3000", help="SpacetimeDB host URL")
+    parser.add_argument("--db-name", default="civ6az", help="SpacetimeDB database name")
     parser.add_argument("--token", default="", help="Auth token")
-    parser.add_argument(
-        "--model-path", required=True, help="Path to model checkpoint"
-    )
-    parser.add_argument(
-        "--model-version", default="v268", help="Model version string"
-    )
-    parser.add_argument(
-        "--mcts-sims", type=int, default=25, help="MCTS simulations per move"
-    )
-    parser.add_argument(
-        "--device", default="cpu", help="PyTorch device (cpu/cuda)"
-    )
+    parser.add_argument("--model-path", required=True, help="Path to model checkpoint")
+    parser.add_argument("--model-version", default="v268", help="Model version string")
+    parser.add_argument("--mcts-sims", type=int, default=25, help="MCTS simulations per move")
+    parser.add_argument("--device", default="cpu", help="PyTorch device (cpu/cuda)")
     args = parser.parse_args()
 
     logging.basicConfig(

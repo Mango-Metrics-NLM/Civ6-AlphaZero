@@ -11,7 +11,7 @@ Production ML inference service for real-time MCTS-based gameplay.
 ./scripts/deploy_inference.sh cloud-run v1.0.0
 
 # Get service URL
-SERVICE_URL=$(gcloud run services describe civ6az-inference \
+SERVICE_URL=$(gcloud run services describe alphazero-inference \
   --region=us-central1 \
   --format="value(status.url)")
 
@@ -24,7 +24,7 @@ echo "Service: $SERVICE_URL"
 from alpha_zero.inference import InferenceClient, create_random_game_state
 
 # Connect to service
-client = InferenceClient("https://civ6az-inference.run.app")
+client = InferenceClient("https://<service-url>")
 
 # Check health
 health = client.health()
@@ -43,11 +43,11 @@ print(f"Value: {response.action_distribution.value_estimate:.3f}")
 ```bash
 # Quick start examples
 python examples/inference_quickstart.py \
-  --url https://civ6az-inference.run.app
+  --url https://<service-url>
 
 # Load testing
 python scripts/load_test_inference.py \
-  --url https://civ6az-inference.run.app \
+  --url https://<service-url> \
   --concurrent-games 50 \
   --duration-seconds 60
 ```

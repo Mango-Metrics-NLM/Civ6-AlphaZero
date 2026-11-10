@@ -3,7 +3,9 @@
 Frozen historical documents — process artifacts, superseded plans, and one-off
 analyses that no longer describe the current system. They are preserved for
 history (git retains full provenance) but are **not maintained** and are excluded
-from the documentation-sync gate.
+from the documentation-sync gate. One exception: identifiers (project numbers,
+service-account addresses, personal paths) are redacted in archived documents for
+the public release; nothing else in them is maintained.
 
 Moved here on 2026-07-25 as part of the enterprise documentation overhaul
 (`openspec/changes/add-enterprise-docs-and-gates`).

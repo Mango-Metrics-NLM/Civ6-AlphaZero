@@ -11,7 +11,9 @@ import requests
 _orig_gai = socket.getaddrinfo
 socket.getaddrinfo = lambda *a, **k: [r for r in _orig_gai(*a, **k) if r[0] == socket.AF_INET]  # type: ignore[assignment]
 
-PROJECT = "hrmtrain"
+PROJECT = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not PROJECT:
+    raise SystemExit("CIV6AZ_VERTEX_PROJECT is not set (there is no default project).")
 
 creds_path = os.path.join(os.environ["APPDATA"], "gcloud", "application_default_credentials.json")
 with open(creds_path) as f:

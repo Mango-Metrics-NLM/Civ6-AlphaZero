@@ -13,9 +13,9 @@ metadata:
   name: inference-config
   namespace: civ6az
 data:
-  CIV6AZ_VERTEX_PROJECT: "hrmtrain"
+  CIV6AZ_VERTEX_PROJECT: "YOUR_GCP_PROJECT"  # replace before applying
   CIV6AZ_VERTEX_REGION: "us-central1"
-  CIV6AZ_GCS_BUCKET: "civ6az-training"
+  CIV6AZ_GCS_BUCKET: "YOUR_BUCKET"  # replace before applying
   CIV6AZ_GCS_PREFIX: "models/"
   PYTORCH_CUDA_ALLOC_CONF: "max_split_size_mb:512"
   INFERENCE_PORT: "8080"
@@ -24,19 +24,19 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: civ6az-inference
+  name: alphazero-inference
   namespace: civ6az
   labels:
-    app: civ6az-inference
+    app: alphazero-inference
 spec:
   replicas: 3  # Start with 3 replicas
   selector:
     matchLabels:
-      app: civ6az-inference
+      app: alphazero-inference
   template:
     metadata:
       labels:
-        app: civ6az-inference
+        app: alphazero-inference
     spec:
       # Use node pool with GPUs
       nodeSelector:
@@ -44,7 +44,7 @@ spec:
 
       containers:
       - name: inference
-        image: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference:latest
+        image: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-inference:latest
         imagePullPolicy: Always
 
         ports:
@@ -102,10 +102,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: civ6az-inference-service
+  name: alphazero-inference-service
   namespace: civ6az
   labels:
-    app: civ6az-inference
+    app: alphazero-inference
 spec:
   type: LoadBalancer
   ports:
@@ -114,19 +114,19 @@ spec:
     protocol: TCP
     name: http
   selector:
-    app: civ6az-inference
+    app: alphazero-inference
 
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: civ6az-inference-hpa
+  name: alphazero-inference-hpa
   namespace: civ6az
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: civ6az-inference
+    name: alphazero-inference
   minReplicas: 3
   maxReplicas: 20
   metrics:

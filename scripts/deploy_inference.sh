@@ -8,10 +8,10 @@ set -euo pipefail
 
 PLATFORM="${1:-cloud-run}"
 VERSION="${2:-latest}"
-PROJECT="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
+PROJECT="${CIV6AZ_VERTEX_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${CIV6AZ_VERTEX_REGION:-us-central1}"
 REPO="${CIV6AZ_ARTIFACT_REPO:-civ6az}"
-IMAGE_NAME="civ6az-inference"
+IMAGE_NAME="${CIV6AZ_INFERENCE_SERVICE:-alphazero-inference}"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT}/${REPO}/${IMAGE_NAME}:${VERSION}"
 
 echo "=== Civ6 AlphaZero Inference Deployment ==="
@@ -40,7 +40,7 @@ if [ "${PLATFORM}" == "cloud-run" ]; then
         --project="${PROJECT}"
 
     # Get service URL
-    SERVICE_URL=$(gcloud run services describe civ6az-inference \
+    SERVICE_URL=$(gcloud run services describe "${IMAGE_NAME}" \
         --region="${REGION}" \
         --project="${PROJECT}" \
         --format="value(status.url)")
@@ -55,15 +55,15 @@ elif [ "${PLATFORM}" == "gke" ]; then
     echo "[3/3] Deploying to GKE..."
 
     # Update image in K8s deployment
-    kubectl set image deployment/civ6az-inference \
+    kubectl set image deployment/"${IMAGE_NAME}" \
         inference="${IMAGE_URI}" \
         -n civ6az
 
     # Wait for rollout
-    kubectl rollout status deployment/civ6az-inference -n civ6az
+    kubectl rollout status deployment/"${IMAGE_NAME}" -n civ6az
 
     # Get service endpoint
-    SERVICE_IP=$(kubectl get svc civ6az-inference-service \
+    SERVICE_IP=$(kubectl get svc "${IMAGE_NAME}-service" \
         -n civ6az \
         -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 

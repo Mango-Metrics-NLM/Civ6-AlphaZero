@@ -1,10 +1,14 @@
 """Quick script to fetch Cloud Logging entries for a Vertex AI job - ERROR FOCUS."""
 
+import os
 import sys
 
 from google.cloud import logging_v2
 
-client = logging_v2.Client(project="hrmtrain")
+_project = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not _project:
+    raise SystemExit("CIV6AZ_VERTEX_PROJECT is not set (there is no default project).")
+client = logging_v2.Client(project=_project)
 job_id = "2594389683936952320"
 filter_str = f'resource.type="ml_job" AND resource.labels.job_id="{job_id}"'
 

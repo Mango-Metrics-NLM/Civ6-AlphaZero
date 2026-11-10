@@ -566,7 +566,8 @@ class MLflowLogger:
         Extracts and logs:
 
         - ``{prefix}/wins``, ``/losses``, ``/draws``, ``/total_games``  (raw counts)
-        - ``{prefix}/win_rate``, ``/draw_rate``, ``/loss_rate``         (fractions 0-1)
+        - ``{prefix}/win_rate``, ``/score_rate``, ``/draw_rate``, ``/loss_rate``
+          (fractions 0-1)
         - ``{prefix}/avg_game_length``, ``/avg_cities_won``,
           ``/avg_cities_lost``, ``/avg_units_won``, ``/avg_units_lost``,
           ``/total_evaluation_time``, ``/value_correlation``            (floats)
@@ -593,7 +594,9 @@ class MLflowLogger:
                     except (TypeError, ValueError):
                         logger.debug("Cannot convert %s.%s to float", count_attr, val)
 
-            for rate_attr in ("win_rate", "draw_rate", "loss_rate"):
+            # score_rate joined its siblings on WinRateResult (E1, same 0-100
+            # scale); an older result object without it is simply skipped.
+            for rate_attr in ("win_rate", "score_rate", "draw_rate", "loss_rate"):
                 val = getattr(wr, rate_attr, None)
                 if val is not None:
                     try:

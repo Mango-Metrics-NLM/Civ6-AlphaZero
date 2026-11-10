@@ -66,8 +66,9 @@ try:
 except ImportError:
     MLFLOW_AVAILABLE = False
 
-#: Default W&B project. Overridable so the entity is not baked into the source.
-DEFAULT_WANDB_PROJECT = os.environ.get("CIV6AZ_WANDB_PROJECT", "ianshank-none/civ6-alphazero")
+#: W&B project path (``entity/project``). No built-in default: the entity is personal
+#: and W&B is retired, so it must come from ``CIV6AZ_WANDB_PROJECT`` or ``--project``.
+DEFAULT_WANDB_PROJECT: str | None = os.environ.get("CIV6AZ_WANDB_PROJECT") or None
 
 #: Default promotion threshold drawn on win-rate plots.
 DEFAULT_PROMOTION_THRESHOLD = float(os.environ.get("CIV6AZ_PROMOTION_THRESHOLD", "0.55"))
@@ -255,16 +256,21 @@ def fetch_mlflow_metrics(
     return metrics
 
 
-def fetch_wandb_metrics(run_id: str, project: str = DEFAULT_WANDB_PROJECT) -> RunMetrics:
+def fetch_wandb_metrics(run_id: str, project: str | None = DEFAULT_WANDB_PROJECT) -> RunMetrics:
     """Fetch metrics from W&B API.
 
     Args:
         run_id: W&B run ID (e.g., "indulgent-date-703")
-        project: W&B project path
+        project: W&B project path (``entity/project``); required.
 
     Returns:
         RunMetrics with extracted data
     """
+    if not project:
+        raise ValueError(
+            "W&B project path not given: pass --project or set CIV6AZ_WANDB_PROJECT "
+            "(there is no built-in default)."
+        )
     if not WANDB_AVAILABLE:
         raise ImportError("wandb is not installed. Use log-file mode instead.")
 
@@ -1078,7 +1084,7 @@ def main() -> None:
         "--project",
         type=str,
         default=DEFAULT_WANDB_PROJECT,
-        help=f"W&B project path (default: $CIV6AZ_WANDB_PROJECT, else {DEFAULT_WANDB_PROJECT})",
+        help="W&B project path, entity/project (default: $CIV6AZ_WANDB_PROJECT; no built-in default)",
     )
 
     # Log-file mode

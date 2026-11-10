@@ -30,7 +30,7 @@ class InferenceClient:
     """Client for Civ6 AlphaZero Inference API.
 
     Example usage:
-        client = InferenceClient("https://civ6az-inference.run.app")
+        client = InferenceClient("https://<service-url>")
 
         # Prepare game state
         spatial = np.random.randn(13, 8, 8).flatten().tolist()

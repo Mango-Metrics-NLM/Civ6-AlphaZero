@@ -274,9 +274,12 @@ def test_container_validation(container_image: str | None) -> SmokeResult:
 
     t0 = time.perf_counter()
     try:
-        image = container_image or os.environ.get(
-            "CIV6AZ_CONTAINER_IMAGE_URI", "gcr.io/hrmtrain/civ6az-training:latest"
-        )
+        image = container_image or os.environ.get("CIV6AZ_CONTAINER_IMAGE_URI")
+        if not image:
+            raise RuntimeError(
+                "CIV6AZ_CONTAINER_IMAGE_URI is not set and no container image was given; "
+                "there is no default image."
+            )
 
         docker_bin = shutil.which("docker")
         if docker_bin is None:

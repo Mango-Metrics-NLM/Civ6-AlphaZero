@@ -7,8 +7,8 @@
 
 set -euo pipefail
 
-PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
-IMAGE_NAME="gcr.io/${PROJECT_ID}/civ6az-training"
+PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
+IMAGE_NAME="gcr.io/${PROJECT_ID}/alphazero-training"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 

@@ -78,6 +78,11 @@ wandb/
 *.pth
 *.pkl
 *.npy
+*.safetensors
+*.ckpt
+*.npz
+*.onnx
+*.bin
 *.faiss
 
 # Logs
@@ -134,12 +139,10 @@ dataset-export/
 kb/
 openspec/
 .github/
-templates/
 examples/
 spaces/
 k8s/
-server-module/
-spacetimedb_module/
+experimental/
 
 # Dev tooling and lockfiles (uv.lock alone is ~868 KB)
 uv.lock

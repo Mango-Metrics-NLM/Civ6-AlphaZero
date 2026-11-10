@@ -20,7 +20,8 @@ set -euo pipefail
 MODE="${1:---local}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CONTAINER_IMAGE="${CIV6AZ_CONTAINER_IMAGE_URI:-gcr.io/hrmtrain/civ6az-training:latest}"
+# No default image; only the --docker mode needs it, and it is checked there.
+CONTAINER_IMAGE="${CIV6AZ_CONTAINER_IMAGE_URI:-}"
 
 echo "=== Civ6 AlphaZero Smoke Tests (${MODE}) ==="
 echo "Project dir: ${PROJECT_DIR}"
@@ -74,6 +75,10 @@ pytest tests/e2e/test_gcs_live.py -m "requires_env" -v --tb=short
 
 echo ""
 echo "[Cloud 2/3] Container health check..."
+if [[ -z "${CONTAINER_IMAGE}" ]]; then
+    echo "ERROR: CIV6AZ_CONTAINER_IMAGE_URI must be set for the docker smoke test (no default image)" >&2
+    exit 2
+fi
 docker run --rm "${CONTAINER_IMAGE}" \
     python -m alpha_zero.cloud.gcp.container_healthcheck
 

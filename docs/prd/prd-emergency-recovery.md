@@ -32,7 +32,7 @@ The orchestrator passes `--mcts_type=muzero` to self-play workers when `--algori
 
 **Given** the Artifact Registry repo exists,
 **When** `build_and_push.py --tag v1.0.0` completes,
-**Then** the image is available at `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.0.0`.
+**Then** the image is available at `us-central1-docker.pkg.dev/<project>/civ6az/alphazero-training:v1.0.0`.
 
 ### AC-3: Orchestrator accepts muzero choice
 

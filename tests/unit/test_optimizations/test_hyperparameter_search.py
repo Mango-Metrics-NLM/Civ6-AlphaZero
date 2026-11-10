@@ -4,7 +4,7 @@ Covers the declarative search-space contract, SweepConfig env-override
 precedence (including the legacy W&B-era SWEEP_TIMEOUT_SECONDS), the
 search loop with an injected deterministic objective and mocked tracker,
 the subprocess objective (metric extraction, failure pruning, timeout
-pruning), and the run_sweep.py CLI.
+pruning), and the scripts/run_sweep.py CLI.
 """
 
 from __future__ import annotations
@@ -29,6 +29,12 @@ from alpha_zero.optimizations.hyperparameter_search import (
 )
 
 optuna = pytest.importorskip("optuna")
+
+# scripts/run_sweep.py is a runner script, not a package module; put scripts/ on
+# sys.path the way tests/scripts/ does so `import run_sweep` resolves.
+_SCRIPTS_DIR = Path(__file__).resolve().parents[3] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
 
 _SPACE = {
     "lr": {"type": "float", "low": 1e-4, "high": 1e-2, "log": True},
@@ -316,7 +322,7 @@ class TestSubprocessTrainingObjective:
 
 
 # ---------------------------------------------------------------------------
-# run_sweep.py CLI
+# scripts/run_sweep.py CLI
 # ---------------------------------------------------------------------------
 
 

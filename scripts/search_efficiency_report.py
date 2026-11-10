@@ -20,7 +20,7 @@ Usage:
     # From W&B runs
     python scripts/search_efficiency_report.py \\
         --wandb_run <run_id> \\
-        --project ianshank-none/civ6-alphazero-benchmark \\
+        --project <entity>/<project> \\
         --output_dir reports/search_efficiency
 """
 
@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -348,8 +349,8 @@ def main() -> None:
     parser.add_argument(
         "--project",
         type=str,
-        default="ianshank-none/civ6-alphazero-benchmark",
-        help="W&B project path",
+        default=os.environ.get("CIV6AZ_WANDB_PROJECT"),
+        help="W&B project path, entity/project (default: $CIV6AZ_WANDB_PROJECT; required with --wandb_run)",
     )
     parser.add_argument(
         "--output_dir",
@@ -369,6 +370,9 @@ def main() -> None:
         logger.info("Loading from benchmark JSON: %s", args.benchmark_results)
         az, mz = load_from_benchmark_json(args.benchmark_results)
     elif args.wandb_run:
+        if not args.project:
+            logger.error("--project (or CIV6AZ_WANDB_PROJECT) is required with --wandb_run")
+            sys.exit(2)
         logger.info("Loading from W&B run: %s", args.wandb_run)
         az, mz = load_from_wandb(args.wandb_run, args.project)
     else:

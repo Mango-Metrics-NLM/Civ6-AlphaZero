@@ -48,7 +48,7 @@ bare command reports dozens of phantom `import-untyped` errors.
 
 `make verify` runs lint, format, types, CI's four test suites, security
 (pytest **and** the bandit scan CI runs), governance, the four validators,
-coverage (`test-all`, mirroring CI's gate), and the LLM eval gate.
+coverage (`test-all`, mirroring CI's gate), and the StrategyAdvisor eval harness (`make eval-llm`).
 
 It did not always. It shipped omitting coverage, bandit and `eval-llm` while its
 own echo claimed "all CI gates reproduced locally" — the exact drift this target

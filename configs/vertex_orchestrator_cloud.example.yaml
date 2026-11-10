@@ -1,9 +1,11 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_orchestrator_cloud.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 workerPoolSpecs:
   - machineSpec:
       machineType: n1-standard-4
     replicaCount: 1
     containerSpec:
-      imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
+      imageUri: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
       command:
         - python
         - -m
@@ -19,13 +21,13 @@ workerPoolSpecs:
         - "--model_version_start=0"
       env:
         - name: CIV6AZ_VERTEX_PROJECT
-          value: "hrmtrain"
+          value: "YOUR_GCP_PROJECT"
         - name: CIV6AZ_VERTEX_REGION
           value: "us-central1"
         - name: CIV6AZ_GCS_BUCKET
-          value: "civ6az-muzero-training"
+          value: "YOUR_BUCKET"
         - name: CIV6AZ_CONTAINER_IMAGE_URI
-          value: "us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix"
+          value: "us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix"
         - name: CIV6AZ_AGENT_ID
           value: "muzero"
         - name: MLFLOW_TRACKING_URI

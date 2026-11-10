@@ -1,0 +1,40 @@
+# Every external URL the README may carry. The public-readiness gate requires the set of
+# (https?://...) targets in README.md to equal the set of [[links]] urls here, so a
+# link cannot be added or dropped without stating its purpose and when it was checked.
+# Populated from README as it stood on 2026-11-10; the lead rewrites README and this
+# file together in P3 (the Hugging Face entries below are known 404s -- audit 3).
+
+[[links]]
+url = "https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero/actions/workflows/ci.yml"
+purpose = "CI badge link target (workflow page)"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero/actions/workflows/ci.yml/badge.svg"
+purpose = "CI badge link target (workflow page)"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://huggingface.co/ianshank/civ6-hexcrystal-encoder"
+purpose = "Hugging Face link -- returns 404 as of 2026-11-10 (audit 3); P3 replaces or removes"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://img.shields.io/badge/%F0%9F%A4%97%20Hub-hexcrystal--encoder-yellow"
+purpose = "Static shields.io badge image"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://img.shields.io/badge/License-MIT-yellow.svg"
+purpose = "Static shields.io badge image"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://img.shields.io/badge/python-3.11%2B-blue.svg"
+purpose = "Static shields.io badge image"
+verified_on = "2026-11-10"
+
+[[links]]
+url = "https://img.shields.io/badge/status-research%20%E2%80%94%20learning%20not%20yet%20demonstrated-orange"
+purpose = "Static shields.io badge image"
+verified_on = "2026-11-10"

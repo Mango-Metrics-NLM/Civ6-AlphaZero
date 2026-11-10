@@ -1,10 +1,12 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_training.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 # Vertex AI Training Configuration for Civ6 AlphaZero
 #
 # This configuration file defines the settings for running training on
 # Google Vertex AI. It can be loaded by the training CLI.
 #
 # Usage:
-#   python -m alpha_zero.cloud.gcp run --config configs/vertex_training.yaml
+#   python -m alpha_zero.cloud.gcp run --config configs/local/vertex_training.yaml  (copied from vertex_training.example.yaml)
 #
 # Environment variables (required):
 #   CIV6AZ_VERTEX_PROJECT - GCP project ID

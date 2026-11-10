@@ -66,23 +66,31 @@ _ADC_PATH = pathlib.Path(
 def _load_config() -> dict[str, str]:
     """Load configuration from environment with defaults."""
     adc = _read_adc()
-    project = os.environ.get("CIV6AZ_VERTEX_PROJECT", adc.get("quota_project_id", "hrmtrain"))
+    project = os.environ.get("CIV6AZ_VERTEX_PROJECT") or adc.get("quota_project_id")
+    if not project:
+        raise SystemExit(
+            "CIV6AZ_VERTEX_PROJECT is not set and the ADC file carries no quota_project_id; "
+            "there is no default project. export CIV6AZ_VERTEX_PROJECT=<your-gcp-project-id>."
+        )
     region = os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1")
     agent_id = os.environ.get("CIV6AZ_AGENT_ID", "muzero")
+    gcs_bucket = os.environ.get("CIV6AZ_GCS_BUCKET")
+    if not gcs_bucket:
+        raise SystemExit(
+            "CIV6AZ_GCS_BUCKET is not set; there is no default bucket. "
+            "export CIV6AZ_GCS_BUCKET=<your-bucket-name>."
+        )
 
     return {
         "project": project,
         "region": region,
         "agent_id": agent_id,
-        "gcs_bucket": os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-muzero-training"),
+        "gcs_bucket": gcs_bucket,
         "container_image": os.environ.get(
             "CIV6AZ_CONTAINER_IMAGE_URI",
             f"{region}-docker.pkg.dev/{project}/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix",
         ),
-        "service_account": os.environ.get(
-            "CIV6AZ_VERTEX_SERVICE_ACCOUNT",
-            "1019219508001-compute@developer.gserviceaccount.com",
-        ),
+        "service_account": _resolve_service_account(project),
         "api_host": f"{region}-aiplatform.googleapis.com",
         "wandb_project": os.environ.get("WANDB_PROJECT", "civ6az-muzero-world-model"),
         "wandb_enabled": os.environ.get("WANDB_ENABLED", "true"),
@@ -152,6 +160,35 @@ def diagnose_https(api_base: str) -> int:
 # ---------------------------------------------------------------------------
 # Auth — direct token exchange, no SDK
 # ---------------------------------------------------------------------------
+def _resolve_service_account(project: str) -> str:
+    """The service account Vertex jobs run as -- never a hard-coded address.
+
+    Resolution order: ``CIV6AZ_VERTEX_SERVICE_ACCOUNT`` (explicit address),
+    then ``CIV6AZ_VERTEX_PROJECT_NUMBER`` (the default compute SA is derived
+    from it), then a Resource Manager lookup of the project number. The
+    project *number* is deliberately not committed anywhere: together with
+    the service name and region it derives the public endpoint URL.
+    """
+    explicit = os.environ.get("CIV6AZ_VERTEX_SERVICE_ACCOUNT")
+    if explicit:
+        return explicit
+    number = os.environ.get("CIV6AZ_VERTEX_PROJECT_NUMBER")
+    if not number:
+        resp = requests.get(
+            f"https://cloudresourcemanager.googleapis.com/v1/projects/{project}",
+            headers={"Authorization": f"Bearer {get_access_token()}"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        number = str(resp.json().get("projectNumber") or "")
+    if not number:
+        raise SystemExit(
+            "Could not determine the project number for the default compute service "
+            "account. Set CIV6AZ_VERTEX_SERVICE_ACCOUNT or CIV6AZ_VERTEX_PROJECT_NUMBER."
+        )
+    return f"{number}-compute@developer.gserviceaccount.com"
+
+
 def _read_adc() -> dict[str, str]:
     """Read Application Default Credentials from disk."""
     if not _ADC_PATH.exists():

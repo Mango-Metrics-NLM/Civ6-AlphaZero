@@ -13,7 +13,7 @@
 #   _AR_REPO:   Artifact Registry repo name (default: civ6az)
 #
 # The built image will be available at:
-#   $_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/civ6az-training:$_IMAGE_TAG
+#   $_REGION-docker.pkg.dev/$PROJECT_ID/$_AR_REPO/training:$_IMAGE_TAG
 
 substitutions:
   _IMAGE_TAG: 'latest'
@@ -48,7 +48,7 @@ steps:
     args:
       - 'build'
       - '-t'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
       - '-f'
       - 'dockerfiles/Dockerfile.vertex'
       - '.'
@@ -62,7 +62,7 @@ steps:
   # never enforced at build time. A 3.10 base surfaces here, with the version
   # in the log, instead of as a SyntaxError in the first worker that hits a
   # 3.11-only construct.
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-c'
@@ -71,7 +71,7 @@ steps:
     waitFor: ['build']
 
   # Step 4: Smoke test - verify container starts correctly
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-c'
@@ -81,7 +81,7 @@ steps:
     waitFor: ['check-python-version']
 
   # Step 5: Dry-run test for selfplay worker
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-m'
@@ -96,7 +96,7 @@ steps:
     waitFor: ['smoke-test']
 
   # Step 6: Dry-run test for training worker
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-m'
@@ -110,7 +110,7 @@ steps:
     waitFor: ['smoke-test']
 
   # Step 7: MuZero self-play dry-run smoke test
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'python'
     args:
       - '-m'
@@ -126,7 +126,7 @@ steps:
     waitFor: ['smoke-test']
 
   # Step 8: Verify entrypoint blocks orchestrator mode (architecture guard)
-  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - name: '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     entrypoint: 'bash'
     args:
       - '-c'
@@ -147,13 +147,13 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+      - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
     id: 'push'
     waitFor: ['test-selfplay', 'test-training', 'test-muzero-selfplay', 'test-orchestrator-guard']
 
 # Images to be pushed to Artifact Registry
 images:
-  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/civ6az-training:${_IMAGE_TAG}'
+  - '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_AR_REPO}/training:${_IMAGE_TAG}'
 
 # Build options
 options:

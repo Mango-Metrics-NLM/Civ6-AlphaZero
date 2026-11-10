@@ -270,7 +270,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
-| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, LLM eval gate) — use this instead of hand-assembling the sequence |
+| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, advisor output-contract gate) — use this instead of hand-assembling the sequence |
 | `OMP_NUM_THREADS=2 pytest tests/unit -q -m "not slow"` | **Run the suite in this sandbox.** Without the thread cap, two tests wedge in `torch.conv2d` on the OpenMP spin-wait (§5.3) and hit the 120 s timeout. With it: 9,921 passed in 3m39s. Applies to any local suite run touching torch. |
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
@@ -289,8 +289,8 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
 | `pip install -e '.[eval]'` | Install the LLM eval-harness (langfuse-eval-harness from git) |
-| `make eval-llm` | Run the StrategyAdvisor LLM eval gate (offline, exit-code propagating) |
-| `python scripts/run_llm_eval.py` | Run the LLM eval gate directly (both analyze + report configs) |
+| `make eval-llm` | Run the StrategyAdvisor output-contract gate (offline stub LLM, exit-code propagating) |
+| `python scripts/run_llm_eval.py` | Run the advisor contract gate directly (both analyze + report configs) |
 | `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
 | `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
@@ -468,7 +468,7 @@ When making changes, update the relevant sections below:
 
 | Issue | Workaround |
 |-------|------------|
-| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects a measured +31 Elo model (score_rate 0.545). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
+| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects the A/B's headline model (score_rate 0.545; that result is superseded, see `docs/evidence/README.md`). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
 | The move action mask disagrees with the executor (~6 rejections per game at the shipped 8/30, ~22 at 8/60) | `core/civ6_actions.py:629-635` marks a move legal if on-board and not mountain; `envs/microciv.py:807-818` also rejects any tile occupied by a unit, and on rejection `:549-551` zeroes the unit's `moves_remaining`. 18,103 `Invalid move` rejections in 720 random games across all cells, every inspected one a unit collision (`docs/evidence/draw_rate_sweep/report.md`). The masked policy loss and MCTS both treat the mask as ground truth. Fix is WS-D2 in `kb/specs/20260902-validated-learning-plan.md` (add the collision check to the mask; regression test over seeded random play). |
 | **UNREMEDIATED: a W&B API key is in git history** | Found 2026-08-30 by the new repo-wide secret audit. 5 findings, one distinct 40-hex value (real W&B key format), all in commit `87cd68a2` (2026-03-19) on `origin/feature/sprint6-validation-and-nplayer-foundation` — **not** on the default branch, **not** in any current PR, and all six files deleted from the tree. Deletion does not remove it from history. **The key must be rotated**; purging objects is cleanup, not remediation. W&B being retired (NG-5) does not make a leaked credential safe. Full triage: [`docs/runbooks/secret-scanning.md`](docs/runbooks/secret-scanning.md). |
 | ~~Training and evaluation runs cannot be reproduced~~ (resolved 2026-08-30) | `--seed` on `training_civ6.py`, `run_baseline_eval.py` and `post_run_evaluation.py` now determines environments, every search, the random opponent, replay sampling, batch order and network init. Gated by `tests/regression/test_training_determinism_regression.py` (~7 s). Evidence: `docs/evidence/seeded_probe_reproducibility/`. **Does not** fix the draw rate — see the promotion-gate row above. |
@@ -538,7 +538,7 @@ When making changes, update the relevant sections below:
 # 1. Read this file (CLAUDE.md) and PROJECT_CHARTER.md (scope, non-goals, invariants)
 
 # 2. Check environment
-python --version  # Should be 3.10+
+python --version  # Should be 3.11+
 
 # 3. Install dependencies if needed
 pip install -r requirements.txt
@@ -1256,7 +1256,7 @@ project has since shipped through v1.8.0:
 - **v1.5.0** — convergence validation + MLflow monitoring + batch self-play groundwork
 - **v1.6.0** — cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes, 85%→80% CI gate
 - **v1.7.0** — full-Civ6 local gameplay (`BridgeAgentLoop` wires the agent to Civ6) and the
-  `langfuse-eval-harness` LLM eval gate for `StrategyAdvisor` (`make eval-llm`)
+  `langfuse-eval-harness` advisor output-contract gate for `StrategyAdvisor` (`make eval-llm`)
 - **v1.8.0** — headless FireTuner socket bridge (`tuner_socket_bridge.py`): live Civ6
   gameplay verified over the socket, no GUI relay needed (coverage gate back to 85%
   as of 2026-07-13)
@@ -1298,7 +1298,7 @@ project has since shipped through v1.8.0:
    trainer would index past). What remains: no config selects `batch_gumbel`
    (`--num_parallel_games` now defaults to 1 and warns when parallelism is
    requested with a variant that cannot use it, rather than silently running
-   sequential), and the claimed 5-10x still has no benchmark artifact. (The LEGACY
+   sequential), and the batch-throughput target still has no benchmark artifact. (The LEGACY
    `cloud/selfplay_worker.py` and its `Dockerfile.selfplay` were deleted 2026-09-02.)
 2. **Fog of war** (gap G10): partly done, and the remaining items are
    **sequential, not parallel**. Fog is implemented in `MicroCivEnv` (flag,

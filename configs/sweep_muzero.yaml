@@ -1,7 +1,7 @@
 # MuZero hyperparameter sweep (Optuna-backed; replaces the W&B sweep).
 #
-# Run:      python run_sweep.py --config configs/sweep_muzero.yaml
-# Persist:  CIV6AZ_SWEEP_STORAGE=sqlite:///sweeps.db python run_sweep.py ...
+# Run:      python scripts/run_sweep.py --config configs/sweep_muzero.yaml
+# Persist:  CIV6AZ_SWEEP_STORAGE=sqlite:///sweeps.db python scripts/run_sweep.py ...
 # Env overrides: CIV6AZ_SWEEP_N_TRIALS, CIV6AZ_SWEEP_TRIAL_TIMEOUT_SECONDS
 #   (legacy SWEEP_TIMEOUT_SECONDS still honored), CIV6AZ_SWEEP_STUDY_NAME,
 #   CIV6AZ_SWEEP_METRIC, CIV6AZ_SWEEP_STORAGE.
@@ -20,7 +20,7 @@ sampler: tpe
 # to each trial's suggested parameter values.
 command:
   - "{python}"
-  - run_muzero_training.py
+  - scripts/run_muzero_training.py
   - --quick
   - --small
   - "--lr={lr}"

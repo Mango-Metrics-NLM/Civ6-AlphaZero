@@ -8,10 +8,10 @@ This script integrates:
 - Weights & Biases (W&B) integration for experiment tracking
 
 Usage:
-    python run_enhanced_training.py --preset fast  # Quick test
-    python run_enhanced_training.py --preset balanced  # Medium training
-    python run_enhanced_training.py --iterations 50 --games 20  # Custom
-    python run_enhanced_training.py --wandb  # Enable W&B logging
+    python scripts/run_enhanced_training.py --preset fast  # Quick test
+    python scripts/run_enhanced_training.py --preset balanced  # Medium training
+    python scripts/run_enhanced_training.py --iterations 50 --games 20  # Custom
+    python scripts/run_enhanced_training.py --wandb  # Enable W&B logging
 """
 
 from __future__ import annotations
@@ -375,6 +375,8 @@ def evaluate_network(
     mcts = Civ6MCTS(network, mcts_config, device=device)
 
     wins = 0
+
+    draws = 0
     total_steps = 0
     rng = np.random.default_rng()
 
@@ -407,6 +409,8 @@ def evaluate_network(
                 winner = info.get("winner")
                 if winner == network_player:
                     wins += 1
+                elif winner is None:
+                    draws += 1
                 total_steps += steps
                 break
 
@@ -415,8 +419,15 @@ def evaluate_network(
             total_steps += steps
             logger.warning(f"Eval game {game_idx} hit step limit ({max_steps_per_game})")
 
+    # One SSOT for every rate (E1): win_rate keeps its draws-as-losses meaning,
+    # score_rate and draw_rate are reported beside it.
+    from alpha_zero.evaluation import scoring
+
+    losses = max(num_games - wins - draws, 0)
     return {
-        "win_rate": wins / num_games,
+        "win_rate": scoring.win_rate(wins, draws, losses) if num_games else 0.0,
+        "score_rate": scoring.score_rate(wins, draws, losses),
+        "draw_rate": draws / max(num_games, 1),
         "avg_game_length": total_steps / num_games,
     }
 
@@ -634,7 +645,11 @@ def run_enhanced_training(
 
         # Log self-play stats to W&B
         if wandb_logger and wandb_logger.is_initialized:
+            from alpha_zero.evaluation import scoring
+
             wins = sum(1 for s in game_stats if s.get("winner") == 0)
+            draws = sum(1 for s in game_stats if s.get("winner") is None)
+            losses = max(len(game_stats) - wins - draws, 0)
             avg_steps = sum(s["steps"] for s in game_stats) / len(game_stats)
 
             # Use iteration as the step for non-training metrics to keep them sync'd
@@ -642,7 +657,9 @@ def run_enhanced_training(
                 games_completed=curriculum.get_progress()["total_games"],
                 buffer_size=len(replay_buffer),
                 samples_generated=len(examples),
-                win_rate=wins / len(game_stats),
+                win_rate=scoring.win_rate(wins, draws, losses),
+                score_rate=scoring.score_rate(wins, draws, losses),
+                draw_rate=draws / len(game_stats),
                 avg_game_length=avg_steps,
                 step=iteration,  # Explicitly set step to iteration
             )

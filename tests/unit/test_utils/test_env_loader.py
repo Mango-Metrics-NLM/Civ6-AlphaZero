@@ -111,11 +111,11 @@ class TestLoadCiv6azEnv:
 
     def test_loads_from_explicit_path(self) -> None:
         """Should load variables from an explicit .env path."""
-        path = _write_dotenv("CIV6AZ_GCS_BUCKET=civ6az-training\nCIV6AZ_VERTEX_PROJECT=hrmtrain\n")
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=my-bucket\nCIV6AZ_VERTEX_PROJECT=my-gcp-project\n")
         result = load_civ6az_env(dotenv_path=path, warn_missing=False)
-        assert result["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
-        assert result["CIV6AZ_VERTEX_PROJECT"] == "hrmtrain"
-        assert os.environ["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
+        assert result["CIV6AZ_GCS_BUCKET"] == "my-bucket"
+        assert result["CIV6AZ_VERTEX_PROJECT"] == "my-gcp-project"
+        assert os.environ["CIV6AZ_GCS_BUCKET"] == "my-bucket"
 
     def test_does_not_override_existing_env_by_default(self) -> None:
         """Existing env vars should not be overridden when override=False."""
@@ -200,9 +200,9 @@ class TestRequireCiv6azEnv:
 
     def test_does_not_raise_when_all_required_set(self) -> None:
         """Should not raise when all required vars are set."""
-        path = _write_dotenv("CIV6AZ_GCS_BUCKET=civ6az-training\nCIV6AZ_VERTEX_PROJECT=hrmtrain\n")
+        path = _write_dotenv("CIV6AZ_GCS_BUCKET=my-bucket\nCIV6AZ_VERTEX_PROJECT=my-gcp-project\n")
         result = require_civ6az_env(dotenv_path=path)
-        assert result["CIV6AZ_GCS_BUCKET"] == "civ6az-training"
+        assert result["CIV6AZ_GCS_BUCKET"] == "my-bucket"
 
     def test_raises_with_descriptive_message(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Error message should include the missing variable name."""

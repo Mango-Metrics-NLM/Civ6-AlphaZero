@@ -7,13 +7,22 @@ Usage:
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 import sys
 
-GCLOUD = r"C:\Users\iansh\AppData\Local\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
-VM_NAME = "civ6az-orchestrator"
-ZONE = "us-central1-a"
-PROJECT = "hrmtrain"
+GCLOUD = (
+    os.environ.get("CIV6AZ_GCLOUD_BIN")
+    or shutil.which("gcloud")
+    or shutil.which("gcloud.cmd")
+    or "gcloud"
+)
+VM_NAME = os.environ.get("CIV6AZ_ORCHESTRATOR_VM", "civ6az-orchestrator")
+ZONE = os.environ.get("CIV6AZ_VERTEX_ZONE", "us-central1-a")
+PROJECT = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not PROJECT:
+    raise SystemExit("CIV6AZ_VERTEX_PROJECT is not set (there is no default project).")
 
 
 def ssh_command(command: str, timeout: int = 120) -> tuple[str, str, int]:

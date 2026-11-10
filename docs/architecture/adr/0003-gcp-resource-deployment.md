@@ -17,7 +17,7 @@ The MuZero-World-Model project shares the `hrmtrain` GCP project with other trai
 flowchart TB
     subgraph GCP["GCP Project: hrmtrain"]
         AR["Artifact Registry<br/>civ6az-muzero-world-model"]
-        GCS["GCS Bucket<br/>civ6az-muzero-training"]
+        GCS["GCS Bucket<br/><muzero-bucket>"]
         CB["Cloud Build"]
         VAI["Vertex AI"]
     end
@@ -57,7 +57,7 @@ sequenceDiagram
     Dev->>GCP: gcloud artifacts repos create
     GCP-->>AR: civ6az-muzero-world-model
     Dev->>GCP: gsutil mb
-    GCP-->>GCS: civ6az-muzero-training
+    GCP-->>GCS: <muzero-bucket>
 
     Note over Dev: Phase 2: Build
     Dev->>CB: cloud_build_container.py --tag v16-full-fix
@@ -96,7 +96,7 @@ gcloud artifacts repositories create civ6az-muzero-world-model \
   --project=hrmtrain
 
 # GCS bucket (409 ALREADY_EXISTS is OK)
-gsutil mb -l us-central1 -p hrmtrain gs://civ6az-muzero-training
+gsutil mb -l us-central1 -p <project> gs://<muzero-bucket>
 ```
 
 ### Container Build
@@ -123,7 +123,7 @@ pytest tests/ -v --cov=alpha_zero --cov-report=html --timeout=300
 | **Idempotency** | All provisioning commands must be safe to re-run |
 | **Isolation** | No shared resources with other `hrmtrain` projects |
 | **Rollback** | Old `muzero-world-model` repo kept for 30 days |
-| **Security** | IAM roles scoped to service account `1019219508001-compute` |
+| **Security** | IAM roles scoped to the project's default compute service account |
 | **Latency** | Container build < 15 min; test suite < 10 min |
 
 ---
@@ -143,6 +143,6 @@ pytest tests/ -v --cov=alpha_zero --cov-report=html --timeout=300
 
 > [!IMPORTANT]
 >
-> 1. **Bucket naming**: `civ6az-muzero-training` is globally unique. Confirm no collision.
-> 2. **Old data**: Existing models in `gs://civ6az-training/models/civ6az/muzero/` will NOT be migrated. Fresh start confirmed?
+> 1. **Bucket naming**: `<muzero-bucket>` is globally unique. Confirm no collision.
+> 2. **Old data**: Existing models in `gs://<training-bucket>/models/civ6az/muzero/` will NOT be migrated. Fresh start confirmed?
 > 3. **Venv path**: Tests require torch — need user to confirm which Python environment to use.

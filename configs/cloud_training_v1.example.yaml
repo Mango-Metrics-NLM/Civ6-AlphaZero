@@ -1,3 +1,5 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/cloud_training_v1.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 # =============================================================================
 # Cloud Training V1 — First Multi-Iteration Config for Vertex AI
 # =============================================================================
@@ -14,8 +16,8 @@
 #
 # Prerequisites:
 #   - MLFLOW_ENABLED=true set (optional, for experiment tracking)
-#   - gcloud auth configured with hrmtrain project
-#   - Docker image pushed: gcr.io/hrmtrain/civ6az-muzero:latest
+#   - gcloud auth configured with YOUR_GCP_PROJECT project
+#   - Docker image pushed: gcr.io/YOUR_GCP_PROJECT/civ6az-muzero:latest
 
 # --- Pipeline ---
 pipeline:

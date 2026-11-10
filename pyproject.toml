@@ -180,23 +180,20 @@ exclude = [
     "replays*",
     "mod*",
     "k8s*",
-    "spacetimedb_module*",
-    "server-module*",
+    "experimental*",
 ]
 
 [tool.ruff]
 line-length = 100
 target-version = "py311"
 # Unmaintained fringe (examples, experimental server modules) is outside the
-# lint/format gate; the maintained set is everything else. (demos/, templates/
-# and the root interfaces/ fork were deleted on 2026-11-10.)
+# lint/format gate; the maintained set is everything else. (experimental/ and spaces/
 # force-exclude makes pre-commit (which passes explicit filenames) honour this too.
 # The "./" prefix anchors each pattern to the repo root — a bare name would also
 # match nested dirs (e.g. alpha_zero/examples/) and silently de-gate them.
 extend-exclude = [
     "./examples",
-    "./server-module",
-    "./spacetimedb_module",
+    "./experimental",
 ]
 force-exclude = true
 
@@ -232,11 +229,11 @@ max-statements = 100
 # function is split.
 "alpha_zero/cloud/gcp/vertex_orchestrator.py" = ["PLR0915"]  # main(): 248 statements
 "alpha_zero/cloud/gcp/training_worker.py" = ["PLR0915"]  # main(): 168 statements
-"run_enhanced_training.py" = ["PLR0915"]  # main(): 134 statements
+"scripts/run_enhanced_training.py" = ["PLR0915"]  # main(): 134 statements
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/gcp/preemption.py" = ["S310"]  # GCP preemption handler metadata URL is intentional
-"run_*.py" = ["ANN"]  # Skip annotations in run scripts
-"run_civ6_ai.py" = ["S603"]  # Launcher wrapper: subprocess runs a fixed python -m module
+"scripts/run_*.py" = ["ANN"]  # Skip annotations in run scripts
+"scripts/run_civ6_ai.py" = ["S603"]  # Launcher wrapper: subprocess runs a fixed python -m module
 "alpha_zero/utils/reward_shaping.py" = ["RUF002"]  # Greek math symbols (γ, Φ) in formulas
 "alpha_zero/mechanics/__init__.py" = ["E402"]  # Imports after deprecation warning
 "alpha_zero/human_interface/__init__.py" = ["E402"]  # Imports after deprecation warning

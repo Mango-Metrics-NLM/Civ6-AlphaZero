@@ -6,7 +6,7 @@
 |--------------------------------|------------------------------------|------------------------------------------------------------------------------------------|
 | `CIV6AZ_VERTEX_PROJECT`       | GCP project ID                     | `hrmtrain`                                                                               |
 | `CIV6AZ_VERTEX_REGION`        | GCP region                         | `us-central1`                                                                            |
-| `CIV6AZ_GCS_BUCKET`           | GCS bucket for models/trajectories | `civ6az-training`                                                                        |
+| `CIV6AZ_GCS_BUCKET`           | GCS bucket for models/trajectories | `<your-bucket>`                                                                        |
 | `CIV6AZ_CONTAINER_IMAGE_URI`  | Full container image URI for child jobs | `us-central1-docker.pkg.dev/hrmtrain/muzero-world-model/muzero-training:v13-compat` |
 | `CIV6AZ_AGENT_ID`             | Algorithm identifier               | `muzero`                                                                                 |
 | `CIV6AZ_VERTEX_SERVICE_ACCOUNT` | SA email (optional)              | —                                                                                         |
@@ -36,7 +36,7 @@ Format: `civ6az-{agent_id}-{role}`
 |-------------------------------------------|----------------|
 | `civ6az-muzero-orchestrator`              | Orchestrator   |
 | `civ6az-selfplay-iter{NNN}-worker{NN}`   | Self-play      |
-| `civ6az-training-iter{NNN}`              | Training       |
+| `civ6az-mzwm-training-iter{NNN}`              | Training       |
 | `civ6az-eval-iter{NNN}`                  | Evaluation     |
 | `civ6az-tuning-iter{NNN}`               | HP Tuning      |
 
@@ -44,15 +44,18 @@ Format: `civ6az-{agent_id}-{role}`
 
 | Path                                       | Contents              |
 |--------------------------------------------|-----------------------|
-| `gs://civ6az-training/models/`             | Model checkpoints     |
-| `gs://civ6az-training/trajectories/`       | Self-play game data   |
-| `gs://civ6az-training/logs/`               | Job logs              |
+| `gs://<training-bucket>/models/`             | Model checkpoints     |
+| `gs://<training-bucket>/trajectories/`       | Self-play game data   |
+| `gs://<training-bucket>/logs/`               | Job logs              |
 
 ## Config Files
 
 | File                                  | Purpose              |
 |---------------------------------------|----------------------|
-| `configs/vertex_orchestrator_cloud.yaml` | Production orchestrator |
-| `configs/vertex_orchestrator_smoke.yaml` | Smoke tests          |
-| `configs/vertex_selfplay_smoke.yaml`     | Self-play smoke test |
-| `configs/vertex_training_smoke.yaml`     | Training smoke test  |
+| `configs/vertex_orchestrator_cloud.example.yaml` | Production orchestrator |
+| `configs/vertex_orchestrator_smoke.example.yaml` | Smoke tests          |
+| `configs/vertex_selfplay_smoke.example.yaml`     | Self-play smoke test |
+| `configs/vertex_training_smoke.example.yaml`     | Training smoke test  |
+
+The `*.example.yaml` files carry `YOUR_*` placeholders. Copy one to the
+gitignored `configs/local/` directory and fill in your project and bucket there.

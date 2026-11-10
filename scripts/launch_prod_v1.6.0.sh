@@ -45,10 +45,10 @@ echo "Venv active: ${PYTHON} ($(${PYTHON} --version 2>&1))"
 "${PYTHON}" -m pip install --quiet --upgrade pip wheel setuptools
 
 VERSION="${VERSION:-v1.6.0}"
-PROJECT="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
+PROJECT="${CIV6AZ_VERTEX_PROJECT:?CIV6AZ_VERTEX_PROJECT must be set (no default project)}"
 REGION="${CIV6AZ_VERTEX_REGION:-us-central1}"
-BUCKET="${CIV6AZ_GCS_BUCKET:-civ6az-training}"
-IMAGE="${CIV6AZ_CONTAINER_IMAGE_URI:-us-central1-docker.pkg.dev/${PROJECT}/civ6az/civ6az-training:${VERSION}}"
+BUCKET="${CIV6AZ_GCS_BUCKET:?CIV6AZ_GCS_BUCKET must be set (no default bucket)}"
+IMAGE="${CIV6AZ_CONTAINER_IMAGE_URI:-us-central1-docker.pkg.dev/${PROJECT}/civ6az/alphazero-training:${VERSION}}"
 
 ITERATIONS="${ITERATIONS:-50}"
 WORKERS="${WORKERS:-4}"
@@ -75,15 +75,14 @@ export MLFLOW_RUN_GROUP="${MLFLOW_RUN_GROUP:-${VERSION}}"
 export MLFLOW_ENABLED=true
 
 # Bootstrap alpha_zero package if not already installed.
-# The project is cloned at /home/ianshank/Civ6-AlphaZero* on this VM.
+# The project is cloned at $HOME/Civ6-AlphaZero* on this VM.
 # We copy source to /tmp first to avoid permission issues with egg-info.
 # Always reinstall/update alpha_zero to guarantee the orchestrator is running
 # the latest code that was synced from the developer's workspace.
 echo "Updating alpha_zero package to the latest version..."
 REPO_DIRS=(
-    "/home/iansh/Civ6-AlphaZero"
-    "/home/ianshank/Civ6-AlphaZero-real"
-    "/home/ianshank/Civ6-AlphaZero"
+    "${HOME}/Civ6-AlphaZero"
+    "${HOME}/Civ6-AlphaZero-real"
 )
 INSTALLED=0
 for REPO in "${REPO_DIRS[@]}"; do

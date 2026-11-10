@@ -8,9 +8,9 @@ This script runs full MuZero training with:
 - MLflow experiment tracking (via the compat adapter)
 
 Usage:
-    python run_muzero_training.py --wandb --iterations 10
-    python run_muzero_training.py --quick  # Quick test run
-    python run_muzero_training.py --help
+    python scripts/run_muzero_training.py --wandb --iterations 10
+    python scripts/run_muzero_training.py --quick  # Quick test run
+    python scripts/run_muzero_training.py --help
 """
 
 from __future__ import annotations

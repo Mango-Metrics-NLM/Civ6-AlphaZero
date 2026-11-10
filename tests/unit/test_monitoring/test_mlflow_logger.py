@@ -74,6 +74,8 @@ def _make_win_rate_result(
     wr.draws = draws
     wr.total_games = total_games
     wr.win_rate = wins / total_games * 100.0 if total_games > 0 else 0.0
+    # E1: WinRateResult grew a draw-aware score_rate on the same 0-100 scale.
+    wr.score_rate = (wins + 0.5 * draws) / total_games * 100.0 if total_games > 0 else 0.0
     wr.draw_rate = draws / total_games * 100.0 if total_games > 0 else 0.0
     wr.loss_rate = losses / total_games * 100.0 if total_games > 0 else 0.0
     return wr
@@ -536,17 +538,21 @@ def test_log_evaluation_handles_plain_float_win_rate(mock_mlflow: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# log_evaluation_result (PR #79: 14-metric breakdown)
+# log_evaluation_result (PR #79: 14-metric breakdown, +score_rate = 15 since E1)
 # ---------------------------------------------------------------------------
 
 
 class TestLogEvaluationResult:
-    """``log_evaluation_result`` normalises rates to 0-1 and logs 14 metrics."""
+    """``log_evaluation_result`` normalises rates to 0-1 and logs 15 metrics.
 
-    def test_logs_all_14_metrics(self, active_logger: MLflowLogger, mock_mlflow: Any) -> None:
+    The original surface was 14; ``score_rate`` (draw-aware, E1) made it 15.
+    """
+
+    def test_logs_all_15_metrics(self, active_logger: MLflowLogger, mock_mlflow: Any) -> None:
         result = _make_eval_result()
         logged = active_logger.log_evaluation_result(result, prefix="baseline/random")
-        assert len(logged) == 14
+        assert len(logged) == 15
+        assert logged["baseline/random/score_rate"] == pytest.approx((4 + 0.5 * 2) / 20)
         mock_mlflow["mlflow"].log_metrics.assert_called()
 
     def test_win_rate_normalised_to_fraction(self, active_logger: MLflowLogger) -> None:

@@ -1,5 +1,8 @@
 #!/bin/bash
 # Wait for Run A to complete, then launch Run B (hex_crystalline)
+PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:?CIV6AZ_VERTEX_PROJECT must be set (no default project)}"
+BUCKET="${CIV6AZ_GCS_BUCKET:?CIV6AZ_GCS_BUCKET must be set (no default bucket)}"
+IMAGE="gcr.io/${PROJECT_ID}/alphazero-training:v0.14.2"
 LOG=/tmp/run_b_launch.log
 echo "$(date) - Waiting for Run A (civ6az-ab-run-a) to complete..." > "$LOG"
 
@@ -17,14 +20,14 @@ docker rm -f civ6az-ab-run-b 2>/dev/null
 echo "$(date) - Launching Run B (hex_crystalline)..." >> "$LOG"
 docker run -d \
   --name civ6az-ab-run-b \
-  -e CIV6AZ_VERTEX_PROJECT=hrmtrain \
+  -e CIV6AZ_VERTEX_PROJECT="${PROJECT_ID}" \
   -e CIV6AZ_VERTEX_REGION=us-central1 \
-  -e CIV6AZ_GCS_BUCKET=civ6az-training \
-  -e CIV6AZ_CONTAINER_IMAGE_URI=gcr.io/hrmtrain/civ6az-training:v0.14.2 \
+  -e CIV6AZ_GCS_BUCKET="${BUCKET}" \
+  -e CIV6AZ_CONTAINER_IMAGE_URI="${IMAGE}" \
   -e WANDB_API_KEY="${WANDB_API_KEY}" \
   -e WANDB_PROJECT=civ6-alphazero \
   -e WANDB_ENABLED=true \
-  gcr.io/hrmtrain/civ6az-training:v0.14.2 \
+  "${IMAGE}" \
   python -u -m alpha_zero.cloud.gcp.entrypoint \
     --mode=orchestrator \
     --iterations=20 \

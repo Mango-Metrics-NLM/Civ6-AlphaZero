@@ -9,7 +9,7 @@ Simulates realistic game traffic to measure:
 
 Usage:
     python scripts/load_test_inference.py \
-        --url https://civ6az-inference.run.app \
+        --url https://<service-url> \
         --concurrent-games 50 \
         --duration-seconds 300
 """

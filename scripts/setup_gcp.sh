@@ -20,9 +20,10 @@ set -euo pipefail
 # ---------------------------------------------------------------------------
 # Configuration (override via environment variables)
 # ---------------------------------------------------------------------------
-PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:-hrmtrain}"
+PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:-$(gcloud config get-value project 2>/dev/null)}"
 REGION="${CIV6AZ_VERTEX_REGION:-us-central1}"
-BUCKET_NAME="${CIV6AZ_GCS_BUCKET:-civ6az-training}"
+# No default bucket: a bucket-name default is a takeover vector.
+BUCKET_NAME="${CIV6AZ_GCS_BUCKET:?CIV6AZ_GCS_BUCKET must be set (there is no default bucket)}"
 AR_REPO_NAME="civ6az"
 SA_NAME="civ6az-vertex"
 SA_EMAIL="${SA_NAME}@${PROJECT_ID}.iam.gserviceaccount.com"
@@ -290,7 +291,7 @@ echo "  1. Build and push container:"
 echo "     python scripts/build_and_push.py --tag v1.0.0"
 echo ""
 echo "  2. Update .env with new image URI:"
-echo "     CIV6AZ_CONTAINER_IMAGE_URI=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/civ6az-training:v1.0.0"
+echo "     CIV6AZ_CONTAINER_IMAGE_URI=${REGION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO_NAME}/alphazero-training:v1.0.0"
 echo ""
 echo "  3. Run dry-run test:"
 echo "     .\\scripts\\launch_muzero_training.ps1 -DryRun"

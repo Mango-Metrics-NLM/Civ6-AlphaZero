@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 
 # Required GCP variables and their descriptions
 _REQUIRED_VARS: dict[str, str] = {
-    "CIV6AZ_VERTEX_PROJECT": "GCP project ID (e.g. hrmtrain)",
-    "CIV6AZ_GCS_BUCKET": "GCS bucket name (e.g. civ6az-training)",
+    "CIV6AZ_VERTEX_PROJECT": "GCP project ID (e.g. my-gcp-project)",
+    "CIV6AZ_GCS_BUCKET": "GCS bucket name (e.g. my-bucket)",
 }
 
 # Optional variables with their defaults

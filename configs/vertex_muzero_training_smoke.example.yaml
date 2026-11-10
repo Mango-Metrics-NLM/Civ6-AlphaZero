@@ -1,3 +1,5 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_muzero_training_smoke.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 # Vertex AI MuZero Training Smoke Test Configuration
 #
 # ISOLATED from running AlphaZero training via:
@@ -11,15 +13,15 @@
 #   checkpoints/civ6az/muzero-smoke/
 #
 # Usage:
-#   1. Copy to vertex_muzero_training_smoke_local.yaml for secrets
-#   2. The *_local.yaml files are gitignored
+#   1. Copy to configs/local/vertex_muzero_training_smoke.yaml for secrets
+#   2. configs/local/ is gitignored
 
 workerPoolSpecs:
   - machineSpec:
       machineType: n1-standard-4
     replicaCount: 1
     containerSpec:
-      imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
+      imageUri: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
       args:
         - "--mode=training"
         - "--iteration=1"
@@ -39,8 +41,8 @@ workerPoolSpecs:
         - name: MLFLOW_ENABLED
           value: "true"
         - name: CIV6AZ_GCS_BUCKET
-          value: "civ6az-muzero-training"
+          value: "YOUR_BUCKET"
         - name: CIV6AZ_VERTEX_PROJECT
-          value: "hrmtrain"
+          value: "YOUR_GCP_PROJECT"
         - name: CIV6AZ_VERTEX_REGION
           value: "us-central1"

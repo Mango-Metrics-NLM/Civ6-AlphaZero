@@ -1,6 +1,5 @@
 # Optimal MuZero Configuration
 # Based on W&B Hyperparameter Sweep Results (2026-01-26) - Verified correct date
-# Sweep URL: https://wandb.ai/ianshank-none/civ6-alphazero/sweeps/j18ofg6z
 
 # Best performing configuration (different-sweep-10)
 # Final Loss: 43.23 (lowest achieved)

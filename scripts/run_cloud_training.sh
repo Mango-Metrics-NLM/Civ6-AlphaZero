@@ -2,7 +2,7 @@
 # =============================================================================
 # Convenience wrapper for launching Civ6 AlphaZero cloud training on Vertex AI.
 #
-# Reads defaults from configs/cloud_training_v1.yaml comments, but all values
+# Reads defaults from configs/cloud_training_v1.example.yaml comments, but all values
 # are passed as CLI args to the orchestrator (YAML is documentation only).
 #
 # Usage:

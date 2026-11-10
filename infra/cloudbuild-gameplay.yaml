@@ -8,9 +8,9 @@
 
 substitutions:
   _REGION: us-central1
-  _INFERENCE_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference
-  _AUTH_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-auth
-  _MATCHMAKER_IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-matchmaker
+  _INFERENCE_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/civ6az/inference
+  _AUTH_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/civ6az/auth
+  _MATCHMAKER_IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/civ6az/matchmaker
   _TAG: ${SHORT_SHA}
   _INFERENCE_SERVICE: civ6az-prod-inference
   _AUTH_SERVICE: civ6az-prod-auth

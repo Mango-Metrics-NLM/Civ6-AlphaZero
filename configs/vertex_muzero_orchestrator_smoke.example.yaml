@@ -1,3 +1,5 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_muzero_orchestrator_smoke.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 # Vertex AI MuZero Orchestrator Smoke Test Configuration
 #
 # This config is for the LOCAL orchestrator that dispatches workers to Vertex AI.

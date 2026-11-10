@@ -1,7 +1,7 @@
 """Optuna-backed hyperparameter search with MLflow trial logging.
 
 Replaces the retired W&B sweep pathway (``wandb.sweep`` / ``wandb.agent``,
-formerly driven through ``run_sweep.py``). The design is deliberately
+driven through ``scripts/run_sweep.py``). The design is deliberately
 decoupled so each piece is reusable on its own:
 
 - :class:`SweepConfig` — declarative, YAML-loadable configuration with

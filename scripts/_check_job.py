@@ -22,7 +22,9 @@ tok = requests.post(
     timeout=10,
 ).json()["access_token"]
 
-project = "hrmtrain"
+project = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not project:
+    raise SystemExit("CIV6AZ_VERTEX_PROJECT is not set (there is no default project).")
 region = "us-central1"
 
 # List recent jobs

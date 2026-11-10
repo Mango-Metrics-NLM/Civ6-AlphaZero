@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import re
 import sys
 import time
@@ -202,7 +203,12 @@ def reconstruct_tournament(matchups: list[dict], output_db: str):
 
 def main():
     parser = argparse.ArgumentParser(description="Reconstruct tournament from logs")
-    parser.add_argument("--project", default="hrmtrain", help="GCP Project ID")
+    parser.add_argument(
+        "--project",
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        required=not os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        help="GCP Project ID (default: $CIV6AZ_VERTEX_PROJECT; no built-in default)",
+    )
     parser.add_argument("--job_id", default="356684784686071808", help="Vertex AI Job ID")
     parser.add_argument(
         "--output", default="data/tournament_reconstructed.db", help="Output DB path"

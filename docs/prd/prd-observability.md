@@ -69,4 +69,4 @@ The current incident went undetected for ~2 hours and 50+ failed jobs. W&B is al
 ## Open Questions
 
 1. **W&B Alerts API**: Does the W&B Python SDK support programmatic alert creation, or is manual setup required?
-2. **Email delivery**: Is W&B email alerting configured for `ianshank@gmail.com`?
+2. **Email delivery**: Is W&B email alerting configured for the maintainer (@ianshank)?

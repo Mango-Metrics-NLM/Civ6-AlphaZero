@@ -9,7 +9,7 @@ Demonstrates:
 5. Performance monitoring
 
 Usage:
-    python examples/inference_quickstart.py --url https://civ6az-inference.run.app
+    python examples/inference_quickstart.py --url https://<service-url>
 """
 
 from __future__ import annotations

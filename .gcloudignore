@@ -79,6 +79,11 @@ node_modules/
 *.pkl
 *.safetensors
 *.bin
+*.ckpt
+*.npz
+
+# Experimental, ungated material (not part of the package)
+experimental/
 
 # Benchmark / experiment dirs
 .benchmarks/

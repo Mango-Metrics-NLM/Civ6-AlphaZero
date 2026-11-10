@@ -1,3 +1,5 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_tuning_search_space.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
 studySpec:
   metrics:
   - metricId: loss
@@ -39,4 +41,4 @@ trialJobSpec:
         acceleratorCount: 1
       replicaCount: 1
       containerSpec:
-        imageUri: us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
+        imageUri: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix

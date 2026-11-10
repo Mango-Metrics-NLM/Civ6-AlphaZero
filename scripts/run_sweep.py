@@ -8,9 +8,9 @@ is a thin CLI over it.
 Usage::
 
     pip install -e '.[tuning]'                       # optuna
-    python run_sweep.py                              # default config
-    python run_sweep.py --config configs/sweep_muzero.yaml --n-trials 5
-    python run_sweep.py --dry-run                    # validate config only
+    python scripts/run_sweep.py                              # default config
+    python scripts/run_sweep.py --config configs/sweep_muzero.yaml --n-trials 5
+    python scripts/run_sweep.py --dry-run                    # validate config only
 
 Trials are logged to MLflow when tracking is enabled
 (``CIV6AZ_MLFLOW_ENABLED=true``); studies persist across restarts when an

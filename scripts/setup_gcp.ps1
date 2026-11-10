@@ -34,9 +34,9 @@ $ErrorActionPreference = "Stop"
 $setupScript = Join-Path $PSScriptRoot "setup_env.ps1"
 if (Test-Path $setupScript) { . $setupScript }
 
-$ProjectId  = if ($env:CIV6AZ_VERTEX_PROJECT) { $env:CIV6AZ_VERTEX_PROJECT } else { "hrmtrain" }
+$ProjectId  = if ($env:CIV6AZ_VERTEX_PROJECT) { $env:CIV6AZ_VERTEX_PROJECT } else { (gcloud config get-value project 2>$null) }
 $Region     = if ($env:CIV6AZ_VERTEX_REGION)  { $env:CIV6AZ_VERTEX_REGION }  else { "us-central1" }
-$BucketName = if ($env:CIV6AZ_GCS_BUCKET)     { $env:CIV6AZ_GCS_BUCKET }     else { "civ6az-training" }
+$BucketName = if ($env:CIV6AZ_GCS_BUCKET)     { $env:CIV6AZ_GCS_BUCKET }     else { throw "CIV6AZ_GCS_BUCKET must be set (there is no default bucket)" }
 $ArRepoName = "civ6az"
 $SaName     = "civ6az-vertex"
 $SaEmail    = "${SaName}@${ProjectId}.iam.gserviceaccount.com"

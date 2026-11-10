@@ -18,7 +18,7 @@ unsupported strength or speed-up claim.
 
 #### Scenario: Doc-sync gate rejects an unsupported claim
 
-- **WHEN** the README or ROADMAP contains a forbidden claim pattern such as ``13x`` or ``production-ready``
+- **WHEN** the README or ROADMAP contains a forbidden claim pattern such as an unmeasured speed-up multiplier or ``production-ready``
 - **THEN** ``python scripts/check_doc_sync.py`` reports a D4b violation and exits 1
 
 #### Scenario: External links are declared

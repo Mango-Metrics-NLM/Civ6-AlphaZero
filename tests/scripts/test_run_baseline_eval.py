@@ -290,11 +290,15 @@ class TestExtractGameStatsMetrics:
 class TestResultToMlflowMetrics:
     """Tests for the combined result_to_mlflow_metrics()."""
 
-    def test_returns_14_metrics(self) -> None:
-        """Combined function should return 14 metrics (7 win-rate + 7 stats)."""
+    def test_returns_15_metrics(self) -> None:
+        """Combined function returns 15 metrics (8 win-rate incl. score_rate + 7 stats).
+
+        Was 14 before ``WinRateResult.score_rate`` (draw-aware, E1) existed.
+        """
         result = _make_eval_result()
         metrics = result_to_mlflow_metrics(result, "baseline/random")
-        assert len(metrics) == 14
+        assert len(metrics) == 15
+        assert "baseline/random/score_rate" in metrics
 
     def test_all_keys_prefixed(self) -> None:
         """All keys should have the given prefix."""

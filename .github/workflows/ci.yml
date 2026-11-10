@@ -396,7 +396,7 @@ jobs:
       - name: Probe eval-harness import (distinguishes deps-broke from gate-failed)
         run: python -c "import eval_harness; print('eval_harness importable')"
 
-      - name: Run LLM eval gate
+      - name: Run the StrategyAdvisor output-contract gate
         run: make eval-llm
 
   coverage:

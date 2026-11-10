@@ -838,7 +838,7 @@ def sample_config():
 
 # 4. Parametrize for multiple cases
 @pytest.mark.parametrize("input,expected", [
-    ("valid@email.com", True),
+    ("user@example.com", True),
     ("invalid", False),
     ("", False),
 ])

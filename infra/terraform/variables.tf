@@ -55,9 +55,8 @@ variable "spacetimedb_disk_size_gb" {
 # ---------- AI Inference ----------
 
 variable "inference_container_image" {
-  description = "Container image URI for the AI inference service."
+  description = "Container image URI for the AI inference service (no default: pass it explicitly)."
   type        = string
-  default     = "us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference:latest"
 }
 
 variable "inference_min_instances" {
@@ -130,7 +129,6 @@ variable "github_branch" {
 # ---------- GCS ----------
 
 variable "training_bucket" {
-  description = "Existing GCS bucket for training artifacts (models, trajectories)."
+  description = "Existing GCS bucket for training artifacts (models, trajectories). No default: a bucket-name default is a takeover vector."
   type        = string
-  default     = "civ6az-training"
 }

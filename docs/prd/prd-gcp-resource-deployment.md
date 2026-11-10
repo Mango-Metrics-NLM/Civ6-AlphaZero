@@ -16,7 +16,7 @@
 ### US-2: GCS Bucket Provisioning
 
 **As a** ML engineer running self-play and training,
-**I want** a dedicated GCS bucket (`civ6az-muzero-training`) in `us-central1`,
+**I want** a dedicated GCS bucket (`<muzero-bucket>`) in `us-central1`,
 **So that** model checkpoints, trajectories, and logs don't collide with other training pipelines.
 
 ### US-3: Container Rebuild
@@ -44,7 +44,7 @@
 ### AC-2: GCS Bucket Exists
 
 - **Given** gsutil is authenticated with `hrmtrain` project
-- **When** `gsutil ls gs://civ6az-muzero-training` is run
+- **When** `gsutil ls gs://<muzero-bucket>` is run
 - **Then** the bucket is accessible (exit code 0)
 
 ### AC-3: Container Image Pushed
@@ -77,7 +77,7 @@
 
 - Renaming resources in non-MuZero projects (PBT, enhanced training, orchestrator configs)
 - W&B project migration (existing runs stay in `civ6-alphazero`)
-- Data migration from `civ6az-training` bucket to `civ6az-muzero-training`
+- Data migration from the `<training-bucket>` bucket to `<muzero-bucket>`
 - Submitting actual training jobs (separate Epic 4)
 
 ---
@@ -97,6 +97,6 @@
 
 ## Open Questions
 
-1. **Data Migration**: Should existing models/trajectories be copied from `gs://civ6az-training` to `gs://civ6az-muzero-training`? (Recommend: No, fresh start for MuZero.)
+1. **Data Migration**: Should existing models/trajectories be copied from `gs://<training-bucket>` to `gs://<muzero-bucket>`? (Recommend: No, fresh start for MuZero.)
 2. **Old Resources**: Should the old `muzero-world-model` AR repo and images be deleted? (Recommend: Keep for rollback, delete after 30 days.)
 3. **Venv Location**: Where is the torch-enabled venv on this machine? (Need from user if `anaconda3` base doesn't have torch.)
