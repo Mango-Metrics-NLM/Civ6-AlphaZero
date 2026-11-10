@@ -59,9 +59,18 @@ class TestParseArgs:
     """Tests for CLI argument parsing."""
 
     def test_build_id_required(self) -> None:
-        """build_id is a required positional argument."""
-        args = parse_args(["abc-123"])
+        """build_id is a required positional argument (project supplied explicitly)."""
+        args = parse_args(["abc-123", "--project", "my-proj"])
         assert args.build_id == "abc-123"
+
+    def test_project_is_required_without_env(self) -> None:
+        """No built-in project id: with the env var unset, --project is mandatory."""
+        with patch.dict("os.environ", {}, clear=False):
+            import os
+
+            os.environ.pop("CIV6AZ_VERTEX_PROJECT", None)
+            with pytest.raises(SystemExit):
+                parse_args(["abc-123"])
 
     def test_project_default_env_var(self) -> None:
         """--project falls back to CIV6AZ_VERTEX_PROJECT env var."""

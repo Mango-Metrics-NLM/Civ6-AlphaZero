@@ -6,9 +6,13 @@ Orchestrates three evaluation tasks after a training run:
      saved model checkpoints (v42-v91 by default), logging ELO ratings
      and spread to MLflow.
   2. Baseline evaluation: Final model vs RandomAgent and GreedyHeuristic
-     over N games, logging win/draw/loss rates to MLflow.
-  3. Custom metrics: policy_entropy, value_mae, policy_top1_acc via
-     AlphaZeroMLflowEvaluator on a synthetic eval dataset.
+     over N games, logging win/draw/loss/score rates, average game length
+     and value correlation to MLflow.
+
+(An earlier version of this docstring advertised a third step -- custom
+policy_entropy / value_mae / policy_top1_acc metrics via
+AlphaZeroMLflowEvaluator. This script never computed them; the evaluator lives
+in ``alpha_zero.monitoring`` and is not driven from here.)
 
 All results are logged to the training MLflow run (or a sibling eval run
 under the same experiment), and tournament results are saved to GCS.
@@ -28,7 +32,7 @@ Usage:
         --tournament_games 10 --mcts_sims 25 \\
         --board_size 8 --action_space_size 376 \\
         --tracking_uri sqlite:///mlflow.db \\
-        --gcs_bucket civ6az-training \\
+        --gcs_bucket YOUR_BUCKET \\
         --create_child_run
 """
 
@@ -350,8 +354,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Create a sibling eval run instead of logging to training run",
     )
     # GCS / model selection
-    p.add_argument("--gcs_bucket", default=os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training"))
-    p.add_argument("--gcp_project", default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain"))
+    # No built-in bucket/project: a bucket-name default is a takeover vector.
+    p.add_argument(
+        "--gcs_bucket",
+        default=os.environ.get("CIV6AZ_GCS_BUCKET"),
+        required=not os.environ.get("CIV6AZ_GCS_BUCKET"),
+        help="GCS bucket holding the models (default: $CIV6AZ_GCS_BUCKET)",
+    )
+    p.add_argument(
+        "--gcp_project",
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        required=not os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        help="GCP project ID (default: $CIV6AZ_VERTEX_PROJECT)",
+    )
     p.add_argument("--model_start", type=int, default=42, help="First model version")
     p.add_argument("--model_end", type=int, default=91, help="Last model version")
     p.add_argument("--model_stride", type=int, default=5, help="Version stride")
