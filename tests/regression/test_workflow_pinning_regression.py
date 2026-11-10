@@ -235,7 +235,11 @@ def _default_branch() -> str:
     settings = Path(".claude/settings.json")
     if settings.exists():
         try:
-            declared = json.loads(settings.read_text(encoding="utf-8")).get("env", {}).get("CIV6AZ_DEFAULT_BRANCH")
+            declared = (
+                json.loads(settings.read_text(encoding="utf-8"))
+                .get("env", {})
+                .get("CIV6AZ_DEFAULT_BRANCH")
+            )
         except json.JSONDecodeError:
             declared = None
         if declared:

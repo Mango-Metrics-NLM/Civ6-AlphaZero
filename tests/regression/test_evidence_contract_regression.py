@@ -129,7 +129,9 @@ class TestEvidenceContract:
                 continue
             for report in report_files(d):
                 checked += 1
-                assert BANNER_MARK in report.read_text(encoding="utf-8"), f"{report} lacks the superseded banner"
+                assert BANNER_MARK in report.read_text(encoding="utf-8"), (
+                    f"{report} lacks the superseded banner"
+                )
         assert checked > 0, "no pre-fix report was inspected -- the check would be vacuous"
 
     def test_pre_fix_sha_is_an_ancestor_of_the_fix_commit(self) -> None:
