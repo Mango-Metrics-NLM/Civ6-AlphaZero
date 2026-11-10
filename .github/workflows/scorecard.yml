@@ -27,6 +27,9 @@ concurrency:
 jobs:
   analysis:
     name: Scorecard analysis
+    # Scorecard publishes results only for public repositories; skipped while
+    # private so the check is informative, not red.
+    if: ${{ !github.event.repository.private }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     continue-on-error: true
