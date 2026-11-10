@@ -1,0 +1,51 @@
+name: CodeQL
+
+# Static code scanning for the Python package. Kept in its own workflow because
+# uploading results needs `security-events: write`, a scope ci.yml and
+# security-scan.yml deliberately do not hold.
+#
+# Advisory (`continue-on-error: true`) until the maintainer has seen a run:
+# result upload also requires the repository to be public (or to have GitHub
+# Advanced Security), so on the private repository the analyze step may fail
+# at upload time even when the scan itself is fine.
+on:
+  push:
+    branches:
+      - claude/civ6-alphazero-implementation-vMnun
+      - main
+  pull_request:
+  schedule:
+    - cron: "41 3 * * 2" # Tuesdays 03:41 UTC
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (python)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read # workflow run metadata for the upload
+      security-events: write # upload SARIF to code scanning
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: python
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: "/language:python"

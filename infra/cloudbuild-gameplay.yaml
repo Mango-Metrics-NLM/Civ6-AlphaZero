@@ -24,7 +24,7 @@ steps:
     args:
       - -c
       - |
-        pip install --quiet ruff && \
+        pip install --quiet ruff==0.15.8 && \
         ruff check alpha_zero/ --select E,F --ignore E501 --exit-non-zero-on-fix
 
   # ---------- Build Inference Image ----------
@@ -41,6 +41,20 @@ steps:
       - .
     waitFor:
       - lint
+
+  # ---------- Python version guard (inside the built image) ----------
+  # Same base as the training image (nvcr.io/nvidia/pytorch:24.09-py3, which
+  # NGC documents as Python 3.10 despite the Dockerfile comment); the image is
+  # assembled with PYTHONPATH, so `requires-python` is never checked. Fail here,
+  # with the version in the log, rather than at the first 3.11-only construct.
+  - name: '${_INFERENCE_IMAGE}:${_TAG}'
+    id: check-python-version
+    entrypoint: python
+    args:
+      - -c
+      - import sys; assert sys.version_info >= (3, 11), sys.version; print("python", sys.version)
+    waitFor:
+      - build-inference
 
   # ---------- Smoke Test Inference ----------
   - name: '${_INFERENCE_IMAGE}:${_TAG}'
@@ -62,7 +76,7 @@ steps:
         assert value.shape == (1,), f"Bad value shape: {value.shape}"
         print(f"Inference smoke test PASSED: policy={policy.shape}, value={value.shape}")
     waitFor:
-      - build-inference
+      - check-python-version
 
   # ---------- Push Images ----------
   - name: 'gcr.io/cloud-builders/docker'

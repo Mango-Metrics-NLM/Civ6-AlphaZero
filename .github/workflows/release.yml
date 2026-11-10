@@ -1,124 +1,207 @@
 name: Release
 
 on:
-    push:
-        tags:
-            - "v*.*.*"
+  push:
+    tags:
+      - "v*.*.*"
 
 # Workflow default is read-only; only the job that actually publishes the
 # release is granted `contents: write` (job-level permissions replace, not
 # extend, the workflow-level block).
 permissions:
-    contents: read
+  contents: read
+
+# One release at a time per tag, and never cancel one half-way: a cancelled
+# run can leave a tag with a release but no assets.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-    release:
-        name: Create Release
-        runs-on: ubuntu-latest
-        timeout-minutes: 15
-        permissions:
-            contents: write
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      # CONFIRM-FIRST: the provenance attestation step below additionally needs
+      #   id-token: write       # OIDC token to sign the attestation with Sigstore
+      #   attestations: write   # store the attestation against this repository
+      # Add both here when enabling it; neither is granted until then.
 
-        steps:
-            - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-              with:
-                  fetch-depth: 0 # Full history for changelog generation
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # Full history for the commit-log fallback notes
+          # Nothing here pushes; `gh release create` authenticates with GH_TOKEN,
+          # not with a token left in .git/config.
+          persist-credentials: false
 
-            - name: Set up Python
-              uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-              with:
-                  python-version: "3.11"
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
 
-            - name: Extract version from tag
-              id: version
-              run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+      - name: Extract version from tag
+        id: version
+        run: |
+          version="${GITHUB_REF#refs/tags/v}"
+          echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
+          echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
 
-            - name: Generate changelog from conventional commits
-              id: changelog
-              run: |
-                  # Get the previous tag (if any)
-                  PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+      # The tag is the release's name; pyproject.toml is what gets built into the
+      # wheel's metadata. If they disagree, PyPI/Hub consumers see one version
+      # and GitHub another. Fail before building anything.
+      - name: Assert the tag matches pyproject.toml
+        run: |
+          python - <<'EOF'
+          import os
+          import sys
+          import tomllib
 
-                  if [ -z "$PREV_TAG" ]; then
-                    RANGE="HEAD"
-                  else
-                    RANGE="${PREV_TAG}..HEAD"
-                  fi
+          with open("pyproject.toml", "rb") as fh:
+              declared = tomllib.load(fh)["project"]["version"]
+          tagged = os.environ["RELEASE_VERSION"]
+          if declared != tagged:
+              sys.exit(
+                  f"tag v{tagged} does not match pyproject.toml version {declared}. "
+                  "Bump [project].version (and CHANGELOG.md) or retag; do not release a mismatch."
+              )
+          print(f"tag v{tagged} matches pyproject.toml")
+          EOF
 
-                  # Generate categorized changelog
-                  echo "## What's Changed" > release_notes.md
-                  echo "" >> release_notes.md
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade pip
+          pip install build==1.6.1
+          python -m build
+          ls -l dist/
 
-                  # Features
-                  FEATS=$(git log $RANGE --pretty=format:"%s" | grep -E "^feat" | sed 's/^feat[^:]*: /- ✨ /' || true)
-                  if [ -n "$FEATS" ]; then
-                    echo "### ✨ Features" >> release_notes.md
-                    echo "$FEATS" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+      # Written from inside dist/ so the sums file names bare filenames, which is
+      # what `sha256sum -c SHA256SUMS` expects when run next to the downloads.
+      - name: Write checksums
+        run: |
+          cd dist
+          sha256sum ./*.whl ./*.tar.gz | sed 's#\./##' > SHA256SUMS
+          cat SHA256SUMS
 
-                  # Bug Fixes
-                  FIXES=$(git log $RANGE --pretty=format:"%s" | grep -E "^fix" | sed 's/^fix[^:]*: /- 🐛 /' || true)
-                  if [ -n "$FIXES" ]; then
-                    echo "### 🐛 Bug Fixes" >> release_notes.md
-                    echo "$FIXES" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+      # Preferred notes: the `## [X.Y.Z]` section of CHANGELOG.md, which the
+      # release skill rolls before tagging. `found=false` hands over to the
+      # commit-log fallback below rather than publishing an empty body.
+      - name: Release notes from CHANGELOG.md
+        id: changelog
+        run: |
+          python - <<'EOF'
+          import os
+          import pathlib
+          import re
 
-                  # Performance
-                  PERFS=$(git log $RANGE --pretty=format:"%s" | grep -E "^perf" | sed 's/^perf[^:]*: /- 🚀 /' || true)
-                  if [ -n "$PERFS" ]; then
-                    echo "### 🚀 Performance" >> release_notes.md
-                    echo "$PERFS" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+          version = os.environ["RELEASE_VERSION"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          # Headings look like: "## [1.8.0] — 2026-07-12 — Title". Capture up to
+          # the next "## [" heading or end of file.
+          pattern = re.compile(
+              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)", re.M | re.S
+          )
+          match = pattern.search(text)
+          body = match.group(1).strip() if match else ""
+          found = bool(body)
+          if found:
+              notes = (
+                  f"## Changes in v{version}\n\n{body}\n\n"
+                  f"**Full Changelog**: https://github.com/{repo}/blob/v{version}/CHANGELOG.md\n"
+              )
+              pathlib.Path("release_notes.md").write_text(notes, encoding="utf-8")
+          else:
+              print(
+                  f"::warning::CHANGELOG.md has no '## [{version}]' section; "
+                  "release notes will be generated from the commit log instead"
+              )
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
+              fh.write(f"found={'true' if found else 'false'}\n")
+          EOF
 
-                  # Tests
-                  TESTS=$(git log $RANGE --pretty=format:"%s" | grep -E "^test" | sed 's/^test[^:]*: /- 🧪 /' || true)
-                  if [ -n "$TESTS" ]; then
-                    echo "### 🧪 Tests" >> release_notes.md
-                    echo "$TESTS" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+      # Fallback: categorised conventional commits since the previous tag. Safe
+      # on the FIRST release: with no previous tag `git describe` fails, the
+      # range becomes the whole history capped at 200 commits, and the footer
+      # links to the tag's commit list instead of a compare URL that would 404.
+      - name: Release notes from commit history (fallback)
+        if: steps.changelog.outputs.found != 'true'
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 "HEAD^" 2>/dev/null || echo "")
 
-                  # Documentation
-                  DOCS=$(git log $RANGE --pretty=format:"%s" | grep -E "^docs" | sed 's/^docs[^:]*: /- 📚 /' || true)
-                  if [ -n "$DOCS" ]; then
-                    echo "### 📚 Documentation" >> release_notes.md
-                    echo "$DOCS" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+          if [ -z "$PREV_TAG" ]; then
+            RANGE="HEAD"
+            LIMIT="--max-count=200"
+          else
+            RANGE="${PREV_TAG}..HEAD"
+            LIMIT=""
+          fi
 
-                  # CI/Build
-                  CI=$(git log $RANGE --pretty=format:"%s" | grep -E "^(ci|build)" | sed 's/^[^:]*: /- ⚙️ /' || true)
-                  if [ -n "$CI" ]; then
-                    echo "### ⚙️ CI & Build" >> release_notes.md
-                    echo "$CI" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+          {
+            echo "## What's Changed"
+            echo ""
+          } > release_notes.md
 
-                  # Chores/Refactoring
-                  CHORES=$(git log $RANGE --pretty=format:"%s" | grep -E "^(chore|refactor)" | sed 's/^[^:]*: /- 🔧 /' || true)
-                  if [ -n "$CHORES" ]; then
-                    echo "### 🔧 Maintenance" >> release_notes.md
-                    echo "$CHORES" >> release_notes.md
-                    echo "" >> release_notes.md
-                  fi
+          section() {
+            local title="$1" pattern="$2" prefix="$3"
+            local lines
+            # shellcheck disable=SC2086
+            lines=$(git log $RANGE $LIMIT --pretty=format:"%s" | grep -E "^${pattern}" | sed -E "s/^[^:]*: /- ${prefix} /" || true)
+            if [ -n "$lines" ]; then
+              {
+                echo "### ${title}"
+                echo "$lines"
+                echo ""
+              } >> release_notes.md
+            fi
+          }
 
-                  echo "" >> release_notes.md
-                  echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${PREV_TAG}...v${{ steps.version.outputs.VERSION }}" >> release_notes.md
+          section "✨ Features"      "feat"            "✨"
+          section "🐛 Bug Fixes"     "fix"             "🐛"
+          section "🚀 Performance"   "perf"            "🚀"
+          section "🧪 Tests"         "test"            "🧪"
+          section "📚 Documentation" "docs"            "📚"
+          section "⚙️ CI & Build"    "(ci|build)"      "⚙️"
+          section "🔧 Maintenance"   "(chore|refactor)" "🔧"
 
-            # Pinned to the commit behind the mutable `v2` tag (resolved
-            # 2026-09-02 with `git ls-remote https://github.com/softprops/action-gh-release refs/tags/v2`,
-            # which pointed at the same commit as v2.6.2). A mutable tag in the
-            # one job holding `contents: write` is a supply-chain hole; re-resolve
-            # with that command and update both the SHA and the trailing comment.
-            - name: Create GitHub Release
-              uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
-              with:
-                  body_path: release_notes.md
-                  generate_release_notes: false
-                  draft: false
-                  prerelease: ${{ contains(github.ref, '-') }}
-              env:
-                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          echo "" >> release_notes.md
+          if [ -n "$PREV_TAG" ]; then
+            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...v${RELEASE_VERSION}" >> release_notes.md
+          else
+            echo "**Full Changelog**: https://github.com/${GITHUB_REPOSITORY}/commits/v${RELEASE_VERSION} (first tagged release)" >> release_notes.md
+          fi
+          cat release_notes.md
+
+      # SLSA build provenance for every artifact in dist/. Disabled until the
+      # maintainer approves the two extra token scopes documented in the job's
+      # `permissions:` block above; attestations are visible on the repository's
+      # Attestations page and verifiable with `gh attestation verify`.
+      - name: Attest build provenance
+        if: false # CONFIRM-FIRST: enable after maintainer approves id-token/attestations permissions
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: dist/*
+
+      # `gh` ships on the runner, so no third-party action needs to hold the one
+      # `contents: write` token in this repository (this replaced
+      # softprops/action-gh-release on 2026-11-10; zizmor flagged it as
+      # superfluous, and its pin comment had drifted from the SHA it annotated).
+      # The tag name reaches the script through `env`, not `${{ }}` inside
+      # `run:`, so it cannot be interpolated as shell.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          prerelease=""
+          case "$TAG" in
+            *-*) prerelease="--prerelease" ;;
+          esac
+          # shellcheck disable=SC2086
+          gh release create "$TAG" dist/* \
+            --verify-tag \
+            --title "$TAG" \
+            --notes-file release_notes.md \
+            $prerelease

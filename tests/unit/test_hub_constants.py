@@ -15,7 +15,7 @@ class TestHFOrg:
     """Tests for HF_ORG constant."""
 
     def test_default_value(self):
-        """Default HF_ORG should be Mango-Metrics-NLM."""
+        """Default HF_ORG is the publishing account that owns the one published artifact."""
         # Re-import to get fresh module state.
         import importlib
 

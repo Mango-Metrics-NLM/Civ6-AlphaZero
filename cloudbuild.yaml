@@ -9,7 +9,7 @@ steps:
   args:
   - -c
   - |
-    pip install --quiet ruff && \
+    pip install --quiet ruff==0.15.8 && \
     ruff check alpha_zero/ --select E,F --ignore E501 --exit-non-zero-on-fix
 
 - name: 'gcr.io/cloud-builders/docker'
@@ -24,6 +24,21 @@ steps:
   waitFor:
   - lint
 
+# Runs INSIDE the image just built. The base is nvcr.io/nvidia/pytorch:24.09-py3;
+# the Dockerfile comment says Python 3.12 but NGC's 24.09 release notes list
+# 3.10, and because the image uses PYTHONPATH rather than `pip install -e .`,
+# `requires-python = ">=3.11"` is never enforced at build time. This step is
+# where a 3.10 base surfaces -- here, with the version in the log -- instead of
+# as a SyntaxError in the first worker that hits a 3.11-only construct.
+- name: '${_IMAGE}:${_TAG_NAME}'
+  id: check-python-version
+  entrypoint: python
+  args:
+  - -c
+  - import sys; assert sys.version_info >= (3, 11), sys.version; print("python", sys.version)
+  waitFor:
+  - build
+
 - name: '${_IMAGE}:${_TAG_NAME}'
   id: smoke-test
   entrypoint: python
@@ -32,7 +47,7 @@ steps:
   - -c
   - import sys; sys.path.insert(0, "/app"); from alpha_zero.cloud.gcp.config import GCPConfig; print("Container smoke test passed")
   waitFor:
-  - build
+  - check-python-version
 
 - name: '${_IMAGE}:${_TAG_NAME}'
   id: test-selfplay

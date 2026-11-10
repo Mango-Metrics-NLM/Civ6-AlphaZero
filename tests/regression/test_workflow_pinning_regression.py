@@ -22,7 +22,11 @@ scalar vacuously.
 
 from __future__ import annotations
 
+import json
+import os
 import re
+import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -161,3 +165,326 @@ def test_the_uses_extractor_finds_nested_references() -> None:
         "  b:\n    steps:\n      - uses: p/q@" + "1" * 40 + "\n"
     )
     assert len(_iter_uses(doc)) == 2
+
+
+# ---------------------------------------------------------------------------
+# Release-readiness invariants added 2026-11-10 (P5). Each has an in-memory
+# negative control below, so the predicate is proven to discriminate before the
+# parametrised tests over the real workflows are trusted.
+# ---------------------------------------------------------------------------
+
+#: Packages a workflow may `pip install` without `==`, each with the reason.
+#: Anything else without an exact pin is a gate whose definition changes under
+#: you. Keep this list short; a new entry needs a sentence, not a name.
+UNPINNED_INSTALL_ALLOWED: dict[str, str] = {
+    "pip": (
+        "`python -m pip install --upgrade pip` tracks the runner's pip; pinning it "
+        "would add a fifth pin to keep in step for no supply-chain gain"
+    ),
+    "torch": (
+        "the version floor lives in pyproject.toml (`torch>=2.0.0`); the CI step "
+        "exists only to choose the CPU wheel index before the dev extra resolves, "
+        "and an exact pin here would be a second torch pin that CI alone obeys"
+    ),
+}
+
+_PIP_FLAGS_WITH_VALUE = frozenset(
+    {
+        "-r",
+        "--requirement",
+        "-c",
+        "--constraint",
+        "-e",
+        "--editable",
+        "-i",
+        "--index-url",
+        "--extra-index-url",
+        "-f",
+        "--find-links",
+        "-t",
+        "--target",
+        "--prefix",
+        "--root",
+        "--platform",
+        "--python-version",
+        "--implementation",
+        "--abi",
+    }
+)
+
+
+def _default_branch() -> str:
+    """The repository's default branch, resolved rather than hardcoded.
+
+    Hardcoding it is what produced the original ``branches: [main]`` defect.
+    Order: an explicit override, the clone's ``origin/HEAD`` (not set by
+    actions/checkout), then the harness settings file, which the PreToolUse
+    push guard reads for the same purpose.
+    """
+    override = os.environ.get("CIV6AZ_DEFAULT_BRANCH", "").strip()
+    if override:
+        return override
+    head = subprocess.run(
+        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    if head:
+        return head.removeprefix("origin/")
+    settings = Path(".claude/settings.json")
+    if settings.exists():
+        try:
+            declared = json.loads(settings.read_text()).get("env", {}).get("CIV6AZ_DEFAULT_BRANCH")
+        except json.JSONDecodeError:
+            declared = None
+        if declared:
+            return str(declared)
+    pytest.fail(
+        "cannot determine the default branch: origin/HEAD is unset and "
+        ".claude/settings.json declares no CIV6AZ_DEFAULT_BRANCH"
+    )
+
+
+def _is_glob(pattern: str) -> bool:
+    return any(ch in pattern for ch in "*?[")
+
+
+def stale_push_branches(doc: dict, default_branch: str) -> list[str]:
+    """``push.branches`` entries that are neither the default, ``main`` nor a glob.
+
+    ``main`` is always allowed because the maintainer is renaming the default
+    branch to it before the public release; listing both means the rename
+    cannot open a window with no CI on the default branch.
+    """
+    push = _triggers(doc).get("push")
+    if not isinstance(push, dict):
+        return []
+    branches = push.get("branches") or []
+    if isinstance(branches, str):
+        branches = [branches]
+    return [b for b in branches if b not in (default_branch, "main") and not _is_glob(str(b))]
+
+
+def _pip_install_args(command: str) -> list[str] | None:
+    """The arguments of a ``pip install`` in one shell command, or None."""
+    try:
+        tokens = shlex.split(command, comments=True)
+    except ValueError:
+        return None
+    for index, token in enumerate(tokens):
+        if token not in ("pip", "pip3"):
+            continue
+        rest = tokens[index + 1 :]
+        while rest and rest[0].startswith("-"):
+            rest.pop(0)
+        if rest and rest[0] == "install":
+            return rest[1:]
+        return None
+    return None
+
+
+def unpinned_installs(script: str) -> list[str]:
+    """Requirement tokens in ``pip install`` lines that carry no ``==``.
+
+    A local project (``.``, ``.[dev]``, ``-e .``), a requirements or constraints
+    file, a path or URL, and the packages in :data:`UNPINNED_INSTALL_ALLOWED`
+    are not offences; everything else must be an exact pin.
+    """
+    joined = re.sub(r"\\\n", " ", script)
+    offenders: list[str] = []
+    for command in re.split(r"&&|\|\||;|\n", joined):
+        args = _pip_install_args(command)
+        if not args:
+            continue
+        i = 0
+        while i < len(args):
+            token = args[i]
+            if token in _PIP_FLAGS_WITH_VALUE:
+                i += 2
+                continue
+            if token.startswith("-"):
+                i += 1
+                continue
+            if token.startswith(".") or "/" in token or token.startswith("git+") or "@" in token:
+                i += 1
+                continue
+            name = re.split(r"[\[<>=!~ ]", token, maxsplit=1)[0].lower()
+            if name in UNPINNED_INSTALL_ALLOWED:
+                i += 1
+                continue
+            if "==" not in token:
+                offenders.append(token)
+            i += 1
+    return offenders
+
+
+def _steps(doc: dict) -> list[tuple[str, dict, dict]]:
+    """``(job name, job, step)`` for every step in a parsed workflow."""
+    out = []
+    for job_name, job in (doc.get("jobs") or {}).items():
+        for step in job.get("steps") or []:
+            if isinstance(step, dict):
+                out.append((job_name, job, step))
+    return out
+
+
+def secret_steps_with_unpinned_installs(doc: dict) -> list[str]:
+    """Steps that can see a secret AND install something unpinned.
+
+    An unpinned install is an arbitrary-code hole; next to a secret it is an
+    exfiltration channel. Checked at step level and through job-level ``env``.
+    """
+    offenders = []
+    for job_name, job, step in _steps(doc):
+        sees_secret = "secrets." in yaml.safe_dump(step) or "secrets." in yaml.safe_dump(
+            job.get("env") or {}
+        )
+        if not sees_secret:
+            continue
+        run = step.get("run")
+        if isinstance(run, str) and (bad := unpinned_installs(run)):
+            offenders.append(f"{job_name}/{step.get('name', '<unnamed>')}: {bad}")
+    return offenders
+
+
+def checkouts_persisting_credentials(doc: dict) -> list[str]:
+    """``actions/checkout`` steps that do not set ``persist-credentials: false``."""
+    offenders = []
+    for job_name, _job, step in _steps(doc):
+        uses = step.get("uses", "")
+        if not isinstance(uses, str) or not uses.startswith("actions/checkout@"):
+            continue
+        value = (step.get("with") or {}).get("persist-credentials")
+        if value is False or (isinstance(value, str) and value.lower() == "false"):
+            continue
+        offenders.append(f"{job_name}: {uses}")
+    return offenders
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_push_triggers_name_only_the_default_branch_main_or_a_glob(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text())
+    stale = stale_push_branches(doc, _default_branch())
+    assert not stale, (
+        f"{path.name} push trigger names {stale}: not the default branch "
+        f"({_default_branch()!r}), not `main`, not a glob. A concrete branch name "
+        "here goes stale silently when the branch is renamed or deleted."
+    )
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_every_pip_install_is_pinned(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text())
+    offenders = []
+    for job_name, _job, step in _steps(doc):
+        run = step.get("run")
+        if isinstance(run, str) and (bad := unpinned_installs(run)):
+            offenders.append(f"{job_name}/{step.get('name', '<unnamed>')}: {bad}")
+    assert not offenders, (
+        f"{path.name} installs packages without an exact `==` pin: {offenders}. "
+        "Pin them, or install them through the project's extras where pyproject "
+        "already constrains them."
+    )
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_no_secret_bearing_step_runs_an_unpinned_install(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text())
+    offenders = secret_steps_with_unpinned_installs(doc)
+    assert not offenders, (
+        f"{path.name}: steps that see a secret also run an unpinned install: {offenders}"
+    )
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_every_checkout_disables_credential_persistence(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text())
+    offenders = checkouts_persisting_credentials(doc)
+    assert not offenders, (
+        f"{path.name}: actions/checkout without `persist-credentials: false`: {offenders}. "
+        "No step in this repository pushes with the checkout's token, so it has no "
+        "business staying in .git/config for later steps to read."
+    )
+
+
+def test_unpinned_install_allowlist_entries_have_reasons() -> None:
+    empty = [name for name, why in UNPINNED_INSTALL_ALLOWED.items() if len(why.strip()) < 20]
+    assert not empty, f"allowlist entries without a real reason: {empty}"
+
+
+class TestTheNewChecksDiscriminate:
+    """Negative controls on in-memory YAML, independent of the real workflows."""
+
+    _ONE_JOB = (
+        "name: X\non:\n  push:\n    branches: [{branches}]\njobs:\n  a:\n"
+        "    runs-on: ubuntu-latest\n    steps:\n{steps}"
+    )
+
+    def test_a_stale_push_branch_is_reported(self) -> None:
+        doc = yaml.safe_load(
+            self._ONE_JOB.format(branches="main, feature/old, 'claude/**'", steps="      []")
+        )
+        assert stale_push_branches(doc, "trunk") == ["feature/old"]
+
+    def test_default_main_and_globs_are_accepted(self) -> None:
+        doc = yaml.safe_load(
+            self._ONE_JOB.format(branches="main, trunk, 'release/*'", steps="      []")
+        )
+        assert stale_push_branches(doc, "trunk") == []
+
+    def test_a_push_trigger_without_a_filter_is_fine(self) -> None:
+        doc = yaml.safe_load("on:\n  push:\n  pull_request:\njobs: {}\n")
+        assert stale_push_branches(doc, "trunk") == []
+
+    def test_an_unpinned_install_is_reported(self) -> None:
+        script = (
+            "python -m pip install --upgrade pip\n"
+            'pip install -e ".[dev]" pytest-cov\n'
+            "pip install ruff==0.15.8 pytest\n"
+            "pip install -r requirements.txt build==1.6.1 && pip install huggingface_hub"
+        )
+        assert unpinned_installs(script) == ["pytest-cov", "pytest", "huggingface_hub"]
+
+    def test_pinned_and_project_installs_are_accepted(self) -> None:
+        script = (
+            "python -m pip install --upgrade pip\n"
+            'pip install -e ".[dev,hub]"\n'
+            "pip install zizmor==1.32.0 \\\n  pip-audit==2.10.1\n"
+            'python -m pip install "torch>=2.0.0" --index-url https://download.pytorch.org/whl/cpu\n'
+            "pip install git+https://github.com/x/y@abc\n"
+            "pip-audit -r requirements.txt --format json"
+        )
+        assert unpinned_installs(script) == []
+
+    def test_a_secret_step_with_an_unpinned_install_is_reported(self) -> None:
+        steps = (
+            "      - name: deploy\n        env:\n          TOKEN: ${{{{ secrets.T }}}}\n"
+            "        run: pip install huggingface_hub\n"
+            "      - name: clean\n        run: pip install huggingface_hub\n"
+        )
+        doc = yaml.safe_load(self._ONE_JOB.format(branches="main", steps=steps))
+        assert secret_steps_with_unpinned_installs(doc) == ["a/deploy: ['huggingface_hub']"]
+
+    def test_a_secret_step_with_a_pinned_install_is_accepted(self) -> None:
+        steps = (
+            "      - name: deploy\n        env:\n          TOKEN: ${{{{ secrets.T }}}}\n"
+            "        run: pip install huggingface_hub==0.36.2\n"
+        )
+        doc = yaml.safe_load(self._ONE_JOB.format(branches="main", steps=steps))
+        assert secret_steps_with_unpinned_installs(doc) == []
+
+    def test_a_checkout_persisting_credentials_is_reported(self) -> None:
+        sha = "0" * 40
+        steps = (
+            f"      - uses: actions/checkout@{sha}\n"
+            f"      - uses: actions/checkout@{sha}\n        with:\n          fetch-depth: 0\n"
+            f"      - uses: actions/checkout@{sha}\n        with:\n"
+            "          persist-credentials: false\n"
+            f"      - uses: actions/setup-python@{sha}\n"
+        )
+        doc = yaml.safe_load(self._ONE_JOB.format(branches="main", steps=steps))
+        assert checkouts_persisting_credentials(doc) == [
+            f"a: actions/checkout@{sha}",
+            f"a: actions/checkout@{sha}",
+        ]

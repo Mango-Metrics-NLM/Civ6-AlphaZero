@@ -35,8 +35,8 @@ updates:
           - "patch"
       # The lint/type toolchain is pinned in five places that must move
       # together (pyproject, requirements.txt, .pre-commit-config.yaml, the
-      # governance CI job, and an unpinned `pip install ruff` in
-      # deploy_spaces.yml). Grouping them makes that a single reviewable change
+      # governance CI job, and the deploy_spaces.yml validate job). Grouping them
+      # makes that a single reviewable change
       # instead of a partial bump that leaves the pins disagreeing.
       dev-toolchain:
         applies-to: version-updates
