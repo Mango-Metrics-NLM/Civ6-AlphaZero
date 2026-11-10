@@ -10,8 +10,8 @@
 #     are the ones that need a human to read a changelog.
 #   - `cooldown`: a brand-new release is not proposed immediately, which avoids
 #     churn from versions that are yanked or hotfixed within days.
-#   - `docker`: the two deployed images and the root Dockerfile were covered by
-#     no ecosystem at all, so their base images were never offered an update.
+#   - `docker`: the two deployed images were covered by no ecosystem at all, so
+#     their base images were never offered an update.
 #
 # Security updates are unaffected by `cooldown` and by the open-PR limit;
 # GitHub raises those regardless.
@@ -71,24 +71,13 @@ updates:
 
   # ---- Container base images ----------------------------------------------
   # Previously uncovered. `dockerfiles/` holds the deployed Vertex image and the
-  # inference image; the root Dockerfile is a separate directory as far as
-  # Dependabot is concerned, so it needs its own entry.
+  # inference image. (The orphaned root Dockerfile, which had its own entry
+  # here, was deleted on 2026-11-10.)
   - package-ecosystem: "docker"
     directory: "/dockerfiles"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 3
-    labels:
-      - "dependencies"
-      - "docker"
-    cooldown:
-      default-days: 7
-
-  - package-ecosystem: "docker"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 2
     labels:
       - "dependencies"
       - "docker"

@@ -145,7 +145,6 @@ exclude = [
     "dockerfiles*",
     "kb*",
     "examples*",
-    "demos*",
     "checkpoints*",
     "logs*",
     "replays*",
@@ -158,17 +157,15 @@ exclude = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-# Unmaintained fringe (demos, scaffolding templates, experimental server modules)
-# is outside the lint/format gate; the maintained set is everything else.
+# Unmaintained fringe (examples, experimental server modules) is outside the
+# lint/format gate; the maintained set is everything else. (demos/, templates/
+# and the root interfaces/ fork were deleted on 2026-11-10.)
 # force-exclude makes pre-commit (which passes explicit filenames) honour this too.
 # The "./" prefix anchors each pattern to the repo root — a bare name would also
-# match nested dirs like alpha_zero/interfaces/ and silently de-gate them.
+# match nested dirs (e.g. alpha_zero/examples/) and silently de-gate them.
 extend-exclude = [
-    "./demos",
     "./examples",
-    "./templates",
     "./server-module",
-    "./interfaces",
     "./spacetimedb_module",
 ]
 force-exclude = true
@@ -230,7 +227,7 @@ strict_optional = true
 warn_redundant_casts = true
 warn_unused_ignores = false
 show_error_codes = true
-exclude = ["^spaces/", "^templates/"]
+exclude = ["^spaces/"]
 
 [[tool.mypy.overrides]]
 module = "tqdm.*"

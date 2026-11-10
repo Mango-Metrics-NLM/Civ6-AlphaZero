@@ -111,7 +111,7 @@ training_results/
 models/
 artifacts/
 
-# Docker (build context only — tracked files are .dockerignore, Dockerfile and
+# Docker (build context only — tracked files are .dockerignore and
 # dockerfiles/Dockerfile.{vertex,inference}).
 #
 # The `!docker-compose.yml` un-ignore was removed on 2026-09-02: docker-compose.yml
