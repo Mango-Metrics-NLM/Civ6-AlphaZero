@@ -20,8 +20,8 @@ be handled, but they are not vulnerabilities *in this software*.
 
 | Version | Supported |
 |---------|-----------|
-| 1.8.x   | ✅ |
-| < 1.8   | ❌ |
+| 2.0.x   | ✅ |
+| < 2.0   | ❌ |
 
 Rows change at release time: the public-release train rolls the version to the
 next major, and this table is updated in the same change. Only the latest
