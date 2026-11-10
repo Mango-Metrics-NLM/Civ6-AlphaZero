@@ -28,6 +28,7 @@ Available Classes:
     - ModelEvaluator: Main evaluation orchestrator
     - RandomPlayer: Random action selection baseline
     - HeuristicPlayer: Rule-based heuristic baseline
+    - SimpleMCTSPlayer: Network-free random-rollout search baseline
     - NeuralNetworkPlayer: Neural network baseline with optional MCTS
     - BaselineFactory: Factory for creating baselines from config
     - DiversityTracker: Tracks game diversity metrics
@@ -41,6 +42,7 @@ from alpha_zero.evaluation.baselines import (
     HeuristicPlayer,
     NeuralNetworkPlayer,
     RandomPlayer,
+    SimpleMCTSPlayer,
 )
 from alpha_zero.evaluation.config import (
     BaselineConfig,
@@ -78,4 +80,5 @@ __all__ = [
     "ModelEvaluator",
     "NeuralNetworkPlayer",
     "RandomPlayer",
+    "SimpleMCTSPlayer",
 ]

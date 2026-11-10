@@ -1,0 +1,28 @@
+# Allowlist for tests/regression/test_draw_aware_metrics_regression.py.
+#
+# Keys are "path::qualname" (qualname = enclosing Class.method or function;
+# "<module>" at top level). Every entry needs a reason of at least 12
+# characters. Entries that no longer match an offender fail the stale check:
+# delete the entry when the site is fixed. Entries marked CONFIRM-FIRST name
+# distributed-coordination files (CLAUDE.md 3.2) whose proposed hunks live in
+# the P7 worker report; apply the hunk, then delete the entry.
+
+[win_division]
+"alpha_zero/evaluation/scoring.py::win_rate" = "The statistics SSOT: this is the one place the legacy draws-as-losses rate is defined."
+"alpha_zero/evaluation/scoring.py::decisive_win_rate" = "SSOT: wins / decisive is the secondary diagnostic the rule otherwise exempts."
+"alpha_zero/evaluation/scoring.py::score_variance" = "SSOT: p_win is an intermediate of the ternary variance, not a reported win rate."
+"alpha_zero/evaluation/scoring.py::score_interval" = "SSOT: pseudo-count-adjusted p_win inside the interval arithmetic."
+"alpha_zero/evaluation/promotion.py::LegacyWinRatePolicy.evaluate" = "Reproduces the deployed gate exactly (draws as losses) by design; the default policy until a recorded decision flips it."
+"alpha_zero/cloud/gcp/arena.py::ArenaResult.win_rate" = "Artifact compatibility: every persisted evaluations/*/results.json carries this exact statistic; marked deprecated in its docstring, score_rate is beside it."
+"alpha_zero/pbt/scheduler.py::EvaluationResult.win_rate" = "games_played is an independent counter (need not equal W+D+L), so the SSOT cannot reproduce it; score_rate added alongside; PBT fitness decisions still read win_rate pending a recorded decision."
+"alpha_zero/tournament/config.py::PlayerStats.win_rate" = "games_played is an independent counter persisted in rating records; score_rate added alongside."
+"alpha_zero/tournament/history.py::PlayerStatistics.win_rate" = "total_games is an independent counter persisted in history JSON; score_rate added alongside."
+"alpha_zero/distributed/coordinator.py::TrainingCoordinator.evaluate" = "CONFIRM-FIRST (distributed coordination, CLAUDE.md 3.2): proposed hunk in the P7 report adds draws/score_rate; untouched here."
+"scripts/run_chess_training.py::_run" = "Chess curriculum is NG-6 (out of charter scope); draws there are a different object (stalemate/repetition) and the script is not on the MicroCiv path."
+
+[metric_pairing]
+"alpha_zero/cloud/gcp/vertex_orchestrator.py::run_iterations" = "CONFIRM-FIRST (distributed coordination): proposed hunk in the P7 report adds orchestrator/eval_score_rate and eval_draw_rate from the arena artifact."
+"alpha_zero/cloud/gcp/vertex_orchestrator.py::main" = "CONFIRM-FIRST (distributed coordination): win_rate_trend is a slope over the legacy statistic; the report proposes score_rate_trend beside it."
+"alpha_zero/monitoring/mlflow_logger.py::WandbCompatAdapter.log_evaluation" = "W&B-parity adapter taking a scalar win_rate; callers that have counts pass score_rate/draw_rate through **kwargs, which the literal cannot show."
+"alpha_zero/tournament/wandb_dashboards.py::TournamentWandbLogger.log_head_to_head_matrix" = "Averages a precomputed win-rate matrix; no per-match counts reach this method, so no score rate can be derived here."
+"scripts/run_enhanced_training.py::run_enhanced_training" = "curriculum/win_rate is the curriculum's rolling window over iterations (no draw record), a rung-advance signal rather than a champion-vs-candidate statistic."

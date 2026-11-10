@@ -99,9 +99,17 @@ so the benchmark and production cannot disagree:
   `decisive_win_rate`, the interval and the MDE at that `n`.
 
 Run it with `python scripts/benchmark_suite.py --help`. The CI smoke runs the
-protocol at tiny settings and asserts something that can fail: a 64-simulation
-random-rollout search must beat the random agent with its interval above 0.5.
-A benchmark that can only pass is not a benchmark.
+protocol at tiny settings and asserts something that can fail: the greedy
+heuristic must beat the random agent with its interval above 0.5 (measured
+while building it: 27 W / 4 D / 9 L, score 0.725, interval [0.578, 0.833]). A
+benchmark that can only pass is not a benchmark. The random-rollout search was
+the first candidate for that check and **lost to random** at board 6 / 20 turns
+(score 0.388, interval [0.295, 0.500]): at temperature 0 its near-tied visit
+counts break to index 0, which is END_TURN, in 87% of moves. That is recorded
+here because it is exactly the kind of fact the protocol exists to surface.
+
+Helpers: `scoring.elo_from_score_rate`, `scoring.elo_interval` and
+`scoring.games_for_score_rate` (inverts the MDE for a target score).
 
 ## 5. Seeding contract
 

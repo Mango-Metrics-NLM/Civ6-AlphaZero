@@ -35,6 +35,8 @@ Self-play:   0%|          | 0/20 [00:00<?, ?it/s]\r2026-08-28 02:15:59,027 [INFO
 2026-08-28 02:19:14,637 [INFO] Self-play: 2555 examples from 20 games (127.9s)
 2026-08-28 02:20:00,000 [INFO] Epoch 1: loss=2.5000, policy=2.0000, value=0.5000
 2026-08-28 02:20:01,000 [INFO] Training complete (44.0s)
+2026-08-28 02:20:29,000 [INFO] Eval vs random: 11 W / 4 D / 5 L over 20 games (win rate 55.0%, draw-aware score rate 0.650, draw rate 20.0%)
+2026-08-28 02:20:29,500 [INFO] Eval score rate vs random: 0.6500 (95% CI [0.4892, 0.7763], draw rate 0.2000, win rate 0.5500, n=20)
 2026-08-28 02:20:30,000 [INFO] Win rate vs random: 55.0%
 EXIT=0
 
@@ -124,3 +126,36 @@ class TestCli:
         log = tmp_path / "empty.log"
         log.write_text("nothing useful here\n")
         assert summarize.main([str(log), "--out", str(tmp_path / "o")]) == 1
+
+
+class TestDrawAwareScoreLine:
+    """E1/E2: the draw-aware twin of the win-rate line is parsed and rendered."""
+
+    @pytest.fixture
+    def parsed(self) -> dict:
+        return summarize.parse_log(SAMPLE_LOG)
+
+    def test_score_rate_fields_are_parsed(self, parsed: dict) -> None:
+        second = parsed["iterations"][1]
+        assert second["score_rate_vs_random"] == pytest.approx(0.65)
+        assert second["score_ci_low"] == pytest.approx(0.4892)
+        assert second["score_ci_high"] == pytest.approx(0.7763)
+        assert second["draw_rate_vs_random"] == pytest.approx(0.2)
+        assert second["eval_games"] == 20
+        # The legacy line is still parsed beside it.
+        assert second["win_rate_vs_random"] == pytest.approx(0.55)
+
+    def test_iteration_without_the_line_has_no_score_fields(self, parsed: dict) -> None:
+        first = parsed["iterations"][0]
+        assert "score_rate_vs_random" not in first
+        assert first["win_rate_vs_random"] == pytest.approx(0.05)
+
+    def test_markdown_renders_score_rate_and_draw_rate_columns(self, parsed: dict) -> None:
+        parsed["provenance"] = {"timestamp_utc": "t", "git_revision": "abc", "config": {}}
+        text = summarize.render_markdown(parsed, "T", "notes")
+        header = next(line for line in text.splitlines() if line.startswith("| Iter"))
+        assert "Score rate (95% CI)" in header and "Draw rate" in header
+        rows = [line for line in text.splitlines() if line.startswith("| 2 ")]
+        assert rows and "0.650 [0.489, 0.776]" in rows[0] and "20.0%" in rows[0]
+        first_rows = [line for line in text.splitlines() if line.startswith("| 1 ")]
+        assert first_rows and first_rows[0].rstrip().endswith("| - |")

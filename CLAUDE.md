@@ -283,6 +283,10 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.training_civ6 --seed 42` | Reproducible training run — two runs at one seed are identical |
 | `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies |
 | `python scripts/run_baseline_eval.py --seed 42 ...` | Reproducible evaluation probe (see `docs/evidence/seeded_probe_reproducibility/`) |
+| `python scripts/benchmark_suite.py --help` | Benchmark protocol over the promotion judge's own `run_arena` (paired seats, seeded search, evidence block); see `docs/EVALUATION.md` §4 |
+| `python -m alpha_zero.training_civ6 --mcts gumbel ...` | Run the local trainer and its evaluation on the Gumbel search (default `civ6` = PUCT is unchanged) |
+| `python -m alpha_zero.cloud.gcp.evaluation_worker --seed 42 ...` | Seeded arena evaluation on the deployed path (`derive_seed(seed, EVAL_ENV, iteration)`) |
+| `CIV6AZ_PROMOTION_MAX_IMPLIED_ELO=50` | Ceiling above which the promotion feasibility report warns that the configured gate is under-powered at the configured game count |
 | `pytest tests/regression/test_training_determinism_regression.py -v` | Determinism gate (~7 s) |
 | `python -m alpha_zero.distributed.coordinator --dry_run` | Distributed smoke test |
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
@@ -409,7 +413,7 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | MLflow monitoring layer (alpha_zero/monitoring/) | Centralised experiment tracking with SQLite backend; file-store mlruns/ is deprecated. Combines PR #78 (orchestrator + tournament dashboards + stateless metric helpers) and PR #79 (log_evaluation_result + AlphaZeroMLflowEvaluator + analysis scripts). `MLflowConfig` is the single-source dataclass; `MonitoringConfig` retained as a backwards-compat alias. |
 | 2026-05-21 | env_loader.py zero-dependency .env loader | No python-dotenv dep; CIV6AZ_ env var convention; graceful missing-key warnings |
 | 2026-05-21 | EvaluationResult API: WinRateResult nesting | win_rate is WinRateResult object (0-100 scale); MLflow logs normalise to 0-1 |
-| 2026-05-21 | log_evaluation_result() 14-metric logging | 4 counts + 3 normalised rates + 7 game stats per evaluation run |
+| 2026-05-21 (15 metrics since 2026-11-10) | log_evaluation_result() metric logging | 4 counts + 4 normalised rates (incl. `score_rate`, added 2026-11-10) + 7 game stats per evaluation run |
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |

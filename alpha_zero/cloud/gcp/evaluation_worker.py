@@ -28,6 +28,7 @@ from alpha_zero.cloud.gcp.config import DEFAULT_MCTS_TYPE, VALID_MCTS_TYPES, GCP
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
 from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
+from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +81,16 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--mode", type=str, default="evaluation", help="Worker mode")
     parser.add_argument("--dry_run", action="store_true", help="Run without GCS access")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help=(
+            "Base seed for the arena. Derived per iteration (so two iterations do not "
+            "replay one map set) and threaded into the environments and both searches; "
+            "omitted (the default) leaves the arena unseeded, as before."
+        ),
+    )
 
     # Gameplay environment preset
     parser.add_argument(
@@ -331,13 +342,18 @@ def main() -> int:
             max_turns=args.max_turns,
             device=device,
             gameplay_preset=getattr(args, "gameplay_preset", "default"),
+            # A seed names a stream; the iteration is a coordinate, not a stride,
+            # so iteration N and N+1 score on different maps under one --seed.
+            seed=derive_seed(getattr(args, "seed", None), SeedStream.EVAL_ENV, args.iteration),
         )
         elapsed = time.time() - start_time
 
         logger.info(
-            "Arena complete in %.1fs: win_rate=%.2f, draw_rate=%.2f, loss_rate=%.2f",
+            "Arena complete in %.1fs: win_rate=%.2f, score_rate=%.3f, draw_rate=%.2f, "
+            "loss_rate=%.2f",
             elapsed,
             results.win_rate,
+            results.score_rate,
             results.draw_rate,
             results.loss_rate,
         )
@@ -348,6 +364,7 @@ def main() -> int:
             wandb_logger.log(
                 {
                     "eval/win_rate": results.win_rate,
+                    "eval/score_rate": results.score_rate,
                     "eval/draw_rate": results.draw_rate,
                     "eval/loss_rate": results.loss_rate,
                     "eval/total_games": results.total_games,

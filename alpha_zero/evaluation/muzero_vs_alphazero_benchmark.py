@@ -22,6 +22,7 @@ from typing import Any
 import torch
 
 # Experiment tracking (routes to MLflow via the canonical tracker).
+from alpha_zero.evaluation import scoring
 from alpha_zero.utils.experiment_tracker import get_tracker as _get_tracker
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,8 @@ class BenchmarkResult:
     losses: int = 0
     draws: int = 0
     win_rate: float = 0.0
+    score_rate: float = 0.0  # draw-aware companions of win_rate (E1)
+    draw_rate: float = 0.0
     avg_game_length: float = 0.0
     avg_reward: float = 0.0
     total_time_seconds: float = 0.0
@@ -109,7 +112,9 @@ class BenchmarkResult:
             self.wins = sum(1 for r in self.game_rewards if r > win_threshold)
             self.losses = sum(1 for r in self.game_rewards if r < loss_threshold)
             self.draws = self.num_games - self.wins - self.losses
-            self.win_rate = self.wins / max(self.num_games, 1)
+            self.win_rate = scoring.win_rate(self.wins, self.draws, self.losses)
+            self.score_rate = scoring.score_rate(self.wins, self.draws, self.losses)
+            self.draw_rate = self.draws / max(self.num_games, 1)
         if self.total_time_seconds > 0:
             self.games_per_minute = self.num_games / (self.total_time_seconds / 60)
 
@@ -130,6 +135,11 @@ class ComparisonReport:
             "alphazero_win_rate": self.alphazero_result.win_rate,
             "muzero_win_rate": self.muzero_result.win_rate,
             "win_rate_delta": self.muzero_result.win_rate - self.alphazero_result.win_rate,
+            "alphazero_score_rate": self.alphazero_result.score_rate,
+            "muzero_score_rate": self.muzero_result.score_rate,
+            "score_rate_delta": self.muzero_result.score_rate - self.alphazero_result.score_rate,
+            "alphazero_draw_rate": self.alphazero_result.draw_rate,
+            "muzero_draw_rate": self.muzero_result.draw_rate,
             "alphazero_avg_game_length": self.alphazero_result.avg_game_length,
             "muzero_avg_game_length": self.muzero_result.avg_game_length,
             "alphazero_env_clones": self.alphazero_result.search_metrics.total_env_clones,
@@ -289,9 +299,11 @@ class AlphaZeroVsMuZeroBenchmark:
         )
 
         logger.info(
-            "[%s] Results: win_rate=%.2f, avg_length=%.1f, %.1f games/min",
+            "[%s] Results: win_rate=%.2f, score_rate=%.3f, draw_rate=%.2f, avg_length=%.1f, %.1f games/min",
             algorithm,
             result.win_rate,
+            result.score_rate,
+            result.draw_rate,
             result.avg_game_length,
             result.games_per_minute,
         )
@@ -482,6 +494,8 @@ class AlphaZeroVsMuZeroBenchmark:
             "| Metric | AlphaZero | MuZero |",
             "|--------|----------|--------|",
             f"| Win Rate | {az.win_rate:.2%} | {mz.win_rate:.2%} |",
+            f"| Score Rate | {az.score_rate:.3f} | {mz.score_rate:.3f} |",
+            f"| Draw Rate | {az.draw_rate:.2%} | {mz.draw_rate:.2%} |",
             f"| Wins | {az.wins} | {mz.wins} |",
             f"| Losses | {az.losses} | {mz.losses} |",
             f"| Draws | {az.draws} | {mz.draws} |",
@@ -552,6 +566,8 @@ class AlphaZeroVsMuZeroBenchmark:
                 tracker.log(
                     {
                         f"{algo_name}/win_rate": result.win_rate,
+                        f"{algo_name}/score_rate": result.score_rate,
+                        f"{algo_name}/draw_rate": result.draw_rate,
                         f"{algo_name}/avg_game_length": result.avg_game_length,
                         f"{algo_name}/games_per_minute": result.games_per_minute,
                         f"{algo_name}/env_clones": result.search_metrics.total_env_clones,

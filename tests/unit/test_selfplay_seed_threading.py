@@ -161,7 +161,7 @@ class TestArenaSeeding:
         assert parameters["seed"].default is None
 
     def test_seed_reaches_environment_construction(self) -> None:
-        """Each game gets a distinct, derived seed."""
+        """Each *pair* of games gets one map seed; the two seats share it."""
         from unittest.mock import MagicMock, patch
 
         from alpha_zero.cloud.gcp.arena import run_arena
@@ -191,8 +191,10 @@ class TestArenaSeeding:
                 seed=500,
             )
 
+        # Paired seats: games 2p and 2p+1 share map `seed + p` with the seats
+        # swapped, so a map advantage cancels inside the pair.
         seeds = [call.kwargs["seed"] for call in factory.call_args_list]
-        assert seeds == [500, 501, 502], f"expected derived per-game seeds, got {seeds}"
+        assert seeds == [500, 500, 501], f"expected paired per-map seeds, got {seeds}"
 
     def test_unseeded_arena_leaves_environments_unseeded(self) -> None:
         """The default preserves the historical behaviour."""

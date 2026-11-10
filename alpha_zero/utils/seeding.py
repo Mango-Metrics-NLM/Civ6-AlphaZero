@@ -65,6 +65,12 @@ class SeedStream:
     EVAL_OPPONENT = "eval.opponent"
     REPLAY_SAMPLER = "replay.sampler"
     DATA_LOADER = "data.loader"
+    # Arena / benchmark streams. The arena's environments are seeded by
+    # arithmetic (``seed + pair``) for continuity with the recorded A/B
+    # artifacts; its searches and baseline opponents draw from these.
+    ARENA_SEARCH = "arena.search"
+    ARENA_OPPONENT = "arena.opponent"
+    BENCH_ENV = "bench.env"
 
 
 def derive_seed(base_seed: int | None, stream: str, *parts: object) -> int | None:

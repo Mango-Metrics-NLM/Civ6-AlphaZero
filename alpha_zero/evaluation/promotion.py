@@ -38,6 +38,7 @@ are promoted, and that is a decision for a human, not a default.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -47,7 +48,11 @@ from alpha_zero.evaluation.scoring import (
     SUPPORTED_CONFIDENCE_LEVELS,
     PromotionDecision,
     ScoreSummary,
+    elo_from_score_rate,
+    games_for_score_rate,
+    minimum_detectable_effect,
     score_rate,
+    score_rate_from_elo,
     summarize,
 )
 
@@ -55,9 +60,12 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "DEFAULT_CONFIDENCE",
+    "DEFAULT_MAX_IMPLIED_ELO",
     "DEFAULT_MIN_GAMES",
     "DEFAULT_POLICY",
     "DEFAULT_PROMOTION_THRESHOLD",
+    "DEFAULT_TARGET_ELO",
+    "FeasibilityReport",
     "PromotionConfig",
     "PromotionPolicy",
     "PromotionVerdict",
@@ -87,6 +95,17 @@ DEFAULT_CONFIDENCE = 0.95
 
 #: Minimum games before an interval-based policy will return a verdict.
 DEFAULT_MIN_GAMES = 1
+
+#: Above this implied Elo requirement the gate is judged infeasible for one
+#: iteration and :func:`evaluate_promotion` warns. 50 Elo is roughly what the
+#: shipped ``0.55`` demands at a 73.5% draw rate -- a bar no single training
+#: iteration has been observed to clear (``docs/runbooks/promotion-gate.md``).
+DEFAULT_MAX_IMPLIED_ELO = 50.0
+
+#: The improvement one iteration is expected to deliver, used to size the game
+#: budget in :meth:`PromotionConfig.feasibility`. +14 Elo is a score rate of
+#: 0.52, the runbook's recommended bar.
+DEFAULT_TARGET_ELO = 14.0
 
 _ENV_PREFIX = "CIV6AZ_PROMOTION_"
 
@@ -159,6 +178,10 @@ class PromotionConfig:
         threshold: Value the policy's statistic must clear.
         confidence: Confidence level for interval-based policies.
         min_games: Minimum games before an interval-based policy decides.
+        max_implied_elo: Implied-Elo requirement above which the gate is
+            reported as infeasible for a single iteration
+            (``CIV6AZ_PROMOTION_MAX_IMPLIED_ELO``). Diagnostic only: it never
+            changes a decision.
     """
 
     policy: str = field(default_factory=lambda: _resolve_env("POLICY") or DEFAULT_POLICY)
@@ -169,6 +192,9 @@ class PromotionConfig:
     )
     confidence: float = field(default_factory=lambda: _env_float("CONFIDENCE", DEFAULT_CONFIDENCE))
     min_games: int = field(default_factory=lambda: _env_int("MIN_GAMES", DEFAULT_MIN_GAMES))
+    max_implied_elo: float = field(
+        default_factory=lambda: _env_float("MAX_IMPLIED_ELO", DEFAULT_MAX_IMPLIED_ELO)
+    )
 
     def __post_init__(self) -> None:
         self.validate()
@@ -192,6 +218,8 @@ class PromotionConfig:
             )
         if self.min_games < 0:
             errors.append(f"min_games must be non-negative, got {self.min_games}")
+        if self.max_implied_elo <= 0.0:
+            errors.append(f"max_implied_elo must be positive, got {self.max_implied_elo}")
         if errors:
             raise ValueError(f"Invalid promotion configuration: {'; '.join(errors)}")
 
@@ -209,6 +237,7 @@ class PromotionConfig:
             threshold=data.get("threshold", defaults.threshold),
             confidence=data.get("confidence", defaults.confidence),
             min_games=data.get("min_games", defaults.min_games),
+            max_implied_elo=data.get("max_implied_elo", defaults.max_implied_elo),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -218,7 +247,132 @@ class PromotionConfig:
             "threshold": self.threshold,
             "confidence": self.confidence,
             "min_games": self.min_games,
+            "max_implied_elo": self.max_implied_elo,
         }
+
+    def feasibility(
+        self,
+        n_games: int,
+        expected_draw_rate: float,
+        target_elo: float = DEFAULT_TARGET_ELO,
+    ) -> FeasibilityReport:
+        """What this configuration can actually detect with ``n_games``.
+
+        A threshold says nothing about power. This reports the arithmetic a
+        human needs before trusting a verdict, all from
+        :mod:`alpha_zero.evaluation.scoring`:
+
+        * ``mde``: the smallest true score-rate edge over 0.5 detectable with
+          80% power at one-sided alpha 0.05 --
+          ``(z_a + z_b) * sqrt((1 - d) / 4) / sqrt(n)``
+          (:func:`~alpha_zero.evaluation.scoring.minimum_detectable_effect`).
+        * ``implied_elo``: ``elo_from_score_rate(0.5 + mde)``, the true
+          strength gain one iteration must deliver for this budget to see it.
+        * ``min_observed_score``: the observed score rate the policy needs.
+          For an interval policy that is ``threshold + z_conf * sigma / sqrt(n)``
+          with ``sigma`` the parity standard deviation above -- the lower bound
+          must clear the threshold, not the point estimate. For a point policy
+          it is the threshold itself.
+        * ``games_for_target_elo``: games needed so that ``target_elo`` is the
+          MDE (:func:`~alpha_zero.evaluation.scoring.games_for_score_rate`).
+        * ``feasible``: ``implied_elo <= max_implied_elo``.
+
+        Args:
+            n_games: The evaluation's game budget.
+            expected_draw_rate: Anticipated draw fraction. Measured at the
+                shipped defaults: 0.735 (``docs/evidence/hexcrystal_ab/``).
+            target_elo: The per-iteration gain to size the budget for.
+        """
+        if n_games <= 0:
+            raise ValueError(f"n_games must be positive, got {n_games}")
+        mde = minimum_detectable_effect(n_games, expected_draw_rate)
+        # At a handful of games the MDE exceeds the half-point of headroom a
+        # score rate has; clip so the Elo transform reports "unbounded" (its
+        # clipped maximum) rather than raising on a one-game record.
+        implied_elo = elo_from_score_rate(min(1.0, 0.5 + mde))
+        interval_policy = self.policy == ScoreRateLowerBoundPolicy.name
+        if interval_policy:
+            sigma = math.sqrt((1.0 - expected_draw_rate) / 4.0)
+            z_conf = _two_sided_z(self.confidence)
+            min_observed = min(1.0, self.threshold + z_conf * sigma / math.sqrt(n_games))
+        else:
+            min_observed = self.threshold
+        games_needed = games_for_score_rate(score_rate_from_elo(target_elo), expected_draw_rate)
+        return FeasibilityReport(
+            policy=self.policy,
+            threshold=self.threshold,
+            n_games=n_games,
+            expected_draw_rate=expected_draw_rate,
+            mde=mde,
+            min_observed_score=min_observed,
+            implied_elo=implied_elo,
+            target_elo=target_elo,
+            games_for_target_elo=games_needed,
+            max_implied_elo=self.max_implied_elo,
+        )
+
+
+def _two_sided_z(confidence: float) -> float:
+    """Normal quantile for a two-sided interval at ``confidence``.
+
+    Mirrors the table in :mod:`alpha_zero.evaluation.scoring`; kept private
+    there, so it is re-derived here from the same three supported levels.
+    """
+    table = {0.90: 1.6448536269514722, 0.95: 1.959963984540054, 0.99: 2.5758293035489004}
+    if confidence not in table:
+        raise ValueError(f"confidence must be one of {sorted(table)}, got {confidence}")
+    return table[confidence]
+
+
+@dataclass(frozen=True)
+class FeasibilityReport:
+    """What a promotion configuration can detect with a given game budget.
+
+    Produced by :meth:`PromotionConfig.feasibility`; the formulas are in that
+    method's docstring. Every field is a number a reader can recompute.
+    """
+
+    policy: str
+    threshold: float
+    n_games: int
+    expected_draw_rate: float
+    mde: float
+    min_observed_score: float
+    implied_elo: float
+    target_elo: float
+    games_for_target_elo: int
+    max_implied_elo: float
+
+    @property
+    def feasible(self) -> bool:
+        """Whether one iteration can plausibly be seen to clear the bar."""
+        return self.implied_elo <= self.max_implied_elo
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize for artifacts and experiment tracking."""
+        return {
+            "policy": self.policy,
+            "threshold": self.threshold,
+            "n_games": self.n_games,
+            "expected_draw_rate": self.expected_draw_rate,
+            "mde": self.mde,
+            "min_observed_score": self.min_observed_score,
+            "implied_elo": self.implied_elo,
+            "target_elo": self.target_elo,
+            "games_for_target_elo": self.games_for_target_elo,
+            "max_implied_elo": self.max_implied_elo,
+            "feasible": self.feasible,
+        }
+
+    def describe(self) -> str:
+        """One human-readable line for a job log."""
+        return (
+            f"promotion feasibility [{self.policy}@{self.threshold:.3f}]: n={self.n_games}, "
+            f"draw_rate={self.expected_draw_rate:.3f} -> MDE {self.mde:.4f} "
+            f"(+{self.implied_elo:.1f} Elo at 80% power), "
+            f"min observed score {self.min_observed_score:.4f}; "
+            f"+{self.target_elo:.0f} Elo needs {self.games_for_target_elo} games"
+        )
 
 
 @dataclass(frozen=True)
@@ -490,7 +644,33 @@ def evaluate_promotion(
         The verdict, including the reasoning behind it.
     """
     config = config or PromotionConfig.from_env()
-    return create_promotion_policy(config.policy).evaluate(wins, draws, losses, config)
+    policy = create_promotion_policy(config.policy)
+    _log_feasibility(config, wins, draws, losses)
+    return policy.evaluate(wins, draws, losses, config)
+
+
+def _log_feasibility(config: PromotionConfig, wins: int, draws: int, losses: int) -> None:
+    """Say what the resolved policy could detect on this record's budget.
+
+    INFO on every resolution so a job log carries the arithmetic next to the
+    verdict; WARNING when the implied Elo exceeds ``config.max_implied_elo``,
+    which is the condition under which a rejection says nothing about the
+    candidate. Never raises -- a logging helper must not fail a gate.
+    """
+    total = wins + draws + losses
+    if total <= 0:
+        return
+    report = config.feasibility(total, draws / total)
+    logger.info(report.describe())
+    if not report.feasible:
+        logger.warning(
+            "Promotion gate is under-powered for this budget: detecting an edge at 80%% "
+            "power needs about +%.1f Elo from one iteration, above the configured "
+            "ceiling of +%.1f (CIV6AZ_PROMOTION_MAX_IMPLIED_ELO). A REJECT here is "
+            "weak evidence; see docs/runbooks/promotion-gate.md for the sample sizes.",
+            report.implied_elo,
+            report.max_implied_elo,
+        )
 
 
 #: Keys an arena artifact must carry for a draw-aware decision to be possible.

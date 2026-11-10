@@ -19,6 +19,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from alpha_zero.evaluation import scoring
 from alpha_zero.evaluation.baselines import BaselineFactory, BaselinePlayer
 from alpha_zero.evaluation.config import BaselineConfig, EvaluationConfig
 from alpha_zero.evaluation.diversity import DiversityMetrics, DiversityTracker
@@ -87,10 +88,15 @@ class EvaluationResult:
 
     @property
     def win_rate(self) -> float:
-        """Win rate (wins / games_played)."""
+        """Legacy win rate (draws as losses), from the scoring SSOT; prefer :attr:`score_rate`."""
         if self.games_played == 0:
             return 0.0
-        return self.wins / self.games_played
+        return scoring.win_rate(self.wins, self.draws, self.losses)
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware rate ``(wins + 0.5 * draws) / games`` (E1); 0.5 when empty."""
+        return scoring.score_rate(self.wins, self.draws, self.losses)
 
     @property
     def loss_rate(self) -> float:
@@ -115,6 +121,7 @@ class EvaluationResult:
             "losses": self.losses,
             "draws": self.draws,
             "win_rate": self.win_rate,
+            "score_rate": self.score_rate,
             "loss_rate": self.loss_rate,
             "draw_rate": self.draw_rate,
             "avg_game_length": self.avg_game_length,
@@ -128,6 +135,7 @@ class EvaluationResult:
             f"  Games: {self.games_played}",
             f"  Record: {self.wins}W-{self.losses}L-{self.draws}D",
             f"  Win Rate: {self.win_rate:.1%}",
+            f"  Score Rate: {self.score_rate:.3f} (draw rate {self.draw_rate:.1%})",
             f"  Avg Game Length: {self.avg_game_length:.1f}",
         ]
         if self.elo_update:
@@ -539,11 +547,14 @@ class ModelEvaluator:
         total_losses = sum(r.losses for r in results.values())
         total_draws = sum(r.draws for r in results.values())
 
+        overall_win = scoring.win_rate(total_wins, total_draws, total_losses)
+        overall_score = scoring.score_rate(total_wins, total_draws, total_losses)
         lines.extend(
             [
                 f"Total Games: {total_games}",
                 f"Overall Record: {total_wins}W-{total_losses}L-{total_draws}D",
-                f"Overall Win Rate: {total_wins / total_games:.1%}" if total_games > 0 else "N/A",
+                f"Overall Win Rate: {overall_win:.1%}" if total_games > 0 else "N/A",
+                f"Overall Score Rate: {overall_score:.3f}" if total_games > 0 else "N/A",
                 "",
                 "Results by Baseline:",
                 "-" * 30,
@@ -551,7 +562,10 @@ class ModelEvaluator:
         )
 
         for name, result in results.items():
-            lines.append(f"  {name}: {result.win_rate:.1%} ({result.wins}/{result.games_played})")
+            lines.append(
+                f"  {name}: {result.win_rate:.1%} ({result.wins}/{result.games_played}), "
+                f"score rate {result.score_rate:.3f}"
+            )
 
         if self.model_stats:
             lines.extend(["", f"Model ELO: {self.model_stats.rating:.0f}"])

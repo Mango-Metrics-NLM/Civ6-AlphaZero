@@ -21,17 +21,64 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Protocol
 
 import torch
 
 from alpha_zero.cloud.gcp.config import BATCH_MCTS_TYPE
+from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 # Variants that accept the Gumbel-family `num_sampled_actions` parameter.
 _GUMBEL_VARIANTS: frozenset[str] = frozenset({"gumbel", BATCH_MCTS_TYPE})
 
 logger = logging.getLogger(__name__)
+
+
+class ArenaPlayer(Protocol):
+    """Anything that can pick an action for the side it plays.
+
+    Structurally identical to ``alpha_zero.evaluation.baseline_agents.BaseAgent``
+    and ``alpha_zero.evaluation.baselines.BaselinePlayer`` so that the random,
+    heuristic and SimpleMCTS baselines plug straight into the arena without an
+    adapter.
+    """
+
+    def select_action(self, env: Any, observation: Mapping[str, Any]) -> int:
+        """Return an action index for ``env``'s current player."""
+        ...
+
+
+#: Builds one side's player for one game. Receives the per-game seed derived
+#: for that side (``None`` when the arena is unseeded) so a stochastic baseline
+#: is reproducible game by game without sharing a stream with the other side.
+PlayerFactory = Callable[[int | None], ArenaPlayer]
+
+
+class _SearchPlayer:
+    """Drive a network-guided search as an :class:`ArenaPlayer`.
+
+    Greedy play for evaluation: ``temperature=0`` and no exploration noise.
+    """
+
+    def __init__(self, mcts: Any, is_muzero: bool) -> None:
+        self._mcts = mcts
+        self._is_muzero = is_muzero
+
+    def select_action(self, env: Any, observation: Mapping[str, Any]) -> int:
+        if self._is_muzero:
+            # MuZeroMCTS.search() uses the learned dynamics model internally;
+            # it requires observation dict + action_mask, not env.
+            obs = env.get_observation()
+            action_probs, _ = self._mcts.search(
+                obs, add_noise=False, action_mask=obs["action_mask"]
+            )
+        else:
+            # Standard MCTS variants (civ6/gumbel/simple) traverse the env directly
+            action_probs, _ = self._mcts.search(env, add_noise=False)
+        action: int = self._mcts.select_action(action_probs, temperature=0.0)
+        return action
 
 
 @dataclass
@@ -47,10 +94,16 @@ class ArenaResult:
     def win_rate(self) -> float:
         """Wins over all games, counting a draw as a loss.
 
-        Preserved verbatim: this is the statistic the deployed promotion gate
-        has always compared against its threshold, and changing it here would
-        silently change which models get promoted. Its ceiling is
-        ``1 - draw_rate``, so prefer :attr:`score_rate` for new consumers.
+        .. deprecated:: 2026-11
+            Kept **verbatim** for artifact compatibility only: this is the
+            statistic the deployed promotion gate has always compared against
+            its threshold, every ``results.json`` under ``evaluations/`` carries
+            it, and changing it here would silently change which models get
+            promoted. Its ceiling is ``1 - draw_rate`` (73.5% draws at the
+            shipped defaults cap it at 0.265), so it cannot rank candidates.
+            New consumers read :attr:`score_rate` and :attr:`draw_rate`; the
+            division below is allow-listed in
+            ``tests/regression/draw_aware_allowlist.toml`` for that reason.
         """
         return self.wins / max(self.total_games, 1)
 
@@ -91,8 +144,8 @@ class ArenaResult:
 
 
 def run_arena(
-    model_a: torch.nn.Module,
-    model_b: torch.nn.Module,
+    model_a: torch.nn.Module | None,
+    model_b: torch.nn.Module | None,
     num_games: int,
     mcts_type: str = "gumbel",
     mcts_sims: int = 25,
@@ -103,17 +156,27 @@ def run_arena(
     num_parallel_games: int = 1,
     gameplay_preset: str = "default",
     seed: int | None = None,
+    *,
+    player_a_factory: PlayerFactory | None = None,
+    player_b_factory: PlayerFactory | None = None,
+    env_seeds: Sequence[int | None] | None = None,
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
-    Alternates starting player each game for fairness. Uses greedy play
-    (temperature=0, no noise) for evaluation.
+    **Paired seats.** Games come in pairs: game ``2p`` and game ``2p + 1`` are
+    played on the *same* map (same environment seed) with the seats swapped,
+    so a first-mover or map advantage cancels within each pair instead of
+    landing on whichever side drew the easier boards. ``num_games`` should be
+    even; an odd count leaves the last map played from one seat only, which
+    is logged. Uses greedy play (temperature=0, no noise) for evaluation.
 
     Args:
         model_a: First model (results are from this model's perspective).
-        model_b: Second model (opponent).
+            May be ``None`` when ``player_a_factory`` supplies the player.
+        model_b: Second model (opponent). May be ``None`` when
+            ``player_b_factory`` supplies the player.
         num_games: Number of games to play.
-        mcts_type: MCTS algorithm variant ("civ6", "gumbel", or "muzero").
+        mcts_type: MCTS algorithm variant ("civ6", "gumbel", "simple" or "muzero").
         mcts_sims: Number of MCTS simulations per move.
         gumbel_num_actions: Number of sampled actions for Gumbel MCTS.
         board_size: Size of game board.
@@ -122,12 +185,24 @@ def run_arena(
         num_parallel_games: Number of parallel games (accepted for API consistency
             with selfplay_worker; arena currently runs games sequentially).
         gameplay_preset: Environment preset ("default" or "enhanced").
-        seed: Base seed for environment generation; game ``i`` is seeded with
-            ``seed + i``, so a match is reproducible while its games stay
-            distinct. ``None`` (the default) leaves environments unseeded,
-            preserving historical behavior. Seeding the global RNGs does not
-            cover this: the environment owns a private generator, so an
-            unseeded arena varies between runs even under a fixed global seed.
+        seed: Base seed. The map for pair ``p`` is seeded with ``seed + p``
+            (so pair ``p`` plays one map from both seats), and each side's
+            search for game ``i`` draws from
+            ``derive_seed(seed, SeedStream.ARENA_SEARCH, i, side)`` -- a
+            seeded arena is therefore fully reproducible, not just its
+            environments. ``None`` (the default) leaves environments **and**
+            searches unseeded, preserving historical behavior. Seeding the
+            global RNGs does not cover this: the environment and every search
+            own private generators.
+        player_a_factory: Optional builder for side A's player, called once per
+            game with ``derive_seed(seed, SeedStream.ARENA_OPPONENT, i, "a")``.
+            When given, ``model_a`` is not searched. Used by the benchmark
+            suite to field baselines (random, heuristic, SimpleMCTS).
+        player_b_factory: Same for side B.
+        env_seeds: Explicit per-pair environment seeds, overriding the
+            ``seed + p`` rule; must hold at least ``ceil(num_games / 2)``
+            entries. The benchmark protocol uses this to name its maps via
+            ``derive_seed`` rather than arithmetic.
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
@@ -144,11 +219,49 @@ def run_arena(
             "(arena runs games sequentially for player alternation)",
             num_parallel_games,
         )
+    if num_games % 2:
+        logger.warning(
+            "Arena: num_games=%d is odd; the last map is played from one seat only, "
+            "so seat advantage does not fully cancel. Prefer an even count.",
+            num_games,
+        )
+    if model_a is None and player_a_factory is None:
+        raise ValueError("run_arena needs model_a or player_a_factory")
+    if model_b is None and player_b_factory is None:
+        raise ValueError("run_arena needs model_b or player_b_factory")
+    num_pairs = (num_games + 1) // 2
+    if env_seeds is not None and len(env_seeds) < num_pairs:
+        raise ValueError(
+            f"env_seeds holds {len(env_seeds)} entries but {num_games} games need {num_pairs}"
+        )
 
     # MuZero has a different search API: (observation, action_mask) vs (env)
     is_muzero = mcts_type == "muzero"
     if is_muzero:
         logger.debug("Arena: using MuZero search path (observation + action_mask)")
+
+    def _search_player(model: torch.nn.Module | None, game_idx: int, side: str) -> _SearchPlayer:
+        # num_sampled_actions is a Gumbel-family parameter; create_mcts rejects
+        # unknown kwargs, so passing it unconditionally made mcts_type="civ6"
+        # -- an option this function's own docstring advertises -- raise
+        # TypeError on the first game of every arena run.
+        mcts_kwargs: dict[str, Any] = {"num_simulations": mcts_sims}
+        if mcts_type in _GUMBEL_VARIANTS:
+            mcts_kwargs["num_sampled_actions"] = gumbel_num_actions
+        # Only thread a seed when the arena is seeded, so an unseeded call
+        # builds exactly the search it always did.
+        search_seed = derive_seed(seed, SeedStream.ARENA_SEARCH, game_idx, side)
+        if search_seed is not None:
+            mcts_kwargs["seed"] = search_seed
+        mcts = create_mcts(variant=mcts_type, network=model, device=str(device), **mcts_kwargs)
+        return _SearchPlayer(mcts, is_muzero)
+
+    def _player(
+        factory: PlayerFactory | None, model: torch.nn.Module | None, game_idx: int, side: str
+    ) -> ArenaPlayer:
+        if factory is not None:
+            return factory(derive_seed(seed, SeedStream.ARENA_OPPONENT, game_idx, side))
+        return _search_player(model, game_idx, side)
 
     start_time = time.time()
     wins = 0
@@ -158,37 +271,22 @@ def run_arena(
     for game_idx in range(num_games):
         game_start_time = time.time()
 
-        # Alternate which player model_a controls
+        # Alternate which player model_a controls; the pair index selects the map.
         a_is_player_0 = game_idx % 2 == 0
+        pair = game_idx // 2
+        if env_seeds is not None:
+            env_seed = env_seeds[pair]
+        else:
+            env_seed = None if seed is None else seed + pair
 
         env = create_game_env(
             board_size=board_size,
             max_turns=max_turns,
             gameplay_preset=gameplay_preset,
-            seed=None if seed is None else seed + game_idx,
+            seed=env_seed,
         )
-        # num_sampled_actions is a Gumbel-family parameter; create_mcts rejects
-        # unknown kwargs, so passing it unconditionally made mcts_type="civ6"
-        # -- an option this function's own docstring advertises -- raise
-        # TypeError on the first game of every arena run.
-        mcts_kwargs: dict[str, Any] = {
-            "num_simulations": mcts_sims,
-        }
-        if mcts_type in _GUMBEL_VARIANTS:
-            mcts_kwargs["num_sampled_actions"] = gumbel_num_actions
-
-        mcts_a = create_mcts(
-            variant=mcts_type,
-            network=model_a,
-            device=str(device),
-            **mcts_kwargs,
-        )
-        mcts_b = create_mcts(
-            variant=mcts_type,
-            network=model_b,
-            device=str(device),
-            **mcts_kwargs,
-        )
+        player_a = _player(player_a_factory, model_a, game_idx, "a")
+        player_b = _player(player_b_factory, model_b, game_idx, "b")
 
         _obs, _info = env.reset()
         done = False
@@ -198,18 +296,14 @@ def run_arena(
             current_is_a = (env.current_player == 0 and a_is_player_0) or (
                 env.current_player == 1 and not a_is_player_0
             )
-            mcts = mcts_a if current_is_a else mcts_b
+            player = player_a if current_is_a else player_b
 
-            # Greedy play for evaluation (temperature=0, no noise)
-            if is_muzero:
-                # MuZeroMCTS.search() uses learned dynamics model internally;
-                # it requires observation dict + action_mask, not env.
-                obs = env.get_observation()
-                action_probs, _ = mcts.search(obs, add_noise=False, action_mask=obs["action_mask"])  # type: ignore
-            else:
-                # Standard MCTS variants (civ6/gumbel) traverse the env directly
-                action_probs, _ = mcts.search(env, add_noise=False)
-            action = mcts.select_action(action_probs, temperature=0.0)
+            # A search player reads the env itself; a baseline needs the
+            # observation (for its action mask), fetched only when asked for.
+            observation: Mapping[str, Any] = (
+                {} if isinstance(player, _SearchPlayer) else env.get_observation()
+            )
+            action = player.select_action(env, observation)
 
             _obs, _reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
@@ -229,9 +323,10 @@ def run_arena(
         elapsed = time.time() - game_start_time
         player_str = "P0" if a_is_player_0 else "P1"
         logger.info(
-            "Game %d/%d: model_a=%s, result=%s, moves=%d (%.1fs)",
+            "Game %d/%d (map %d): model_a=%s, result=%s, moves=%d (%.1fs)",
             game_idx + 1,
             num_games,
+            pair,
             player_str,
             result,
             move_count,

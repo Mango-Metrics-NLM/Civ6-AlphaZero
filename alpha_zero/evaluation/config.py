@@ -34,10 +34,19 @@ from alpha_zero.utils.device import resolve_device_str
 
 
 class BaselineType(str, Enum):
-    """Types of baseline opponents for evaluation."""
+    """Types of baseline opponents for evaluation.
+
+    ``RANDOM`` plays a uniform legal move; ``HEURISTIC`` is the weighted
+    rule-based player; ``SIMPLE_MCTS`` is a network-free random-rollout search
+    (``core/mcts/simple.py``) whose strength is set by ``mcts_simulations`` --
+    the iteration-0 bootstrap and the weakest *search* opponent, so it sits
+    between the two above; ``PREVIOUS_MODEL`` / ``SPECIFIC_CHECKPOINT`` load a
+    trained network from ``checkpoint_path``.
+    """
 
     RANDOM = "random"
     HEURISTIC = "heuristic"
+    SIMPLE_MCTS = "simple_mcts"
     PREVIOUS_MODEL = "previous_model"
     SPECIFIC_CHECKPOINT = "specific_checkpoint"
 
@@ -94,14 +103,16 @@ class BaselineConfig:
     """Configuration for a single baseline opponent.
 
     Attributes:
-        type: Type of baseline (random, heuristic, previous_model, specific_checkpoint)
+        type: Type of baseline (random, heuristic, simple_mcts, previous_model,
+            specific_checkpoint)
         name: Display name for this baseline in reports
         num_games: Number of games to play against this baseline
         enabled: Whether this baseline is active for evaluation
         checkpoint_path: Path to model checkpoint (for model-based baselines)
         heuristic_weights: Weights for heuristic baseline behavior
         use_mcts: Whether to use MCTS for model-based baselines
-        mcts_simulations: Number of MCTS simulations if using MCTS
+        mcts_simulations: Number of MCTS simulations if using MCTS (also the
+            rollout budget of a ``simple_mcts`` baseline)
     """
 
     type: BaselineType = BaselineType.RANDOM

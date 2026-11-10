@@ -47,6 +47,13 @@ RE_EPOCH = re.compile(
 )
 RE_TRAIN_DONE = re.compile(r"Training complete \(([\d.]+)s\)")
 RE_WINRATE = re.compile(r"Win rate vs random:\s*([\d.]+)%")
+# The draw-aware twin written by training_civ6.evaluate_against_random (E1):
+#   Eval score rate vs random: 0.5250 (95% CI [0.3921, 0.6579], draw rate 0.2500,
+#   win rate 0.4000, n=20)
+RE_SCORERATE = re.compile(
+    r"Eval score rate vs random:\s*([\d.]+) \(95% CI \[([\d.]+), ([\d.]+)\], "
+    r"draw rate ([\d.]+), win rate ([\d.]+), n=(\d+)\)"
+)
 RE_EXIT = re.compile(r"^EXIT=(\d+)")
 RE_REAL = re.compile(r"^real\s+(\d+)m([\d.]+)s")
 
@@ -126,6 +133,12 @@ def parse_log(text: str) -> dict[str, Any]:
         elif m := RE_WINRATE.search(line):
             # Stored as a fraction; the log prints a percentage.
             current["win_rate_vs_random"] = float(m.group(1)) / 100.0
+        elif m := RE_SCORERATE.search(line):
+            current["score_rate_vs_random"] = float(m.group(1))
+            current["score_ci_low"] = float(m.group(2))
+            current["score_ci_high"] = float(m.group(3))
+            current["draw_rate_vs_random"] = float(m.group(4))
+            current["eval_games"] = int(m.group(6))
         elif m := RE_EXIT.match(line):
             result["exit_code"] = int(m.group(1))
         elif m := RE_REAL.match(line):
@@ -164,13 +177,21 @@ def render_markdown(data: dict[str, Any], title: str, notes: str) -> str:
         "",
         "## Per-iteration results",
         "",
-        "| Iter | Self-play games | Examples | Self-play (s) | Train (s) | Final loss | Win rate vs random |",
-        "|-----:|----------------:|---------:|--------------:|----------:|-----------:|-------------------:|",
+        "| Iter | Self-play games | Examples | Self-play (s) | Train (s) | Final loss "
+        "| Win rate vs random | Score rate (95% CI) | Draw rate |",
+        "|-----:|----------------:|---------:|--------------:|----------:|-----------:"
+        "|-------------------:|--------------------:|----------:|",
     ]
     for it in data["iterations"]:
         epochs = it.get("epochs") or []
         final_loss = f"{epochs[-1]['total_loss']:.4f}" if epochs else "-"
         win = it.get("win_rate_vs_random")
+        score = it.get("score_rate_vs_random")
+        draw = it.get("draw_rate_vs_random")
+        if score is None:
+            score_cell = "-"
+        else:
+            score_cell = f"{score:.3f} [{it['score_ci_low']:.3f}, {it['score_ci_high']:.3f}]"
         lines.append(
             f"| {it['iteration']} "
             f"| {it.get('selfplay_games', '-')} "
@@ -178,7 +199,9 @@ def render_markdown(data: dict[str, Any], title: str, notes: str) -> str:
             f"| {it.get('selfplay_seconds', '-')} "
             f"| {it.get('training_seconds', '-')} "
             f"| {final_loss} "
-            f"| {'-' if win is None else f'{win:.1%}'} |"
+            f"| {'-' if win is None else f'{win:.1%}'} "
+            f"| {score_cell} "
+            f"| {'-' if draw is None else f'{draw:.1%}'} |"
         )
 
     lines += ["", "## Run", "", "| Setting | Value |", "|---------|-------|"]
