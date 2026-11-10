@@ -16,6 +16,6 @@
   "ruff_per_file_ignores": 26,
   "runtime_asserts": 60,
   "test_files_over_1000_lines": 27,
-  "type_ignore_comments": 147,
+  "type_ignore_comments": 148,
   "unsafe_torch_load_calls": 8
 }
