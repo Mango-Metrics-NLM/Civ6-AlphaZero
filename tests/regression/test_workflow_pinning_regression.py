@@ -79,7 +79,7 @@ def test_workflow_directory_is_not_empty() -> None:
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_every_action_is_pinned_to_a_sha(path: Path) -> None:
     """No ``uses:`` reference may sit on a mutable tag or branch."""
-    doc = yaml.safe_load(path.read_text())
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     unpinned: list[str] = []
     for ref in _iter_uses(doc):
         if ref.startswith(LOCAL_PREFIXES):
@@ -98,7 +98,7 @@ def test_pinned_actions_carry_a_version_comment(path: Path) -> None:
     """A bare SHA is unreadable and unmaintainable; require the version comment."""
     missing = [
         line.strip()
-        for line in path.read_text().splitlines()
+        for line in path.read_text(encoding="utf-8").splitlines()
         if re.search(r"uses:\s*[^\s]+@[0-9a-f]{40}", line) and "#" not in line
     ]
     assert not missing, f"{path.name} has SHA-pinned actions with no '# vX.Y.Z' comment: {missing}"
@@ -112,7 +112,7 @@ def test_ci_pull_request_trigger_is_not_filtered_to_a_stale_branch() -> None:
     which is deliberately read from git rather than hardcoded here -- hardcoding
     it is what produced the original defect.
     """
-    doc = yaml.safe_load((WORKFLOW_DIR / "ci.yml").read_text())
+    doc = yaml.safe_load((WORKFLOW_DIR / "ci.yml").read_text(encoding="utf-8"))
     triggers = _triggers(doc)
     assert "pull_request" in triggers, "ci.yml no longer runs on pull_request at all"
 
@@ -152,7 +152,7 @@ def test_the_pinning_check_rejects_a_mutable_tag(tmp_path: Path) -> None:
         "name: X\non:\n  push:\njobs:\n  a:\n    runs-on: ubuntu-latest\n"
         "    steps:\n      - uses: actions/checkout@v4\n"
     )
-    doc = yaml.safe_load(planted.read_text())
+    doc = yaml.safe_load(planted.read_text(encoding="utf-8"))
     refs = _iter_uses(doc)
     assert refs == ["actions/checkout@v4"], "the uses-extractor missed a reference"
     assert not SHA_RE.match(refs[0].partition("@")[2]), "a mutable tag was accepted as a SHA"
@@ -235,7 +235,7 @@ def _default_branch() -> str:
     settings = Path(".claude/settings.json")
     if settings.exists():
         try:
-            declared = json.loads(settings.read_text()).get("env", {}).get("CIV6AZ_DEFAULT_BRANCH")
+            declared = json.loads(settings.read_text(encoding="utf-8")).get("env", {}).get("CIV6AZ_DEFAULT_BRANCH")
         except json.JSONDecodeError:
             declared = None
         if declared:
@@ -364,7 +364,7 @@ def checkouts_persisting_credentials(doc: dict) -> list[str]:
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_push_triggers_name_only_the_default_branch_main_or_a_glob(path: Path) -> None:
-    doc = yaml.safe_load(path.read_text())
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     stale = stale_push_branches(doc, _default_branch())
     assert not stale, (
         f"{path.name} push trigger names {stale}: not the default branch "
@@ -375,7 +375,7 @@ def test_push_triggers_name_only_the_default_branch_main_or_a_glob(path: Path) -
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_every_pip_install_is_pinned(path: Path) -> None:
-    doc = yaml.safe_load(path.read_text())
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     offenders = []
     for job_name, _job, step in _steps(doc):
         run = step.get("run")
@@ -390,7 +390,7 @@ def test_every_pip_install_is_pinned(path: Path) -> None:
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_no_secret_bearing_step_runs_an_unpinned_install(path: Path) -> None:
-    doc = yaml.safe_load(path.read_text())
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     offenders = secret_steps_with_unpinned_installs(doc)
     assert not offenders, (
         f"{path.name}: steps that see a secret also run an unpinned install: {offenders}"
@@ -399,7 +399,7 @@ def test_no_secret_bearing_step_runs_an_unpinned_install(path: Path) -> None:
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_every_checkout_disables_credential_persistence(path: Path) -> None:
-    doc = yaml.safe_load(path.read_text())
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     offenders = checkouts_persisting_credentials(doc)
     assert not offenders, (
         f"{path.name}: actions/checkout without `persist-credentials: false`: {offenders}. "

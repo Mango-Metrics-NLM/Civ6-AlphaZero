@@ -55,7 +55,7 @@ def report_files(directory: Path) -> list[Path]:
 def evidence_blocks(directory: Path) -> list[tuple[Path, dict]]:
     found = []
     for p in sorted(directory.glob("*.json")):
-        data = json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
         if isinstance(data, dict) and isinstance(data.get("evidence"), dict):
             found.append((p, data["evidence"]))
     return found
@@ -117,7 +117,7 @@ class TestEvidenceContract:
         assert not failures, failures
 
     def test_every_dir_is_indexed(self) -> None:
-        listed = indexed_dirs(INDEX.read_text())
+        listed = indexed_dirs(INDEX.read_text(encoding="utf-8"))
         missing = sorted(d.name for d in evidence_dirs() if d.name not in listed)
         assert not missing, f"not listed in docs/evidence/README.md: {missing}"
 
@@ -129,7 +129,7 @@ class TestEvidenceContract:
                 continue
             for report in report_files(d):
                 checked += 1
-                assert BANNER_MARK in report.read_text(), f"{report} lacks the superseded banner"
+                assert BANNER_MARK in report.read_text(encoding="utf-8"), f"{report} lacks the superseded banner"
         assert checked > 0, "no pre-fix report was inspected -- the check would be vacuous"
 
     def test_pre_fix_sha_is_an_ancestor_of_the_fix_commit(self) -> None:

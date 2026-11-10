@@ -623,7 +623,7 @@ class TestSearchTestsAssertSomething:
                 if not node.name.startswith("test_") or self._is_fixture(node):
                     continue
                 checked += 1
-                qualified = f"{path.relative_to(REPO_ROOT)}::{node.name}"
+                qualified = f"{path.relative_to(REPO_ROOT).as_posix()}::{node.name}"
                 if qualified in self.ASSERTION_FREE_BY_DESIGN:
                     continue
                 if not self._asserts_something(node):

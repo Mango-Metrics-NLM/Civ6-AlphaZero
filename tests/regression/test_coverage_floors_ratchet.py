@@ -160,7 +160,7 @@ def _base_or_bail() -> tuple[str, dict[str, Any]]:
 
 def test_floors_file_exists_and_parses() -> None:
     assert FLOORS_PATH.exists(), f"{FLOORS_PATH} is missing; the floor gate has nothing to read"
-    assert _minimums(_load(FLOORS_PATH.read_text())), (
+    assert _minimums(_load(FLOORS_PATH.read_text(encoding="utf-8"))), (
         f"{FLOORS_PATH} declares no package minimums, so every other assertion here is vacuous"
     )
 
@@ -169,7 +169,7 @@ def test_no_floor_was_lowered() -> None:
     """A recorded minimum may rise or hold. Lowering one needs a different PR."""
     ref, base_doc = _base_or_bail()
 
-    current = _minimums(_load(FLOORS_PATH.read_text()))
+    current = _minimums(_load(FLOORS_PATH.read_text(encoding="utf-8")))
     previous = _minimums(base_doc)
 
     lowered = {
@@ -190,7 +190,7 @@ def test_no_package_was_silently_dropped() -> None:
     """Deleting a package's entry evades the ratchet as surely as lowering it."""
     ref, base_doc = _base_or_bail()
 
-    current = set(_minimums(_load(FLOORS_PATH.read_text())))
+    current = set(_minimums(_load(FLOORS_PATH.read_text(encoding="utf-8"))))
     previous = set(_minimums(base_doc))
     removed = previous - current
     assert not removed, (
