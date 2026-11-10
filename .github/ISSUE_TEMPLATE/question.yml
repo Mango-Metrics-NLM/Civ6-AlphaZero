@@ -1,0 +1,23 @@
+name: Question
+description: Ask how something works or how to run it (there is no separate discussion forum)
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before asking, check the [documentation index](../../docs/README.md) — it labels every
+        page by audience and says what has and has not been validated.
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and what have you tried or read so far?
+    validations:
+      required: true
+  - type: input
+    id: context
+    attributes:
+      label: Where you looked
+      description: Page, module or command you were following, if any.
+    validations:
+      required: false

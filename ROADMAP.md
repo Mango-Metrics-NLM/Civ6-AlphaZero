@@ -2,26 +2,74 @@
 
 > **Themes, not dates.** Milestone *detail* changes here; the charter
 > ([`PROJECT_CHARTER.md`](PROJECT_CHARTER.md) §5) only names the themes and is amended
-> far more rarely. Tactical, changeable to-dos live in [`NEXT_STEPS.md`](NEXT_STEPS.md)
-> and its reconciliation, [`docs/NEXT_STEPS_CASE_2026-08.md`](docs/NEXT_STEPS_CASE_2026-08.md).
+> far more rarely. Actionable work lives in [Now / Next / Later](#now--next--later)
+> below and in GitHub Issues; the scope of an in-flight change lives under
+> `openspec/changes/`; the live-bridge how-to is [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md).
 > What actually shipped is recorded in [`CHANGELOG.md`](CHANGELOG.md).
 
-| Theme | Name | Status |
-|-------|------|--------|
-| M1 | Learning Core | ✅ Delivered |
-| M2 | Scale & Observability | ✅ Delivered |
-| M3 | Live Game Bridge | ✅ Delivered |
-| M4 | Multiplayer & Throughput | 🔄 Active |
-| M5 | Full Civ6 Mastery | ⏳ Future |
+**Delivered and validated are different axes.** The table records both. A
+milestone is *delivered* when its code shipped and is exercised by tests; it is
+*validated* only when a committed measurement under `docs/evidence/` supports the
+claim the milestone makes. Every evidence artifact committed so far was produced
+on code that predates the 2026-09-04 search-correctness fixes (wrong-signed value
+backup, one-hot policy target, iteration-free seeds), so none of them is evidence
+about learning.
+
+| Theme | Name | Delivery status | Validation (evidence) |
+|-------|------|-----------------|-----------------------|
+| M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
+| M2 | Scale & Observability | ✅ Delivered | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
+| M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery proven, demo-grade.** Four `END_TURN`s on random weights, 2026-07-12; turn-cycle stall open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
+| M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
+| M5 | Full Civ6 Mastery | ⏳ Future | — |
+
+## Now / Next / Later
+
+Sequencing authority: [`kb/specs/20260904-correctness-first-plan.md`](kb/specs/20260904-correctness-first-plan.md)
+(search correctness → draw-rate re-measure → seeded learning run), which amends
+[`kb/specs/20260902-validated-learning-plan.md`](kb/specs/20260902-validated-learning-plan.md).
+Every *Now* bullet names the issue or OpenSpec change that tracks it
+(`check_doc_sync` D9 enforces this).
+
+### Now
+
+- Public-release readiness — all tasks under `openspec/changes/public-release-readiness`
+  (deletion of off-scope material, identifier scrub, README v2, documentation index
+  and gates, charter corrections, CI/supply-chain hardening, the v2.0.0 changelog roll).
+
+### Next — v2.1 "First validated learning run"
+
+- Re-measure the draw rate under *trained* post-fix play (the committed sweep is
+  random play on pre-fix code), then set `max_turns` on the deployed path from
+  that number.
+- A seeded 20-iteration learning-trend run on the fixed search, read against a
+  draw-aware score rate with a paired-seat protocol, committed under
+  `docs/evidence/` with the post-fix banner.
+- Evaluation plumbing the run needs: a search seed and paired seats in
+  `run_arena`, additive draw-aware metrics with a regression gate, and a
+  promotion-feasibility report with a corrected runbook.
+- Gumbel policy-target entropy measurement and the documented deviations from
+  the reference algorithm; a closed-loop learning oracle.
+- Memo on the seed overlap in the encoder A/B evidence (WS-S S5).
+
+### Later
+
+- M4: N-player training runs, a measured batch self-play benchmark, the remaining
+  tech-debt workstreams (below).
+- M5: fog of war via information-set sampling, the full-scale encoder and action
+  space against the real game, sustained live play with a trained checkpoint.
+
+---
 
 ## M1 — Learning Core
 
-AlphaZero on MicroCiv, proven end-to-end. *(Delivered: Phases 1–18, v0.x–v1.5.0.)*
+AlphaZero on MicroCiv, built end-to-end. *(Delivered: Phases 1–18, v0.x–v1.5.0.)*
 
 - MicroCiv environment, ResNet + attention networks, hierarchical action space.
 - Pluggable MCTS family (Simple, Civ6, Gumbel, Batch) with GumbelMCTS as default.
-- Training convergence validated after the v1.3.0 weight-continuity fix
-  (`scripts/validate_convergence.py`).
+- Weight continuity across iterations fixed in v1.3.0 (`scripts/validate_convergence.py`
+  exercises the loop). Whether the loop *learns* has not been demonstrated — see the
+  Validation column above; the 2026-09-04 search fixes make every earlier run moot.
 
 ## M2 — Scale & Observability
 
@@ -32,7 +80,10 @@ Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7
   GCS-backed storage and replay, Spot-VM preemption handling.
 - MLflow monitoring layer (`alpha_zero/monitoring/`), ELO tournament system,
   post-run evaluation and analysis scripts.
-- 50-iteration production runs completed; 269 model versions in the GCS lineage.
+- 50-iteration production runs completed on Vertex AI. Their outputs predate the
+  2026-08-24 value-sign fix and the 2026-09-04 search fixes, and the promotion
+  gate they ran under scores every draw as a loss; the model lineage they produced
+  is an operational record, not a success signal.
 
 ## M3 — Live Game Bridge
 
@@ -40,8 +91,11 @@ A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–
 
 - Lua mod + file-IPC bridge, `BridgeAgentLoop`, `BridgeMCTSEnv` (v1.7.0).
 - Headless FireTuner socket transport (`alpha_zero/bridge/tuner_socket_bridge.py`);
-  live autonomous turns verified 2026-07-12 (v1.8.0).
-- LLM eval harness gating `StrategyAdvisor` output contracts (`make eval-llm`).
+  four autonomous `END_TURN`s delivered and acknowledged on 2026-07-12 with a
+  randomly initialised network (v1.8.0). How to run it, and what is still open:
+  [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md).
+- Offline contract gate for `StrategyAdvisor` output (`make eval-llm`) — a
+  serialisation regression check, not a quality measurement.
 
 ## M4 — Multiplayer & Throughput
 
@@ -64,16 +118,17 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
 > follow on the fixed code.
 
 - Wire `validate_encoder_state` into the cloud workers to prevent silent architecture cross-loading (done 2026-08-10).
-- Complete 800-game local GPU A/B arena comparison and publish the hex-crystalline encoder to the Hugging Face Hub (done 2026-08-10).
+- Complete 800-game local GPU A/B arena comparison and publish the hex-crystalline encoder to the Hugging Face Hub (done 2026-08-10; the A/B is superseded as a strength comparison — see `docs/evidence/README.md`).
 - Run and validate 3–4 player training (pipeline landed 2026-07-05:
   `--num_players` / `--scoring_method`; Max-N backprop and opponent modeling in
   self-play remain).
-- Wire `BatchGumbelMCTS` + `VectorizedMicroCivEnv` into the cloud containers
-  (5–10× self-play throughput). The wiring exists in `cloud/gcp/selfplay_worker.py`
-  and is tested; what remains is a config that selects it and a measured
-  benchmark — the 5–10× figure is a target, not an observation. Batch
-  trajectories omitted `action_masks` until 2026-08-27, so any data generated
-  by this path before then trained with masked policy loss disabled.
+- Wire `BatchGumbelMCTS` + `VectorizedMicroCivEnv` into the cloud containers as
+  the production self-play path. The wiring exists in `cloud/gcp/selfplay_worker.py`
+  and is tested; what remains is a config that selects it and a **measured
+  benchmark** — no throughput figure is claimed until one is committed under
+  `docs/evidence/`. Batch trajectories omitted `action_masks` until 2026-08-27,
+  so any data generated by this path before then trained with masked policy loss
+  disabled.
 - ~~Land the champion-load fix on the cloud training path (PR #72)~~ *(landed;
   the mechanism changed — `--model_version` was removed in favour of
   `--resume_from=latest`, which resolves the incumbent from GCS in
@@ -124,5 +179,7 @@ Sustained, skilled play of the full game. *(Future.)*
 ---
 
 *Cross-links: [`PROJECT_CHARTER.md`](PROJECT_CHARTER.md) (governance, non-goals,
-invariants) · [`NEXT_STEPS.md`](NEXT_STEPS.md) (tactical) ·
-[`CHANGELOG.md`](CHANGELOG.md) (shipped).*
+invariants) · [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) (live bridge how-to) ·
+[`docs/evidence/README.md`](docs/evidence/README.md) (committed measurements) ·
+[`CHANGELOG.md`](CHANGELOG.md) (shipped). The 2026-08 next-steps reconciliation is
+archived at [`docs/archive/NEXT_STEPS_CASE_2026-08.md`](docs/archive/NEXT_STEPS_CASE_2026-08.md).*

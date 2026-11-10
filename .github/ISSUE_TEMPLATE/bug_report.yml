@@ -22,8 +22,17 @@ body:
   - type: input
     id: version
     attributes:
-      label: Version
-      description: Output of `python -c "import alpha_zero; print(alpha_zero.__version__)"`.
+      label: Version (distribution)
+      description: Output of `pip show civ6-alphazero | grep -i ^version` (or `python -c "import alpha_zero; print(alpha_zero.__version__)"`).
+      placeholder: "1.8.0"
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA
+      description: Output of `git rev-parse --short HEAD` if you run from a checkout; the release tag otherwise.
+      placeholder: "abc1234 or v1.8.0"
     validations:
       required: true
   - type: textarea

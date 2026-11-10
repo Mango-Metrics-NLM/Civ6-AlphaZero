@@ -59,9 +59,9 @@ from numerical instability, and race conditions in distributed components.
 ### 2.1 Hard Constraints (Violations = Failure)
 
 ```
-- Language/Runtime: Python 3.10+ (type hints required)
+- Language/Runtime: Python 3.11+ (type hints required; `requires-python = ">=3.11"`)
 - Required Dependencies:
-  - torch >= 1.13.0 (neural networks)
+  - torch >= 2.0.0 (neural networks)
   - numpy >= 1.23.0 (numerical operations)
   - gymnasium >= 0.29.0 (RL environments)
   - pyyaml >= 6.0 (configuration)
@@ -126,7 +126,7 @@ IN SCOPE:
 - All files in alpha_zero/
 - All files in tests/
 - Configuration files in configs/
-- Root-level Python files (pyproject.toml, run_*.py)
+- Root-level configuration (pyproject.toml) and the runners in scripts/ (scripts/run_*.py)
 - Documentation files (CLAUDE.md, README.md)
 - Environment templates (.env.template)
 - Requirements files (requirements.txt)
@@ -302,8 +302,8 @@ When making changes, update the relevant sections below:
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
-| `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
-| `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `python scripts/run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
+| `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
 | `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
 | `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
 | `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
@@ -369,6 +369,7 @@ When making changes, update the relevant sections below:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-10 | Public-release readiness as one OpenSpec change (`openspec/changes/public-release-readiness`) | A five-role panel review (`docs/audits/2026-11-10-public-release-review.md`) argued each decision as thesis → counter → rebuttal. Decisions that overturned the first draft: **scrub by sensitivity, not by grep count** (project ids are not secrets; the project number + service-account address, bucket names as code defaults, and the personal email are); **do not scrub `kb/`** (handoffs are immutable under K7, ledger lines are never rewritten, and the session ids are opaque and already in 201 commit messages — frame them instead); **2.0.0 not 1.9.0** (four BREAKING sections under the SemVer promise); **claims need an epoch** (`docs/evidence/SCHEMA.md`: every artifact says whether it predates the 2026-09-04 search fixes; none is post-fix yet); **the benchmark is the promotion judge's own code path**, not a new script; **metrics are additive** (`score_rate`/`draw_rate` beside every `win_rate`, never renamed). Deliberately NOT done here (CONFIRM-FIRST or maintainer): key rotation, IAM, branch rename, the promotion-default flip, lock-file strategy, coordinator/orchestrator seeding, the CLAUDE.md split (its citation-resolution gate landed first), the distribution rename. |
 | 2026-01-10 | 13-channel MicroCiv encoder | Simplified encoding for faster Phase 1 training |
 | 2026-01-10 | Hierarchical action space | Reduces effective branching factor from ~10^6 to ~10^3 |
 | 2026-01-10 | SimpleMCTS + Civ6MCTS | SimpleMCTS for testing, Civ6MCTS for training |
@@ -1441,7 +1442,7 @@ Copy and edit `.claude/settings.local.json` for personal settings:
 ```json
 {
   "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "<redacted: never commit a real token>"
   }
 }
 ```
@@ -1450,6 +1451,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-07-25*
-*Version: v1.8.0 (enterprise docs overhaul + OpenSpec governance gates)*
+*Last updated: 2026-11-10*
+*Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

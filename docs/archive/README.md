@@ -28,5 +28,7 @@ Moved here on 2026-07-25 as part of the enterprise documentation overhaul
 | `phase1_validation.md` | `docs/` | Phase-1 validation guide |
 | `PATENT_ANALYSIS.md` | `docs/` | Novelty assessment |
 | `2026-07-11-local-e2e-civ6-gameplay.md` | `docs/superpowers/plans/` | Machine-specific plan |
+| `NEXT_STEPS_CASE_2026-08.md` | `docs/` | 2026-08-27 reconciliation of the next-steps list against the tree; its sequencing is superseded by `kb/specs/20260904-correctness-first-plan.md` (moved 2026-11-10) |
+| `NEXT_STEPS_ANALYSIS.md` | `docs/` | 2026-08-11 drift scan that the case above superseded |
 
 For current documentation, start at [`../README.md`](../README.md).
