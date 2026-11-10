@@ -1,5 +1,13 @@
 # DEV-SQE Log
 
+## 2026-11-10 - Public-release readiness (PR #132, v2.0.0)
+- **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
+- **Task:** Peer review for the public flip run as a five-role panel (SDLC/DevSecOps, ML/AI science, Product + Scrum, architect, integration lead), every decision argued thesis → counter → rebuttal → gate (`docs/audits/2026-11-10-public-release-review.md`, spec `kb/specs/20261110-public-release-readiness.md`, OpenSpec change `public-release-readiness`), then implemented as seven slices by five sub-agents in one PR, committed by reviewability class.
+- **Files Changed:** 15 commits on `claude/cool-lovelace-o02vn9`; deletion-only sweep (91 files, 20,553 lines), README v2 + docs index + `docs/EVALUATION.md` + `docs/LIVE_CIV6.md` + evidence contract (`docs/evidence/SCHEMA.md`, index, backfilled blocks), `CITATION.cff`/`GOVERNANCE.md`/`.editorconfig`/`.python-version`/`py.typed`, PEP 621 metadata, charter corrections (ratify), 2.0.0 roll with archived detail, CI (CPU-only torch on runners, non-blocking scanners, release build, pinning/Makefile gates, `validate_kb --git` enforced), runner moves + identifier scrub by sensitivity + fail-closed bucket defaults + `*.example.yaml`, public-readiness gate, seeded paired-seat arena + `BenchmarkProtocol` + additive `score_rate`/`draw_rate` + promotion feasibility + `--mcts` + learning oracle.
+- **Tests:** `make verify` exit 0 (coverage 87% vs 85%, cloud 60.0% vs 58%); regression+cloud-unit+governance 1,241 passed; unit 9,714 passed / 58 skipped; mypy clean on 331 files; ruff/format clean; every new gate shown red on a planted defect first (controls in commit messages).
+- **Status:** complete; draft PR #132 open and watched; CI red on intermediate heads was this branch's own each time and fixed in the next commit.
+- **Next:** maintainer checklist in the review §9 before the flip (rotate the W&B key — the leaked commit is the head of closed PR #72 so branch deletion does nothing; remove `allUsers`; merge P5 before renaming the default branch; protection with zero required approvals; `ianshank/Agents` public or `eval` out of `verify`; ratify the charter commit; tag v2.0.0 on the merge; triage the 15 open PRs). Follow-ups are issues in the review §10; CONFIRM-FIRST hunks for `coordinator.py`/`vertex_orchestrator.py` are in the evaluation worker's report summarised there.
+
 ## 2026-09-02 - Gap analysis and hygiene pass on the Core scope
 - **Session:** session_01EcSsbbTYiSkmZsMVyipm7G
 - **Focus:** Objective peer review of the Core-scope work, remaining-debt gap analysis, harness audit, documentation and build-config reconciliation, full pre-PR validation.

@@ -99,7 +99,25 @@ This review does not repeat the 2026-09-04 standards audit (`2026-09-04-standard
 
 ## 8. What this branch changes
 
-See `openspec/changes/public-release-readiness/tasks.md` for the checklist and the pull-request description for the per-commit map. In outline: P0 this report and the change; P1 deletion-only; P2 moves, scrub and the public-readiness regression gate; P3 README v2, documentation index, evaluation protocol document, evidence contract, community files and package metadata; P4 charter corrections (separate commit for ratification); P5 CI and supply chain; P6 release roll to 2.0.0; P7 evaluation plumbing (milestone v2.1).
+Commits on the branch, by reviewability class (merge commits, never squash; the pull-request
+description carries the same map):
+
+| Commit | Class | Contents |
+|---|---|---|
+| `d1306b7` | deletion-only | Atari replays and demo with their tests, root `interfaces/` and its test, template code, personal MCP config, W&B dashboard JSON, orphan root `Dockerfile`, generated Lua path file; coupling config; 91 files, 20,553 lines removed |
+| `8ea973e` | docs | This review, the OpenSpec change, the evidence contract and index with every artifact backfilled and banner-labelled pre-fix, `docs/EVALUATION.md` with its recomputed power table, `CITATION.cff`, `GOVERNANCE.md`, `.editorconfig`, `.python-version`, `py.typed`, model-card corrections |
+| `5e63152` | docs + gates | README v2, `docs/README.md` index, `docs/LIVE_CIV6.md`, ROADMAP validation column, community files, `kb/README.md` and `.claude/README.md`, minimal CLAUDE.md edits; doc-sync D4b/D6′/D8/D9/CFF and the CLAUDE.md citation gate |
+| `c66f12b` | charter (ratify) | Links, M1 wording, speed-up claims, Python floor |
+| `335d5e7` | release | `[2.0.0]` summary with archived detail, version 2.0.0 everywhere, PEP 621 metadata |
+| `f19ef71`, `057546b` | CI | CPU-only torch on runners, non-blocking scanners (GHAS-dependent ones skipped while private), release build and checksums, Spaces deploy without a branch trigger, `validate_kb --git` enforced, pre-commit and Makefile fixes, pinning and Makefile gates |
+| `6069f13`, `8394eee` | tests | Windows portability of two regression gates (UTF-8 reads, POSIX exemption keys), found by the new contributor smoke |
+| `b408083`, `dceb793`, `af29b52`, `7843d4c`, `51f948b` | code + config | Runner moves, identifier scrub by sensitivity, fail-closed bucket defaults, `*.example.yaml` configs, the public-readiness gate and its manifest; follow-ups the gate and CI found |
+| `1cb1169` | evaluation | Seeded, paired-seat arena; `BenchmarkProtocol` over `run_arena`; additive `score_rate`/`draw_rate` everywhere with an AST gate; promotion feasibility report and rewritten runbook; `--mcts` on the local trainer; learning oracle; Gumbel target entropy measurement |
+
+**Negative controls.** Every new gate was shown failing on a planted defect before it was kept.
+The controls are recorded in the commit messages above and in the worker reports they
+summarise; the planted-defect tests that run on every CI pass are the `TestNegativeControls` /
+`TestTheGateItselfDiscriminates` classes in each regression module.
 
 ## 9. Maintainer checklist before the flip (in order)
 
@@ -137,11 +155,21 @@ See `openspec/changes/public-release-readiness/tasks.md` for the checklist and t
 
 ## 11. Reproduction log
 
-Filled in at the end of the branch; every row names the command and its observed result.
+Every row names the command and the observed result on the branch head `1cb1169`
+(Python 3.11.x venv, `OMP_NUM_THREADS=2`, unshallowed clone).
 
 | Check | Result |
 |---|---|
+| Hugging Face API lookups for the six README links at `96c9e57` | all six not found; `ianshank/civ6-hexcrystal-encoder` found (74.6K params, MIT) |
+| GitHub API at `96c9e57`: open pull requests / issues / tags | 15 (11 Dependabot) / 0 / 0 |
 | `python scripts/validate_openspec.py --change public-release-readiness` | OK |
-| Hugging Face API lookups for the six README links | 404 / not found for all six; `ianshank/civ6-hexcrystal-encoder` found |
-| GitHub API: open pull requests | 15 (11 Dependabot) · open issues 0 · tags 0 |
-| (remaining rows added after verification) | |
+| `python scripts/check_doc_sync.py` (D1–D9 incl. the new rules) | OK |
+| `python scripts/validate_kb.py --git` (full history, K7 enforced) | OK |
+| `ruff check .` / `ruff format --check .` | clean / 896 files formatted |
+| `python -m mypy alpha_zero/` | no issues in 331 source files |
+| `pytest tests/regression tests/cloud/unit tests/governance tests/scripts/test_evaluation_power_table.py` | 1,241 passed, 2 skipped |
+| `pytest tests/unit -m "not slow"` | 9,714 passed, 58 skipped (the 8 failures seen mid-integration were fixed before the final slice; the three affected files re-run 69 passed) |
+| `python -m alpha_zero.training_civ6 --dry_run` | exit 0 in 7.5 s |
+| `python -m alpha_zero.orchestrator --preset fast --dry_run` | exit 0 |
+| `make verify` (every CI gate: lint, format, types, CI's suites, security incl. gitleaks over the tree and HEAD's lineage, governance, validators, coverage, cloud floor, advisor contract gate) | exit 0; global coverage 87% against the 85% gate; `alpha_zero/cloud` 60.0% of 5,525 statements against the 58% floor |
+| CI on the branch | each failure on an intermediate head was this branch's own and was fixed in the next commit (a version mismatch, two Windows portability defects, a required `--project`, a comparator default, a baseline value); the runner-side install failures before any test ran were removed by the CPU-only torch install |
