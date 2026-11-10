@@ -1,5 +1,7 @@
 # Probe reproducibility: seeded vs unseeded
 
+> **Pre-fix artifact (superseded).** Generated before the 2026-09-04 search fixes (`e9d0572`: sign-correct value backup, completed-Q policy target, per-iteration seeds). The numbers below are a record of the mechanism and the wall clock, not evidence of strength. See [`docs/evidence/README.md`](../README.md) for the epoch convention.
+
 **Date:** 2026-08-30 · **Raw data:** [`probe_reproducibility.json`](probe_reproducibility.json)
 
 ## What this measures

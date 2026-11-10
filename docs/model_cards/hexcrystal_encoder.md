@@ -20,7 +20,7 @@ the surrounding game code.
 ```python
 from alpha_zero.hexcrystal.hub_mixin import HexSpatialEncoderForHub
 
-encoder = HexSpatialEncoderForHub.from_pretrained("<repo-id>")
+encoder = HexSpatialEncoderForHub.from_pretrained("ianshank/civ6-hexcrystal-encoder")
 tokens = encoder(spatial)  # (B, C, H, W) -> (B, num_tokens, embed_dim)
 ```
 
@@ -78,17 +78,33 @@ dataset is involved.
 ## Evaluation
 
 The two encoders were trained from identical code, seed, and budget, differing
-only in encoder type, then played head to head. Full methodology and the
+only in encoder type, then played head to head. Because the same base seed was
+used for training and for the arena, 280 of the 800 arena maps were also
+training maps; the result below is therefore partly in-sample. Full methodology and the
 generating script are in the source repository (`scripts/run_encoder_ab.py`).
 
-<!-- AB_SUMMARY_TABLE -->
+### Metrics
+
+| hex_crystalline vs patch_embed | Value |
+|---|---|
+| Games | 800 (paired-seat design was **not** used; seats alternated) |
+| W / D / L | 142 / 588 / 70 |
+| Score rate (draw = 0.5) | 0.545 |
+| 95% CI, ternary variance | [0.527, 0.562] |
+| 95% CI, Wilson on fractional successes (as originally reported; overstated) | [0.510, 0.579] |
+| Draw rate | 0.735 |
+| Device | CUDA (the earlier text of this card said CPU; the artifact's provenance says `cuda`) |
+| Search epoch | pre-2026-09-04 (see `docs/evidence/README.md`) |
+
+**Evaluation status: superseded.** An 800-game head-to-head (2026-08-10, commit `b14534a`, CUDA) scored hex_crystalline 142 W / 588 D / 70 L against patch_embed (score rate 0.545; ternary 95% CI 0.527–0.562, game-sampling noise only). This result is **not evidence that either encoder is better**: both arms were trained once each, with a search implementation later found to back up values with the wrong sign on same-player moves and to train on one-hot policy targets (fixed 2026-09-04), and 280 of the 800 evaluation games reused training seeds. A re-run on disjoint seeds with the corrected search is tracked in the public backlog (milestone v2.1). The encoder's architecture description is unaffected.
+
 
 ### Evaluation scope and limitations
 
 Read the confidence interval, not just the point estimate.
 
 - **Reduced scale.** MicroCiv with a 13-channel encoder on a small board, a
-  modest iteration budget, and CPU training. These are not full-Civilization VI
+  modest iteration budget, and a single GPU training run per arm. These are not full-Civilization VI
   results and do not extrapolate to one.
 - **A single training run per arm.** Training-run variance is therefore **not
   captured**: the interval reflects game-sampling noise only, and a different
@@ -102,6 +118,14 @@ Read the confidence interval, not just the point estimate.
 
 The value of this evaluation is that it is reproducible, same-code, same-seed,
 and bounded — not that it settles which encoder is better.
+
+## Risks, limitations and ethical considerations
+
+- A research artifact trained on self-play in a toy environment; it encodes no
+  human data and carries no personal information.
+- It is not a game opponent and must not be presented as one; its strength has
+  not been demonstrated (see Metrics).
+- Misuse risk is low; the main risk is over-reading the evaluation above.
 
 ## Architecture details
 

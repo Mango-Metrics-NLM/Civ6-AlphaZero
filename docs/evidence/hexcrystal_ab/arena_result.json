@@ -50,5 +50,32 @@
   ],
   "significant_at_95pct": true,
   "wall_clock_seconds": 17180.10834121704,
-  "wins": 142
+  "wins": 142,
+  "evidence": {
+    "schema_version": 1,
+    "git_sha": "b14534a5ad84050f8c2583f8f3246643a25d4380",
+    "generated_utc": "2026-08-10T11:44:12.220492+00:00",
+    "search_epoch": "pre-2026-09-04",
+    "seed": 42,
+    "seed_null_reason": null,
+    "command": "python scripts/run_encoder_ab.py train && python scripts/run_encoder_ab.py arena --num_games 800",
+    "hardware": {
+      "cpu_model": null,
+      "gpu_model": "unrecorded CUDA device",
+      "logical_cores": null,
+      "omp_num_threads": null,
+      "hardware_null_reason": "not recorded when generated; backfilled 2026-11-10"
+    },
+    "python": "3.11.9",
+    "torch": "2.11.0+cu128",
+    "numpy": null,
+    "games_total": 800,
+    "claims": [
+      "the A/B harness runs end to end and is reproducible from seed 42"
+    ],
+    "non_claims": [
+      "that either encoder is stronger: both arms trained with the pre-fix search; 280/800 arena games reused training seeds; one training run per arm"
+    ],
+    "backfilled": "2026-11-10: block added retroactively from the artifact's own provenance; no measurement changed"
+  }
 }

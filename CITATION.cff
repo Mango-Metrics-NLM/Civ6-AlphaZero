@@ -1,0 +1,79 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it using the metadata below."
+type: software
+title: "Civ6-AlphaZero"
+abstract: >-
+  An AlphaZero/MuZero-style self-play reinforcement-learning system for a
+  simplified Civilization-like environment (MicroCiv), with a seeded,
+  CPU-reproducible training stack, a measured evaluation methodology and a
+  demo-grade bridge into Civilization VI.
+authors:
+  - family-names: Cruickshank
+    given-names: Ian
+    alias: ianshank
+version: 2.0.0
+date-released: "2026-11-10"
+license: MIT
+repository-code: "https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero"
+keywords:
+  - alphazero
+  - muzero
+  - monte-carlo-tree-search
+  - reinforcement-learning
+  - civilization-vi
+  - self-play
+references:
+  - type: article
+    title: "A general reinforcement learning algorithm that masters chess, shogi, and Go through self-play"
+    authors:
+      - family-names: Silver
+        given-names: David
+    journal: Science
+    volume: 362
+    issue: 6419
+    year: 2018
+    doi: 10.1126/science.aar6404
+  - type: article
+    title: "Mastering Atari, Go, chess and shogi by planning with a learned model"
+    authors:
+      - family-names: Schrittwieser
+        given-names: Julian
+    journal: Nature
+    volume: 588
+    year: 2020
+    doi: 10.1038/s41586-020-03051-4
+  - type: conference-paper
+    title: "Policy improvement by planning with Gumbel"
+    authors:
+      - family-names: Danihelka
+        given-names: Ivo
+      - family-names: Guez
+        given-names: Arthur
+      - family-names: Schrittwieser
+        given-names: Julian
+      - family-names: Silver
+        given-names: David
+    conference:
+      name: "International Conference on Learning Representations (ICLR)"
+    year: 2022
+  - type: conference-paper
+    title: "Almost optimal exploration in multi-armed bandits"
+    authors:
+      - family-names: Karnin
+        given-names: Zohar
+      - family-names: Koren
+        given-names: Tomer
+      - family-names: Somekh
+        given-names: Oren
+    conference:
+      name: "International Conference on Machine Learning (ICML)"
+    year: 2013
+  - type: article
+    title: "Mastering the game of Go without human knowledge"
+    authors:
+      - family-names: Silver
+        given-names: David
+    journal: Nature
+    volume: 550
+    year: 2017
+    doi: 10.1038/nature24270

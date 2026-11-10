@@ -69,5 +69,32 @@
     "score_rate_max": 0.4,
     "score_rate_median": 0.375,
     "score_rate_min": 0.25
+  },
+  "evidence": {
+    "schema_version": 1,
+    "git_sha": "0c394f98d7f7ffbf4accfa65e139a471abc99f59",
+    "generated_utc": "2026-08-28T02:44:22.752446+00:00",
+    "search_epoch": "pre-2026-09-04",
+    "seed": null,
+    "seed_null_reason": "env_reset_seed was null; only the opponent RNG was seeded (0)",
+    "command": "python docs/evidence/validation_iteration_zero/final_checkpoint_vs_random.py",
+    "hardware": {
+      "cpu_model": null,
+      "gpu_model": null,
+      "logical_cores": 2,
+      "omp_num_threads": 2,
+      "hardware_null_reason": "not recorded when generated; backfilled 2026-11-10"
+    },
+    "python": "3.11.15",
+    "torch": null,
+    "numpy": null,
+    "games_total": 100,
+    "claims": [
+      "five 20-game probes of one checkpoint spread 0.25-0.40 when unseeded"
+    ],
+    "non_claims": [
+      "agent strength"
+    ],
+    "backfilled": "2026-11-10: block added retroactively from the artifact's own provenance; no measurement changed"
   }
 }
