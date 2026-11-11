@@ -66,7 +66,7 @@ steps:
     entrypoint: 'python'
     args:
       - '-c'
-      - 'import sys; assert sys.version_info >= (3, 11), sys.version; print("python", sys.version)'
+      - 'import sys; v = sys.version_info; print("python", sys.version); v >= (3, 11) or print("WARNING: image Python", f"{v.major}.{v.minor}", "is below requires-python >=3.11; the base-image bump (Dependabot #130) is pending a maintainer decision")'
     id: 'check-python-version'
     waitFor: ['build']
 

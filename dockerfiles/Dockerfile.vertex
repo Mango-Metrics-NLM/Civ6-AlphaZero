@@ -16,7 +16,9 @@
 #   docker run --rm civ6az:latest python -m alpha_zero.cloud.gcp.selfplay_worker --dry_run \
 #       --worker_id=0 --model_version=1 --iteration=1 --games=1
 
-# Base image: PyTorch with CUDA 12 and Python 3.12 (compatible with T4, L4, A100)
+# Base image: PyTorch with CUDA 12 (compatible with T4, L4, A100). NGC 24.09 ships
+# Python 3.10, below requires-python >=3.11; Cloud Build reports it, and moving to a
+# 3.11+ base is Dependabot #130, a maintainer decision.
 FROM nvcr.io/nvidia/pytorch:24.09-py3
 
 # Set environment variables
