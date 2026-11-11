@@ -1,28 +1,29 @@
 {
-    "last_session_id": "session_01KZPsP2Mvg333p1akDqpLTG",
-    "last_timestamp": "2026-09-04T19:05:00Z",
-    "current_focus": "Standards audit delivered and its correctness findings implemented (WS-S: S1-S4, S6). kb/specs/20260904-correctness-first-plan.md is the current sequence; it amends the 2026-09-02 validated-learning plan by putting WS-S before WS-L, and supersedes the audit's own remediation list. PR #118 open.",
+    "last_session_id": "session_9a6019a1-f6d9-4e79-9f63-04002716a56d",
+    "last_timestamp": "2026-11-11T17:05:00Z",
+    "current_focus": "Program plan v3 handed to DEV-SQE: local-first gap closure + dev/qa/main branching. v2.1 (governance, branching, first post-fix learning evidence) is decomposed into tasks T0a-T18; later releases get their own task plans at sprint planning.",
     "resume_pointers": {
-        "current_task": "Maintainer triage of docs/audits/2026-09-04-standards-audit.md \u00a74 'Now' items 1-10; then re-open kb/specs/20260902-validated-learning-plan.md \u00a79 authorizations",
+        "current_task": "Sprint 0: maintainer actions 1-5, then DEV-SQE T0a, T1, T2, T3a, T4 (R1); cut-over with T6 (R2)",
         "blocked_on": [
-            "audit \u00a74.1: W&B key rotation (maintainer-only, no design needed)",
-            "audit \u00a74.2: remove allUsers invoker binding on the inference Cloud Run service (maintainer-only, infra)",
-            "audit \u00a74.11: lock-strategy decision (uv sync --locked in CI/Docker vs delete uv.lock)",
-            "spec 20260902-validated-learning-plan \u00a79 authorizations (unchanged from 2026-09-02)"
+            "Maintainer: revoke W&B key + ask GitHub Support to purge refs/pull/72/head (LF-G1)",
+            "Maintainer: create machine user civ6az-agent (agent-identity answer was interrupted; machine user is the default, alternatives in plan section 3.6)",
+            "Maintainer: tag v2.0.0 on c214daa after T3a and T4 merge",
+            "Maintainer: LF-A5/A12 decision after T12, before T13 registers EVALUATION.md section 7.1"
         ],
         "next_steps": [
-            "DEV-SQE, no authorization needed (per 20260904-correctness-first-plan.md \u00a79.5): audit items 3 (CI PR trigger), 4 (SKIP_PARTS + negative control), 5 (chess out of the dev extra + importorskip), 10 (utils/__init__ off the deprecated logging shim). NOTE: item 9 (push-guard hardening) is MAINTAINER-ONLY and item 6 (pip-audit) is CONFIRM-FIRST as a new external service; item 8 (web CORS/host defaults) is a breaking public-interface change. Those three were listed here as free actions before the correctness-first plan classified them.",
-            "Then the month tier: safe_load routing for all 22 torch.load + 5 pickle.loads sites, tag v1.8.0/v1.9.0 and fix CHANGELOG, bandit baseline at medium/medium, high-signal ruff rules with burndown lists, pytest-randomly + zero-assert ratchet, CLAUDE.md split to <200 lines with history moved to docs/architecture/adr/",
-            "WS-L is RE-SEQUENCED behind WS-S (search correctness) by kb/specs/20260904-correctness-first-plan.md \u00a71: on the pre-fix code a seeded run trained on one-hot targets from a parity-scrambled value over the same games each iteration, so it could not produce the learning trend it was designed to read. S1-S4 and S6 landed 2026-09-04; S5 (the A/B evidence seed-overlap memo) is open. D2 / E1-E4 / N1 remain parallel and unaffected. D0 re-measures the draw rate AFTER the search fixes, not before."
+            "T0a Windows baseline + harness (no ETA claim)",
+            "T1 data root + pinned env; T2 GCP isolation (GCSBackend raises LocalModeViolation(BaseException))",
+            "T3a charter amendment (maintainer merges); T4 guard/settings/triggers",
+            "Cut-over via scripts/maintainer/branch_cutover.sh with T6",
+            "Plan v2.2 (local loop L0-L6) at Sprint 4 planning"
         ]
     },
     "context_files": [
-        "docs/audits/2026-09-04-standards-audit.md",
+        "kb/specs/20261111-local-first-and-branching-plan.md",
+        "kb/specs/20261111-local-first-gap-register.md",
+        "docs/audits/2026-11-11-local-first-plan-review.md",
         "kb/specs/20260902-validated-learning-plan.md",
-        "kb/specs/20260902-tech-debt-hardening.md",
-        "kb/handoffs/20260902-planning-to-devsqe-validated-learning-plan.md",
-        "docs/runbooks/secret-scanning.md",
-        "CLAUDE.md",
-        "PROJECT_CHARTER.md"
+        "docs/EVALUATION.md",
+        "CLAUDE.md"
     ]
 }
