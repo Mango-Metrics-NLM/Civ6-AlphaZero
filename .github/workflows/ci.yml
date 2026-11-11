@@ -2,18 +2,23 @@ name: CI
 
 on:
   push:
-    # Two concrete branch names, deliberately. The first is the repository's
-    # default branch today; the second is what the maintainer will rename it to
-    # before the public release. Listing both means the rename cannot open a
-    # window in which pushes to the default branch run no CI, and
+    # The protected branches (dev, qa, main -- plan S3.1) plus the pre-rename
+    # default branch, deliberately concrete. Listing the old name until the
+    # cut-over means the rename cannot open a window in which pushes to the
+    # default branch run no CI, and
     # tests/regression/test_workflow_pinning_regression.py holds this list to
-    # {default branch, main, globs} so a third stale name cannot creep back in.
+    # {protected branches in .claude/settings.json, default branch, globs} so a
+    # stale name cannot creep back in.
     # `feature/*` and `next-steps-*` were dropped 2026-11-10: `git branch -r`
     # showed no branch matching either. `claude/**` stays because agent working
     # branches push there and want a CI run before a pull request exists.
     branches:
-      - claude/civ6-alphazero-implementation-vMnun
+      - dev
+      - qa
       - main
+      # The default branch before the rename to `dev`; kept until the
+      # cut-over (R4) so the rename cannot open a window with no CI.
+      - claude/civ6-alphazero-implementation-vMnun
       - "claude/**"
   # No `branches:` filter, deliberately. It used to read `branches: [main]`,
   # but this repository's default branch is not `main` -- it is
@@ -27,7 +32,11 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a run on a protected branch: every push there is a state the
+  # promotion and release gates read. PR and feature-branch runs still
+  # supersede each other. tests/regression/test_workflow_pinning_regression.py
+  # holds this list to the protected-branch list in .claude/settings.json.
+  cancel-in-progress: ${{ !contains(fromJSON('["refs/heads/dev","refs/heads/qa","refs/heads/main","refs/heads/claude/civ6-alphazero-implementation-vMnun"]'), github.ref) }}
 
 # Least privilege for the default GITHUB_TOKEN. Every job here only checks out
 # and uploads artifacts (actions/upload-artifact needs no extra scope); none

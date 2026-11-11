@@ -23,13 +23,29 @@ import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude" / "hooks" / "pretooluse_guard.sh"
+# Resolved through PATH, not left to the OS: on Windows, CreateProcess searches
+# System32 before PATH and finds WSL's bash.exe, which cannot see this checkout.
+BASH = shutil.which("bash") or "bash"
 
 DEFAULT_BRANCH = "trunk"  # deliberately not `main`
 FEATURE_BRANCH = "feature/work"
+# The value `.claude/settings.json` ships (plan §3.6). The old default branch
+# stays protected until the rename task (R4) drops it.
+OLD_DEFAULT = "claude/civ6-alphazero-implementation-vMnun"
+SETTINGS_PROTECTED = f"dev qa main {OLD_DEFAULT}"
+# Every knob the guard reads from the environment. Stripped before each run so
+# the developer's own session (which exports the settings.json values) cannot
+# leak into a fixture's expectations.
+GUARD_ENV_KNOBS = ("CIV6AZ_DEFAULT_BRANCH", "CIV6AZ_PROTECTED_BRANCHES")
+
+# The guard parses its payload with jq, else python3, else python. It used to
+# skip unless jq was present, which meant it never ran on a Windows workstation
+# (no jq there) -- the very machine the PowerShell rules exist for.
+_HAS_PARSER = any(shutil.which(tool) for tool in ("jq", "python3", "python"))
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("git") is None or shutil.which("jq") is None,
-    reason="guard needs git and jq on PATH (both present on ubuntu-latest)",
+    shutil.which("git") is None or not _HAS_PARSER,
+    reason="guard needs git plus jq or python on PATH",
 )
 
 
@@ -66,15 +82,16 @@ def repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _run_guard(repo: Path, command: str, env_extra: dict[str, str] | None = None) -> str | None:
-    """Return the deny reason, or None when the guard allowed the command."""
-    # Start from a clean slate for the knob under test so a developer's own
-    # CIV6AZ_DEFAULT_BRANCH cannot leak into the fixture's expectations.
-    env = {k: v for k, v in os.environ.items() if k != "CIV6AZ_DEFAULT_BRANCH"}
+def _raw_guard(
+    repo: Path,
+    payload: str,
+    env_extra: dict[str, str] | None = None,
+) -> tuple[str | None, str | None]:
+    """Run the guard on a raw stdin payload; return (decision, reason)."""
+    env = {k: v for k, v in os.environ.items() if k not in GUARD_ENV_KNOBS}
     env.update(env_extra or {})
-    payload = json.dumps({"tool_input": {"command": command}})
     proc = subprocess.run(
-        ["bash", str(GUARD)],
+        [BASH, GUARD.as_posix()],
         cwd=repo,
         input=payload,
         env=env,
@@ -84,11 +101,32 @@ def _run_guard(repo: Path, command: str, env_extra: dict[str, str] | None = None
     )
     assert proc.returncode == 0, proc.stderr
     if not proc.stdout.strip():
-        return None
+        return None, None
     decision = json.loads(proc.stdout)["hookSpecificOutput"]
     assert decision["hookEventName"] == "PreToolUse"
-    assert decision["permissionDecision"] == "deny"
-    return str(decision["permissionDecisionReason"])
+    assert decision["permissionDecision"] in ("deny", "ask"), decision
+    return str(decision["permissionDecision"]), str(decision["permissionDecisionReason"])
+
+
+def _decide(
+    repo: Path,
+    command: str,
+    env_extra: dict[str, str] | None = None,
+    tool_name: str = "Bash",
+) -> tuple[str | None, str | None]:
+    payload = json.dumps({"tool_name": tool_name, "tool_input": {"command": command}})
+    return _raw_guard(repo, payload, env_extra)
+
+
+def _run_guard(repo: Path, command: str, env_extra: dict[str, str] | None = None) -> str | None:
+    """Return the deny reason, or None when the guard allowed the command.
+
+    An ``ask`` here is a test failure: callers of this helper expect a plain
+    allow-or-deny, and an unexpected prompt is a behaviour change to look at.
+    """
+    decision, reason = _decide(repo, command, env_extra)
+    assert decision != "ask", f"unexpected ask for {command!r}: {reason}"
+    return reason
 
 
 # --- push destinations -------------------------------------------------------
@@ -202,3 +240,299 @@ def test_default_branch_with_regex_metacharacters_is_escaped(repo: Path) -> None
     override = {"CIV6AZ_DEFAULT_BRANCH": "release.1"}
     assert _run_guard(repo, "git push origin release.1", override) is not None
     assert _run_guard(repo, "git push origin releaseX1", override) is None
+
+
+# --- protected-branch list (plan §3.6, LF-G6) --------------------------------
+
+SETTINGS_ENV = {"CIV6AZ_DEFAULT_BRANCH": "dev", "CIV6AZ_PROTECTED_BRANCHES": SETTINGS_PROTECTED}
+
+
+@pytest.mark.parametrize("protected", ["dev", "qa", "main", OLD_DEFAULT])
+def test_commit_and_push_on_every_settings_protected_branch_are_denied(
+    repo: Path, protected: str
+) -> None:
+    """With the shipped settings, the OLD default stays protected even though
+    CIV6AZ_DEFAULT_BRANCH already says `dev`: the list, not the default, drives
+    protection, so the pre-rename window has no hole."""
+    _git(repo, "checkout", "-q", "-b", protected)
+    assert _run_guard(repo, "git commit -m 'x'", SETTINGS_ENV) is not None
+    assert _run_guard(repo, f"git push origin {FEATURE_BRANCH}", SETTINGS_ENV) is not None
+
+
+@pytest.mark.parametrize("protected", ["dev", "qa", "main"])
+def test_dev_qa_main_are_protected_without_any_configuration(repo: Path, protected: str) -> None:
+    """An unset CIV6AZ_PROTECTED_BRANCHES must not mean 'nothing is protected'."""
+    _git(repo, "checkout", "-q", "-b", protected)
+    assert _run_guard(repo, "git commit -m 'x'") is not None
+    _git(repo, "checkout", "-q", FEATURE_BRANCH)
+    assert _run_guard(repo, f"git push origin HEAD:{protected}") is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git push origin HEAD:qa",
+        "git push origin feat:qa",
+        "git push origin HEAD:refs/heads/qa",
+        "git push origin qa",
+        f"git push origin HEAD:{OLD_DEFAULT}",
+        # tags, by refspec or by flag
+        "git push origin HEAD:refs/tags/v9",
+        "git push origin refs/tags/v9",
+        "git push origin v9:refs/tags/v9",
+        "git push --tags origin",
+        f"git push origin {FEATURE_BRANCH} --tags",
+        f"git push --follow-tags origin {FEATURE_BRANCH}",
+        # deleting a protected branch
+        "git push origin :dev",
+        "git push origin :refs/heads/main",
+        "git push origin --delete dev",
+        "git push -d origin qa",
+        # pushes that sweep protected refs along with everything else
+        "git push --mirror origin",
+        "git push --all origin",
+    ],
+)
+def test_protected_and_tag_pushes_are_denied(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command, SETTINGS_ENV) is not None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        f"git push origin {FEATURE_BRANCH}",
+        f"git push -u origin {FEATURE_BRANCH}",
+        f"git push origin HEAD:{FEATURE_BRANCH}",
+        f"git push origin --delete {FEATURE_BRANCH}",
+        "git fetch --tags origin",
+        "git log --tags --oneline",
+        "git push origin qa-notes",
+    ],
+)
+def test_ordinary_feature_branch_work_is_allowed(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command, SETTINGS_ENV) is None, command
+
+
+# --- git tag -----------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git tag v1",
+        "git tag -a v1 -m 'release'",
+        "git tag -s v1",
+        "git tag -f v1",
+        "git tag -d v1",
+        "git tag v1 HEAD~1",
+        "git -C . tag v1",
+        "git --no-pager tag v1",
+    ],
+)
+def test_tag_creation_and_mutation_are_denied(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command) is not None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "git tag",
+        "git tag -l 'v2.1.0-rc.*'",
+        "git tag --list",
+        "git tag --list 'v*' --sort=-v:refname",
+        "git tag --contains HEAD",
+        "git tag --points-at HEAD",
+        "git tag --merged main --format '%(refname)'",
+        "git tag -n5 -l",
+        "git tag -n -l v2*",
+        "git tag --sort -creatordate -l",
+    ],
+)
+def test_tag_listing_is_allowed(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command) is None, command
+
+
+# --- gh ----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr merge 1",
+        "gh pr merge 1 --squash --delete-branch",
+        "gh release create v9",
+        "gh release delete v9",
+        "gh repo edit --default-branch dev",
+        "gh ruleset list",
+        "gh api -X POST repos/o/r/issues",
+        "gh api repos/o/r/issues -X POST",
+        "gh api -XPOST repos/o/r/issues",
+        "gh api --method PATCH repos/o/r",
+        "gh api --method=DELETE repos/o/r/git/refs/heads/dev",
+        "gh api repos/o/r/git/refs -f ref=refs/heads/x -f sha=abc",
+        "gh api repos/o/r/rulesets -F enforcement=disabled",
+        "gh api repos/o/r/issues --field title=x",
+        "gh api repos/o/r/issues --raw-field title=x",
+        "gh api repos/o/r/rulesets --input body.json",
+        "gh api graphql -f query='mutation { x }'",
+        "gh api graphql",
+    ],
+)
+def test_mutating_gh_commands_are_denied(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command) is not None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh api repos/o/r/pulls",
+        "gh api repos/o/r/pulls --paginate --jq '.[].number'",
+        "gh api -H 'Accept: application/vnd.github+json' repos/o/r/branches",
+        "gh pr view 1",
+        "gh pr list --state open",
+        "gh pr checks 1",
+        "gh pr create --title t --body b",
+        "echo 'gh pr merge 1'",
+    ],
+)
+def test_read_only_gh_commands_are_allowed(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command) is None, command
+
+
+# --- unwrapping (pwsh / powershell / cmd / bash / iex / &) -------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        'pwsh -c "git push origin HEAD:qa"',
+        'pwsh -NoProfile -Command "git push origin HEAD:qa"',
+        "powershell.exe -NoProfile -ExecutionPolicy Bypass -Command 'git tag v1'",
+        'cmd /c "git push origin HEAD:qa"',
+        "cmd.exe /d /c gh pr merge 1",
+        'cmd /c "git status & git push origin HEAD:qa"',
+        "bash -c 'git push origin HEAD:qa'",
+        'bash -lc "gh api -X POST repos/o/r/issues"',
+        "sh -c 'git push --tags origin'",
+        'iex "git push origin HEAD:qa"',
+        "Invoke-Expression 'gh pr merge 1'",
+        "& git push origin HEAD:qa",
+        "& 'git' push origin HEAD:qa",
+        "git status; & gh pr merge 1",
+        "bash -c \"pwsh -c 'git push origin HEAD:qa'\"",
+    ],
+)
+def test_wrapped_commands_are_unwrapped_before_matching(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command, SETTINGS_ENV) is not None, command
+
+
+def test_powershell_tool_payload_is_guarded(repo: Path) -> None:
+    """The PowerShell tool sends its command in ``tool_input.command`` too."""
+    decision, _ = _decide(repo, "git push origin HEAD:qa", SETTINGS_ENV, tool_name="PowerShell")
+    assert decision == "deny"
+    decision, _ = _decide(repo, "Get-ChildItem", SETTINGS_ENV, tool_name="PowerShell")
+    assert decision is None
+
+
+def test_wrapped_harmless_command_is_allowed(repo: Path) -> None:
+    assert _run_guard(repo, 'pwsh -c "git status"', SETTINGS_ENV) is None
+    assert _run_guard(repo, "bash -c 'ls -la'", SETTINGS_ENV) is None
+
+
+# --- game cap: deny without approval_ref, ask with it ------------------------
+
+
+def test_over_cap_without_approval_ref_is_denied(repo: Path) -> None:
+    reason = _run_guard(repo, "python -m alpha_zero.training_civ6 --num_games 5000")
+    assert reason is not None and "1000" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "GAMES_PER_WORKER=2000 make cloud-train",
+        "NUM_GAMES=5000 python -m alpha_zero.training_civ6",
+        "bash -c 'NUM_GAMES=5000 make train'",
+    ],
+)
+def test_env_var_game_count_over_cap_is_denied(repo: Path, command: str) -> None:
+    """The env-var form (Makefile / run_cloud_training.sh) must survive the
+    leading-assignment stripping the unwrapper does."""
+    reason = _run_guard(repo, command)
+    assert reason is not None and "1000" in reason, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -m alpha_zero.training_civ6 --num_games 5000 --approval_ref 123",
+        "python -m alpha_zero.training_civ6 --num_games 10 --approval_ref=123",
+        "python scripts/run_baseline_eval.py --num_games 2000 --approval_ref #41",
+    ],
+)
+def test_approval_ref_asks_instead_of_denying(repo: Path, command: str) -> None:
+    """The ruling: --approval_ref is recorded, not verified, so a human confirms."""
+    decision, reason = _decide(repo, command)
+    assert decision == "ask", (command, reason)
+    assert reason and "approval_ref" in reason
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -m alpha_zero.orchestrator --preset production",
+        "python -m alpha_zero.orchestrator --preset=production --dry_run",
+        "python -m alpha_zero.training_civ6 --config configs/civ6_config.yaml",
+        "python scripts/run_sweep.py --config configs/sweep_muzero.yaml",
+        # unknown runners: shaped like a game runner, not on the priced list
+        "python scripts/run_mystery_selfplay.py --games 10",
+        "python scripts/benchmark_suite.py --n_games 10",
+        "python -m alpha_zero.cloud.gcp.selfplay_worker --num_games 4",
+        'pwsh -c "python scripts/run_mystery.py"',
+    ],
+)
+def test_unpriceable_runs_ask(repo: Path, command: str) -> None:
+    decision, reason = _decide(repo, command)
+    assert decision == "ask", (command, reason)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -m alpha_zero.training_civ6 --dry_run",
+        "python -m alpha_zero.orchestrator --preset fast --dry_run",
+        "python -m pytest tests/governance -q",
+        "python scripts/validate_openspec.py",
+        "python scripts/check_doc_sync.py",
+        "python scripts/run_llm_eval.py",
+        "python scripts/run_mystery_selfplay.py --help",
+        "OMP_NUM_THREADS=2 python -m pytest tests/unit -q",
+        "python -m ruff check --config pyproject.toml .",
+    ],
+)
+def test_priced_or_non_runner_commands_are_allowed(repo: Path, command: str) -> None:
+    assert _decide(repo, command) == (None, None), command
+
+
+def test_deny_beats_ask_across_segments(repo: Path) -> None:
+    decision, _ = _decide(
+        repo,
+        "python -m alpha_zero.training_civ6 --approval_ref 1 && git push origin HEAD:qa",
+        SETTINGS_ENV,
+    )
+    assert decision == "deny"
+
+
+# --- payload parsing fails closed --------------------------------------------
+
+
+def test_unparseable_payload_is_denied(repo: Path) -> None:
+    """A payload no parser can read must not fall through to allow."""
+    decision, reason = _raw_guard(repo, "{not json")
+    assert decision == "deny", reason
+
+
+def test_non_command_payload_is_allowed(repo: Path) -> None:
+    """A tool input with no command (not a shell tool) is not the guard's business."""
+    decision, _ = _raw_guard(repo, json.dumps({"tool_name": "Read", "tool_input": {}}))
+    assert decision is None

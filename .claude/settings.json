@@ -56,13 +56,39 @@
       "Edit(.env)",
       "Edit(.env.local)",
       "Write(.env)",
-      "Write(.env.local)"
+      "Write(.env.local)",
+      "Bash(gh pr merge:*)",
+      "Bash(gh release:*)",
+      "Bash(gh repo edit:*)",
+      "Bash(gh ruleset:*)",
+      "Bash(gh api -X:*)",
+      "Bash(gh api * -X *)",
+      "Bash(gh api --method:*)",
+      "Bash(gh api * --method *)",
+      "Bash(git push --tags:*)",
+      "Bash(git push * --tags*)",
+      "Bash(git push --follow-tags:*)",
+      "Bash(git push * --follow-tags*)",
+      "Bash(git push *refs/tags/*)",
+      "PowerShell(gh pr merge:*)",
+      "PowerShell(gh release:*)",
+      "PowerShell(gh repo edit:*)",
+      "PowerShell(gh ruleset:*)",
+      "PowerShell(gh api -X:*)",
+      "PowerShell(gh api * -X *)",
+      "PowerShell(gh api --method:*)",
+      "PowerShell(gh api * --method *)",
+      "PowerShell(git push --tags:*)",
+      "PowerShell(git push * --tags*)",
+      "PowerShell(git push --follow-tags:*)",
+      "PowerShell(git push * --follow-tags*)",
+      "PowerShell(git push *refs/tags/*)"
     ]
   },
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "Bash",
+        "matcher": "Bash|PowerShell",
         "hooks": [
           {
             "type": "command",
@@ -142,8 +168,9 @@
     "PYTHONDONTWRITEBYTECODE": "1",
     "RUFF_CACHE_DIR": ".ruff_cache",
     "PYTEST_TIMEOUT": "300",
-    "CIV6AZ_DEFAULT_BRANCH": "claude/civ6-alphazero-implementation-vMnun",
-    "OMP_NUM_THREADS": "2"
+    "CIV6AZ_DEFAULT_BRANCH": "dev",
+    "OMP_NUM_THREADS": "2",
+    "CIV6AZ_PROTECTED_BRANCHES": "dev qa main claude/civ6-alphazero-implementation-vMnun"
   },
-  "enableAllProjectMcpServers": true
+  "enableAllProjectMcpServers": false
 }

@@ -33,6 +33,8 @@ from typing import Any
 import pytest
 import yaml
 
+from tests.regression.branch_policy import protected_branches
+
 WORKFLOW_DIR = Path(".github/workflows")
 SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 # A local action (`./.github/actions/foo`) has no upstream to pin; a reusable
@@ -254,20 +256,62 @@ def _is_glob(pattern: str) -> bool:
     return any(ch in pattern for ch in "*?[")
 
 
-def stale_push_branches(doc: dict, default_branch: str) -> list[str]:
-    """``push.branches`` entries that are neither the default, ``main`` nor a glob.
-
-    ``main`` is always allowed because the maintainer is renaming the default
-    branch to it before the public release; listing both means the rename
-    cannot open a window with no CI on the default branch.
-    """
+def _push_branches(doc: dict) -> list[str]:
     push = _triggers(doc).get("push")
     if not isinstance(push, dict):
         return []
     branches = push.get("branches") or []
     if isinstance(branches, str):
         branches = [branches]
-    return [b for b in branches if b not in (default_branch, "main") and not _is_glob(str(b))]
+    return [str(b) for b in branches]
+
+
+def stale_push_branches(
+    doc: dict, default_branch: str, protected: tuple[str, ...] = ()
+) -> list[str]:
+    """``push.branches`` entries that are not protected, the default, ``main`` or a glob.
+
+    The protected list (``dev qa main`` plus ``CIV6AZ_PROTECTED_BRANCHES``,
+    see ``branch_policy``) is allowed because those are the branches whose
+    pushes must run CI. While the old default branch is still on that list the
+    rename cannot open a window with no CI on the default branch.
+    """
+    allowed = {default_branch, "main", *protected}
+    return [b for b in _push_branches(doc) if b not in allowed and not _is_glob(b)]
+
+
+# The workflows that gate merges and releases, and so must run on every
+# protected branch (plan S3.1 / LF-R1).
+PROTECTED_PUSH_WORKFLOWS = ("ci.yml", "codeql.yml", "security-scan.yml", "scorecard.yml")
+
+
+def missing_protected_push_branches(doc: dict, protected: tuple[str, ...]) -> list[str]:
+    """Protected branches a workflow's ``push`` trigger does not name."""
+    named = set(_push_branches(doc))
+    return [b for b in protected if b not in named]
+
+
+def cancel_in_progress_offenders(doc: dict, protected: tuple[str, ...]) -> list[str]:
+    """Protected branches whose push runs this workflow could cancel.
+
+    A run on a protected branch records a state the promotion and release gates
+    read, so a newer push must not cancel it. Accepted: no concurrency block,
+    ``cancel-in-progress: false``, or an expression that names
+    ``refs/heads/<branch>`` for every protected branch the push trigger lists
+    (``${{ !contains(fromJSON('[...]'), github.ref) }}``).
+    """
+    pushed = [b for b in _push_branches(doc) if b in protected]
+    if not pushed:
+        return []
+    concurrency = doc.get("concurrency")
+    if not isinstance(concurrency, dict):
+        return []
+    value = concurrency.get("cancel-in-progress", False)
+    if value is False or (isinstance(value, str) and value.strip().lower() == "false"):
+        return []
+    if value is True or not isinstance(value, str) or "${{" not in value:
+        return pushed
+    return [b for b in pushed if f'"refs/heads/{b}"' not in value]
 
 
 def _pip_install_args(command: str) -> list[str] | None:
@@ -369,11 +413,35 @@ def checkouts_persisting_credentials(doc: dict) -> list[str]:
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_push_triggers_name_only_the_default_branch_main_or_a_glob(path: Path) -> None:
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    stale = stale_push_branches(doc, _default_branch())
+    protected = protected_branches()
+    stale = stale_push_branches(doc, _default_branch(), protected)
     assert not stale, (
-        f"{path.name} push trigger names {stale}: not the default branch "
-        f"({_default_branch()!r}), not `main`, not a glob. A concrete branch name "
-        "here goes stale silently when the branch is renamed or deleted."
+        f"{path.name} push trigger names {stale}: not a protected branch "
+        f"({' '.join(protected)}), not the default branch ({_default_branch()!r}), "
+        "not a glob. A concrete branch name here goes stale silently when the "
+        "branch is renamed or deleted."
+    )
+
+
+@pytest.mark.parametrize("name", PROTECTED_PUSH_WORKFLOWS)
+def test_gating_workflows_run_on_every_protected_branch(name: str) -> None:
+    doc = yaml.safe_load((WORKFLOW_DIR / name).read_text(encoding="utf-8"))
+    missing = missing_protected_push_branches(doc, protected_branches())
+    assert not missing, (
+        f"{name} does not run on push to {missing}. Every protected branch "
+        "(.claude/settings.json CIV6AZ_PROTECTED_BRANCHES) needs a CI record of "
+        "each state it reaches."
+    )
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_runs_on_protected_branches_are_never_cancelled(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    offenders = cancel_in_progress_offenders(doc, protected_branches())
+    assert not offenders, (
+        f"{path.name}: cancel-in-progress can cancel push runs on {offenders}. Use "
+        "`${{ !contains(fromJSON('[\"refs/heads/<branch>\", ...]'), github.ref) }}` "
+        "naming every protected branch the push trigger lists."
     )
 
 
@@ -440,6 +508,43 @@ class TestTheNewChecksDiscriminate:
     def test_a_push_trigger_without_a_filter_is_fine(self) -> None:
         doc = yaml.safe_load("on:\n  push:\n  pull_request:\njobs: {}\n")
         assert stale_push_branches(doc, "trunk") == []
+
+    def test_protected_branches_are_accepted_and_others_still_reported(self) -> None:
+        doc = yaml.safe_load(
+            self._ONE_JOB.format(branches="dev, qa, main, legacy, feature/old", steps="      []")
+        )
+        assert stale_push_branches(doc, "dev", ("dev", "qa", "main", "legacy")) == ["feature/old"]
+
+    def test_a_missing_protected_branch_is_reported(self) -> None:
+        doc = yaml.safe_load(self._ONE_JOB.format(branches="dev, main", steps="      []"))
+        assert missing_protected_push_branches(doc, ("dev", "qa", "main")) == ["qa"]
+
+    _CANCEL = (
+        "on:\n  push:\n    branches: [dev, qa]\nconcurrency:\n  group: g\n{cancel}jobs: {{}}\n"
+    )
+
+    def test_literal_cancel_in_progress_on_a_protected_push_is_reported(self) -> None:
+        doc = yaml.safe_load(self._CANCEL.format(cancel="  cancel-in-progress: true\n"))
+        assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == ["dev", "qa"]
+
+    def test_an_expression_missing_a_branch_is_reported(self) -> None:
+        expr = "${{ !contains(fromJSON('[\"refs/heads/dev\"]'), github.ref) }}"
+        doc = yaml.safe_load(self._CANCEL.format(cancel=f"  cancel-in-progress: {expr}\n"))
+        assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == ["qa"]
+
+    def test_a_complete_expression_or_false_is_accepted(self) -> None:
+        expr = '${{ !contains(fromJSON(\'["refs/heads/dev","refs/heads/qa"]\'), github.ref) }}'
+        doc = yaml.safe_load(self._CANCEL.format(cancel=f"  cancel-in-progress: {expr}\n"))
+        assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == []
+        doc = yaml.safe_load(self._CANCEL.format(cancel="  cancel-in-progress: false\n"))
+        assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == []
+
+    def test_cancelling_feature_branch_runs_is_fine(self) -> None:
+        doc = yaml.safe_load(
+            "on:\n  push:\n    branches: ['claude/**']\n"
+            "concurrency:\n  group: g\n  cancel-in-progress: true\njobs: {}\n"
+        )
+        assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == []
 
     def test_an_unpinned_install_is_reported(self) -> None:
         script = (
