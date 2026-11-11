@@ -100,6 +100,7 @@ below was measured on **pre-fix** code.
 | [`evidence/seeded_probe_reproducibility/README.md`](evidence/seeded_probe_reproducibility/README.md) | Seeded probes of one checkpoint are identical (5/5); unseeded ones spread 0.30–0.45. | before |
 | [`evidence/hexcrystal_ab/ab_report.md`](evidence/hexcrystal_ab/ab_report.md) | Encoder A/B arena (800 games); superseded as a strength comparison — it shows the harness runs. | before |
 | [`evidence/hexcrystal_ab/summary_table.md`](evidence/hexcrystal_ab/summary_table.md) | The A/B counts and Wilson interval, as a table. | before |
+| [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
 
 ### Architecture decision records
 
