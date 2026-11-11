@@ -117,8 +117,8 @@ Rationale per non-goal:
   deployment, and generalization stays in the long-term-vision column until deliberately
   chartered (this is the focus boundary most likely to erode).
 - **NG-7** — Runs above 1000 games and any cloud spend require explicit human
-  confirmation (enforced per Invariant 6: runner caps and recorded approvals, with a hook
-  backstop); the v1.2.0 production run that wasted ~$28.55 producing
+  confirmation (enforced per Invariant 6: runner caps; approval refs are recorded, not
+  verified, so approval is a process rule); the v1.2.0 production run that wasted ~$28.55 producing
   zero promotions is the standing justification.
 
 ## 4. Invariants (must not drift — enforce in review)
@@ -150,14 +150,16 @@ scope; they may never relax an invariant.)*
    ports, or magic numbers in new code.
 6. **Quality gate** — no direct commits to `dev`, `qa` or `main`, and no run over 1,000
    games without the maintainer's confirmation; `ruff` (100-char) and `mypy` stay green.
-   Branch/tag rule: enforced by **identity**, not hooks — agents act as the machine user
+   Branch/tag rule: to be enforced by **identity** once the maintainer provisions it (transition clause below), not by hooks — agents act as the machine user
    `civ6az-agent` with no ruleset bypass, and the GitHub rulesets `qa-main-merge` and
    `release-tags` let only the maintainer merge into `qa`/`main` or create `v*` tags.
    **Transition clause:** until the maintainer provisions that identity and those rulesets,
    the PreToolUse guard (`.claude/hooks/pretooluse_guard.sh`) is the only barrier and it is
    an accident net, not a control. Game cap: enforced by each runner (`--max_games` may
-   only lower the 1,000 cap; `--approval_ref <issue>` records the maintainer's approval),
-   with the hook asking on approval refs as a backstop.
+   only lower the 1,000 cap). `--approval_ref <issue>` is only **recorded** by the runner,
+   not verified: the maintainer's approval is a process rule, not a machine check. As a
+   backstop, the PreToolUse guard asks (does not deny) on commands carrying
+   `--approval_ref`; that is guard behaviour introduced by the branching change.
 7. **Security** — no secrets or machine fingerprints in the repo; credentials live only
    in the gitignored `.env` / environment, and the Civ6 bridge binds loopback only
    (`127.0.0.1:4318`) and touches only official game API surfaces.
