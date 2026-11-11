@@ -324,6 +324,48 @@ def pr_check_problems(api: Api, repo: str, pr: dict[str, Any], tag: ReleaseTag) 
     return problems
 
 
+def ci_snapshot(
+    api: Api,
+    repo: str,
+    sha: str,
+    tag: ReleaseTag,
+    *,
+    retry: Callable[[Callable[[], Any]], Any] = lambda call: call(),
+    pr_checked: bool = False,
+) -> tuple[list[str], list[str]]:
+    """One non-waiting pass over every required check: ``(failures, waiting)``.
+
+    ``failures`` are final (a failed or missing check, no producing PR, wrong
+    base); ``waiting`` lists push checks still running. Both are empty when CI
+    is green. ``wait_for_ci`` (release.yml) polls this; ``tag_release`` calls it
+    once before creating a tag. ``pr_checked`` skips the PR-scoped checks, which
+    are judged as of the merge and so never change between polls.
+    """
+    if not pr_checked:
+        try:
+            pr = retry(lambda: merged_pr_for_commit(api, repo, sha))
+        except ApiError as exc:
+            return [f"cannot find the PR that produced {sha[:12]}: {exc}"], []
+        base_problem = pr_base_problem(pr, tag)
+        if base_problem is not None:
+            return [base_problem], []
+        try:
+            problems = retry(lambda: pr_check_problems(api, repo, pr, tag))
+        except ApiError as exc:
+            return [f"GitHub API error reading PR checks: {exc}"], []
+        if problems:
+            return [f"required check failed: {p}" for p in problems], []
+    try:
+        states = retry(lambda: {n: run_state(latest_run(api, repo, sha, n)) for n in PUSH_CHECKS})
+    except ApiError as exc:
+        return [f"GitHub API error while polling push checks: {exc}"], []
+    failed = [f"{n} on {sha[:12]}: {s}" for n, s in states.items() if s.startswith("failure")]
+    if failed:
+        return [f"required check failed: {item}" for item in failed], []
+    waiting = [f"{n} on {sha[:12]} ({s})" for n, s in states.items() if s != "success"]
+    return [], waiting
+
+
 def wait_for_ci(
     api: Api,
     repo: str,
@@ -351,32 +393,12 @@ def wait_for_ci(
                 print(f"transient GitHub API error, retrying in {delay:.0f}s: {exc}", flush=True)
                 sleep(delay)
 
-    try:
-        pr = with_retry(lambda: merged_pr_for_commit(api, repo, sha))
-    except ApiError as exc:
-        return [f"cannot find the PR that produced {sha[:12]}: {exc}"]
-    base_problem = pr_base_problem(pr, tag)
-    if base_problem is not None:
-        return [base_problem]
-    try:
-        problems = with_retry(lambda: pr_check_problems(api, repo, pr, tag))
-    except ApiError as exc:
-        return [f"GitHub API error reading PR checks: {exc}"]
-    if problems:
-        return [f"required check failed: {p}" for p in problems]
-
-    def poll() -> dict[str, str]:
-        return {name: run_state(latest_run(api, repo, sha, name)) for name in PUSH_CHECKS}
-
+    pr_checked = False
     while True:
-        try:
-            states = with_retry(poll)
-        except ApiError as exc:
-            return [f"GitHub API error while polling push checks: {exc}"]
-        failed = [f"{n} on {sha[:12]}: {s}" for n, s in states.items() if s.startswith("failure")]
+        failed, waiting = ci_snapshot(api, repo, sha, tag, retry=with_retry, pr_checked=pr_checked)
         if failed:
-            return [f"required check failed: {item}" for item in failed]
-        waiting = [f"{n} on {sha[:12]} ({s})" for n, s in states.items() if s != "success"]
+            return failed
+        pr_checked = True
         if not waiting:
             return []
         if clock() >= deadline:

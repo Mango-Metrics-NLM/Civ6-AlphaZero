@@ -21,7 +21,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import pytest
 
@@ -684,8 +684,39 @@ def _push_qa(line: Line, files: dict[str, str] | None = None, start: str | None 
     return sha
 
 
-def _tag(line: Line, *args: str, api: FakeApi | None = None) -> int:
-    return tr.main([*args, "--repo", REPO], api=api or FakeApi(), git=_git(line.repo))
+class CiApi:
+    """GitHub as seen from ``tag_release``: whatever commit is asked about, one merged PR
+    produced it (into ``base``) and CI is green -- unless ``push``/``pr`` say otherwise.
+
+    ``push`` / ``pr`` map a check name to the run list that check reports; ``base``
+    is the branch the producing PR merged into.
+    """
+
+    def __init__(
+        self,
+        *,
+        base: str = "qa",
+        push: dict[str, list[dict[str, Any]]] | None = None,
+        pr: dict[str, list[dict[str, Any]]] | None = None,
+        has_pr: bool = True,
+    ) -> None:
+        self.base, self.push, self.pr, self.has_pr = base, push or {}, pr or {}, has_pr
+
+    def __call__(self, path: str) -> Any:
+        sha = path.split("/commits/")[1].split("/")[0]
+        if path.endswith("/pulls?per_page=100"):
+            if not self.has_pr:
+                return []
+            return [merged_pr(sha, "dev", HEAD, base=self.base)]
+        name = unquote(path.split("check_name=")[1].split("&")[0])
+        table = self.pr if "filter=all" in path else self.push
+        return {"check_runs": table.get(name, [run("success")])}
+
+
+def _tag(line: Line, *args: str, api: Any = None) -> int:
+    final = not any("-rc." in a for a in args if a.startswith("v"))
+    ci = api or CiApi(base="main" if final else "qa")
+    return tr.main([*args, "--repo", REPO], api=ci, git=_git(line.repo))
 
 
 def _refusal(line: Line, *args: str) -> str:
@@ -695,6 +726,15 @@ def _refusal(line: Line, *args: str) -> str:
         assert _tag(line, *args) == 1
     reasons = [r for r in err.getvalue().splitlines() if r.startswith("  - ")]
     assert len(reasons) == 1, err.getvalue()  # refused for one reason, the one under test
+    return reasons[0]
+
+
+def _refusal_with(line: Line, api: Any, *args: str) -> str:
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err):
+        assert _tag(line, *args, api=api) == 1
+    reasons = [r for r in err.getvalue().splitlines() if r.startswith("  - ")]
+    assert len(reasons) == 1, err.getvalue()
     return reasons[0]
 
 
@@ -779,6 +819,47 @@ class TestTagRelease:
         remote_line.repo.push("refs/tags/v2.1.0-rc.3")
         _push_qa(remote_line)
         assert "not above the highest existing rc" in _refusal(remote_line, "v2.1.0-rc.2")
+
+    def test_a_pending_push_check_refuses_with_retry_later(self, remote_line: Line) -> None:
+        _push_qa(remote_line)
+        api = CiApi(push={"Security Scan": [run(None, status="in_progress")]})
+        reason = _refusal_with(remote_line, api, "v2.1.0-rc.1", "--execute")
+        assert "CI still running, retry later" in reason and "Security Scan" in reason
+        assert _remote_tags(remote_line) == ""
+
+    def test_a_failed_push_check_refuses_and_names_it(self, remote_line: Line) -> None:
+        _push_qa(remote_line)
+        api = CiApi(push={"Security Scan": [run("failure")]})
+        assert "Security Scan" in _refusal_with(remote_line, api, "v2.1.0-rc.1", "--execute")
+        assert _remote_tags(remote_line) == ""
+
+    def test_a_missing_push_check_refuses(self, remote_line: Line) -> None:
+        _push_qa(remote_line)
+        api = CiApi(push={"Security Scan": []})
+        assert "Security Scan" in _refusal_with(remote_line, api, "v2.1.0-rc.1", "--execute")
+        assert _remote_tags(remote_line) == ""
+
+    def test_a_failed_pr_check_refuses_and_names_it(self, remote_line: Line) -> None:
+        _push_qa(remote_line)
+        api = CiApi(pr={"Branch Direction": [run("failure")]})
+        assert "Branch Direction" in _refusal_with(remote_line, api, "v2.1.0-rc.1", "--execute")
+        assert _remote_tags(remote_line) == ""
+
+    def test_a_commit_no_pr_produced_refuses(self, remote_line: Line) -> None:
+        _push_qa(remote_line)
+        reason = _refusal_with(remote_line, CiApi(has_pr=False), "v2.1.0-rc.1", "--execute")
+        assert "cannot find the PR that produced" in reason
+        assert _remote_tags(remote_line) == ""
+
+    def test_the_ci_check_is_the_one_wait_for_ci_makes(self, remote_line: Line) -> None:
+        """A commit ``wait_for_ci`` would pass is tagged; no second definition of green."""
+        sha = _push_qa(remote_line)
+        api = CiApi()
+        assert (
+            rc.wait_for_ci(api, REPO, sha, rv.parse_tag("v2.1.0-rc.1"), timeout_s=0, interval_s=1)
+            == []
+        )
+        assert _tag(remote_line, "v2.1.0-rc.1", "--execute", api=api) == 0
 
     def test_bad_tag_is_a_usage_error(self, remote_line: Line) -> None:
         assert _tag(remote_line, "2.1.0") == 2

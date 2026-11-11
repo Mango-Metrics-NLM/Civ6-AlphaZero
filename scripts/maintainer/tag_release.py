@@ -17,6 +17,10 @@ What it checks before tagging (any failure: exit 1, nothing tagged):
   publishing on ``wait-for-ci`` (older lineage publishes with an unpinned,
   write-capable workflow), and it contains ``CIV6AZ_R2_MERGE_SHA`` /
   ``--r2-merge`` when the maintainer has recorded that merge;
+* CI is green right now on that commit, judged once by the same logic as
+  ``release.yml``'s ``wait-for-ci`` (producing PR targeted the right branch and
+  passed Branch Direction / Release Evidence; push checks succeeded) -- pending
+  checks refuse with "retry later", so a tag is never pushed that cannot publish;
 * every ``release.yml`` rule (``scripts/release_checks.verify_tag``): version,
   ancestry (rc: on qa with main as an ancestor; final: on main), and the
   final-tag rule (diff from the highest rc only under ``docs/evidence/``, or a
@@ -36,7 +40,7 @@ import sys
 from collections.abc import Sequence
 
 from scripts.check_branch_direction import Api, ApiError, Git, GitError, gh_api
-from scripts.release_checks import is_r2_lineage, rc_tags, verify_tag
+from scripts.release_checks import ci_snapshot, is_r2_lineage, rc_tags, verify_tag
 from scripts.release_version import ReleaseError, ReleaseTag, parse_tag
 
 _REMOTE_URL_RE = re.compile(
@@ -86,7 +90,22 @@ def preflight(
         except GitError as exc:
             problems.append(f"cannot check the recorded LF-R2 merge: {exc}")
     problems.extend(verify_tag(git, tag, sha, api=api, repo=repo, remote=remote))
+    problems.extend(ci_problems(api, repo, sha, tag))
     return problems
+
+
+def ci_problems(api: Api, repo: str, sha: str, tag: ReleaseTag) -> list[str]:
+    """CI as it stands now, without waiting -- the same judgement ``wait_for_ci`` makes.
+
+    A tag pushed while CI is red or the producing PR lacks its checks can never
+    publish (``release.yml`` refuses) yet blocks a retry, so refuse before tagging.
+    """
+    failed, waiting = ci_snapshot(api, repo, sha, tag)
+    if failed:
+        return failed
+    if waiting:
+        return [f"CI still running, retry later: {', '.join(waiting)}"]
+    return []
 
 
 def main(
