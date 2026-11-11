@@ -14,8 +14,10 @@ GitHub rejects it), strictness (qa off -- its own merge commits would make every
 later promotion "out of date" -- dev/main on), and merge methods.
 
 Field names follow the GitHub REST rulesets schema (``github/docs``
-``src/rest/data/fpt-2026-03-10/repos.json``); ``integration_id`` is deliberately
-omitted -- see ``scripts/maintainer/rulesets.py``.
+``src/rest/data/fpt-2026-03-10/repos.json``). Every required check carries
+``integration_id`` 15368 (GitHub Actions, read from this repository's own check
+runs): without it, a commit *status* of the same name from any Write token
+satisfies the rule.
 
 Negative controls live in ``TestThePredicatesDiscriminate`` on in-memory YAML.
 """
@@ -36,6 +38,17 @@ from tests.regression.branch_policy import protected_branches
 RULESET_DIR = Path(".github/rulesets")
 WORKFLOW_DIR = Path(".github/workflows")
 SENTINEL = "{{MAINTAINER_USER_ID}}"
+GITHUB_ACTIONS_APP_ID = 15368
+BRANCH_POLICY = WORKFLOW_DIR / "branch-policy.yml"
+#: Job conditions that may not exclude a job from the required-check set, each
+#: with its reason. Anything else may skip the job, and a skipped required
+#: check is a merge nobody can make or one made on nothing.
+ALLOWED_JOB_CONDITIONS: dict[str, str] = {
+    "github.event.pull_request.state == 'open'": (
+        "Branch Direction re-judged on a closed PR (an `edited` event after merge) "
+        "compares against refs the merge itself moved; the job never needs to run there"
+    ),
+}
 LEGACY_DEFAULT = "claude/civ6-alphazero-implementation-vMnun"
 
 #: Plan S3.3, verbatim. Release Evidence joins main.json only in T14.
@@ -185,13 +198,16 @@ def pr_check_names(doc: dict[str, Any], protected: tuple[str, ...]) -> dict[str,
     """Check-run name -> ``continue-on-error`` for every leg of every PR job.
 
     A job with an ``if:`` is excluded (it may be skipped, and a skipped required
-    check is a merge nobody can make or one made on nothing).
+    check is a merge nobody can make or one made on nothing), unless the
+    condition is in :data:`ALLOWED_JOB_CONDITIONS`.
     """
     if not _runs_on_every_protected_pr(doc, protected):
         return {}
     out: dict[str, bool] = {}
     for job_id, job in (doc.get("jobs") or {}).items():
-        if not isinstance(job, dict) or "if" in job:
+        if not isinstance(job, dict):
+            continue
+        if "if" in job and str(job["if"]).strip() not in ALLOWED_JOB_CONDITIONS:
             continue
         name = str(job.get("name", job_id))
         for leg in expand_matrix(job.get("strategy")):
@@ -351,8 +367,9 @@ def test_schema_shape(name: str) -> None:
         params = rsc["parameters"]
         assert {"required_status_checks", "strict_required_status_checks_policy"} <= set(params)
         for check in params["required_status_checks"]:
-            # integration_id omitted on purpose (see scripts/maintainer/rulesets.py)
-            assert set(check) == {"context"}
+            # pinned to GitHub Actions so a same-named commit status cannot satisfy it
+            assert set(check) == {"context", "integration_id"}
+            assert check["integration_id"] == GITHUB_ACTIONS_APP_ID
     for actor in doc["bypass_actors"]:
         assert set(actor) == {"actor_id", "actor_type", "bypass_mode"}
         assert actor["actor_type"] in {"RepositoryRole", "User"}
@@ -373,6 +390,43 @@ def test_every_protected_release_branch_has_a_ruleset() -> None:
     }
     assert {"dev", "qa", "main"} <= covered
     assert {"dev", "qa", "main"} <= set(protected_branches())
+
+
+def test_every_required_check_is_pinned_to_github_actions() -> None:
+    for name in sorted(EXPECTED_FILES):
+        rule = _rule(_load(name), "required_status_checks")
+        if rule is None:
+            continue
+        unpinned = [
+            c["context"]
+            for c in rule["parameters"]["required_status_checks"]
+            if c.get("integration_id") != GITHUB_ACTIONS_APP_ID
+        ]
+        assert not unpinned, f"{name}.json: {unpinned} accept a commit status from any app"
+
+
+def _branch_direction_job() -> dict[str, Any]:
+    jobs = yaml.safe_load(BRANCH_POLICY.read_text(encoding="utf-8"))["jobs"]
+    (job,) = [j for j in jobs.values() if j.get("name") == "Branch Direction"]
+    return dict(job)
+
+
+def test_branch_direction_skips_prs_that_are_not_open() -> None:
+    assert _branch_direction_job().get("if") == "github.event.pull_request.state == 'open'"
+
+
+def test_branch_direction_never_falls_back_to_the_prs_own_judge() -> None:
+    """A missing judge on the default branch must fail the job, not run the PR's copy."""
+    runs = [str(s.get("run", "")) for s in _branch_direction_job()["steps"]]
+    joined = "\n".join(runs)
+    assert "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" in joined
+    assert "cp scripts/check_branch_direction.py" not in joined
+    assert "python scripts/check_branch_direction.py" not in joined
+    assert not any(re.search(r"^\s*else\b", r, re.M) for r in runs)
+
+
+def test_reasons_for_allowed_job_conditions() -> None:
+    assert all(len(why) > 20 for why in ALLOWED_JOB_CONDITIONS.values())
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +455,13 @@ jobs:
     name: Maybe
     if: github.event_name == 'push'
 """
+
+    def test_the_open_pr_guard_keeps_a_job_required(self) -> None:
+        doc = yaml.safe_load(
+            "on:\n  pull_request:\njobs:\n  bd:\n    name: BD\n"
+            "    if: github.event.pull_request.state == 'open'\n"
+        )
+        assert pr_check_names(doc, ("dev", "qa", "main")) == {"BD": False}
 
     def test_matrix_legs_expand_with_include_as_a_new_leg(self) -> None:
         names = pr_check_names(yaml.safe_load(self._CI), ("dev", "qa", "main"))

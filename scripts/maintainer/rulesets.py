@@ -16,11 +16,11 @@ things are filled in or removed at apply time:
 * ``Branch Direction``, which cut-over step 4 omits (the check does not exist
   until T6 is merged into ``dev``) and step 5 adds back with a ``PUT``.
 
-Status checks carry only ``context``. ``integration_id`` (the app a check must
-come from) is omitted: the GitHub Actions app id could not be confirmed from
-the documentation when this was written, and a wrong id would make every
-required check unsatisfiable. The release workflow's ``wait-for-ci`` job checks
-the producing app (``app.slug == "github-actions"``) instead.
+Every required status check carries ``integration_id`` 15368, the GitHub
+Actions app (confirmed from this repository's own check runs:
+``app.id=15368, slug=github-actions``). Without it a ruleset context is also
+satisfied by a commit *status* of the same name, which any token with
+``statuses: write`` -- the agent's Write PAT included -- can post.
 
 ``RepositoryRole`` actor id 5 is the repository Admin role.
 """

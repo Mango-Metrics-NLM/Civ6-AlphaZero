@@ -223,7 +223,13 @@ class FakeApi:
         self.responses[f"repos/{REPO}/commits/{sha}/pulls?per_page=100"] = prs
 
     def runs(self, sha: str, name: str, runs: list[dict[str, Any]] | Any) -> None:
+        """Push checks: the latest run per name on the tagged commit."""
         key = f"repos/{REPO}/commits/{sha}/check-runs?check_name={quote(name)}&filter=latest&per_page=100"
+        self.responses[key] = runs
+
+    def pr_runs(self, sha: str, name: str, runs: list[dict[str, Any]] | Any) -> None:
+        """PR checks: every run on the PR head (selected by completion vs merged_at)."""
+        key = f"repos/{REPO}/commits/{sha}/check-runs?check_name={quote(name)}&filter=all&per_page=100"
         self.responses[key] = runs
 
     def __call__(self, path: str) -> Any:
@@ -236,22 +242,39 @@ class FakeApi:
         return value
 
 
+MERGED_AT = "2026-12-01T00:00:00Z"
+BEFORE_MERGE = "2026-11-30T23:00:00Z"
+AFTER_MERGE = "2026-12-02T09:00:00Z"
+
+
 def merged_pr(
-    merge_sha: str, head_ref: str, head_sha: str = "f" * 40, **extra: Any
+    merge_sha: str, head_ref: str, head_sha: str = "f" * 40, *, base: str = "qa", **extra: Any
 ) -> dict[str, Any]:
     return {
         "number": 3,
-        "merged_at": "2026-12-01T00:00:00Z",
+        "merged_at": MERGED_AT,
         "merge_commit_sha": merge_sha,
         "head": {"ref": head_ref, "sha": head_sha},
+        "base": {"ref": base},
         **extra,
     }
 
 
 def run(
-    conclusion: str | None, *, status: str = "completed", app: str = "github-actions", id_: int = 1
+    conclusion: str | None,
+    *,
+    status: str = "completed",
+    app: str = "github-actions",
+    id_: int = 1,
+    completed_at: str | None = BEFORE_MERGE,
 ) -> dict:
-    return {"id": id_, "status": status, "conclusion": conclusion, "app": {"slug": app}}
+    return {
+        "id": id_,
+        "status": status,
+        "conclusion": conclusion,
+        "app": {"slug": app},
+        "completed_at": completed_at if status == "completed" else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +332,20 @@ class TestVerifyTag:
         )
         assert any("alpha_zero/core.py" in p for p in problems)
 
+    def test_final_that_renames_code_into_evidence_is_refused(self, line: Line) -> None:
+        """I2: rename detection would report only docs/evidence/core.py."""
+        line.repo.tag("v2.1.0-rc.1", line.promote())
+        line.repo.checkout("qa", line.repo.sha("refs/remotes/origin/qa"))
+        (line.repo.path / "docs" / "evidence").mkdir(parents=True, exist_ok=True)
+        line.repo.git("mv", "alpha_zero/core.py", "docs/evidence/core.py")
+        line.repo.git("commit", "-q", "-m", "move code into evidence")
+        line.repo.set_remote("qa", "HEAD")
+        final = line.release()
+        problems = rc.verify_tag(
+            _git(line.repo), rv.parse_tag("v2.1.0"), final, api=FakeApi(), repo=REPO
+        )
+        assert any("alpha_zero/core.py" in p for p in problems), problems
+
     def test_the_highest_rc_is_numeric_not_lexical(self, line: Line) -> None:
         line.repo.tag("v2.1.0-rc.9", line.promote("rc9"))
         line.repo.tag("v2.1.0-rc.10", line.promote("rc10"))
@@ -330,13 +367,17 @@ class TestVerifyTag:
         final = line.repo.merge("hotfix/crash", "Merge hotfix")
         line.repo.set_remote("main", final)
         api = FakeApi()
-        api.pulls_for(final, [merged_pr(final, "hotfix/crash")])
+        api.pulls_for(final, [merged_pr(final, "hotfix/crash", base="main")])
         assert (
             rc.verify_tag(_git(line.repo), rv.parse_tag("v2.1.0"), final, api=api, repo=REPO) == []
         )
-        api.pulls_for(final, [merged_pr(final, "feature/x")])
+        api.pulls_for(final, [merged_pr(final, "feature/x", base="main")])
         problems = rc.verify_tag(_git(line.repo), rv.parse_tag("v2.1.0"), final, api=api, repo=REPO)
         assert any("hotfix/*" in p for p in problems)
+        # M3: a hotfix PR merged into anything but main does not produce a final
+        api.pulls_for(final, [merged_pr(final, "hotfix/crash", base="qa")])
+        problems = rc.verify_tag(_git(line.repo), rv.parse_tag("v2.1.0"), final, api=api, repo=REPO)
+        assert any("into qa" in p and "main" in p for p in problems), problems
 
 
 class TestMergedPr:
@@ -409,7 +450,7 @@ class TestWaitForCi:
         api = FakeApi()
         _green_push(api)
         api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
         assert _wait(api, "v2.1.0-rc.1") == []
         assert any(
             f"commits/{HEAD}/check-runs?check_name=Branch%20Direction" in c for c in api.calls
@@ -423,7 +464,7 @@ class TestWaitForCi:
         _green_push(api)
         api.runs(TAGGED, "Security Scan", {"check_runs": [run("failure")]})
         api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
         problems = _wait(api, "v2.1.0-rc.1")
         assert problems and "Security Scan" in problems[0]
 
@@ -436,7 +477,7 @@ class TestWaitForCi:
             + [{"check_runs": [run("success")]}] * 9
         )
         api.runs(TAGGED, "Coverage Report", lambda: next(answers))
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
         clock = Clock()
         assert _wait(api, "v2.1.0-rc.1", clock) == []
         assert clock.sleeps == 2
@@ -446,7 +487,7 @@ class TestWaitForCi:
         _green_push(api)
         api.runs(TAGGED, "Coverage Report", {"check_runs": []})
         api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
         problems = _wait(api, "v2.1.0-rc.1", timeout=120)
         assert problems and "timed out" in problems[0] and "Coverage Report" in problems[0]
 
@@ -454,39 +495,150 @@ class TestWaitForCi:
         api = FakeApi()
         _green_push(api)
         api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success", app="impostor")]})
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success", app="impostor")]})
         assert _wait(api, "v2.1.0-rc.1", timeout=60)
 
-    def test_the_newest_run_wins(self) -> None:
+    def test_the_newest_run_before_the_merge_wins(self) -> None:
         api = FakeApi()
         _green_push(api)
         api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
-        api.runs(
-            HEAD, "Branch Direction", {"check_runs": [run("success", id_=2), run("failure", id_=1)]}
-        )
+        early = run("failure", id_=1, completed_at="2026-11-30T01:00:00Z")
+        late = run("success", id_=2, completed_at="2026-11-30T02:00:00Z")
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [late, early]})
         assert _wait(api, "v2.1.0-rc.1") == []
 
-    def test_a_non_hotfix_final_also_needs_release_evidence(self) -> None:
+    def test_a_failed_rerun_after_the_merge_is_ignored(self) -> None:
+        """I4: an `edited` event on the merged PR re-judges against moved refs."""
         api = FakeApi()
         _green_push(api)
-        api.pulls_for(TAGGED, [merged_pr(TAGGED, "qa", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
-        assert _wait(api, "v2.1.0", timeout=60)  # Release Evidence missing
-        api.runs(HEAD, "Release Evidence", {"check_runs": [run("success")]})
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "qa", HEAD, base="main")])
+        gated = run("success", id_=1, completed_at=BEFORE_MERGE)
+        rerun = run("failure", id_=9, completed_at=AFTER_MERGE)
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [gated, rerun]})
+        api.pr_runs(HEAD, "Release Evidence", {"check_runs": [gated]})
+        assert _wait(api, "v2.1.0") == []
+
+    def test_a_run_completed_only_after_the_merge_does_not_count(self) -> None:
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
+        api.pr_runs(
+            HEAD, "Branch Direction", {"check_runs": [run("success", completed_at=AFTER_MERGE)]}
+        )
+        clock = Clock()
+        problems = _wait(api, "v2.1.0-rc.1", clock)
+        assert problems and "Branch Direction" in problems[0]
+        assert clock.sleeps == 0  # PR checks cannot arrive after the merge: no polling
+
+    def test_missing_release_evidence_fails_fast_and_names_t14(self) -> None:
+        """M1: no Release Evidence job yet -> immediate failure, not a 95-minute poll."""
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "qa", HEAD, base="main")])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        clock = Clock()
+        problems = _wait(api, "v2.1.0", clock, timeout=6000)
+        assert clock.sleeps == 0
+        assert problems and "Release Evidence" in problems[0]
+        assert "T14" in problems[0] and "9a" in problems[0]
+
+    def test_a_non_hotfix_final_needs_release_evidence(self) -> None:
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "qa", HEAD, base="main")])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Release Evidence", {"check_runs": [run("success")]})
         assert _wait(api, "v2.1.0") == []
 
     def test_a_hotfix_final_needs_only_branch_direction(self) -> None:
         api = FakeApi()
         _green_push(api)
-        api.pulls_for(TAGGED, [merged_pr(TAGGED, "hotfix/crash", HEAD)])
-        api.runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "hotfix/crash", HEAD, base="main")])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
         assert _wait(api, "v2.1.1") == []
+
+    @pytest.mark.parametrize(("tag", "base"), [("v2.1.0-rc.1", "dev"), ("v2.1.0", "qa")])
+    def test_the_producing_pr_must_target_the_release_branch(self, tag: str, base: str) -> None:
+        """M3: an rc comes from a PR into qa, a final from a PR into main."""
+        api = FakeApi()
+        _green_push(api)
+        head_ref = "feature/x" if base == "dev" else "qa"
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, head_ref, HEAD, base=base)])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        api.pr_runs(HEAD, "Release Evidence", {"check_runs": [run("success")]})
+        problems = _wait(api, tag)
+        assert problems and f"into {base}" in problems[0]
 
     def test_no_producing_pr_fails(self) -> None:
         api = FakeApi()
         _green_push(api)
         api.pulls_for(TAGGED, [])
         assert _wait(api, "v2.1.0-rc.1")
+
+    def test_transient_api_errors_are_retried(self) -> None:
+        """M7: a 502 mid-poll is retried with backoff, not fatal."""
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+        failures = iter([True, True])
+
+        def flaky() -> Any:
+            if next(failures, False):
+                raise ApiError("gh api ...: HTTP 502 Bad Gateway", transient=True)
+            return {"check_runs": [run("success")]}
+
+        api.runs(TAGGED, "Coverage Report", flaky)
+        clock = Clock()
+        assert _wait(api, "v2.1.0-rc.1", clock) == []
+        assert clock.sleeps == 2
+
+    def test_persistent_transient_errors_eventually_fail(self) -> None:
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+
+        def down() -> Any:
+            raise ApiError("connection reset", transient=True)
+
+        api.runs(TAGGED, "Coverage Report", down)
+        clock = Clock()
+        problems = _wait(api, "v2.1.0-rc.1", clock, timeout=6000)
+        assert problems and "connection reset" in problems[0]
+        assert 0 < clock.sleeps <= rc.MAX_TRANSIENT_RETRIES
+
+    def test_a_non_transient_api_error_fails_at_once(self) -> None:
+        api = FakeApi()
+        _green_push(api)
+        api.pulls_for(TAGGED, [merged_pr(TAGGED, "dev", HEAD)])
+        api.pr_runs(HEAD, "Branch Direction", {"check_runs": [run("success")]})
+
+        def forbidden() -> Any:
+            raise ApiError("HTTP 403 Resource not accessible by integration")
+
+        api.runs(TAGGED, "Coverage Report", forbidden)
+        clock = Clock()
+        assert _wait(api, "v2.1.0-rc.1", clock)
+        assert clock.sleeps == 0
+
+
+@pytest.mark.parametrize(
+    ("stderr", "transient"),
+    [
+        ("gh: HTTP 502 Bad Gateway", True),
+        ("HTTP 503: Service Unavailable", True),
+        ("dial tcp: lookup api.github.com: no such host", True),
+        ("read: connection reset by peer", True),
+        ("Post: net/http: TLS handshake timeout", True),
+        ("HTTP 404: Not Found", False),
+        ("HTTP 403: Resource not accessible by integration", False),
+    ],
+)
+def test_gh_api_errors_are_classified(stderr: str, transient: bool) -> None:
+    from scripts.check_branch_direction import is_transient_error
+
+    assert is_transient_error(stderr) is transient
 
 
 def test_push_checks_are_the_ruleset_checks_minus_branch_direction() -> None:

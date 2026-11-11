@@ -58,14 +58,44 @@ state only when a segment is a git command.
 
 # Design notes -- R2
 
-## The judge comes from the default branch
+## Branch Direction is an accident net, not a control
 
-On `pull_request` the checkout is the PR's merge ref, so running
-`scripts/check_branch_direction.py` from the workspace would let a PR edit the
-script that judges it. `branch-policy.yml` runs the copy on the default branch
-(protected, reviewed). The one exception is the PR that introduces the script,
-before it exists on the default branch; the check is not required until the
-maintainer adds it after that merge (cut-over step 5).
+A `pull_request` workflow runs the workflow file from the PR's own merge ref, so
+a same-repo PR can rewrite the step, or add any job named `Branch Direction`,
+and turn the required context green. `pull_request_target` does not fix that
+for anyone holding Write: the job name, not the workflow file, is what the
+ruleset matches. So the check is an accident net -- it stops wrong-direction PRs
+opened by mistake -- and the control for qa and main is identity: only the
+maintainer can merge into them (`qa-main-merge`), and `tag_release` and
+`release.yml` re-check ancestry at release time.
+
+Within that limit: the workflow runs the script from the default branch rather
+than the PR's checkout, so an ordinary PR that edits the script is not judged by
+its own edit, and there is no fallback -- if the default branch has no judge,
+the job fails. The job runs only for open PRs; an `edited` event on a merged PR
+would re-judge it against refs the merge moved.
+
+## Path filters do not detect renames
+
+`git diff --name-only` reports a rename as its destination only, so moving
+`alpha_zero/x.py` into `docs/evidence/` would pass both the evidence-only rule
+and the final-tag rule. Both use `--no-renames`.
+
+## wait-for-ci reads the run that gated the merge
+
+PR-scoped checks are read from the newest Actions run completed at or before
+the producing PR's `merged_at`, and the PR's base must be `qa` (rc) or `main`
+(final). They cannot change after the merge, so they are judged once: a missing
+`Release Evidence` fails at once and names T14 / maintainer action 9a instead of
+polling for 95 minutes. Push checks are polled; a transient API failure (5xx,
+connection) is retried with bounded exponential backoff.
+
+## Hotfixes refuse qa-only commits (ruling)
+
+Plan S3.4 says a hotfix may carry no commit that comes only from dev. The check
+also refuses commits reachable from `origin/qa` but not `origin/main`. This is
+deliberate and stricter than the plan: qa-only commits are promotion merges,
+evidence merges and rc fixes, and a hotfix must not ship unreleased rc work.
 
 ## REST API version pin
 
@@ -83,13 +113,13 @@ the property itself: the tagged commit's `release.yml` gates its
 one in the tagged commit. Once merged, the maintainer may record the SHA in
 `CIV6AZ_R2_MERGE_SHA` and the ancestry check is added on top.
 
-## integration_id is omitted
+## integration_id is pinned
 
-A required check can be pinned to the app that produces it. The GitHub Actions
-app id could not be confirmed from the documentation, and a wrong id makes
-every required check unsatisfiable, so contexts carry no `integration_id`;
-`wait-for-ci` instead counts only check runs whose `app.slug` is
-`github-actions`.
+Every required check carries `integration_id` 15368, the GitHub Actions app,
+confirmed from this repository's own check runs (`app.id=15368,
+slug=github-actions`). Without it, a commit status of the same name from any
+token with `statuses: write` satisfies the rule. `wait-for-ci` also counts only
+runs whose `app.slug` is `github-actions`.
 
 ## Windows
 

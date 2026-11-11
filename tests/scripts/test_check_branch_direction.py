@@ -272,6 +272,17 @@ class TestEvidence:
         assert not decision.allowed
         assert any("alpha_zero/core.py" in reason for reason in decision.reasons)
 
+    def test_evidence_renaming_code_into_evidence_is_denied(self, repo: GitRepo) -> None:
+        """I2: with rename detection the diff names only docs/evidence/core.py."""
+        rc = _rc_tagged_qa(repo)
+        repo.checkout("evidence/v1.1.0-rc.1", rc)
+        (repo.path / "docs" / "evidence").mkdir(parents=True, exist_ok=True)
+        repo.git("mv", "alpha_zero/core.py", "docs/evidence/core.py")
+        repo.git("commit", "-q", "-m", "move the code into evidence")
+        decision = _eval(repo, "qa", "evidence/v1.1.0-rc.1")
+        assert not decision.allowed
+        assert any("alpha_zero/core.py" in reason for reason in decision.reasons)
+
     def test_evidence_without_its_rc_tag_as_ancestor_is_denied(self, repo: GitRepo) -> None:
         rc = _rc_tagged_qa(repo)
         repo.checkout("qa", rc)

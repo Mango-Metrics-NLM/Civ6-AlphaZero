@@ -45,9 +45,19 @@ Exit status: 0 allowed, 1 denied, 2 could not decide (bad input, API or git
 failure). Anything but 0 fails the check: a gate that cannot inspect its input
 must deny.
 
-This module is deliberately stdlib-only and self-contained. The workflow runs
-the copy from the default branch, not the pull request's own copy (which would
-let a PR rewrite its own judge), and that copy is fetched as a single file.
+This check is an ACCIDENT NET, not a control. A ``pull_request`` workflow runs
+the workflow file from the PR's own merge ref, so any same-repo PR can replace
+the step (or add a job named ``Branch Direction``) and turn the context green;
+``pull_request_target`` would not change that for a Write-holder. It catches
+wrong-direction PRs made by mistake. The control for qa and main is that only
+the maintainer can merge into them (the ``qa-main-merge`` ruleset), and the
+release gates re-check ancestry at tag time.
+
+The workflow runs this file from the default branch rather than the PR's
+checkout, so an ordinary PR that edits the script is not judged by its own
+edit; when the default branch has no copy, the job fails. The module is
+deliberately stdlib-only and self-contained because it is fetched as a single
+file.
 """
 
 from __future__ import annotations
@@ -83,7 +93,27 @@ class GitError(RuntimeError):
 
 
 class ApiError(RuntimeError):
-    """A GitHub API call failed or returned an unusable payload."""
+    """A GitHub API call failed or returned an unusable payload.
+
+    ``transient`` marks a failure worth retrying (a 5xx or a connection
+    problem); everything else -- 4xx, a malformed payload -- is final.
+    """
+
+    def __init__(self, message: str, *, transient: bool = False) -> None:
+        super().__init__(message)
+        self.transient = transient
+
+
+_TRANSIENT_RE = re.compile(
+    r"HTTP 5\d\d|connection (reset|refused)|timed? ?out|timeout|no such host|"
+    r"temporary failure|EOF|TLS handshake|broken pipe|network is unreachable",
+    re.I,
+)
+
+
+def is_transient_error(stderr: str) -> bool:
+    """Does ``gh api`` stderr describe a server-side or network failure?"""
+    return bool(_TRANSIENT_RE.search(stderr))
 
 
 Api = Callable[[str], Any]
@@ -153,8 +183,13 @@ class Git:
         return self.out("rev-list", "--parents", "-n", "1", sha).split()[1:]
 
     def changed_paths(self, base: str, head: str) -> list[str]:
-        """Paths the head changes relative to its merge base with ``base``."""
-        return self.lines("diff", "--name-only", f"{base}...{head}")
+        """Paths the head changes relative to its merge base with ``base``.
+
+        ``--no-renames``: with rename detection a move from ``alpha_zero/x.py``
+        to ``docs/evidence/x.py`` is reported as the destination alone, which
+        would pass an "only docs/evidence/**" filter.
+        """
+        return self.lines("diff", "--name-only", "--no-renames", f"{base}...{head}")
 
     def ensure_commit(self, sha: str, *, pr_number: int, remote: str = "origin") -> None:
         """Make the PR head available; fetch ``refs/pull/N/head`` when it is not."""
@@ -429,7 +464,8 @@ def gh_api(path: str) -> Any:
         gh_api_argv(path), capture_output=True, text=True, encoding="utf-8", check=False
     )
     if proc.returncode != 0:
-        raise ApiError(f"gh api {path} failed: {proc.stderr.strip()}")
+        stderr = proc.stderr.strip()
+        raise ApiError(f"gh api {path} failed: {stderr}", transient=is_transient_error(stderr))
     try:
         return json.loads(proc.stdout)
     except json.JSONDecodeError as exc:

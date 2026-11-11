@@ -66,8 +66,9 @@ This change is delivered in four releases (plan R1-R4). **R1 (this PR):**
   which heads each of dev/qa/main accepts, promotion and release need
   `origin/main` as an ancestor, back-merges carry only released commits plus
   update merges, hotfixes carry no unreleased commits, evidence touches only
-  `docs/evidence/**`, rc fixes are patch-equivalent cherry-picks. The judge runs
-  from the default branch, so a PR cannot rewrite its own check.
+  `docs/evidence/**`, rc fixes are patch-equivalent cherry-picks. It is an
+  accident net, not a control: a same-repo PR can rewrite its own workflow.
+  The control for qa and main is maintainer-only merge (`qa-main-merge`).
 - **Rulesets** (`.github/rulesets/*.json`) in the REST export shape, applied by
   the maintainer with `scripts/maintainer/branch_cutover.sh`; back-merges are
   merged with `scripts/maintainer/merge_backmerge.sh`.

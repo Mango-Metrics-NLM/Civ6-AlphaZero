@@ -38,31 +38,40 @@
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
           {
-            "context": "Lint & Type Check"
+            "context": "Lint & Type Check",
+            "integration_id": 15368
           },
           {
-            "context": "Test (Python 3.11)"
+            "context": "Test (Python 3.11)",
+            "integration_id": 15368
           },
           {
-            "context": "Test (Python 3.12)"
+            "context": "Test (Python 3.12)",
+            "integration_id": 15368
           },
           {
-            "context": "Cloud Unit Tests"
+            "context": "Cloud Unit Tests",
+            "integration_id": 15368
           },
           {
-            "context": "Security Scan"
+            "context": "Security Scan",
+            "integration_id": 15368
           },
           {
-            "context": "Governance Gates"
+            "context": "Governance Gates",
+            "integration_id": 15368
           },
           {
-            "context": "LLM Eval Harness"
+            "context": "LLM Eval Harness",
+            "integration_id": 15368
           },
           {
-            "context": "Coverage Report"
+            "context": "Coverage Report",
+            "integration_id": 15368
           },
           {
-            "context": "Branch Direction"
+            "context": "Branch Direction",
+            "integration_id": 15368
           }
         ]
       }

@@ -4,6 +4,14 @@ name: Branch Policy
 # base? A required status check on dev, qa and main once the maintainer adds it
 # to the rulesets (scripts/maintainer/branch_cutover.sh, step 5).
 #
+# AN ACCIDENT NET, NOT A CONTROL. A pull_request workflow runs this file from the
+# PR's own merge ref, so a same-repo PR can rewrite these steps, or add any job
+# named "Branch Direction", and turn the context green (pull_request_target
+# would not stop a Write-holder either). It catches wrong-direction PRs opened
+# by mistake. The control for qa and main is that only the maintainer can merge
+# into them (the qa-main-merge ruleset); tag_release and release.yml re-check
+# ancestry at release time.
+#
 # `edited` is included because changing a PR's base is an edit: the check must
 # be re-judged against the new base. The script reads base and head from the
 # API, not from this event's payload, for the same reason.
@@ -25,6 +33,10 @@ jobs:
     # silently un-gates every protected branch.
     # tests/regression/test_branch_rulesets_regression.py holds the two together.
     name: Branch Direction
+    # Only open PRs: an `edited` event on a merged PR would re-judge it against
+    # refs the merge itself moved and post a misleading failure on its head.
+    # (wait-for-ci also reads only runs completed before merged_at.)
+    if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -42,23 +54,15 @@ jobs:
         with:
           python-version: "3.11"
 
-      # The judge comes from the default branch, not from this PR's merge ref:
-      # otherwise a PR could rewrite scripts/check_branch_direction.py to pass
-      # itself. The default branch is protected, so its copy is reviewed code.
-      # Fallback: before the script has landed on the default branch (only the
-      # PR that introduces it), the PR's own copy runs with a warning; the check
-      # is not required until the maintainer adds it after that merge.
+      # The script comes from the default branch, not this PR's checkout, so an
+      # ordinary PR that edits the script is not judged by its own edit. (It does
+      # not stop a PR that edits this workflow; see the header.) No fallback: if
+      # the default branch has no judge, `git show` fails and so does the job.
       - name: Fetch the judge from the default branch
         env:
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
-          judge="$RUNNER_TEMP/check_branch_direction.py"
-          if git cat-file -e "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" 2>/dev/null; then
-            git show "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" > "$judge"
-          else
-            echo "::warning::scripts/check_branch_direction.py is not on ${DEFAULT_BRANCH} yet; running this PR's copy"
-            cp scripts/check_branch_direction.py "$judge"
-          fi
+          git show "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" > "$RUNNER_TEMP/check_branch_direction.py"
 
       - name: Check branch direction
         env:

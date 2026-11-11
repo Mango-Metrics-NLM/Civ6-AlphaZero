@@ -19,19 +19,25 @@
   tagged commit itself;
 * PR-only checks are read from the PR that produced the commit:
   ``GET /commits/{sha}/pulls`` must yield exactly one merged PR whose
-  ``merge_commit_sha`` is the tagged commit, and that PR's HEAD must carry a
-  successful ``Branch Direction`` -- and ``Release Evidence`` for a non-hotfix
-  final.
+  ``merge_commit_sha`` is the tagged commit and whose base is ``qa`` (rc) or
+  ``main`` (final). On that PR's HEAD, the newest ``Branch Direction`` run
+  completed at or before the PR's ``merged_at`` -- the run that gated the merge,
+  not a later re-run against refs the merge itself moved -- must have succeeded,
+  and so must ``Release Evidence`` for a non-hotfix final. PR-scoped checks
+  cannot arrive after the merge, so they are judged once, without polling.
 
-Check runs count only when produced by GitHub Actions (``app.slug``), and the
-newest run of a name wins. Every API call pins REST API version 2022-11-28:
-2026-03-10 removed ``merge_commit_sha`` from pull request payloads, and a
-missing field fails closed rather than matching nothing.
+Check runs count only when produced by GitHub Actions (``app.slug``). Push
+checks are polled until the timeout; a transient API failure (5xx, connection)
+is retried with bounded exponential backoff, anything else fails at once. Every
+API call pins REST API version 2022-11-28: 2026-03-10 removed
+``merge_commit_sha`` from pull request payloads, and a missing field fails
+closed rather than matching nothing.
 """
 
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sys
 import time
@@ -67,6 +73,9 @@ RELEASE_EVIDENCE = "Release Evidence"
 ACTIONS_APP_SLUG = "github-actions"
 RELEASE_WORKFLOW = ".github/workflows/release.yml"
 WAIT_JOB = "wait-for-ci"
+#: Consecutive transient API failures tolerated at one wait-for-ci call site.
+MAX_TRANSIENT_RETRIES = 6
+MAX_BACKOFF_S = 300.0
 
 
 # ---------------------------------------------------------------------------
@@ -91,10 +100,14 @@ def highest_rc(git: Git, base: str) -> ReleaseTag | None:
 
 
 def offending_final_paths(git: Git, rc_name: str, sha: str) -> list[str]:
-    """Paths ``git diff <rc>..<final>`` changes outside ``docs/evidence/``."""
+    """Paths ``git diff <rc>..<final>`` changes outside ``docs/evidence/``.
+
+    ``--no-renames``: a move from ``alpha_zero/`` into ``docs/evidence/`` must
+    report the source path too, or it would read as an evidence-only change.
+    """
     return [
         p
-        for p in git.lines("diff", "--name-only", f"{rc_name}..{sha}")
+        for p in git.lines("diff", "--name-only", "--no-renames", f"{rc_name}..{sha}")
         if not p.startswith(EVIDENCE_PREFIX)
     ]
 
@@ -121,6 +134,22 @@ def merged_pr_for_commit(api: Api, repo: str, sha: str) -> dict[str, Any]:
 
 def is_hotfix_pr(pr: dict[str, Any]) -> bool:
     return str(pr.get("head", {}).get("ref", "")).startswith("hotfix/")
+
+
+def expected_pr_base(tag: ReleaseTag) -> str:
+    """An rc is a qa state, a final a main state: the producing PR targets that branch."""
+    return "qa" if tag.is_rc else "main"
+
+
+def pr_base_problem(pr: dict[str, Any], tag: ReleaseTag) -> str | None:
+    base = str((pr.get("base") or {}).get("ref", ""))
+    want = expected_pr_base(tag)
+    if base == want:
+        return None
+    return (
+        f"{tag.name} must be the merge of a PR into {want}; PR #{pr.get('number')} "
+        f"was merged into {base or 'an unknown base'}"
+    )
 
 
 def verify_tag(
@@ -168,6 +197,8 @@ def verify_tag(
             f"no rc for {tag.base}: a final without an rc must be the merge of a hotfix/* PR, "
             f"not {pr.get('head', {}).get('ref')!r}"
         )
+    if (base_problem := pr_base_problem(pr, tag)) is not None:
+        problems.append(base_problem)
     return problems
 
 
@@ -210,16 +241,52 @@ def pr_checks_for(tag: ReleaseTag, hotfix: bool) -> tuple[str, ...]:
     return (BRANCH_DIRECTION, RELEASE_EVIDENCE)
 
 
-def latest_run(api: Api, repo: str, sha: str, name: str) -> dict[str, Any] | None:
-    data = api(
-        f"repos/{repo}/commits/{sha}/check-runs?check_name={quote(name)}&filter=latest&per_page=100"
-    )
-    runs = [
+def _actions_runs(data: Any) -> list[dict[str, Any]]:
+    return [
         r
         for r in (data.get("check_runs") if isinstance(data, dict) else None) or []
         if isinstance(r, dict) and (r.get("app") or {}).get("slug") == ACTIONS_APP_SLUG
     ]
+
+
+def latest_run(api: Api, repo: str, sha: str, name: str) -> dict[str, Any] | None:
+    """The newest Actions run of ``name`` on ``sha`` (push checks)."""
+    data = api(
+        f"repos/{repo}/commits/{sha}/check-runs?check_name={quote(name)}&filter=latest&per_page=100"
+    )
+    runs = _actions_runs(data)
     return max(runs, key=lambda r: int(r.get("id") or 0)) if runs else None
+
+
+def _timestamp(value: Any) -> dt.datetime | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def run_before(
+    api: Api, repo: str, sha: str, name: str, cutoff: dt.datetime
+) -> dict[str, Any] | None:
+    """The newest completed Actions run of ``name`` on ``sha`` finished by ``cutoff``.
+
+    For a PR-scoped check this is the run that gated the merge: an ``edited``
+    event after the merge re-judges against refs the merge moved, and must not
+    decide the release.
+    """
+    data = api(
+        f"repos/{repo}/commits/{sha}/check-runs?check_name={quote(name)}&filter=all&per_page=100"
+    )
+    dated = []
+    for r in _actions_runs(data):
+        when = _timestamp(r.get("completed_at"))
+        if r.get("status") == "completed" and when is not None and when <= cutoff:
+            dated.append((when, int(r.get("id") or 0), r))
+    if not dated:
+        return None
+    return max(dated, key=lambda item: (item[0], item[1]))[2]
 
 
 def run_state(check_run: dict[str, Any] | None) -> str:
@@ -229,6 +296,32 @@ def run_state(check_run: dict[str, Any] | None) -> str:
         return "pending"
     conclusion = check_run.get("conclusion")
     return "success" if conclusion == "success" else f"failure ({conclusion})"
+
+
+def pr_check_problems(api: Api, repo: str, pr: dict[str, Any], tag: ReleaseTag) -> list[str]:
+    """Judge the PR-scoped checks once, as they stood when the PR merged."""
+    number = pr.get("number")
+    head = str(pr.get("head", {}).get("sha", ""))
+    merged_at = _timestamp(pr.get("merged_at"))
+    if not head or merged_at is None:
+        return [f"PR #{number} has no head sha or merged_at"]
+    problems = []
+    for name in pr_checks_for(tag, is_hotfix_pr(pr)):
+        state = run_state(run_before(api, repo, head, name, merged_at))
+        if state == "success":
+            continue
+        if name == RELEASE_EVIDENCE and state == "missing":
+            problems.append(
+                f"{RELEASE_EVIDENCE} never ran on PR #{number} (head {head[:12]}) before it "
+                "merged. That job arrives with T14; until it exists and the maintainer adds it "
+                "to main.json (action 9a), a non-hotfix final cannot publish."
+            )
+        else:
+            problems.append(
+                f"{name} on PR #{number} (head {head[:12]}) was {state} when it merged at "
+                f"{pr.get('merged_at')}; PR-scoped checks cannot arrive after the merge"
+            )
+    return problems
 
 
 def wait_for_ci(
@@ -242,34 +335,48 @@ def wait_for_ci(
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
 ) -> list[str]:
-    """Poll until every required check is green; an empty list means pass."""
+    """Every required check green; an empty list means pass."""
+    deadline = clock() + timeout_s
+
+    def with_retry(call: Callable[[], Any]) -> Any:
+        failures = 0
+        while True:
+            try:
+                return call()
+            except ApiError as exc:
+                if not exc.transient or failures >= MAX_TRANSIENT_RETRIES or clock() >= deadline:
+                    raise
+                delay = min(interval_s * 2**failures, MAX_BACKOFF_S)
+                failures += 1
+                print(f"transient GitHub API error, retrying in {delay:.0f}s: {exc}", flush=True)
+                sleep(delay)
+
     try:
-        pr = merged_pr_for_commit(api, repo, sha)
+        pr = with_retry(lambda: merged_pr_for_commit(api, repo, sha))
     except ApiError as exc:
         return [f"cannot find the PR that produced {sha[:12]}: {exc}"]
-    head = str(pr.get("head", {}).get("sha", ""))
-    if not head:
-        return [f"PR #{pr.get('number')} has no head sha"]
-    targets = [(sha, name) for name in PUSH_CHECKS]
-    targets += [(head, name) for name in pr_checks_for(tag, is_hotfix_pr(pr))]
-    deadline = clock() + timeout_s
+    base_problem = pr_base_problem(pr, tag)
+    if base_problem is not None:
+        return [base_problem]
+    try:
+        problems = with_retry(lambda: pr_check_problems(api, repo, pr, tag))
+    except ApiError as exc:
+        return [f"GitHub API error reading PR checks: {exc}"]
+    if problems:
+        return [f"required check failed: {p}" for p in problems]
+
+    def poll() -> dict[str, str]:
+        return {name: run_state(latest_run(api, repo, sha, name)) for name in PUSH_CHECKS}
+
     while True:
-        states = {
-            (commit, name): run_state(latest_run(api, repo, commit, name))
-            for commit, name in targets
-        }
-        failed = [
-            f"{name} on {commit[:12]}: {state}"
-            for (commit, name), state in states.items()
-            if state.startswith("failure")
-        ]
+        try:
+            states = with_retry(poll)
+        except ApiError as exc:
+            return [f"GitHub API error while polling push checks: {exc}"]
+        failed = [f"{n} on {sha[:12]}: {s}" for n, s in states.items() if s.startswith("failure")]
         if failed:
             return [f"required check failed: {item}" for item in failed]
-        waiting = [
-            f"{name} on {commit[:12]} ({state})"
-            for (commit, name), state in states.items()
-            if state != "success"
-        ]
+        waiting = [f"{n} on {sha[:12]} ({s})" for n, s in states.items() if s != "success"]
         if not waiting:
             return []
         if clock() >= deadline:

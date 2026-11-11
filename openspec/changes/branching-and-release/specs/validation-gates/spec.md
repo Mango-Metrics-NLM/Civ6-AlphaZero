@@ -35,7 +35,9 @@ head read from the API: ``dev`` refuses ``main``, ``qa``, ``hotfix/*``,
 as an ancestor, ``evidence/<rc tag>`` changing only ``docs/evidence/**``,
 patch-equivalent ``rcfix/*`` and ``backmerge/*`` carrying only released commits;
 ``main`` accepts only ``qa`` and ``hotfix/*``. The head MUST be in the same
-repository, and any API or git failure MUST fail the check.
+repository, path filters MUST NOT apply rename detection, and any API or git failure MUST
+fail the check. The check is an accident net: the control for ``qa`` and ``main`` is that
+only the maintainer can merge into them.
 
 #### Scenario: Promotion after a squashed back-merge
 

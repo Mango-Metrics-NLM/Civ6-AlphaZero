@@ -18,6 +18,8 @@
 #   rename                3. rename the default branch to dev
 #   rulesets              4. POST all six rulesets WITHOUT Branch Direction
 #   add-branch-direction  5. after T6 is merged into dev: PUT Branch Direction into dev/qa/main
+#                            (an accident net, not a control: a same-repo PR can rewrite
+#                            its own workflow; maintainer-only merge into qa/main is the control)
 #   settings              6. delete_branch_on_merge, allow_update_branch, allow_auto_merge on; rebase off
 #   housekeeping          7. close #95 and #120, @dependabot rebase, update-branch #106 #69 #49 #32
 #   verify                8. automated checks + the manual checklist
@@ -289,7 +291,7 @@ main() {
     case "$1" in
       --execute) EXECUTE=1 ;;
       -h | --help)
-        sed -n '2,40p' "${BASH_SOURCE[0]}"
+        sed -n '2,42p' "${BASH_SOURCE[0]}"
         return 0
         ;;
       *) steps+=("$1") ;;
