@@ -219,6 +219,13 @@ class TestHotfix:
         repo.commit("fix")
         assert not _eval(repo, "main", "hotfix/stale").allowed
 
+    def test_hotfix_check_fails_closed_without_the_dev_ref(self, repo: GitRepo) -> None:
+        repo.git("update-ref", "-d", "refs/remotes/origin/dev")
+        repo.checkout("hotfix/crash", "HEAD")
+        repo.commit("fix")
+        with pytest.raises(cbd.GitError, match="origin/dev"):
+            _eval(repo, "main", "hotfix/crash")
+
     def test_hotfix_carrying_a_dev_commit_is_denied(self, repo: GitRepo) -> None:
         root = repo.sha()
         repo.checkout("dev", root)

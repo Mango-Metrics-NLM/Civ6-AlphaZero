@@ -55,3 +55,44 @@ The hook runs before every shell tool call under a 10 s timeout, and process
 creation is expensive under MSYS bash on Windows. The rewrite uses bash
 builtins (`[[ =~ ]]`, `read -ra`, globals instead of `$(...)`), and resolves git
 state only when a segment is a git command.
+
+# Design notes -- R2
+
+## The judge comes from the default branch
+
+On `pull_request` the checkout is the PR's merge ref, so running
+`scripts/check_branch_direction.py` from the workspace would let a PR edit the
+script that judges it. `branch-policy.yml` runs the copy on the default branch
+(protected, reviewed). The one exception is the PR that introduces the script,
+before it exists on the default branch; the check is not required until the
+maintainer adds it after that merge (cut-over step 5).
+
+## REST API version pin
+
+API version 2026-03-10 removed `merge_commit_sha` from pull request payloads.
+`wait-for-ci` identifies the producing PR by exactly that field, so every call
+pins `X-GitHub-Api-Version: 2022-11-28`, and a payload without the field fails
+closed instead of matching nothing.
+
+## Lineage is checked on content
+
+`tag_release.py` must refuse commits older than the LF-R2 merge, but that
+merge's SHA does not exist when this change is written. The check is therefore
+the property itself: the tagged commit's `release.yml` gates its
+`contents: write` job on `wait-for-ci` -- the workflow a tag push runs is the
+one in the tagged commit. Once merged, the maintainer may record the SHA in
+`CIV6AZ_R2_MERGE_SHA` and the ancestry check is added on top.
+
+## integration_id is omitted
+
+A required check can be pinned to the app that produces it. The GitHub Actions
+app id could not be confirmed from the documentation, and a wrong id makes
+every required check unsatisfiable, so contexts carry no `integration_id`;
+`wait-for-ci` instead counts only check runs whose `app.slug` is
+`github-actions`.
+
+## Windows
+
+The maintainer runs the shell scripts in Git Bash. Two defects found by the
+tests: MSYS rewrites a `<rev>:<path>` argument as a path list (so the scripts
+use `git ls-tree`), and `gh` output may end lines with CR.

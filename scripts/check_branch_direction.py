@@ -288,10 +288,14 @@ def _hotfix(git: Git, d: Decision, head: str, remote: str) -> Decision:
         d.reasons.append(f"{remote}/main is not an ancestor of the hotfix: branch it from main")
         return d
     unreleased = [f"{remote}/dev", f"{remote}/qa"]
+    missing = [ref for ref in unreleased if not git.exists(ref)]
+    if missing:
+        # Fail closed: without the ref there is nothing to prove the hotfix against.
+        raise GitError(f"cannot check the hotfix: {', '.join(missing)} is not available")
     leaked = [
         sha
         for sha in git.rev_list(f"{remote}/main..{head}")
-        if _reachable_from_any(git, sha, [ref for ref in unreleased if git.exists(ref)])
+        if _reachable_from_any(git, sha, unreleased)
     ]
     if leaked:
         d.reasons.extend(

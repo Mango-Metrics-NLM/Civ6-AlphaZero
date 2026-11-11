@@ -18,8 +18,75 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Plan S3.5. Every rule here is also pre-checked by the maintainer's
+  # scripts/maintainer/tag_release.py; both call scripts/release_checks.py so the
+  # two cannot drift. A tag that fails here publishes nothing.
+  verify-tag:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read # a final with no rc must be the merge of a hotfix/* PR
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Ancestry against origin/qa and origin/main, and every rc tag.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Version (${version%%-*} == pyproject), ancestry (an rc is in qa with main
+      # as an ancestor; a final is in main), and the final-tag rule (the diff from
+      # the highest rc touches only docs/evidence/**, or there is no rc and the
+      # tagged merge came from a hotfix/* PR).
+      - name: Version, ancestry and final-tag rules
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: python -m scripts.release_checks verify-tag --tag "$TAG" --sha "$(git rev-parse "${GITHUB_REF}^{commit}")"
+
+  # Branch protection proves the PR's checks passed when it merged; it does not
+  # prove CI passed on the merge commit being tagged, and a second merge could
+  # have cancelled that run. This job waits for both before anything publishes.
+  wait-for-ci:
+    name: Wait for CI
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    permissions:
+      contents: read
+      checks: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Push checks (the eight CI jobs that run on push) on the tagged commit;
+      # PR-only checks (Branch Direction, and Release Evidence for a non-hotfix
+      # final) on the head of the one merged PR whose merge_commit_sha is the
+      # tagged commit (GET /commits/$SHA/pulls).
+      - name: Wait for push and PR checks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: >-
+          python -m scripts.release_checks wait-for-ci --tag "$TAG"
+          --sha "$(git rev-parse "${GITHUB_REF}^{commit}")" --timeout-minutes 95
+
   release:
     name: Build and publish release
+    needs: [verify-tag, wait-for-ci]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -49,26 +116,17 @@ jobs:
           echo "VERSION=${version}" >> "$GITHUB_OUTPUT"
           echo "RELEASE_VERSION=${version}" >> "$GITHUB_ENV"
 
-      # The tag is the release's name; pyproject.toml is what gets built into the
-      # wheel's metadata. If they disagree, PyPI/Hub consumers see one version
-      # and GitHub another. Fail before building anything.
-      - name: Assert the tag matches pyproject.toml
+      # The repository carries the BASE version (X.Y.Z) through the whole rc
+      # cycle; ${version%%-*} must equal pyproject.toml (verify-tag already
+      # enforced it on the tagged commit; this re-reads the file being built).
+      # An rc then stamps PEP 440 X.Y.ZrcN into this build copy only, so the
+      # wheel is versioned as the pre-release it is. Nothing is committed.
+      - name: Check and stamp the build version
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          python - <<'EOF'
-          import os
-          import sys
-          import tomllib
-
-          with open("pyproject.toml", "rb") as fh:
-              declared = tomllib.load(fh)["project"]["version"]
-          tagged = os.environ["RELEASE_VERSION"]
-          if declared != tagged:
-              sys.exit(
-                  f"tag v{tagged} does not match pyproject.toml version {declared}. "
-                  "Bump [project].version (and CHANGELOG.md) or retag; do not release a mismatch."
-              )
-          print(f"tag v{tagged} matches pyproject.toml")
-          EOF
+          python -m scripts.release_version check --tag "$TAG"
+          python -m scripts.release_version stamp --tag "$TAG" --pyproject pyproject.toml --init alpha_zero/__init__.py
 
       - name: Build sdist and wheel
         run: |
@@ -85,42 +143,25 @@ jobs:
           sha256sum ./*.whl ./*.tar.gz | sed 's#\./##' > SHA256SUMS
           cat SHA256SUMS
 
-      # Preferred notes: the `## [X.Y.Z]` section of CHANGELOG.md, which the
-      # release skill rolls before tagging. `found=false` hands over to the
-      # commit-log fallback below rather than publishing an empty body.
+      # Preferred notes: the BASE version's `## [X.Y.Z]` section of CHANGELOG.md
+      # (for an rc as for the final; the CHANGELOG is final at the rc). Exit 3
+      # means no such section: `found=false` hands over to the commit-log
+      # fallback below rather than publishing an empty body.
       - name: Release notes from CHANGELOG.md
         id: changelog
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
-          python - <<'EOF'
-          import os
-          import pathlib
-          import re
-
-          version = os.environ["RELEASE_VERSION"]
-          repo = os.environ["GITHUB_REPOSITORY"]
-          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
-          # Headings look like: "## [1.8.0] — 2026-07-12 — Title". Capture up to
-          # the next "## [" heading or end of file.
-          pattern = re.compile(
-              rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)", re.M | re.S
-          )
-          match = pattern.search(text)
-          body = match.group(1).strip() if match else ""
-          found = bool(body)
-          if found:
-              notes = (
-                  f"## Changes in v{version}\n\n{body}\n\n"
-                  f"**Full Changelog**: https://github.com/{repo}/blob/v{version}/CHANGELOG.md\n"
-              )
-              pathlib.Path("release_notes.md").write_text(notes, encoding="utf-8")
-          else:
-              print(
-                  f"::warning::CHANGELOG.md has no '## [{version}]' section; "
-                  "release notes will be generated from the commit log instead"
-              )
-          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as fh:
-              fh.write(f"found={'true' if found else 'false'}\n")
-          EOF
+          status=0
+          python -m scripts.release_version notes --tag "$TAG" --repo "$GITHUB_REPOSITORY" --out release_notes.md || status=$?
+          case "$status" in
+            0) echo "found=true" >> "$GITHUB_OUTPUT" ;;
+            3)
+              echo "::warning::CHANGELOG.md has no section for this version; release notes will be generated from the commit log instead"
+              echo "found=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *) exit "$status" ;;
+          esac
 
       # Fallback: categorised conventional commits since the previous tag. Safe
       # on the FIRST release: with no previous tag `git describe` fails, the

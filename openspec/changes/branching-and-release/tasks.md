@@ -14,8 +14,13 @@
 - [ ] 1.11 Maintainer: provision `civ6az-agent` and its PAT (`.claude/README.md`, "Agent identity")
 
 ## 2. R2 -- branch direction, rulesets, release scripts
-- [ ] 2.1 `scripts/check_branch_direction.py` + `branch-policy.yml`
-- [ ] 2.2 `.github/rulesets/*.json` and maintainer release scripts
+- [x] 2.1 `scripts/check_branch_direction.py` + `branch-policy.yml` (judge runs from the default branch)
+- [x] 2.2 `.github/rulesets/{dev,qa,main,qa-main-merge,release-tags,legacy-name}.json` (no Release Evidence until T14)
+- [x] 2.3 `scripts/maintainer/{rulesets.py,branch_cutover.sh,merge_backmerge.sh}` (dry run by default)
+- [x] 2.4 `scripts/release_version.py`, `scripts/release_checks.py`, `scripts/maintainer/tag_release.py`
+- [x] 2.5 `release.yml`: `verify-tag` + `wait-for-ci` gate the publish job
+- [x] 2.6 Gates: `test_branch_rulesets_regression.py`, `test_release_workflow_regression.py`, `tests/scripts/test_{check_branch_direction,maintainer_scripts,release_scripts}.py`; negative controls recorded in each module
+- [ ] 2.7 Maintainer: record the LF-R2 merge SHA (`CIV6AZ_R2_MERGE_SHA`) after merge; release-tag lineage is checked on content until then
 
 ## 3. R3 -- cut-over
 - [ ] 3.1 Rename the default branch to `dev`; apply rulesets

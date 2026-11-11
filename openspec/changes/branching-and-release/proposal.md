@@ -59,9 +59,26 @@ This change is delivered in four releases (plan R1-R4). **R1 (this PR):**
   reads its base candidates from the protected list and, on a push to a
   protected branch, compares against that branch first.
 
-Later releases (tracked in `tasks.md`): R2 branch-direction check, rulesets and
-release scripts; R3 the cut-over (rename, rulesets applied); R4 drop the old
-default from the protected list.
+**R2:**
+
+- **Branch Direction** (`scripts/check_branch_direction.py`,
+  `.github/workflows/branch-policy.yml`): the S3.4 rules over git ancestry --
+  which heads each of dev/qa/main accepts, promotion and release need
+  `origin/main` as an ancestor, back-merges carry only released commits plus
+  update merges, hotfixes carry no unreleased commits, evidence touches only
+  `docs/evidence/**`, rc fixes are patch-equivalent cherry-picks. The judge runs
+  from the default branch, so a PR cannot rewrite its own check.
+- **Rulesets** (`.github/rulesets/*.json`) in the REST export shape, applied by
+  the maintainer with `scripts/maintainer/branch_cutover.sh`; back-merges are
+  merged with `scripts/maintainer/merge_backmerge.sh`.
+- **Release mechanics**: `release.yml` gains `verify-tag` (version, ancestry,
+  final-tag rule) and `wait-for-ci` (push checks on the tagged commit, PR-only
+  checks on the producing PR's head); the publish job needs both. An rc build is
+  stamped PEP 440 `X.Y.ZrcN`. `scripts/maintainer/tag_release.py` pre-checks
+  every rule and refuses commits without the R2 release workflow.
+
+Later releases (tracked in `tasks.md`): R3 the cut-over (rename, rulesets
+applied); R4 drop the old default from the protected list.
 
 ## Impact
 
