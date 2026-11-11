@@ -149,6 +149,9 @@ Examples:
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         help="Logging level (default: INFO)",
     )
+    from alpha_zero.utils.game_budget import add_budget_arguments
+
+    add_budget_arguments(p)
     return p.parse_args(argv)
 
 
@@ -334,6 +337,11 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+
+    # --- Game budget: n_games against each of random and heuristic ---
+    from alpha_zero.utils.game_budget import enforce_cli
+
+    enforce_cli("run_baseline_eval", {"n_games": args.n_games}, args)
 
     # --- Load env vars (from .env or os.environ) ---
     from alpha_zero.utils.env_loader import load_civ6az_env

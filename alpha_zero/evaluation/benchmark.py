@@ -58,6 +58,7 @@ from alpha_zero.evaluation.scoring import (
     summarize,
 )
 from alpha_zero.storage.models import EvaluationResult
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 logger = logging.getLogger(__name__)
@@ -671,6 +672,7 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--out", type=Path, default=Path("benchmark_out"))
+    add_budget_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -678,6 +680,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     """CLI: run the protocol and write ``result.json`` + ``report.md`` to ``--out``."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
+    # Refuse before loading any network: games = n_games per opponent.
+    enforce_cli(
+        "benchmark",
+        {
+            "n_games": args.n_games,
+            "num_opponents": len([o for o in args.opponents.split(",") if o.strip()]),
+            "num_opponent_checkpoints": len(args.opponent_checkpoint),
+        },
+        args,
+    )
     protocol = BenchmarkProtocol(
         board_size=args.board_size,
         max_turns=args.max_turns,

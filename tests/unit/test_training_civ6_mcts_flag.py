@@ -33,7 +33,8 @@ def _run_main(argv: list[str]) -> TrainingConfig:
 
     with (
         patch.object(training_civ6, "train", fake_train),
-        patch("sys.argv", ["training_civ6", *argv]),
+        # `train` is faked: no games are played, so the cap is satisfied by reference.
+        patch("sys.argv", ["training_civ6", "--approval_ref", "unit-test-train-is-faked", *argv]),
     ):
         training_civ6.main()
     config = captured["config"]

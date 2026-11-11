@@ -38,8 +38,8 @@ def test_run_script_defaults(mock_subprocess, mock_sys_exit):
     assert cmd[0] == sys.executable
     assert "-m" in cmd
     assert "alpha_zero.training_civ6" in cmd
-    assert "--num_games=100" in cmd
-    assert "--num_iterations=100" in cmd
+    assert "--num_games=10" in cmd
+    assert "--num_iterations=10" in cmd
     assert "--log_dir=logs/civ6" in cmd
     assert "--debug" not in cmd
 

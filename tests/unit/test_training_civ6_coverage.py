@@ -838,6 +838,11 @@ class TestTrain:
 # ---------------------------------------------------------------------------
 
 
+#: ``train`` is mocked in ``TestMain``, so these tests play no games; the reference
+#: only satisfies the 1,000-game cap so they can keep asserting on the shipped defaults.
+_TEST_APPROVAL = "unit-test-train-is-mocked"
+
+
 class TestMain:
     @patch("alpha_zero.training_civ6.train")
     def test_dry_run_flag(self, mock_train):
@@ -852,7 +857,7 @@ class TestMain:
 
     @patch("alpha_zero.training_civ6.train")
     def test_default_args(self, mock_train):
-        with patch("sys.argv", ["training_civ6"]):
+        with patch("sys.argv", ["training_civ6", "--approval_ref", _TEST_APPROVAL]):
             main()
         mock_train.assert_called_once()
         cfg = mock_train.call_args[0][0]
@@ -886,6 +891,8 @@ class TestMain:
                 "32",
                 "--checkpoint_dir",
                 "/tmp/test_ckpt",
+                "--approval_ref",
+                _TEST_APPROVAL,
             ],
         ):
             main()
@@ -903,14 +910,16 @@ class TestMain:
 
     @patch("alpha_zero.training_civ6.train")
     def test_device_arg(self, mock_train):
-        with patch("sys.argv", ["training_civ6", "--device", "cpu"]):
+        with patch(
+            "sys.argv", ["training_civ6", "--device", "cpu", "--approval_ref", _TEST_APPROVAL]
+        ):
             main()
         cfg = mock_train.call_args[0][0]
         assert cfg.device == "cpu"
 
     @patch("alpha_zero.training_civ6.train")
     def test_device_default_none(self, mock_train):
-        with patch("sys.argv", ["training_civ6"]):
+        with patch("sys.argv", ["training_civ6", "--approval_ref", _TEST_APPROVAL]):
             main()
         cfg = mock_train.call_args[0][0]
         # Should be "cuda" or "cpu" depending on availability, not None

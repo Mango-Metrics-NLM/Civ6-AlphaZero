@@ -23,6 +23,7 @@ from dataclasses import asdict
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 
 # Configure logging
 logging.basicConfig(
@@ -58,7 +59,17 @@ def main() -> None:
     parser.add_argument("--mcts_simulations", type=int, default=50)
     parser.add_argument("--project", type=str, default="civ6-alphazero")
     parser.add_argument("--bucket", type=str, default="civ6-alphazero-training")
+    add_budget_arguments(parser)
     args = parser.parse_args()
+    enforce_cli(
+        "local_muzero_launcher",
+        {
+            "iterations": args.iterations,
+            "num_selfplay_workers": args.num_selfplay_workers,
+            "games_per_worker": args.games_per_worker,
+        },
+        args,
+    )
 
     # Base python command
     python_cmd = sys.executable

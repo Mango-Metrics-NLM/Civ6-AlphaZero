@@ -29,6 +29,11 @@ from alpha_zero.optimizations.hyperparameter_search import (
     HyperparameterSearch,
     SweepConfig,
 )
+from alpha_zero.utils.game_budget import (
+    add_budget_arguments,
+    enforce_cli,
+    muzero_command_games,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -59,6 +64,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Validate config and print the resolved plan without running trials",
     )
+    add_budget_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -77,6 +83,18 @@ def main(argv: list[str] | None = None) -> int:
         config.study_name = args.study_name
     if args.storage is not None:
         config.storage = args.storage
+
+    # Total across every trial; an unrecognised trial command cannot be priced
+    # and is refused unless --approval_ref is given.
+    enforce_cli(
+        "run_sweep",
+        {
+            "dry_run": args.dry_run,
+            "n_trials": config.n_trials,
+            "trial_games": muzero_command_games(config.command),
+        },
+        args,
+    )
 
     if args.dry_run:
         logger.info(

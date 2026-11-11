@@ -854,6 +854,9 @@ def main():
     parser.add_argument(
         "--wandb-tags", type=str, nargs="*", default=None, help="W&B tags for the run"
     )
+    from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
+
+    add_budget_arguments(parser)
     args = parser.parse_args()
 
     # Preset configurations
@@ -903,6 +906,17 @@ def main():
         config["board_size"] = args.board_size
     if args.simulations:
         config["num_simulations"] = args.simulations
+
+    # Games = self-play + in-loop evaluations + the final evaluation.
+    enforce_cli(
+        "run_enhanced_training",
+        {
+            "num_iterations": config["num_iterations"],
+            "games_per_iteration": config["games_per_iteration"],
+            "eval_interval": config["eval_interval"],
+        },
+        args,
+    )
 
     # Run training
     history = run_enhanced_training(

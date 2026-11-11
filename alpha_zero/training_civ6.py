@@ -44,6 +44,11 @@ from alpha_zero.multiplayer.scoring import (
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
 from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
+from alpha_zero.utils.game_budget import (
+    DEFAULT_TRAINING_EVAL_GAMES,
+    add_budget_arguments,
+    enforce_cli,
+)
 from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 # Configure logging
@@ -213,8 +218,9 @@ def resume_network_weights(
         )
 
 
-#: Evaluation games played per checkpoint on a normal (non-dry) run.
-DEFAULT_EVAL_GAMES = 20
+#: Evaluation games played per checkpoint on a normal (non-dry) run. Owned by
+#: ``game_budget`` so the cost model and the trainer cannot drift apart.
+DEFAULT_EVAL_GAMES = DEFAULT_TRAINING_EVAL_GAMES
 
 # Superseded by `alpha_zero.utils.seeding.derive_seed`, which separates RNG
 # streams by NAME rather than by an offset that had to be re-reasoned whenever a
@@ -1205,6 +1211,34 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     logger.info(f"Training complete. Final model: {final_path}")
 
 
+def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, Any]:
+    """Resolved values the game-budget cost model needs, as :func:`train` will use them.
+
+    Mirrors the loop bounds in :func:`train` -- the dry-run profile replaces the
+    iteration, game and evaluation counts, evaluation happens every iteration
+    under ``--dry_run``, and ``--resume_from`` names the start iteration -- so the
+    price is of the run that will actually happen.
+    """
+    start = config.start_iteration
+    if config.resume_from and start == 0:
+        start = infer_start_iteration(config.resume_from) or 0
+    if dry_run:
+        return {
+            "num_games": DRY_RUN_PROFILE.num_games_per_iteration,
+            "num_iterations": DRY_RUN_PROFILE.num_iterations,
+            "start_iteration": start,
+            "eval_games": DRY_RUN_PROFILE.num_eval_games,
+            "eval_always": True,
+        }
+    return {
+        "num_games": config.num_games_per_iteration,
+        "num_iterations": config.num_iterations,
+        "start_iteration": start,
+        "save_interval": config.save_interval,
+        "eval_games": DEFAULT_EVAL_GAMES,
+    }
+
+
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
@@ -1297,6 +1331,7 @@ def main() -> None:
             "at the same seed replay exactly. Omitted means unseeded."
         ),
     )
+    add_budget_arguments(parser)
     args = parser.parse_args()
 
     config = TrainingConfig(
@@ -1320,6 +1355,8 @@ def main() -> None:
         seed=args.seed,
         use_gumbel_mcts=args.mcts == "gumbel",
     )
+
+    enforce_cli("training_civ6", training_budget_inputs(config, args.dry_run), args)
 
     train(config, dry_run=args.dry_run)
 

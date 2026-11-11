@@ -41,6 +41,7 @@ from alpha_zero.training.muzero_trainer import (
     MuZeroTrainingConfig,
     TrajectoryBuffer,
 )
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 
 # MLflow-backed tracker import (optional). Legacy names kept for --wandb.
 try:
@@ -560,6 +561,7 @@ def main():
         "--checkpoint-dir", type=str, default="checkpoints/muzero", help="Checkpoint directory"
     )
 
+    add_budget_arguments(parser)
     args = parser.parse_args()
 
     # Build config
@@ -606,6 +608,15 @@ def main():
 
     if args.device:
         config.device = args.device
+
+    enforce_cli(
+        "run_muzero_training",
+        {
+            "num_iterations": config.num_iterations,
+            "games_per_iteration": config.num_games_per_iteration,
+        },
+        args,
+    )
 
     # Log parallel config
     if config.num_workers > 1:
