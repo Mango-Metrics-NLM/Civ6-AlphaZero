@@ -1,7 +1,7 @@
 {
   "coverage_omit_patterns": 39,
   "coverage_omitted_files": 131,
-  "coverage_omitted_lines": 66818,
+  "coverage_omitted_lines": 66827,
   "dead_module_lines": 24481,
   "dead_modules": 53,
   "dead_modules_inside_coverage": 27,

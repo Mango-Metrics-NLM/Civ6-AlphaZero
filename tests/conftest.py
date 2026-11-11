@@ -144,10 +144,14 @@ def _strip_cloud_and_local_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
     a leaked ``CIV6AZ_LOCAL_RUN=1`` would make ``GCSBackend`` unconstructible.
     A test that needs one of these sets it itself.
     """
+    exact = {
+        "CIV6AZ_LOCAL_RUN",
+        "CIV6AZ_GCS_BUCKET",
+        "CIV6AZ_SKIP_DOTENV",
+        "CIV6AZ_STORAGE_BACKEND",
+    }
     for name in list(os.environ):
-        if name in {"CIV6AZ_LOCAL_RUN", "CIV6AZ_GCS_BUCKET"} or name.startswith(
-            ("GOOGLE_", "VERTEX_")
-        ):
+        if name in exact or name.startswith(("GOOGLE_", "VERTEX_")):
             monkeypatch.delenv(name, raising=False)
 
 

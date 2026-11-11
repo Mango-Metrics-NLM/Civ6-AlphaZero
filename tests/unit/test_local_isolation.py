@@ -34,6 +34,15 @@ def cloud_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture
+def restore_environ():
+    """Snapshot os.environ and restore it exactly (enter_local_mode mutates it)."""
+    snapshot = os.environ.copy()
+    yield snapshot
+    os.environ.clear()
+    os.environ.update(snapshot)
+
+
+@pytest.fixture
 def local_mode(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CIV6AZ_LOCAL_RUN", "1")
 
@@ -83,18 +92,18 @@ def test_local_backend_still_works_in_local_mode(
 
 
 def test_enter_local_mode_child_env(
-    cloud_env: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    cloud_env: None, tmp_path: Path, restore_environ: dict[str, str]
 ) -> None:
-    monkeypatch.setenv("PATH", os.environ.get("PATH", ""))
     for k in ("CIV6AZ_STORAGE_BACKEND", "CIV6AZ_SKIP_DOTENV", "CIV6AZ_RUN_ID", "CLOUDSDK_CONFIG"):
-        monkeypatch.delenv(k, raising=False)
-    monkeypatch.delenv("NO_GCE_CHECK", raising=False)
+        os.environ.pop(k, None)
+    os.environ.pop("NO_GCE_CHECK", None)
+    os.environ["AIP_CHECKPOINT_DIR"] = "gs://x/y"
 
     child = enter_local_mode("run1", tmp_path)
 
     for name in child:
         up = name.upper()
-        assert not up.startswith(("GOOGLE_", "VERTEX_")), name
+        assert not up.startswith(("GOOGLE_", "VERTEX_", "AIP_")), name
         assert not up.endswith(("_TOKEN", "_KEY")), name
         assert "CONTAINER_IMAGE_URI" not in up, name
     for banned in ("CIV6AZ_GCS_BUCKET", "SSLKEYLOGFILE", "CIV6AZ_ALLOW_UNSAFE_CHECKPOINT"):
@@ -106,11 +115,51 @@ def test_enter_local_mode_child_env(
     assert child["CIV6AZ_LOCAL_RUN"] == "1"
     assert child["CIV6AZ_SKIP_DOTENV"] == "1"
     assert child["CIV6AZ_RUN_ID"] == "run1"
-    # current process is also fenced
+    # current process: GCP vars popped, local flags set ...
     assert is_local_mode()
-    assert "CIV6AZ_GCS_BUCKET" not in os.environ
+    for gone in ("CIV6AZ_GCS_BUCKET", "GOOGLE_APPLICATION_CREDENTIALS", "AIP_CHECKPOINT_DIR"):
+        assert gone not in os.environ
+    # ... but secrets and unsafe-checkpoint opt-in are NOT popped from the parent
+    for kept in (
+        "GITHUB_TOKEN",
+        "WANDB_API_KEY",
+        "SSLKEYLOGFILE",
+        "CIV6AZ_ALLOW_UNSAFE_CHECKPOINT",
+    ):
+        assert kept in os.environ
     with pytest.raises(LocalModeViolation):
         GCSBackend("prod")
+
+
+def test_restore_environ_leaves_no_trace(cloud_env: None, tmp_path: Path) -> None:
+    """Run enter_local_mode under the restore helper; environ must be identical after."""
+    before = os.environ.copy()
+    snapshot = os.environ.copy()
+    try:
+        enter_local_mode("r", tmp_path)
+        assert os.environ != before
+    finally:
+        os.environ.clear()
+        os.environ.update(snapshot)
+    assert dict(os.environ) == before
+
+
+def test_gcs_storage_backend_raises_in_local_mode(local_mode: None) -> None:
+    from alpha_zero.storage.config import StorageConfig
+    from alpha_zero.storage.gcs_backend import GCSStorageBackend
+
+    with pytest.raises(LocalModeViolation):
+        GCSStorageBackend(StorageConfig.for_gcs("bucket"))
+
+
+def test_aip_checkpoint_dir_cannot_switch_local_to_gcs(
+    local_mode: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alpha_zero.storage import StorageConfig, create_storage_backend
+
+    monkeypatch.setenv("AIP_CHECKPOINT_DIR", "gs://x/y")
+    with pytest.raises(LocalModeViolation):
+        create_storage_backend(StorageConfig.for_local(str(tmp_path)))
 
 
 def test_skip_dotenv_honoured(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

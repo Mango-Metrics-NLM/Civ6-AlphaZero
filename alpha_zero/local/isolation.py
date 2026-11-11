@@ -25,23 +25,28 @@ from pathlib import Path
 LOCAL_RUN_ENV = "CIV6AZ_LOCAL_RUN"
 SKIP_DOTENV_ENV = "CIV6AZ_SKIP_DOTENV"
 
-# Names (fnmatch, case-insensitive) that never reach a local run or its children.
-_DENY_PATTERNS: tuple[str, ...] = (
+# Popped from the CURRENT process (the spec's GCP list, plus Vertex AIP_*).
+_PARENT_POP_PATTERNS: tuple[str, ...] = (
     "GOOGLE_*",
     "VERTEX_*",
     "CIV6AZ_VERTEX_*",
     "CIV6AZ_GCS_*",
     "CIV6_GCS_*",
     "*CONTAINER_IMAGE_URI*",
-    "*_TOKEN",
-    "*_KEY",
-    "SSLKEYLOGFILE",
-    "CIV6AZ_ALLOW_UNSAFE_CHECKPOINT",
+    "AIP_*",
     "GCLOUD_*",
     "GCP_*",
     "GCS_*",
     "CLOUDSDK_*",
     "NO_GCE_CHECK",
+)
+
+# Additionally withheld from the returned CHILD environment only.
+_CHILD_ONLY_DENY_PATTERNS: tuple[str, ...] = (
+    "*_TOKEN",
+    "*_KEY",
+    "SSLKEYLOGFILE",
+    "CIV6AZ_ALLOW_UNSAFE_CHECKPOINT",
 )
 
 
@@ -68,24 +73,27 @@ def guard_gcs(what: str = "GCS") -> None:
         )
 
 
-def _denied(name: str) -> bool:
+def _matches(name: str, patterns: tuple[str, ...]) -> bool:
     upper = name.upper()
-    return any(fnmatch.fnmatchcase(upper, pat) for pat in _DENY_PATTERNS)
+    return any(fnmatch.fnmatchcase(upper, pat) for pat in patterns)
 
 
 def enter_local_mode(run_id: str, run_dir: str | Path) -> dict[str, str]:
     """Put this process into local mode and return the child environment.
 
-    The current ``os.environ`` is mutated (denied variables popped, the local
-    flags set) so in-process code is also fenced; the returned dict is the
-    allowlisted environment to hand to subprocesses. ``run_id`` is recorded as
+    The current ``os.environ`` is mutated: only the GCP variables (GOOGLE_*,
+    VERTEX_*, CIV6AZ_GCS_*, *CONTAINER_IMAGE_URI*, AIP_*, ...) are popped and
+    the local flags set, so in-process code is fenced. ``*_KEY``, ``*_TOKEN``,
+    ``SSLKEYLOGFILE`` and ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`` stay in the current
+    process and are removed from the returned child environment only. The
+    returned dict is the allowlisted environment for subprocesses. ``run_id`` is recorded as
     ``CIV6AZ_RUN_ID``.
     """
     run_path = Path(run_dir)
     empty_gcloud = run_path / "gcloud-empty"
     empty_gcloud.mkdir(parents=True, exist_ok=True)
 
-    for name in [n for n in os.environ if _denied(n)]:
+    for name in [n for n in os.environ if _matches(n, _PARENT_POP_PATTERNS)]:
         os.environ.pop(name, None)
 
     overrides = {
@@ -98,6 +106,10 @@ def enter_local_mode(run_id: str, run_dir: str | Path) -> dict[str, str]:
     }
     os.environ.update(overrides)
 
-    child = {k: v for k, v in os.environ.items() if not _denied(k)}
+    child = {
+        k: v
+        for k, v in os.environ.items()
+        if not _matches(k, _PARENT_POP_PATTERNS + _CHILD_ONLY_DENY_PATTERNS)
+    }
     child.update(overrides)
     return child

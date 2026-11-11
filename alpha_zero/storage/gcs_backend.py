@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import torch
 
+from alpha_zero.local.isolation import guard_gcs
 from alpha_zero.storage.backend import StorageBackend
 from alpha_zero.storage.config import StorageConfig
 from alpha_zero.storage.models import (
@@ -100,6 +101,7 @@ class GCSStorageBackend(StorageBackend):
             ImportError: If google-cloud-storage is not installed.
             ValueError: If GCS bucket is not configured.
         """
+        guard_gcs("GCSStorageBackend")
         if not HAS_GCS:
             raise ImportError(
                 "google-cloud-storage is required for GCS backend. "
