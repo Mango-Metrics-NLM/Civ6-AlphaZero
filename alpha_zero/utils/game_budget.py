@@ -88,6 +88,20 @@ class GameBudgetUnpriceableError(GameBudgetExceededError):
         self.max_games = max_games
 
 
+class GameBudgetCapRaisedError(GameBudgetExceededError):
+    """``--max_games`` above the default cap was given without an approval reference."""
+
+    def __init__(self, runner: str, max_games: int) -> None:
+        RuntimeError.__init__(
+            self,
+            f"{runner}: --max_games {max_games:,} is above the {DEFAULT_MAX_GAMES:,}-game "
+            "cap. --max_games may only lower the cap; raising it needs --approval_ref <issue>.",
+        )
+        self.runner = runner
+        self.games = -1
+        self.max_games = max_games
+
+
 #: The name callers and docs use (LF-G11 interface). ``GameBudgetExceededError`` is
 #: the class itself, spelled to satisfy the ``N818`` naming rule without a waiver.
 GameBudgetExceeded = GameBudgetExceededError
@@ -365,7 +379,8 @@ def enforce(
     Args:
         runner: Cost-model name.
         resolved: Resolved runner values (see :func:`worst_case_games`).
-        max_games: The cap. Defaults to 1,000.
+        max_games: The cap. Defaults to 1,000 and may only be lowered; a higher
+            value requires *approval_ref*.
         approval_ref: Issue reference (for example ``#142``) recording the
             maintainer's approval of a larger run. Logged when it is used.
 
@@ -373,11 +388,23 @@ def enforce(
         The priced worst-case game count.
 
     Raises:
-        GameBudgetExceeded: Over the cap and no *approval_ref*.
+        GameBudgetExceeded: Over the cap and no *approval_ref*, or *max_games*
+            above the default cap and no *approval_ref*.
     """
     if max_games < 0:
         raise ValueError(f"max_games must be >= 0, got {max_games}")
     ref = (approval_ref or "").strip()
+    if max_games > DEFAULT_MAX_GAMES:
+        # The flag alone never authorises a bigger run: only a recorded approval does.
+        if not ref:
+            raise GameBudgetCapRaisedError(runner, max_games)
+        logger.warning(
+            "%s: cap raised to %s (default %s) on approval %s",
+            runner,
+            f"{max_games:,}",
+            f"{DEFAULT_MAX_GAMES:,}",
+            ref,
+        )
     try:
         games = worst_case_games(runner, resolved)
     except GameBudgetUnpriceable as exc:
@@ -415,7 +442,8 @@ def add_budget_arguments(parser: argparse.ArgumentParser) -> None:
         default=DEFAULT_MAX_GAMES,
         help=(
             f"Refuse to start if the worst-case game count exceeds this "
-            f"(default {DEFAULT_MAX_GAMES:,})."
+            f"(default {DEFAULT_MAX_GAMES:,}). Can only lower the cap; "
+            "raising it needs --approval_ref."
         ),
     )
     group.add_argument(

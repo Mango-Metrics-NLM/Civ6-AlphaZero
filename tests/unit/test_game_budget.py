@@ -247,8 +247,21 @@ class TestEnforce:
         with pytest.raises(GameBudgetExceeded):
             enforce("training_civ6", self.RESOLVED, approval_ref="   ")
 
-    def test_raised_cap_is_honoured(self) -> None:
-        assert enforce("training_civ6", self.RESOLVED, max_games=20_000) == 10_200
+    def test_raised_cap_alone_never_authorises(self) -> None:
+        # Not even a small run: the flag above the default cap is itself refused.
+        for cap in (1_001, 20_000, 10**12):
+            with pytest.raises(GameBudgetExceeded, match="--approval_ref"):
+                enforce("training_civ6", self.RESOLVED, max_games=cap)
+        with pytest.raises(GameBudgetExceeded, match="--approval_ref"):
+            enforce("benchmark", {"n_games": 2, "num_opponents": 1}, max_games=5_000)
+
+    def test_raised_cap_with_approval_is_allowed_and_logged(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=game_budget.logger.name):
+            games = enforce("training_civ6", self.RESOLVED, max_games=20_000, approval_ref="#9")
+        assert games == 10_200
+        assert "#9" in caplog.text and "20,000" in caplog.text
 
     def test_unpriceable_run_proceeds_only_on_approval(
         self, caplog: pytest.LogCaptureFixture
@@ -307,8 +320,32 @@ class TestTrainingCiv6Main:
         train.assert_called_once()
         assert "#142" in caplog.text
 
-    def test_max_games_flag_raises_the_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        train = self._run(monkeypatch, ["--max_games", "10200"])
+    @pytest.mark.parametrize("cap", ["10200", "20000", str(10**12)])
+    def test_max_games_flag_alone_never_raises_the_cap(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], cap: str
+    ) -> None:
+        from alpha_zero import training_civ6
+
+        train = mock.MagicMock()
+        monkeypatch.setattr(training_civ6, "train", train)
+        monkeypatch.setattr(sys, "argv", ["training_civ6", "--max_games", cap])
+        with pytest.raises(SystemExit) as excinfo:
+            training_civ6.main()
+        err = _assert_refused(excinfo, capsys)
+        assert "--approval_ref" in err
+        train.assert_not_called()
+
+    def test_small_run_with_raised_max_games_is_still_refused(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._run(monkeypatch, ["--dry_run", "--max_games", "20000"])
+        _assert_refused(excinfo, capsys)
+
+    def test_raised_max_games_with_approval_ref_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        train = self._run(monkeypatch, ["--max_games", "20000", "--approval_ref", "#142"])
         train.assert_called_once()
 
     def test_max_games_flag_can_lower_the_cap(
