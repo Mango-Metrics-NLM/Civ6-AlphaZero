@@ -561,23 +561,28 @@ class TestExecuteWithRetry:
         )
         checker = GameBridgeHealthChecker(bridge, config)
 
-        timestamps: list[float] = []
+        attempts = 0
+        delays: list[float] = []
 
         async def failing_operation() -> str:
-            import time
-
-            timestamps.append(time.time())
+            nonlocal attempts
+            attempts += 1
             raise RuntimeError("Error")
 
-        with pytest.raises(RuntimeError):
+        async def record_sleep(seconds: float) -> None:
+            delays.append(seconds)
+
+        # Assert the delays the checker REQUESTS, not wall-clock gaps: a measured
+        # gap absorbs scheduler stalls on a loaded CI runner, which made this test
+        # fail with delays[2] (0.04 s) < delays[1] (0.27 s).
+        with (
+            patch("alpha_zero.bridge.health_checker.asyncio.sleep", new=record_sleep),
+            pytest.raises(RuntimeError),
+        ):
             await checker.execute_with_retry(failing_operation)
 
-        # Check delays increase (approximately)
-        assert len(timestamps) == 4  # Initial + 3 retries
-        delays = [timestamps[i + 1] - timestamps[i] for i in range(len(timestamps) - 1)]
-        # Each delay should be roughly double the previous
-        assert delays[1] > delays[0]
-        assert delays[2] > delays[1]
+        assert attempts == 4  # Initial + 3 retries
+        assert delays == pytest.approx([0.01, 0.02, 0.04])
 
     @pytest.mark.asyncio
     async def test_execute_records_success(self) -> None:
