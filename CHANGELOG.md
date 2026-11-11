@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Deployed images (`Dockerfile.vertex`, `Dockerfile.inference`) move from NGC PyTorch 24.09 (Python 3.10, CUDA 12) to 26.10 (Python 3.12, CUDA 13.4, PyTorch 2.15 pre-release). Supersedes Dependabot #130. `pip install` is constrained to NGC's own torch build so a PyPI wheel cannot replace it.
+- The Cloud Build `check-python-version` step fails the build below Python 3.11 again (it was report-only while the base shipped 3.10). Gated by `tests/regression/test_base_image_python_regression.py`.
+
 ## [2.0.0] — 2026-11-10 — Public release: honest surface, corrected search, measured evaluation
 
 The first tagged release. It is a major version because four changes below break

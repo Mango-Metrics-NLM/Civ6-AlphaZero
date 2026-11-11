@@ -137,7 +137,7 @@ logs/civ6az/                  # Training logs
 
 1. Lint (ruff)
 2. Unit tests
-3. Docker build (NVIDIA PyTorch 24.09-py3 base)
+3. Docker build (NVIDIA PyTorch 26.10-py3 base: Python 3.12, CUDA 13)
 4. Import smoke test
 5. Self-play dry run
 6. Training dry run
