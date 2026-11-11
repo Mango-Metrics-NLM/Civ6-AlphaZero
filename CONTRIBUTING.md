@@ -98,11 +98,15 @@ regression test should say what its negative control was.
 
 ## Branching and pull requests
 
-- The default branch is **`dev`** (integration). `qa` holds release candidates
+- **Status:** the model below takes effect when the maintainer runs the cut-over
+  (`scripts/maintainer/branch_cutover.sh`, runbook section 5). Until then the default
+  branch is still `claude/civ6-alphazero-implementation-vMnun`, no rulesets are applied,
+  and the only protection is the agent harness's guard.
+- After the cut-over the default branch is **`dev`** (integration). `qa` holds release candidates
   and `main` holds only tagged releases; both are the maintainer's to merge into.
   Work on a short-lived branch (`feature/*`, `fix/*`, `chore/*`, `docs/*`) and open
   a **draft** PR against `dev`; it is squash-merged. Direct pushes to `dev`, `qa`
-  and `main` are not accepted (branch protection; the maintainer's agent harness
+  and `main` are then not accepted (branch protection; the maintainer's agent harness
   also refuses them locally). The full flows -- promotion, evidence, release
   candidate fixes, release, hotfix, back-merges -- are in
   [`docs/runbooks/branching-and-release.md`](docs/runbooks/branching-and-release.md).

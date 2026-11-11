@@ -1,5 +1,7 @@
 # Branching and release runbook
 
+> **Status:** this model takes effect when the maintainer runs the cut-over (section 5). Until then the default branch is `claude/civ6-alphazero-implementation-vMnun`, no rulesets are applied, and the only protection is the PreToolUse guard.
+
 How work moves through `dev`, `qa` and `main`, who may do each step, and what is and is
 not enforced today. Specification: `openspec/changes/branching-and-release/`. The checks
 named here are implemented in `scripts/check_branch_direction.py`,

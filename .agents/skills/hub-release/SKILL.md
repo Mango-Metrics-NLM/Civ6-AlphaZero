@@ -75,11 +75,12 @@ HF_TOKEN=... python scripts/upload_to_hub.py \
     --publish
 ```
 
-### 5. Git tag
+### 5. Tag (maintainer step)
+An agent never runs `git tag` or pushes a tag (the PreToolUse guard denies it). Hand
+over to the maintainer, who tags from their own terminal, as for the `release` skill:
 ```bash
-VERSION=$(python -c "import alpha_zero; print(alpha_zero.__version__)")
-git tag -a "hub-release-$VERSION" -m "Hub release $VERSION"
-git push origin "hub-release-$VERSION"
+python -m scripts.maintainer.tag_release vX.Y.Z[-rc.N]            # dry run
+python -m scripts.maintainer.tag_release vX.Y.Z[-rc.N] --execute  # tag + push
 ```
 
 ### 6. Dataset release (optional)
@@ -105,9 +106,7 @@ assert info.private == False  # or True if private
 print("Release verified at:", info.id)
 ```
 
-```bash
-git tag | grep hub-release  # Should show the new tag
-```
+The maintainer confirms the tag exists on the remote (`git ls-remote --tags origin`).
 
 ## Rollback
 
@@ -115,7 +114,5 @@ git tag | grep hub-release  # Should show the new tag
 # Delete the Hub version (requires write access)
 huggingface-cli repo delete Mango-Metrics-NLM/civ6-encoder --yes
 
-# Delete the git tag
-git tag -d hub-release-X.Y.Z
-git push origin :refs/tags/hub-release-X.Y.Z
+# Deleting a git tag is a maintainer-only step; ask the maintainer.
 ```
