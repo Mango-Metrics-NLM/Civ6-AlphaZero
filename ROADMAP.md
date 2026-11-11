@@ -18,7 +18,7 @@ about learning.
 | Theme | Name | Delivery status | Validation (evidence) |
 |-------|------|-----------------|-----------------------|
 | M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
-| M2 | Scale & Observability | ✅ Delivered | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
+| M2 | Scale & Observability | ✅ Delivered; ⏸ **Vertex/GCP path dormant** (frozen 2026-11-11) | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
 | M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery proven, demo-grade.** Four `END_TURN`s on random weights, 2026-07-12; turn-cycle stall open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
 | M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
 | M5 | Full Civ6 Mastery | ⏳ Future | — |
@@ -74,6 +74,11 @@ AlphaZero on MicroCiv, built end-to-end. *(Delivered: Phases 1–18, v0.x–v1.5
 ## M2 — Scale & Observability
 
 Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7, 19–21, v1.6.0.)*
+
+> **DORMANT (2026-11-11):** the Vertex/GCP half of this milestone is frozen — code kept, not
+> deleted, no local/cloud parity claimed; training runs locally. See
+> [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+> and charter amendment A-1. The history below is preserved.
 
 - 3-phase Vertex AI pipeline (self-play → train → eval) in a single image
   (`dockerfiles/Dockerfile.vertex`, routed by `alpha_zero.cloud.gcp.entrypoint`),

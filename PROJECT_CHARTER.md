@@ -18,7 +18,8 @@
 
 Civ6-AlphaZero is an AlphaZero-style reinforcement-learning system that trains strategic
 agents by self-play in a simplified Civilization environment (MicroCiv) using Monte Carlo
-Tree Search and deep neural networks, scales that training on GCP Vertex AI, and deploys
+Tree Search and deep neural networks, runs that training locally on one workstation
+(its Vertex AI path is frozen and dormant, charter amendment A-1), and deploys
 trained agents to play a live, unmodified Civilization VI through a Lua-mod/FireTuner
 bridge. It serves a single maintainer-researcher. Its two hardest boundaries: it **never
 trains against the real Civ6 game** (MicroCiv is the sole training environment, NG-1),
@@ -54,9 +55,12 @@ strategy game, not just a board game.
   GumbelMCTS as the default and batched self-play (`BatchGumbelMCTS` +
   `VectorizedMicroCivEnv`); throughput gains are targets until a committed benchmark
   artifact measures them.
-- **Train at scale.** A 3-phase distributed pipeline (self-play → train → eval) on
-  Vertex AI — `infra/vertex_launcher.py`, containerized workers, completed 50-iteration
-  production runs.
+- **Train locally; cloud path dormant.** Training and evaluation run on one local
+  workstation with large artifacts under `CIV6AZ_DATA_ROOT`. The 3-phase Vertex AI
+  pipeline (self-play → train → eval) — `infra/vertex_launcher.py`, containerized
+  workers, completed 50-iteration production runs — is **frozen and dormant**: the code is
+  kept, not deleted, and no parity with local runs is claimed (amendment A-1; plan:
+  `kb/specs/20261111-local-first-and-branching-plan.md`).
 - **Play the real game.** Deliver agent decisions into a running Civilization VI
   instance headlessly — `alpha_zero/bridge/tuner_socket_bridge.py` (FireTuner socket,
   loopback only), live autonomous turns verified 2026-07-12 (v1.8.0).
@@ -72,7 +76,8 @@ strategy game, not just a board game.
 **In scope:** the `alpha_zero/` package (environments, MCTS variants, networks,
 distributed/cloud training, storage backends, monitoring, multiplayer, the Civ6 bridge
 and its Lua mod, orchestrator, RAG/LLM advisory layer), `tests/`, `configs/`, `scripts/`,
-`infra/` + `dockerfiles/` (Vertex AI deployment), and project documentation.
+`infra/` + `dockerfiles/` (Vertex AI deployment — frozen and dormant, kept but not
+extended or claimed, amendment A-1), and project documentation.
 
 **Out of scope (non-goals):** Each non-goal carries a stable ID. IDs are never reused or
 renumbered; a retired non-goal keeps its ID with status `RETIRED`. Amendments (§7) are
@@ -142,8 +147,9 @@ scope; they may never relax an invariant.)*
    config field with an explicit default, overridable via the `CIV6AZ_*` environment
    convention loaded through `alpha_zero/utils/env_loader.py`; no hardcoded paths,
    ports, or magic numbers in new code.
-6. **Quality gate** — no direct commits to `main` and no >1000-game runs without
-   confirmation, mechanically enforced by the PreToolUse hook
+6. **Quality gate** — no direct commits to `dev`, `qa` or `main` (work goes through a
+   short-lived branch and a maintainer-merged PR) and no run over 1,000 games without the
+   maintainer's confirmation (`--approval_ref`), mechanically enforced by the PreToolUse hook
    (`.claude/hooks/pretooluse_guard.sh` via `.claude/settings.json`); `ruff` (100-char)
    and `mypy` stay green.
 7. **Security** — no secrets or machine fingerprints in the repo; credentials live only
@@ -259,6 +265,26 @@ trail.
 
 **Budget state:** 0 active carve-outs / 7 non-goals · last 90-day window: 0
 ratifications · last full review: 2026-07-13 (initial ratification).
+
+### Charter Amendment Log (append-only; non-carve-out amendments)
+
+Amendments that change Scope, Mission or an invariant but do **not** add an exception to a
+non-goal are logged here. They are not carve-outs, so they do not count against any §7.2
+budget. Ratification is the maintainer merging the PR that adds the entry (§7.5).
+
+| ID | Date | Sections touched | Status | Counts against a non-goal budget? | Next review |
+|----|------|------------------|--------|-----------------------------------|-------------|
+| A-1 | 2026-11-11 | §0, §2 ("Train at scale"), §3 Scope, §4 invariant 6; ROADMAP M2 | **PROPOSED — pending maintainer ratification** (merge of this PR) | No: no non-goal is touched (NG-1..NG-7 unchanged); carve-out count stays 0 | At the next full charter review (§7.4); last full review remains 2026-07-13 |
+
+**A-1 — Local-first operation; Vertex/GCP dormant; branch model.** Rationale: the
+maintainer decided on 2026-11-10/11 that training runs locally on one Windows workstation
+(data under `CIV6AZ_DATA_ROOT`), that Vertex AI/GCP code is frozen (kept, not deleted, no
+parity claimed), and that branching is `dev` (default, integration) → `qa` (release
+candidates) → `main` (tagged releases) with no direct commits to any of them. Record:
+[`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+§0 and [`docs/audits/2026-11-11-local-first-plan-review.md`](docs/audits/2026-11-11-local-first-plan-review.md).
+Invariant 6 is tightened, not relaxed (an extra protected branch pair; the game cap is
+unchanged). Reversal of the dormancy is itself an amendment.
 
 ---
 
