@@ -18,7 +18,7 @@
 #     alphazero-inference:latest
 
 # Same base as training container for maximum layer cache sharing
-FROM nvcr.io/nvidia/pytorch:24.09-py3
+FROM nvcr.io/nvidia/pytorch:26.10-py3
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
