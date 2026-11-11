@@ -62,12 +62,22 @@ set -euo pipefail
 # and `git tag -l v2*` must stay the literal `v2*`, not a file listing.
 set -f
 
-input="$(cat)"
+# Program names and flags are matched case-insensitively: Windows resolves
+# `GIT`, `Git.exe` and `gh.EXE` to the same binaries. Erring this way only
+# ever adds denies (`HEAD:QA` is treated as `qa`).
+shopt -s nocasematch
 
+decided=0
+
+# The reason is untrusted text (it can quote an argument), so every control
+# character is replaced before it reaches the JSON: a raw \x01 made the output
+# invalid JSON, which Claude Code ignores -- a fail-open.
 emit() {
   local reason="$2"
+  reason="${reason//[[:cntrl:]]/ }"
   reason="${reason//\\/\\\\}"
   reason="${reason//\"/\\\"}"
+  decided=1
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}' \
     "$1" "$reason"
 }
@@ -76,6 +86,30 @@ deny() {
   emit deny "$1"
   exit 0
 }
+
+# Any unexpected failure (set -e, set -u, a bad test) must become a DENY with
+# exit 0. A non-zero exit is a non-blocking error to Claude Code: the tool call
+# would simply run. The trap is not inherited by `$(...)` subshells, so a
+# failing parser attempt below cannot trigger it.
+# shellcheck disable=SC2329  # invoked by the EXIT trap
+on_exit() {
+  local rc=$?
+  if [ "$rc" -ne 0 ] && [ "$decided" -eq 0 ]; then
+    decided=1
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}' \
+      "PreToolUse guard failed unexpectedly (exit ${rc}); denying rather than letting the command run unchecked."
+    exit 0
+  fi
+}
+trap on_exit EXIT
+
+# Test-only fault injection: proves the trap above turns a crash into a deny.
+# It can only make the guard deny, never allow, so it is safe to ship.
+if [ -n "${CIV6AZ_GUARD_SELFTEST_FAIL:-}" ]; then
+  false
+fi
+
+input="$(cat)"
 
 # --- payload extraction ------------------------------------------------------
 # jq, else python3, else python. The previous version swallowed every parser
@@ -117,12 +151,28 @@ cmd="${cmd//$'\r'/}"
 # backgrounding, cmd's command separator AND PowerShell's call operator
 # (`& git push ...` leaves `git push ...` as its own segment). Brackets and
 # backticks split subshells, script blocks and command substitutions.
-segs="$cmd"
-segs="${segs//&&/$'\n'}"
-segs="${segs//||/$'\n'}"
-for sep in ';' '|' '&' '(' ')' '{' '}' '`'; do
-  segs="${segs//"$sep"/$'\n'}"
-done
+#
+# A backtick means two different things: bash command substitution
+# (`` echo `git push ...` ``) and PowerShell's escape character
+# (`` g`it push origin HEAD:`qa ``, which PowerShell runs as `git push origin
+# HEAD:qa`). Rather than trust tool_name to pick one reading, a command
+# containing a backtick is checked under BOTH: split on it, and with every
+# backtick deleted. A deny under either reading denies.
+split_segments() {
+  local s="$1" sep
+  s="${s//&&/$'\n'}"
+  s="${s//||/$'\n'}"
+  for sep in ';' '|' '&' '(' ')' '{' '}' '`'; do
+    s="${s//"$sep"/$'\n'}"
+  done
+  SEGS="$s"
+}
+split_segments "$cmd"
+segs="$SEGS"
+if [[ $cmd == *'`'* ]]; then
+  split_segments "${cmd//\`/}"
+  segs="${segs}"$'\n'"${SEGS}"
+fi
 
 # --- protected branches (resolved lazily: git is a process spawn) ------------
 resolved=0
@@ -166,25 +216,30 @@ is_protected() {
 
 # Sets UQ -- a global, not stdout: every `$(...)` is a fork, and forks are slow
 # under MSYS/Cygwin bash on Windows.
-# Strips a whole RUN of quotes at each end: a nested `bash -c "pwsh -c '...'"`
-# leaves `HEAD:qa'"` on the last token.
+# Removes EVERY quote character, not just those at the ends: the shell
+# concatenates `HEAD:"qa"` and `HEAD:'qa'` into `HEAD:qa`, and stripping only
+# the ends let those through to the `git push` allow rule.
 unquote() {
-  UQ="$1"
-  while [[ $UQ == [\"\']* ]]; do UQ="${UQ#?}"; done
-  while [[ $UQ == *[\"\'] ]]; do UQ="${UQ%?}"; done
+  UQ="${1//[\"\']/}"
 }
 
 # --- unwrapping --------------------------------------------------------------
 re_assign='^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+'
 re_lead_junk='^[[:space:]"'"'"'{(]+'
-re_q1="^'([^'[:space:]]+)'(.*)$"
-re_q2='^"([^"[:space:]]+)"(.*)$'
+# A quoted first word, spaces allowed: PowerShell's
+# `& 'C:\Program Files\Git\cmd\git.exe' push ...` names its program this way.
+re_q1="^[[:space:]]*'([^']*)'(.*)$"
+re_q2='^[[:space:]]*"([^"]*)"(.*)$'
+re_known_prog='^(git|gh|python[0-9.]*|py|make|bash|sh|zsh|dash|pwsh|powershell|cmd)(\.exe)?$'
 re_path='([^[:space:]]*[/\\])?'
 re_pwsh="^${re_path}(pwsh|powershell)(\\.exe)?([[:space:]]+-[A-Za-z]+([[:space:]]+[A-Za-z0-9]+)?)*[[:space:]]+-(c|command)([[:space:]]+|$)"
 re_pwsh_enc="^${re_path}(pwsh|powershell)(\\.exe)?([[:space:]]+-[A-Za-z]+([[:space:]]+[A-Za-z0-9]+)?)*[[:space:]]+-(e|ec|en|enc|encodedcommand)([[:space:]]+|$)"
 re_cmd="^${re_path}cmd(\\.exe)?([[:space:]]+/[A-Za-z])*[[:space:]]+/[ck]([[:space:]]+|$)"
 re_sh="^${re_path}(bash|sh|zsh|dash)(\\.exe)?([[:space:]]+--?[A-Za-z-]+)*[[:space:]]+-[A-Za-z]*c[A-Za-z]*([[:space:]]+|$)"
 re_iex='^(iex|invoke-expression)([[:space:]]+|$)'
+# Launchers that run their argument as the command (`env git push ...`,
+# `sudo -u x git push ...`), with their own options and `VAR=val` operands.
+re_launcher="^${re_path}(env|command|builtin|exec|sudo|doas|nohup|nice|time|timeout)(\\.exe)?(([[:space:]]+-[ugnCk][[:space:]]+[^-[:space:]][^[:space:]]*)|([[:space:]]+-[^[:space:]]*)|([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)|([[:space:]]+[0-9]+[smhd]?))*[[:space:]]+"
 
 asks=""
 add_ask() {
@@ -203,23 +258,31 @@ normalise() {
   while [ "$s" != "$prev" ] && [ "$n" -lt 8 ]; do
     prev="$s"
     n=$((n + 1))
+    # Quoted first word -> its basename (a quoted path to git.exe becomes
+    # `git.exe`). Must run before the leading-quote strip below, which would
+    # otherwise cut `'C:\Program` from `Files\...\git.exe'`.
+    # Only when the basename IS a program this guard knows: a quoted whole
+    # command (`"git push origin refs/heads/qa"`) must keep its slashes.
+    if [[ $s =~ $re_q1 ]] || [[ $s =~ $re_q2 ]]; then
+      local inner="${BASH_REMATCH[1]}" rest="${BASH_REMATCH[2]}"
+      if [[ ${inner##*[/\\]} =~ $re_known_prog ]]; then
+        s="${inner##*[/\\]}${rest}"
+      else
+        s="${inner}${rest}"
+      fi
+    fi
     if [[ $s =~ $re_lead_junk ]]; then s="${s:${#BASH_REMATCH[0]}}"; fi
     while [[ $s =~ $re_assign ]]; do
       NS_ASSIGN="${NS_ASSIGN} ${BASH_REMATCH[0]}"
       s="${s:${#BASH_REMATCH[0]}}"
     done
-    if [[ $s =~ $re_q1 ]] || [[ $s =~ $re_q2 ]]; then
-      s="${BASH_REMATCH[1]}${BASH_REMATCH[2]}"
-    fi
-    shopt -s nocasematch
     if [[ $s =~ $re_pwsh_enc ]]; then
       add_ask "an encoded PowerShell command cannot be inspected by the guard"
     fi
     if [[ $s =~ $re_pwsh ]] || [[ $s =~ $re_cmd ]] || [[ $s =~ $re_sh ]] \
-       || [[ $s =~ $re_iex ]]; then
+       || [[ $s =~ $re_iex ]] || [[ $s =~ $re_launcher ]]; then
       s="${s:${#BASH_REMATCH[0]}}"
     fi
-    shopt -u nocasematch
   done
   NS="$s"
 }
@@ -227,14 +290,16 @@ normalise() {
 # --- runner classification ---------------------------------------------------
 # Runners that price themselves (plan T5) or are priced by the run-card driver.
 known_modules=" alpha_zero.training_civ6 alpha_zero.orchestrator alpha_zero.orchestrator.__main__ alpha_zero.evaluation.benchmark "
-known_scripts=" run_baseline_eval run_encoder_ab run_chess_training run_enhanced_training run_muzero_training run_sweep post_run_evaluation validate_convergence benchmark_batch_selfplay local_muzero_launcher run_card run_civ6_ai "
+known_scripts=" run_baseline_eval run_encoder_ab run_chess_training run_enhanced_training run_muzero_training run_sweep post_run_evaluation validate_convergence benchmark_batch_selfplay local_muzero_launcher run_card run_civ6_ai benchmark_suite "
 # Shaped like runners but play no games (or only read old runs).
 exempt_scripts=" run_llm_eval run_tests_ipv4 run_cert_check compare_training_runs analyse_training_run summarize_training_log "
 re_runner_script='^(run_|launch_|benchmark_|train_)|selfplay|self_play|arena|tournament|launcher|_training'
 re_runner_module='train|selfplay|self_play|arena|tournament|launcher|coordinator|orchestrat|worker|benchmark'
 
 re_python='^(python[0-9.]*|py)(\.exe)?$'
-re_games='--((num|n)[_-])?games([_-]per[_-]worker)?[=[:space:]]+([0-9]+)'
+# The count is the LAST group of each pattern; every occurrence is read and the
+# largest one judged (`--num_games 10 --games-per-iteration 5000` is 5000).
+re_games='--((num|n|eval)[_-])?games([_-]per[_-](worker|iteration))?[=[:space:]]+([0-9]+)'
 re_games_env='(^|[[:space:]])(NUM_GAMES|GAMES|GAMES_PER_WORKER)=([0-9]+)'
 re_runnerish='^(python[0-9.]*|py|make|bash|sh)(\.exe)?$|^(\./)?scripts/'
 
@@ -285,8 +350,15 @@ check_git() {
           ;;
         +*)
           deny "CLAUDE.md S3.2: force-pushes are prohibited (a +refspec forces the update)." ;;
+        tag)
+          # `git push origin tag v9` is git's spelling of refs/tags/v9.
+          deny "Branching policy: pushing tags is maintainer-only (git push ... tag <name>)." ;;
         *)
           dst="${t##*:}"
+          # bash drops the backslash in `q\a`, and a ref name cannot contain
+          # one, so deleting it loses nothing; `refs//heads/qa` collapses.
+          dst="${dst//\\/}"
+          while [[ $dst == *//* ]]; do dst="${dst//\/\//\/}"; done
           case "$dst" in
             refs/tags/*)
               deny "Branching policy: pushing to refs/tags/* is maintainer-only; release tags are created by the maintainer's release script." ;;
@@ -399,13 +471,29 @@ check_runner() {
 
   # Game cap. An explicit count above 1000 is denied unless --approval_ref is
   # present, in which case a human is asked (the ref is never verified).
-  local games=""
-  if [[ $seg =~ $re_games ]]; then
-    games="${BASH_REMATCH[4]}"
-  elif [[ "${NS_ASSIGN} ${seg}" =~ $re_games_env ]]; then
-    games="${BASH_REMATCH[3]}"
-  fi
-  if [ -n "$games" ] && [ "$games" -gt 1000 ]; then
+  #
+  # Numbers are compared as STRINGS of digits, never with `[ -gt ]`: an integer
+  # that overflows made `[` error inside the `if`, which reads as false, so
+  # `--num_games 99999999999999999999` was allowed. After stripping leading
+  # zeros, more than 4 digits is over the cap by construction.
+  local games="" over=0 hay rest v
+  for hay in "$seg" "${NS_ASSIGN} ${seg}"; do
+    rest="$hay"
+    while [[ $rest =~ $re_games ]] || [[ $rest =~ $re_games_env ]]; do
+      v="${BASH_REMATCH[${#BASH_REMATCH[@]}-1]}"
+      rest="${rest#*"${BASH_REMATCH[0]}"}"
+      v="${v#"${v%%[!0]*}"}"
+      [ -z "$v" ] && v=0
+      if [ "${#v}" -gt 4 ] || { [ "${#v}" -eq 4 ] && [ "$v" -gt 1000 ]; }; then
+        over=1
+      fi
+      if [ -z "$games" ] || [ "${#v}" -gt "${#games}" ] \
+         || { [ "${#v}" -eq "${#games}" ] && [ "${#v}" -le 9 ] && [ "$v" -gt "$games" ]; }; then
+        games="$v"
+      fi
+    done
+  done
+  if [ "$over" -eq 1 ]; then
     if [ "$has_approval" -eq 0 ]; then
       deny "CLAUDE.md S3.2: runs with >1000 games require confirmation (requested ${games}); pass --approval_ref <issue> to ask the maintainer."
     fi

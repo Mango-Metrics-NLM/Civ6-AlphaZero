@@ -486,7 +486,7 @@ def test_approval_ref_asks_instead_of_denying(repo: Path, command: str) -> None:
         "python scripts/run_sweep.py --config configs/sweep_muzero.yaml",
         # unknown runners: shaped like a game runner, not on the priced list
         "python scripts/run_mystery_selfplay.py --games 10",
-        "python scripts/benchmark_suite.py --n_games 10",
+        "python scripts/benchmark_mystery.py --n_games 10",
         "python -m alpha_zero.cloud.gcp.selfplay_worker --num_games 4",
         'pwsh -c "python scripts/run_mystery.py"',
     ],
@@ -508,6 +508,8 @@ def test_unpriceable_runs_ask(repo: Path, command: str) -> None:
         "python scripts/run_mystery_selfplay.py --help",
         "OMP_NUM_THREADS=2 python -m pytest tests/unit -q",
         "python -m ruff check --config pyproject.toml .",
+        # priced through alpha_zero.evaluation.benchmark (fix round 1)
+        "python scripts/benchmark_suite.py --num_games 10",
     ],
 )
 def test_priced_or_non_runner_commands_are_allowed(repo: Path, command: str) -> None:
@@ -536,3 +538,108 @@ def test_non_command_payload_is_allowed(repo: Path) -> None:
     """A tool input with no command (not a shell tool) is not the guard's business."""
     decision, _ = _raw_guard(repo, json.dumps({"tool_name": "Read", "tool_input": {}}))
     assert decision is None
+
+
+# --- fix round 1: bypasses found by review ------------------------------------
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        # embedded quotes and escapes inside a refspec
+        'git push origin HEAD:"qa"',
+        "git push origin HEAD:'qa'",
+        'git push origin "HEAD:qa"',
+        "git push origin HEAD:q\\a",
+        "git push origin HEAD:refs//heads/qa",
+        # program basenames are case-insensitive on Windows
+        "GIT push origin HEAD:qa",
+        "Git push origin HEAD:qa",
+        "git.EXE push origin HEAD:qa",
+        "GH pr merge 1",
+        "Gh.exe release create v9",
+    ],
+)
+def test_quoting_and_case_do_not_bypass_the_push_and_gh_rules(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command, SETTINGS_ENV) is not None, command
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "g`it push origin HEAD:qa",
+        "git push origin HEAD:`qa",
+        "git push origin HEAD:q`a",
+        "& 'C:\\Program Files\\Git\\cmd\\git.exe' push origin HEAD:qa",
+        '& "C:\\Program Files\\Git\\cmd\\git.exe" push origin HEAD:qa',
+        '& "git" push origin HEAD:qa',
+    ],
+)
+def test_powershell_escapes_and_quoted_program_paths_are_denied(repo: Path, command: str) -> None:
+    decision, reason = _decide(repo, command, SETTINGS_ENV, tool_name="PowerShell")
+    assert decision == "deny", (command, reason)
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "env git push origin HEAD:qa",
+        "env -i FOO=1 git push origin HEAD:qa",
+        "command git push origin HEAD:qa",
+        "sudo git push origin HEAD:qa",
+        "nohup gh pr merge 1",
+        "git push origin tag v9",
+        "python -m alpha_zero.training_civ6 --eval_games 5000",
+    ],
+)
+def test_launcher_prefixes_tag_keyword_and_eval_games_are_covered(repo: Path, command: str) -> None:
+    assert _run_guard(repo, command, SETTINGS_ENV) is not None, command
+
+
+def test_bash_command_substitution_is_still_split(repo: Path) -> None:
+    """Deleting backticks for PowerShell must not stop bash `...` being inspected."""
+    assert _run_guard(repo, "echo `git push origin HEAD:qa`", SETTINGS_ENV) is not None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "python -m alpha_zero.training_civ6 --num_games 99999999999999999999",
+        "python -m alpha_zero.training_civ6 --num_games 0002000",
+        "python -m alpha_zero.training_civ6 --num_games=1001",
+        "python -m alpha_zero.orchestrator --games-per-iteration 5000",
+        "NUM_GAMES=99999999999999999999 make train",
+    ],
+)
+def test_oversized_or_padded_game_counts_are_denied(repo: Path, command: str) -> None:
+    """An integer `[ -gt ]` cannot parse used to error inside the `if` -- and
+    read as false, so the run was allowed."""
+    reason = _run_guard(repo, command)
+    assert reason is not None and "1000" in reason, command
+
+
+def test_oversized_game_count_with_approval_ref_asks(repo: Path) -> None:
+    decision, _ = _decide(
+        repo, "python -m alpha_zero.training_civ6 --num_games 99999999999999999999 --approval_ref 7"
+    )
+    assert decision == "ask"
+
+
+def test_padded_small_game_count_is_allowed(repo: Path) -> None:
+    assert _run_guard(repo, "python -m alpha_zero.training_civ6 --num_games 0000000000010") is None
+
+
+def test_control_characters_in_a_reason_still_produce_valid_json(repo: Path) -> None:
+    """`git tag v1\\x01` put a raw control character into the reason; the
+    output was invalid JSON, which Claude Code ignores -- a fail-open."""
+    decision, reason = _decide(repo, "git tag v1\x01\x1b[31m")
+    assert decision == "deny"
+    assert reason is not None and all(ord(ch) >= 0x20 for ch in reason)
+
+
+def test_an_unexpected_guard_failure_denies(repo: Path) -> None:
+    """Any crash inside the guard must surface as a deny decision (exit 0 +
+    JSON), never as a non-zero exit, which Claude Code treats as non-blocking."""
+    decision, reason = _decide(repo, "git status", {"CIV6AZ_GUARD_SELFTEST_FAIL": "1"})
+    assert decision == "deny"
+    assert reason is not None and "failed unexpectedly" in reason
