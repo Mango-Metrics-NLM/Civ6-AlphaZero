@@ -82,6 +82,34 @@ these variables can use it. Full isolation means running agents under a separate
 Windows account. Nothing in the committed `settings.json` sets these variables,
 because doing so before the PAT exists would break every push.
 
+## Branches, releases and the game cap (what an agent may do)
+
+The branch model is `dev` (default, integration), `qa` (release candidates) and `main`
+(tagged releases); the full flows are in
+[`docs/runbooks/branching-and-release.md`](../docs/runbooks/branching-and-release.md).
+For an agent that means:
+
+- Work on a short-lived branch (`feature/*`, `fix/*`, `chore/*`, `docs/*`, `claude/*`) and
+  open a PR into `dev`. Never commit or push to `dev`, `qa` or `main`.
+- **Releases:** the `release` skill prepares the release PR (version bump in
+  `pyproject.toml`, `alpha_zero/__init__.py` and `CITATION.cff`, plus the CHANGELOG roll)
+  and stops. Tagging is the maintainer step `python -m scripts.maintainer.tag_release
+  vX.Y.Z[-rc.N]`; an agent never runs `git tag` or pushes a tag, and `--execute` refuses
+  inside a Claude Code session. The same goes for `scripts/maintainer/branch_cutover.sh` and
+  `merge_backmerge.sh`.
+- **Game cap:** every runner prices its own worst case
+  (`alpha_zero/utils/game_budget.py`) and refuses above 1,000 games. `--max_games` can only
+  lower the cap; `--approval_ref <issue>` raises it and is **recorded, not verified**, which
+  is why the guard asks before running any command that carries it. A run card
+  (`scripts/run_card.py`) is priced in total across all its invocations
+  (`--price_only` prints the price and creates nothing).
+- **Local runs** are fail-closed against GCP (`LocalModeViolation`) and run from pinned
+  source and a pinned venv under `CIV6AZ_DATA_ROOT`.
+
+Whether the maintainer-only parts are *enforced* depends on the identity and rulesets
+described above having been provisioned. Until then they are a convention, the guard is an
+accident net, and Branch Direction (the PR check) can be faked by any Write-holder.
+
 ## Threat model — read before copying this
 
 **This is a heuristic PreToolUse guard, not a sandbox.** It inspects the

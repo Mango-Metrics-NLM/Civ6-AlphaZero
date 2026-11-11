@@ -98,9 +98,14 @@ regression test should say what its negative control was.
 
 ## Branching and pull requests
 
-- Work on a feature branch and open a **draft** PR against the default branch.
-  Direct pushes to the default branch are not accepted (branch protection; the
-  maintainer's agent harness also refuses them locally).
+- The default branch is **`dev`** (integration). `qa` holds release candidates
+  and `main` holds only tagged releases; both are the maintainer's to merge into.
+  Work on a short-lived branch (`feature/*`, `fix/*`, `chore/*`, `docs/*`) and open
+  a **draft** PR against `dev`; it is squash-merged. Direct pushes to `dev`, `qa`
+  and `main` are not accepted (branch protection; the maintainer's agent harness
+  also refuses them locally). The full flows -- promotion, evidence, release
+  candidate fixes, release, hotfix, back-merges -- are in
+  [`docs/runbooks/branching-and-release.md`](docs/runbooks/branching-and-release.md).
 - Fill in the PR template and make sure its verification checklist is true, not
   just ticked.
 - Do not force-push a branch someone else has reviewed; if you must rewrite,
@@ -124,12 +129,19 @@ the number in `README.md` or `ROADMAP.md` until it is committed
 
 ## Releases
 
-Versioning is semantic (`MAJOR.MINOR.PATCH`). To cut a release, use the `release`
-skill (or follow it by hand): bump the version in `pyproject.toml`,
+Versioning is semantic (`MAJOR.MINOR.PATCH`). To prepare a release, use the
+`release` skill (or follow it by hand): bump the version in `pyproject.toml`,
 `alpha_zero/__init__.py` and `CITATION.cff`, roll `CHANGELOG.md`'s `[Unreleased]`
-section into `[X.Y.Z]`, and push a `vX.Y.Z` tag. Pushing the tag triggers
-`.github/workflows/release.yml`, which builds the GitHub release from the tag.
+section into `[X.Y.Z]`, and open that as an ordinary PR into `dev`.
 `check_doc_sync.py` enforces that the three versions and the changelog head agree.
+
+**Tagging is maintainer-only.** After `dev` is promoted to `qa`, the maintainer runs
+`python -m scripts.maintainer.tag_release vX.Y.Z-rc.N` (and later `vX.Y.Z` after
+`qa` is merged to `main`) from their own terminal. It checks every release gate and
+pushes the tag; `.github/workflows/release.yml` then re-checks them
+(`verify-tag`), waits for CI (`wait-for-ci`) and only then builds the GitHub release.
+The `release-tags` ruleset is what restricts `v*` tags to the maintainer once the
+maintainer has applied it; until then it is a convention.
 
 ---
 
@@ -164,8 +176,9 @@ opaque run ids. Humans do not need to write to `kb/`.
 
 The hooks, permission allowlist and their threat model are described in
 [`.claude/README.md`](.claude/README.md). The guard that refuses pushes to the
-default branch is a heuristic for the agent, not a substitute for branch
-protection.
+protected branches and tags is a heuristic for the agent, not a substitute for
+branch protection or for the maintainer-only identity (the `civ6az-agent` machine
+user, once provisioned).
 
 ### Governance
 

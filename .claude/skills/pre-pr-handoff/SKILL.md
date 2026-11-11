@@ -107,12 +107,41 @@ Append a single valid JSON line to `kb/ledger/ledger.jsonl`:
 
 **IMPORTANT:** Only append — never overwrite or truncate the ledger file.
 
+### 5b. Choose the target branch and PR type (PR-READY only)
+
+The repository has three long-lived branches: `dev` (default, integration), `qa`
+(release candidates) and `main` (tagged releases); see
+`docs/runbooks/branching-and-release.md`. Decide both before drafting:
+
+| PR type | Head branch | Base | Merge method | Who merges |
+|---|---|---|---|---|
+| Feature / fix / chore / docs | `feature/*`, `fix/*`, `chore/*`, `docs/*`, `claude/*` | `dev` | squash | normal review |
+| Release prep (version + CHANGELOG) | `chore/release-vX.Y.Z` | `dev` | squash | normal review |
+| Back-merge | `backmerge/*` | `dev` or `qa` | merge commit | maintainer (`merge_backmerge.sh`) |
+| Promotion | `dev` | `qa` | merge commit | maintainer |
+| Evidence | `evidence/vX.Y.Z-rc.N` | `qa` | merge commit | maintainer (only `docs/evidence/**` may change) |
+| RC fix | `rcfix/<topic>` | `qa` | merge commit | maintainer (cherry-picks of dev commits, `-x`) |
+| Release | `qa` | `main` | merge commit | maintainer |
+| Hotfix | `hotfix/*` | `main` | merge commit | maintainer |
+
+An agent opens only the first two rows (against `dev`) and, when asked, drafts the
+others; **it never merges into `qa` or `main` and never tags.** Those are
+maintainer-only, enforced by identity once the maintainer provisions the
+`civ6az-agent` machine user and the rulesets, and a convention until then. The
+Branch Direction check will fail a wrong-direction PR, but it is an accident net
+and can be faked by any Write-holder; do not rely on it. Put the chosen PR type and
+base in the PR draft and tick the matching box in `.github/PULL_REQUEST_TEMPLATE.md`.
+
 ### 6. Create PR Draft (PR-READY only)
 
 Create a PR draft document at `kb/pr-drafts/YYYYMMDD-<slug>.md`:
 
 ```markdown
 # PR: [Title]
+
+## Target
+- **Base branch:** [dev | qa | main]
+- **PR type:** [feature | release prep | back-merge | promotion | evidence | rc fix | release | hotfix]
 
 ## Summary
 [2-3 bullet points describing the changes]

@@ -161,11 +161,20 @@ CONFIRM FIRST (ask before proceeding):
 - New external service integrations
 
 PROHIBITED (do not attempt):
-- Committing directly to main branch
+- Committing or pushing directly to dev, qa or main, or creating/pushing a tag
+  (work goes through a short-lived branch and a PR; see docs/runbooks/branching-and-release.md)
+- Merging into qa or main, creating a v* tag, or running scripts/maintainer/*
+  with --execute (MAINTAINER ONLY: enforced by identity -- the machine user
+  civ6az-agent has repo Write and no ruleset bypass -- once the maintainer has
+  provisioned it and applied the rulesets; until then it is a convention backed
+  only by the PreToolUse guard, an accident net)
 - Modifying .env with real credentials
 - External API calls with side effects (except LLM)
 - Deleting checkpoint files
-- Running training with >1000 games without confirmation
+- Running a job whose worst case is over 1,000 games without --approval_ref <issue>.
+  Every runner prices itself (alpha_zero/utils/game_budget.py) and refuses;
+  --max_games can only LOWER the cap; --approval_ref is recorded, not verified,
+  and the PreToolUse guard asks before any command that carries it
 ```
 
 ### 3.3 Resource Budget
@@ -279,14 +288,14 @@ When making changes, update the relevant sections below:
 | `make hooks-install` | Install pre-commit (self-installing) + git pre-commit/pre-push hooks |
 | `python scripts/check_doc_sync.py` | Documentation-drift gate (version/counts/links/extras) |
 | `python scripts/validate_openspec.py` | Validate the `openspec/` change directory |
-| `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test |
-| `python -m alpha_zero.training_civ6 --seed 42` | Reproducible training run — two runs at one seed are identical |
-| `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies |
-| `python scripts/run_baseline_eval.py --seed 42 ...` | Reproducible evaluation probe (see `docs/evidence/seeded_probe_reproducibility/`) |
+| `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test (prices at 8 games). **Game cap:** every runner refuses a worst case over 1,000 games; a bare `training_civ6` prices at 10,200 and is refused. Check a price first with `scripts/run_card.py CARD --price_only` |
+| `python -m alpha_zero.training_civ6 --seed 42 --num_games 20 --num_iterations 10 --save_interval 5` | Reproducible training run — two runs at one seed are identical. Prices at 240 games; a bare `--seed 42` prices at 10,200 and is **refused** by the game cap |
+| `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20 --num_games 20 --save_interval 5` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies. Prices at 320 games (the same command at the default `--num_games 100` prices at 1,340 and is refused) |
+| `python scripts/run_baseline_eval.py --seed 42 ...` | Reproducible evaluation probe (see `docs/evidence/seeded_probe_reproducibility/`). Prices at 2 x `--n_games` (default 20, so 40) |
 | `python scripts/run_card.py configs/run_cards/smoke.yaml --price_only` | Price a run card (sum of every invocation, via each runner's own parser); creates nothing |
 | `python scripts/run_card.py CARD --data_root E:\civ6az-data` | Run a card: pinned SHA + venv, GCP-isolated, logs and `run.json` under `<root>/runs/<card_id>/`. Single-use run dir; VOID on interrupt/resume |
 | `python scripts/benchmark_suite.py --help` | Benchmark protocol over the promotion judge's own `run_arena` (paired seats, seeded search, evidence block); see `docs/EVALUATION.md` §4 |
-| `python -m alpha_zero.training_civ6 --mcts gumbel ...` | Run the local trainer and its evaluation on the Gumbel search (default `civ6` = PUCT is unchanged) |
+| `python -m alpha_zero.training_civ6 --mcts gumbel --num_games 20 --num_iterations 10 --save_interval 5` | Run the local trainer and its evaluation on the Gumbel search (default `civ6` = PUCT is unchanged). Prices at 240 games; add the size flags or the defaults (10,200 games) are refused |
 | `python -m alpha_zero.cloud.gcp.evaluation_worker --seed 42 ...` | Seeded arena evaluation on the deployed path (`derive_seed(seed, EVAL_ENV, iteration)`) |
 | `CIV6AZ_PROMOTION_MAX_IMPLIED_ELO=50` | Ceiling above which the promotion feasibility report warns that the configured gate is under-powered at the configured game count |
 | `pytest tests/regression/test_training_determinism_regression.py -v` | Determinism gate (~7 s) |
@@ -300,7 +309,7 @@ When making changes, update the relevant sections below:
 | `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
 | `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
-| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow |
+| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow. **Not priced by the game cap** (it drives `TrainingOrchestrator` directly, not the `orchestrator` CLI), and the production config is far over 1,000 games, so it needs a maintainer-approved issue first; an agent must not run it |
 | `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
 | `python -m alpha_zero.civ6_local --mode civ6 --dry-run` | Validate Civ6 bridge config (no game needed) |
 | `python -m alpha_zero.civ6_local --mode civ6 --mcts` | Start Civ6 bridge with GumbelMCTS policy |
@@ -309,10 +318,10 @@ When making changes, update the relevant sections below:
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
 | `python scripts/run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
-| `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides). Prices at 200 games (20 trials x 10 for the shipped `--quick` trial command); an unrecognised trial command is unpriceable and refused |
 | `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
-| `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
-| `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
+| `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded). Prices at 560 games at the defaults (2 arms x 20 iterations x 14 games) |
+| `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI. Prices at 800 games |
 | `python scripts/run_encoder_ab.py report` | Render committable A/B evidence to `docs/evidence/hexcrystal_ab/` |
 | `python scripts/compare_training_runs.py --mlflow_run_a A --mlflow_run_b B` | Compare two MLflow runs (add `--no_plots` without matplotlib) |
 | `python scripts/upload_encoder_to_hub.py --checkpoint P --repo-id R` | Stage the encoder for the Hub (dry run; `--publish` uploads) |
@@ -379,6 +388,7 @@ When making changes, update the relevant sections below:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-11 | Branching model and agent identity: docs, skills and PR template (LF-R3, `openspec/changes/branching-and-release`) | **Supersedes** `kb/specs/20261110-public-release-readiness.md` lines 29-33, which said to rename the default branch to `main` and protect it. The default branch is now `dev` (integration); `qa` holds release candidates; `main` holds only tagged releases; there is no linear-history rule. Contributor flow is in `docs/runbooks/branching-and-release.md` and `CONTRIBUTING.md`. Three honesty points. (1) **Maintainer-only is enforced by identity, and the identity is not provisioned yet.** The machine user `civ6az-agent` (repo Write, on no ruleset bypass list) and the `qa-main-merge` / `release-tags` rulesets are maintainer actions; until they exist, 'only the maintainer merges into qa/main or tags' is a convention backed by the PreToolUse guard, which is an accident net. (2) The `release` skill no longer tags: an agent prepares the release PR (version bump in three files plus the CHANGELOG roll) and the maintainer runs `python -m scripts.maintainer.tag_release vX.Y.Z[-rc.N]`. (3) Branch Direction and the 1,000-game cap are likewise guards against accidents, not controls: `--approval_ref` is recorded, not verified. **Found while pricing the documented commands:** four examples in this file (`--num_games=100 --num_iterations=100`, a bare `--seed 42`, the `--resume_from` example, a bare `--mcts gumbel`) priced at 10,200 / 10,200 / 1,340 / 10,200 games and the game cap now refuses all of them; the orchestrator `--config configs/orchestrator.yaml` example prices at 10,012,000. They now carry explicit small values with their price. **The method is the lesson: a documented command is a test of the gate that was added after it was written; price each one with the gate's own cost model, do not assume.** |
 | 2026-11-11 | Branch Direction, rulesets and release gates (LF-R2, `openspec/changes/branching-and-release`) | `scripts/check_branch_direction.py` judges every PR into dev/qa/main by git ancestry (local-first plan S3.4); `.github/rulesets/*.json` are applied by the maintainer (`scripts/maintainer/branch_cutover.sh`); `release.yml` publishes only after `verify-tag` and `wait-for-ci`. Branch Direction is an **accident net, not a control**: a `pull_request` workflow runs from the PR's own merge ref, so any same-repo PR can rewrite the step or add a job named `Branch Direction` (and `pull_request_target` would not stop a Write-holder); the control for qa/main is maintainer-only merge (`qa-main-merge` ruleset). Three non-obvious parts: (1) required checks pin `integration_id` 15368 (GitHub Actions, read from this repo's check runs), or a same-named commit *status* from any Write token satisfies them; (2) every API call pins `X-GitHub-Api-Version: 2022-11-28`, because API version 2026-03-10 removed `merge_commit_sha`, the field `wait-for-ci` uses to find the producing PR (a missing field fails closed); (3) `tag_release` checks R2 lineage **on content** (the tagged commit's `release.yml` gates publishing on `wait-for-ci`), since the R2 merge SHA cannot be known when R2 is written; `wait-for-ci` reads PR-scoped checks from the run completed by the PR's `merged_at`, because an `edited` event after the merge re-judges against refs the merge moved. Every path filter uses `git diff --no-renames`, or a move from `alpha_zero/` into `docs/evidence/` reads as evidence-only. **Windows gotcha found by the tests:** Git Bash rewrites a `<rev>:<path>` argument to a native `git.exe` as a path list, so the shell scripts use `git ls-tree` instead. |
 | 2026-11-11 | PreToolUse guard covers `Bash\|PowerShell`, a protected-branch LIST, and asks instead of denying where it cannot judge (`openspec/changes/branching-and-release`) | `CIV6AZ_DEFAULT_BRANCH` moves to `dev` before the rename, so protection is `dev qa main` + default + `CIV6AZ_PROTECTED_BRANCHES` — deriving it from the default alone would have unprotected the current default the moment the settings landed. Wrappers (`pwsh -c`, `cmd /c`, `bash -c`, `iex`, `&`) are unwrapped; tags, `gh pr merge`/`release`/`ruleset`/`repo edit` and write-capable `gh api` are denied; `--approval_ref`, `--preset production`, `--config` on a runner and unknown runners return `permissionDecision: "ask"`. **Two fail-open bugs found on the Windows workstation:** the guard's tests skipped whenever `jq` was absent (so they had never run here), and `subprocess.run(["bash", ...])` resolves WSL's `System32\bash.exe` before Git Bash on Windows. The parser fallback now requires a parser to *exit 0*: under the old `|| true`, a parser on PATH that fails (e.g. a Store `python3` alias with no Store Python) read as "no command" and allowed everything — found by reading, not reproduced here. Still an accident net: identity (`civ6az-agent`, `.claude/README.md`) is the control. |
 | 2026-11-11 | Deployed base image NGC 24.09 → 26.10; Python guard hard again | The images run with `PYTHONPATH`, so `requires-python` is never enforced in them, and 24.09 shipped a Python below that floor while the Dockerfile claimed 3.12. 26.10 ships 3.12 / CUDA 13.4 / torch 2.15.0a0. Two non-obvious parts: (1) `pip install` takes a constraint generated from the image's own torch distribution version, because NGC's torch is a pre-release and a resolver that rejects it would pull a PyPI wheel built for another CUDA — with the constraint a conflicting dependency fails the build instead; (2) the gate *executes* each Cloud Build check step under a faked `version_info`. **Gotcha found by the negative control:** faking it with a plain tuple made the old warn-only step crash on `v.major`, i.e. exit non-zero for the wrong reason, so the gate passed against the very defect it targets; the fake is now a namedtuple with the real field names. The CUDA 13 driver floor is not in NGC's release notes — a Vertex job on each machine profile is the verification, not this repo's CI. |
@@ -774,8 +784,9 @@ python -m alpha_zero.training_civ6 --dry_run
 # Full test suite
 pytest tests/ -v --cov=alpha_zero
 
-# Train MicroCiv
-python -m alpha_zero.training_civ6 --num_games=100 --num_iterations=100
+# Train MicroCiv (480 games priced: 20 x 20 self-play + 4 evaluations x 20;
+# the bare defaults price at 10,200 games and the game cap refuses them)
+python -m alpha_zero.training_civ6 --num_games 20 --num_iterations 20 --save_interval 5
 ```
 
 ---
@@ -897,19 +908,22 @@ CLI usage:
 # Show help
 python -m alpha_zero.orchestrator --help
 
-# Run with preset
+# Run with preset (priced at 110 games)
 python -m alpha_zero.orchestrator --preset fast
 
-# Run with config file
-python -m alpha_zero.orchestrator --config configs/orchestrator.yaml
+# Run with config file. The shipped file prices at 10,012,000 games and is
+# REFUSED by the game cap, so bound it explicitly (priced at 260 games)
+python -m alpha_zero.orchestrator --config configs/orchestrator.yaml \
+    --iterations 10 --games-per-iteration 20
 
 # Dry run (validate configuration)
 python -m alpha_zero.orchestrator --preset fast --dry_run
 
-# Override settings
+# Override settings (priced at 260 games; --iterations 10000 --games-per-iteration 50
+# would price at 501,200 and need --approval_ref <issue>)
 python -m alpha_zero.orchestrator --preset balanced \
-    --iterations 10000 \
-    --games-per-iteration 50 \
+    --iterations 10 \
+    --games-per-iteration 20 \
     --no-wandb --no-rag
 ```
 
@@ -1431,11 +1445,29 @@ and git diff stats into the compacted context. Ensures workflow continuity acros
 **Stop hook:** Reminds the agent to run the appropriate handoff skill (Section 14) before
 ending a session that did meaningful work.
 
+**PreToolUse hook (Bash and PowerShell):** `pretooluse_guard.sh` **denies** commits and
+pushes on `dev`/`qa`/`main` (and the default branch and `CIV6AZ_PROTECTED_BRANCHES`), tag
+creation and tag pushes, `gh pr merge`, `gh release`, `gh ruleset`, `gh repo edit`,
+write-capable `gh api`, and any run whose worst case is over the 1,000-game cap without
+`--approval_ref`; it **asks** on `--approval_ref`, `--preset production`, `--config` on a game
+runner, and unknown runners. Runners price themselves through `alpha_zero/utils/game_budget.py`
+(see the Known Issues and decision tables). Details and bypasses: `.claude/README.md`.
+
+**Agent identity (maintainer action, not yet provisioned).** Maintainer-only actions (merging
+into `qa`/`main`, creating `v*` tags, running `scripts/maintainer/*` with `--execute`) are meant
+to be enforced by **identity**: agents act as the machine user `civ6az-agent` (repo Write, on
+no ruleset bypass list), and the `qa-main-merge` and `release-tags` rulesets let only the
+maintainer do those things. Until the maintainer creates that user, applies the rulesets
+(`scripts/maintainer/branch_cutover.sh`) and puts its token in the gitignored
+`settings.local.json` (`.claude/README.md` shows how), these rules are a **convention**, and the
+guard above is the only barrier. It is an accident net, not a control. Do not describe the
+repository as enforcing them before then.
+
 **Permissions:** Common safe operations (pytest, ruff, mypy, git, pip, make) are pre-approved.
 Dangerous operations are denied: `.env`/`.env.local` writes via the file tools
 (`Edit(.env)`+`Write(.env)` — `Edit` rules already cover the Write tool, and the
 explicit `Write` entries make the intent unambiguous), force-push (via
-`pretooluse_guard.sh`, allowing `--force-with-lease`), and cloud ops
+`pretooluse_guard.sh`, allowing `--force-with-lease`), tags and `gh` merge/release/ruleset writes (guard and deny rules), and cloud ops
 (gcloud/gsutil/kubectl/docker push). Note: a Bash-mediated write to `.env`
 (e.g. `echo > .env`) is not pattern-blocked; it is covered by convention and the
 guard's heuristic scope, not a sandbox.

@@ -49,6 +49,7 @@ walkthrough is a welcome contribution.
 | [`GCP_INFRA.md`](GCP_INFRA.md) | Stand up the Vertex AI / GCS training infrastructure. | operator | Current | 2026-09-02 |
 | [`GCP_TROUBLESHOOTING.md`](GCP_TROUBLESHOOTING.md) | Fix gcloud and Windows connectivity problems. | operator | Reference | 2026-02-21 |
 | [`MUZERO_CLOUD_INTEGRATION.md`](MUZERO_CLOUD_INTEGRATION.md) | Run the MuZero variant on Vertex AI. | operator | Current | 2026-09-02 |
+| [`runbooks/branching-and-release.md`](runbooks/branching-and-release.md) | Move work through `dev`/`qa`/`main`, cut a release candidate and a release, run local run cards, and what is enforced versus convention. | contributor | Current | 2026-11-11 |
 | [`runbooks/promotion-gate.md`](runbooks/promotion-gate.md) | Configure the model-promotion gate, and why the shipped defaults cannot promote at a 73.5% draw rate. | operator | Current | 2026-08-28 |
 | [`runbooks/secret-scanning.md`](runbooks/secret-scanning.md) | Run gitleaks locally; triage of the open leaked-credential finding. | contributor | Current | 2026-08-30 |
 | [`runbooks/v1.6.0-cloud-deploy.md`](runbooks/v1.6.0-cloud-deploy.md) | The v1.6.0 cloud deployment, step by step. | operator | Reference | 2026-05-22 |
