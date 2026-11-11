@@ -136,7 +136,11 @@ _RESPONDER = textwrap.dedent(
     for entry in table:
         prefix = entry["prefix"]
         if args[: len(prefix)] == prefix:
-            sys.stdout.write(entry.get("stdout", ""))
+            if entry.get("raw"):  # exact bytes, no newline translation
+                sys.stdout.buffer.write(entry["stdout"].encode("utf-8"))
+                sys.stdout.buffer.flush()
+            else:
+                sys.stdout.write(entry.get("stdout", ""))
             sys.exit(entry.get("exit", 0))
     # Unlisted writes succeed silently; unlisted reads fail loudly.
     if "-X" in args or args[:2] in (["pr", "close"], ["pr", "comment"], ["pr", "merge"], ["pr", "update-branch"]):
@@ -164,8 +168,10 @@ class FakeGh:
         self.table: list[dict[str, Any]] = []
         self.log.write_text("", encoding="utf-8")
 
-    def answer(self, prefix: list[str], stdout: str = "", exit: int = 0) -> None:
-        self.table.append({"prefix": prefix, "stdout": stdout, "exit": exit})
+    def answer(
+        self, prefix: list[str], stdout: str = "", exit: int = 0, *, raw: bool = False
+    ) -> None:
+        self.table.append({"prefix": prefix, "stdout": stdout, "exit": exit, "raw": raw})
 
     def calls(self) -> list[list[str]]:
         return [
@@ -448,6 +454,26 @@ class TestMergeBackmerge:
 
     def test_backmerge_is_merged_with_a_merge_commit(self, gh: FakeGh, tmp_path: Path) -> None:
         self._pr(gh, "backmerge/v2.1.0-to-dev")
+        proc = _run(BACKMERGE, ["--execute", "12"], gh.env(), tmp_path)
+        assert proc.returncode == 0, proc.stderr
+        assert gh.writes() == [
+            ["pr", "merge", "12", "--repo", REPO, "--merge", "--match-head-commit", SHA]
+        ]
+
+    @pytest.mark.parametrize("ending", ["\r\n", "\r"])
+    def test_cr_from_gh_does_not_break_the_sha_check(
+        self, gh: FakeGh, tmp_path: Path, ending: str
+    ) -> None:
+        """``gh`` on Windows can end its line with CR; the head sha must not keep it.
+
+        Git Bash's command substitution happens to drop a CRLF pair, so the lone-CR
+        ending is the one that reproduces on that machine; CRLF reproduces on Linux.
+        """
+        gh.answer(
+            ["pr", "view", "12"],
+            f"backmerge/v2.1.0-to-dev\tdev\tfalse\tOPEN\t{SHA}{ending}",
+            raw=True,
+        )
         proc = _run(BACKMERGE, ["--execute", "12"], gh.env(), tmp_path)
         assert proc.returncode == 0, proc.stderr
         assert gh.writes() == [

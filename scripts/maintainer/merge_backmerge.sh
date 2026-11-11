@@ -56,6 +56,7 @@ fi
 info="$("$GH" pr view "$PR" ${repo_args[@]+"${repo_args[@]}"} --json headRefName,baseRefName,isCrossRepository,state,headRefOid \
   --jq '[.headRefName, .baseRefName, (.isCrossRepository | tostring), .state, .headRefOid] | @tsv')" ||
   die "could not read PR #$PR"
+info=${info//$'\r'/} # gh on Windows can end a line with CR, which would stay on the sha
 IFS=$'\t' read -r head base cross state oid <<<"$info"
 
 [[ $head == backmerge/* ]] || die "PR #$PR head is '$head', not backmerge/*: merge it through the normal UI (squash)"
