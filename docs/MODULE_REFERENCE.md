@@ -26,7 +26,7 @@ or removed.
 | `cloud` | 28 | `gcp/` Vertex AI orchestration and the deployed self-play / training / arena workers |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
-| `local` | 3 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, with the running-pinned preflight (`pinned_env.py`), and fail-closed GCP isolation (`isolation.py`) |
+| `local` | 4 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, with the running-pinned preflight (`pinned_env.py`), fail-closed GCP isolation (`isolation.py`), and the run-card driver that prices, pins and runs a `configs/run_cards/` card (`run_card.py`) |
 | `bridge` | 15 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
 | `distributed` | 8 | Process-based distributed training: actor, learner, coordinator, shared storage |
 | `optimizations` | 7 | Training optimization strategies + Optuna hyperparameter search |

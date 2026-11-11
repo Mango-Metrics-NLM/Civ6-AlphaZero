@@ -1266,8 +1266,8 @@ def resolve_checkpoint_dir(explicit: str | None, run_id: str | None, seed: int |
     return str(default_checkpoint_dir(root, run_id or default_run_id(seed)))
 
 
-def main() -> None:
-    """Main entry point."""
+def build_parser() -> argparse.ArgumentParser:
+    """The trainer's CLI parser. Also used by the run-card driver to price an argv."""
     parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
     parser.add_argument("--board_size", type=int, default=16)
     parser.add_argument(
@@ -1377,10 +1377,12 @@ def main() -> None:
         ),
     )
     add_budget_arguments(parser)
-    args = parser.parse_args()
-    checkpoint_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.run_id, args.seed)
+    return parser
 
-    config = TrainingConfig(
+
+def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingConfig:
+    """The :class:`TrainingConfig` that :func:`main` trains with for parsed ``args``."""
+    return TrainingConfig(
         board_size=args.board_size,
         num_players=args.num_players,
         scoring_method=args.scoring_method,
@@ -1401,6 +1403,13 @@ def main() -> None:
         seed=args.seed,
         use_gumbel_mcts=args.mcts == "gumbel",
     )
+
+
+def main() -> None:
+    """Main entry point."""
+    args = build_parser().parse_args()
+    checkpoint_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.run_id, args.seed)
+    config = config_from_args(args, checkpoint_dir)
 
     enforce_cli("training_civ6", training_budget_inputs(config, args.dry_run), args)
 

@@ -283,6 +283,8 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.training_civ6 --seed 42` | Reproducible training run — two runs at one seed are identical |
 | `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies |
 | `python scripts/run_baseline_eval.py --seed 42 ...` | Reproducible evaluation probe (see `docs/evidence/seeded_probe_reproducibility/`) |
+| `python scripts/run_card.py configs/run_cards/smoke.yaml --price_only` | Price a run card (sum of every invocation, via each runner's own parser); creates nothing |
+| `python scripts/run_card.py CARD --data_root E:\civ6az-data` | Run a card: pinned SHA + venv, GCP-isolated, logs and `run.json` under `<root>/runs/<card_id>/`. Single-use run dir; VOID on interrupt/resume |
 | `python scripts/benchmark_suite.py --help` | Benchmark protocol over the promotion judge's own `run_arena` (paired seats, seeded search, evidence block); see `docs/EVALUATION.md` §4 |
 | `python -m alpha_zero.training_civ6 --mcts gumbel ...` | Run the local trainer and its evaluation on the Gumbel search (default `civ6` = PUCT is unchanged) |
 | `python -m alpha_zero.cloud.gcp.evaluation_worker --seed 42 ...` | Seeded arena evaluation on the deployed path (`derive_seed(seed, EVAL_ENV, iteration)`) |

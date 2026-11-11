@@ -676,20 +676,21 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def benchmark_budget_inputs(args: argparse.Namespace) -> dict[str, int]:
+    """Resolved ``benchmark`` cost-model inputs for parsed CLI ``args``."""
+    return {
+        "n_games": args.n_games,
+        "num_opponents": len([o for o in args.opponents.split(",") if o.strip()]),
+        "num_opponent_checkpoints": len(args.opponent_checkpoint),
+    }
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI: run the protocol and write ``result.json`` + ``report.md`` to ``--out``."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
     # Refuse before loading any network: games = n_games per opponent.
-    enforce_cli(
-        "benchmark",
-        {
-            "n_games": args.n_games,
-            "num_opponents": len([o for o in args.opponents.split(",") if o.strip()]),
-            "num_opponent_checkpoints": len(args.opponent_checkpoint),
-        },
-        args,
-    )
+    enforce_cli("benchmark", benchmark_budget_inputs(args), args)
     protocol = BenchmarkProtocol(
         board_size=args.board_size,
         max_turns=args.max_turns,

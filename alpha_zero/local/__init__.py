@@ -1,1 +1,1 @@
-"""Local-first pipeline support: pinned source and environment for local runs."""
+"""Local-first pipeline support: pinned source and env, GCP isolation, run cards."""
