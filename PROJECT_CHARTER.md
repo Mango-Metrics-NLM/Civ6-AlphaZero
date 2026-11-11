@@ -33,8 +33,8 @@ document defines intent, boundaries, and invariants only.
 
 ## 1. Vision
 
-A single researcher can train a strategy agent from nothing — on a CPU laptop or a
-budget cloud fleet — and then watch that same agent autonomously play a real, unmodified
+A single researcher can train a strategy agent from nothing — on a local
+workstation (the budget cloud fleet is dormant, amendment A-1) — and then watch that same agent autonomously play a real, unmodified
 copy of Civilization VI. The project's defining split is *train cheap, deploy real*:
 learning happens in MicroCiv, a fast simplified 4X environment, while the payoff is
 delivered through a bridge into the actual game. Everything is reproducible without a
@@ -117,7 +117,8 @@ Rationale per non-goal:
   deployment, and generalization stays in the long-term-vision column until deliberately
   chartered (this is the focus boundary most likely to erode).
 - **NG-7** — Runs above 1000 games and any cloud spend require explicit human
-  confirmation (hook-enforced); the v1.2.0 production run that wasted ~$28.55 producing
+  confirmation (enforced per Invariant 6: runner caps and recorded approvals, with a hook
+  backstop); the v1.2.0 production run that wasted ~$28.55 producing
   zero promotions is the standing justification.
 
 ## 4. Invariants (must not drift — enforce in review)
@@ -147,11 +148,16 @@ scope; they may never relax an invariant.)*
    config field with an explicit default, overridable via the `CIV6AZ_*` environment
    convention loaded through `alpha_zero/utils/env_loader.py`; no hardcoded paths,
    ports, or magic numbers in new code.
-6. **Quality gate** — no direct commits to `dev`, `qa` or `main` (work goes through a
-   short-lived branch and a maintainer-merged PR) and no run over 1,000 games without the
-   maintainer's confirmation (`--approval_ref`), mechanically enforced by the PreToolUse hook
-   (`.claude/hooks/pretooluse_guard.sh` via `.claude/settings.json`); `ruff` (100-char)
-   and `mypy` stay green.
+6. **Quality gate** — no direct commits to `dev`, `qa` or `main`, and no run over 1,000
+   games without the maintainer's confirmation; `ruff` (100-char) and `mypy` stay green.
+   Branch/tag rule: enforced by **identity**, not hooks — agents act as the machine user
+   `civ6az-agent` with no ruleset bypass, and the GitHub rulesets `qa-main-merge` and
+   `release-tags` let only the maintainer merge into `qa`/`main` or create `v*` tags.
+   **Transition clause:** until the maintainer provisions that identity and those rulesets,
+   the PreToolUse guard (`.claude/hooks/pretooluse_guard.sh`) is the only barrier and it is
+   an accident net, not a control. Game cap: enforced by each runner (`--max_games` may
+   only lower the 1,000 cap; `--approval_ref <issue>` records the maintainer's approval),
+   with the hook asking on approval refs as a backstop.
 7. **Security** — no secrets or machine fingerprints in the repo; credentials live only
    in the gitignored `.env` / environment, and the Civ6 bridge binds loopback only
    (`127.0.0.1:4318`) and touches only official game API surfaces.
@@ -162,9 +168,9 @@ scope; they may never relax an invariant.)*
 > milestone detail changes there, not here.
 
 - **M1 — Learning Core:** AlphaZero on MicroCiv, built end-to-end. *(delivered; learning not yet validated on the corrected search — see `ROADMAP.md`'s validation column)*
-- **M2 — Scale & Observability:** Vertex AI 3-phase pipeline, GCS storage, MLflow monitoring. *(delivered)*
+- **M2 — Scale & Observability:** Vertex AI 3-phase pipeline, GCS storage, MLflow monitoring. *(delivered; Vertex/GCP path **dormant** since 2026-11-11, amendment A-1)*
 - **M3 — Live Game Bridge:** agent plays real Civ6 headlessly via the FireTuner socket. *(delivered)*
-- **M4 — Multiplayer & Throughput:** N-player training runs, batch self-play in cloud, test-debt paydown, coverage re-tighten. *(active)*
+- **M4 — Multiplayer & Throughput:** N-player training runs, batch self-play (local; cloud dormant), test-debt paydown, coverage re-tighten. *(active)*
 - **M5 — Full Civ6 Mastery:** fog of war, full-scale encoder/action space, sustained skilled live play. *(future)*
 
 ## 6. How agents and contributors use this document
@@ -257,7 +263,15 @@ rules mechanically bind agents, but for the maintainer they are self-discipline 
 visible — the ledger (§8) exists precisely so the maintainer's own drift leaves a paper
 trail.
 
-## 8. Carve-out Ledger (append-only)
+### 7.6 Non-carve-out amendments
+
+Changes to Scope, Mission, an invariant, or roadmap text that do **not** add an exception
+to a non-goal are *non-carve-out amendments*. They are proposed by PR, ratified only by the
+maintainer's merge (§7.5), and recorded append-only in the Charter Amendment Log (§8). They
+must never be used to evade the §7.1 carve-out format or the §7.2 budgets: a change that
+relaxes a non-goal is a carve-out, whatever it is called.
+
+## 8. Carve-out Ledger and Charter Amendment Log (append-only)
 
 | CO | Date | NG | Title | Ratified by | Status |
 |----|------|----|-------|-------------|--------|
@@ -266,7 +280,7 @@ trail.
 **Budget state:** 0 active carve-outs / 7 non-goals · last 90-day window: 0
 ratifications · last full review: 2026-07-13 (initial ratification).
 
-### Charter Amendment Log (append-only; non-carve-out amendments)
+### Charter Amendment Log (sibling of the carve-out ledger; §7.6)
 
 Amendments that change Scope, Mission or an invariant but do **not** add an exception to a
 non-goal are logged here. They are not carve-outs, so they do not count against any §7.2
@@ -274,7 +288,7 @@ budget. Ratification is the maintainer merging the PR that adds the entry (§7.5
 
 | ID | Date | Sections touched | Status | Counts against a non-goal budget? | Next review |
 |----|------|------------------|--------|-----------------------------------|-------------|
-| A-1 | 2026-11-11 | §0, §2 ("Train at scale"), §3 Scope, §4 invariant 6; ROADMAP M2 | **PROPOSED — pending maintainer ratification** (merge of this PR) | No: no non-goal is touched (NG-1..NG-7 unchanged); carve-out count stays 0 | At the next full charter review (§7.4); last full review remains 2026-07-13 |
+| A-1 | 2026-11-11 | §0, §1 Vision, §2 ("Train at scale"), §3 Scope, §4 invariant 6 and NG-7 wording, §5 M2/M4; §7.6; ROADMAP M2 | **PROPOSED — pending maintainer ratification** (merge of this PR) | No: no non-goal is touched (NG-1..NG-7 unchanged); carve-out count stays 0 | At the next full charter review (§7.4); last full review remains 2026-07-13 |
 
 **A-1 — Local-first operation; Vertex/GCP dormant; branch model.** Rationale: the
 maintainer decided on 2026-11-10/11 that training runs locally on one Windows workstation
@@ -283,7 +297,7 @@ parity claimed), and that branching is `dev` (default, integration) → `qa` (re
 candidates) → `main` (tagged releases) with no direct commits to any of them. Record:
 [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
 §0 and [`docs/audits/2026-11-11-local-first-plan-review.md`](docs/audits/2026-11-11-local-first-plan-review.md).
-Invariant 6 is tightened, not relaxed (an extra protected branch pair; the game cap is
+NG-7's cloud-spend clause was considered and is unchanged (it still requires confirmation for any cloud spend; dormancy only makes such spend less likely), so no non-goal budget is touched. Invariant 6 is tightened, not relaxed (an extra protected branch pair; the game cap is
 unchanged). Reversal of the dormancy is itself an amendment.
 
 ---
