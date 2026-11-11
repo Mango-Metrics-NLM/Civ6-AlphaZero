@@ -86,6 +86,7 @@ taken on code **before** or **after** the 2026-09-04 search fixes
 |-----|-----------------|---------------------------|
 | [`audits/2026-09-04-standards-audit.md`](audits/2026-09-04-standards-audit.md) | Coding-standards audit; its §0 records the review corrections and its remediation list is superseded by `kb/specs/20260904-correctness-first-plan.md`. | n/a (review) |
 | [`audits/2026-11-10-public-release-review.md`](audits/2026-11-10-public-release-review.md) | Public-release review: status of the September items, the maintainer checklist and the post-flip backlog. | n/a (review) |
+| [`audits/2026-11-11-local-first-plan-review.md`](audits/2026-11-11-local-first-plan-review.md) | Panel and two adversarial review rounds behind the local-first gap-closure and dev/qa/main branching plan (`kb/specs/20261111-local-first-and-branching-plan.md`). | n/a (review) |
 
 ### Evidence (committed measurements)
 
