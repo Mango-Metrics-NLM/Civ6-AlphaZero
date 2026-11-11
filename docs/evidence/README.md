@@ -10,7 +10,8 @@ produced. Contract: [`SCHEMA.md`](SCHEMA.md).
 | [`hexcrystal_ab/`](hexcrystal_ab/ab_report.md) | 2026-08-10 (`b14534a`) | pre-fix | 42 (280/800 arena games reused training seeds) | the A/B harness runs and is reproducible | **superseded** — not evidence that either encoder is stronger |
 | [`seeded_probe_reproducibility/`](seeded_probe_reproducibility/README.md) | 2026-08-30 (`0b75871`) | pre-fix | yes | seeded probes are identical; unseeded probes spread 0.30–0.45 | current (reproducibility only) |
 | [`validation_iteration_zero/`](validation_iteration_zero/validation_iteration_zero_report.md) | 2026-08-28 (`0c394f9`) | pre-fix | no | the local loop runs end to end on CPU; the checkpoint scores below parity against random | **superseded** as a learning measurement |
+| [`windows_baseline_20261111/`](windows_baseline_20261111/README.md) | 2026-11-11 (`0eb7596`) | post-fix | 20261111 | machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a harness smoke showing the calibration script runs; no throughput or ETA claim | current (harness smoke only; calibration is T0b) |
 | [`tech_debt_baseline/`](tech_debt_baseline/baseline.json) | rolling | n/a | n/a | code-metric ratchet (`tests/regression/test_debt_ratchet.py`) | current |
 
-No committed artifact was generated on post-2026-09-04 code. The first one is
+No committed artifact measuring playing strength was generated on post-2026-09-04 code (`windows_baseline_20261111/` records a machine snapshot and a harness smoke only). The first one is
 tracked under milestone v2.1 (`docs/EVALUATION.md` → "First post-fix run").
