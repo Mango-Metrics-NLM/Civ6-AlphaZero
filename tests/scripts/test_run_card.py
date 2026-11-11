@@ -281,7 +281,11 @@ def test_tiny_card_runs_from_pinned_source(
     # The invocation itself imported alpha_zero from the pinned src.
     log = (run_dir / "logs" / "smoke.log").read_text(encoding="utf-8")
     assert str((run_dir / "src" / "alpha_zero").resolve()) in log
-    assert "child argv ['--dry_run']" in log
+    assert "child argv ['--dry_run', '--max_games', '8']" in log
+    assert inv["launched_argv"] == ["--dry_run", "--max_games", "8"]
+
+    # torch facts are recorded, never required (the bare test venv has no torch).
+    assert data["device_plan"]["torch"] == {"error": "ModuleNotFoundError"}
 
     # Names, never values.
     assert SENTINEL_NAME in data["env_var_names"]
@@ -469,3 +473,63 @@ def test_script_wrapper_prices_the_smoke_card() -> None:
     )
     assert out.returncode == 0, out.stderr[-2000:]
     assert "total" in out.stdout and " 8 " in out.stdout + " "
+
+
+def test_child_is_capped_at_its_priced_games(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A child pricing itself higher than the driver did must refuse itself (card FAILED)."""
+    cmds: list[list[str]] = []
+    real = rc._run_invocation
+
+    def spy(cmd: list[str], *, cwd: Path, env: Mapping[str, str], log: Path) -> int:
+        cmds.append(list(cmd))
+        return real(cmd, cwd=cwd, env=env, log=log)
+
+    monkeypatch.setattr(rc, "_run_invocation", spy)
+    one = ("--num_games", "1", "--num_iterations", "1", "--save_interval", "1000")
+    card = _card(tmp_path, [_train("dry", "--dry_run"), _train("one", *one)])
+
+    assert _run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED
+    assert [c[-2:] for c in cmds] == [["--max_games", "8"], ["--max_games", "1"]]
+    assert cmds[1][-8:-2] == list(one), "the card argv is passed through unchanged"
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "reason"),
+    [
+        ("prefix", "OTHER_VENV", "not the pinned venv"),
+        ("alpha_zero_file", "OUTSIDE", "outside the pinned src and venv"),
+        ("version", "9.9.9", "pyproject version"),
+    ],
+)
+def test_parent_reverifies_preflight_report(
+    tmp_path: Path,
+    pinned: FakeRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    value: str,
+    reason: str,
+) -> None:
+    """The pinned check passed, but HEAD's re-check of its report refuses the card."""
+    real = rc._preflight
+    substitutes = {
+        "OTHER_VENV": str(tmp_path / "other-venv"),
+        "OUTSIDE": str(tmp_path / "elsewhere" / "alpha_zero" / "__init__.py"),
+    }
+
+    def tampered(env: pe.PinnedEnv, child: Mapping[str, str]) -> dict[str, Any]:
+        report = real(env, child)
+        assert report["exit_code"] == 0, report
+        report[field] = substitutes.get(value, value)
+        return report
+
+    monkeypatch.setattr(rc, "_preflight", tampered)
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+
+    result = _run(card, tmp_path, pinned)
+
+    assert result.status == rc.STATUS_FAILED
+    data = _run_json(tmp_path)
+    assert reason in data["error"]
+    assert data["invocations"] == []

@@ -13,9 +13,15 @@ list of runner invocations. :func:`run_card` turns it into a recorded run:
 3. **Isolate** (:func:`~alpha_zero.local.isolation.enter_local_mode`) and **pin**
    (:func:`~alpha_zero.local.pinned_env.prepare_pinned_run`).
 4. **Preflight** a real child of the pinned interpreter that runs the pinned
-   code's own :func:`~alpha_zero.local.pinned_env.assert_running_pinned`.
+   code's own :func:`~alpha_zero.local.pinned_env.assert_running_pinned`, then
+   re-verify what it reports (prefix, ``alpha_zero.__file__``, version) with
+   THIS checkout's code (:func:`verify_preflight`), so a pinned SHA whose check
+   is weaker or broken cannot vouch for itself.
 5. **Run** the invocations sequentially (no shell, ``cwd=src``,
    ``PYTHONNOUSERSITE=1``, temp under the data root), one log per invocation.
+   Each child is launched with ``--max_games <its priced games>`` appended
+   (argparse keeps the last value), so the child's own budget check caps it at
+   what this driver priced.
 
 ``<root>/runs/<card_id>/run.json`` is written at the start (``RUNNING``), after
 every invocation, and at the end (``COMPLETED``/``FAILED``/``VOID``). An
@@ -25,9 +31,21 @@ because a resumed card is not the card that was priced and pinned. A run
 directory is single-use. ``run.json`` records environment variable **names**
 only; values never reach it.
 
-Pricing uses this checkout's parsers and cost models while the children run the
-pinned SHA's; each child re-prices itself with its own model, so a divergence
-can only refuse a run, never widen one.
+Windows semantics, stated plainly: ``TerminateProcess`` (Task Manager, a hard
+kill, and what most Windows tooling means by "SIGTERM") cannot be caught, so
+the driver gets no chance to write ``VOID``. **A lingering ``RUNNING`` record
+must be read as VOID** -- the next attempt of the card rewrites it so. A
+hard-killed driver can also orphan the child it was waiting on; containing
+children in a Job object is planned, not done.
+
+Pricing uses this checkout's parsers, defaults and cost models (and resolves a
+relative ``--config`` from the driver's cwd) while the children run the pinned
+SHA's from ``cwd=src``, so the two can price an invocation differently. The
+appended ``--max_games <priced>`` keeps the card total safe: a child that
+prices itself higher than the driver did refuses to start (exit 2, card
+FAILED). The one exception is an invocation whose own argv carries
+``--approval_ref``: ``game_budget`` lets an approved run exceed its cap, so
+that invocation is bounded by its approval, not by this driver.
 
 Public surface: :func:`load_card`, :func:`price_card`, :func:`prepare_data_root`,
 :func:`run_card`, :func:`main`, :data:`RUNNERS`.
@@ -58,6 +76,7 @@ from alpha_zero.local.pinned_env import (
     PinnedEnv,
     PinnedEnvError,
     Runner,
+    _pyproject_version,
     child_env,
     prepare_pinned_run,
 )
@@ -106,8 +125,15 @@ PREFLIGHT_CODE = (
     "import alpha_zero\n"
     "from alpha_zero.local.pinned_env import PinnedEnv, assert_running_pinned\n"
     "assert_running_pinned(PinnedEnv(python=Path(sys.argv[1]), src=Path(sys.argv[2])))\n"
-    "print(json.dumps({'alpha_zero_file': alpha_zero.__file__,"
-    " 'version': str(alpha_zero.__version__), 'prefix': sys.prefix}))\n"
+    "info = {'alpha_zero_file': alpha_zero.__file__,"
+    " 'version': str(alpha_zero.__version__), 'prefix': sys.prefix}\n"
+    "try:\n"
+    "    import torch\n"
+    "    info['torch'] = {'version': str(torch.__version__), 'cuda': torch.version.cuda,"
+    " 'cuda_available': bool(torch.cuda.is_available())}\n"
+    "except Exception as exc:\n"
+    "    info['torch'] = {'error': type(exc).__name__}\n"
+    "print(json.dumps(info))\n"
 )
 
 
@@ -211,6 +237,7 @@ class InvocationResult:
     runner: str
     argv: list[str]
     priced_games: int
+    launched_argv: list[str] = field(default_factory=list)
     exit_code: int | None = None
     duration_s: float | None = None
     log: str = ""
@@ -435,6 +462,33 @@ def _preflight(env: PinnedEnv, child: Mapping[str, str]) -> dict[str, Any]:
     return record
 
 
+def verify_preflight(env: PinnedEnv, report: Mapping[str, Any]) -> str | None:
+    """Re-check the child's preflight report with THIS checkout's rules.
+
+    Returns ``None`` when the report proves the child ran the pinned interpreter
+    and the pinned ``alpha_zero``; otherwise the reason it does not. Mirrors
+    :func:`~alpha_zero.local.pinned_env.assert_running_pinned` on purpose: the
+    pinned SHA's copy of that check is code under test, not a trusted oracle.
+    """
+    if report.get("exit_code") != 0:
+        return "the pinned preflight itself failed"
+    try:
+        prefix = Path(str(report["prefix"])).resolve()
+        file = Path(str(report["alpha_zero_file"])).resolve()
+        version = str(report["version"])
+    except KeyError as exc:
+        return f"preflight report is missing {exc}"
+    venv, src = env.venv.resolve(), env.src.resolve()
+    if prefix != venv:
+        return f"child prefix {prefix} is not the pinned venv {venv}"
+    if not any(root == file or root in file.parents for root in (src, venv)):
+        return f"child imported alpha_zero from {file}, outside the pinned src and venv"
+    expected = _pyproject_version(env.src)
+    if version != expected:
+        return f"child alpha_zero version {version!r} != pinned pyproject version {expected!r}"
+    return None
+
+
 def _pip_freeze(env: PinnedEnv, child: Mapping[str, str], runner: Runner | None) -> list[str]:
     cmd = [str(env.python), "-m", "pip", "freeze", "--all"]
     if runner is not None:
@@ -563,14 +617,19 @@ def run_card(
                 env_var_names=sorted(child),
                 pip_freeze=_pip_freeze(env, child, pinned_runner),
             )
-            record["preflight"] = _preflight(env, child)
+            preflight = _preflight(env, child)
+            record["preflight"] = preflight
+            record["device_plan"]["torch"] = preflight.get("torch")
             _write_record(record_path, record)
-            if record["preflight"]["exit_code"] != 0:
-                return finish(STATUS_FAILED, error="preflight: child is not running pinned code")
+            problem = verify_preflight(env, preflight)
+            if problem is not None:
+                return finish(STATUS_FAILED, error=f"preflight: {problem}")
 
             for result in results:
                 log = logs / f"{result.name}.log"
-                cmd = [str(env.python), "-m", RUNNERS[result.runner].module, *result.argv]
+                # Cap the child at what was priced here (argparse keeps the last value).
+                result.launched_argv = [*result.argv, "--max_games", str(result.priced_games)]
+                cmd = [str(env.python), "-m", RUNNERS[result.runner].module, *result.launched_argv]
                 started = time.monotonic()
                 result.exit_code = _run_invocation(cmd, cwd=env.src, env=child, log=log)
                 result.duration_s = round(time.monotonic() - started, 3)

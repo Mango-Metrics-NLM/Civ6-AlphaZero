@@ -80,6 +80,8 @@ The data root these functions depend on lives in `alpha_zero/utils/data_root.py`
 4. A run directory is single-use; an interrupted or resumed card is VOID
 5. `run.json` records environment variable names, never values
 6. `isolation.py` stays stdlib-only (`cloud/gcp/storage.py` imports it)
+7. Each child is launched with `--max_games <its priced games>`, and the parent re-verifies the pinned preflight report with its own code
+8. On Windows a hard kill cannot be caught: a lingering `RUNNING` record is read as VOID
 
 ---
 

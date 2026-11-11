@@ -9,11 +9,11 @@
 #
 # The pinned SHA must contain alpha_zero/local/pinned_env.py: the preflight
 # imports the PINNED assert_running_pinned, so an older SHA fails closed.
-card_id: smoke-20261111
+card_id: smoke-20261111-r2
 sha: f2be40c9f44d6584b4d071866b8e2bb3221e9789
 max_games: 8
 description: One training_civ6 --dry_run from pinned source (LF-E6 smoke).
 invocations:
   - name: train-dry-run
     runner: training_civ6
-    argv: ["--dry_run", "--run_id", "smoke-20261111", "--seed", "42"]
+    argv: ["--dry_run", "--run_id", "smoke-20261111-r2", "--seed", "42"]
