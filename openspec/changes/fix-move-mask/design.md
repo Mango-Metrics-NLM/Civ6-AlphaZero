@@ -9,9 +9,13 @@ block movement in the executor, so they do not block it in the mask.
 
 ## Other rejections a mask can see
 
-Audited against `_execute_action`: attack (needs an enemy at the target), skip,
-found-city (settler, no city within `MIN_CITY_DISTANCE`) and produce (city has no
-queue) already match their mask branches. Only move disagreed.
+Audited against `_execute_action`: attack (needs an enemy at the target) and produce (city has no queue)
+match their mask branches. Skip and found-city (settler, no city within
+`MIN_CITY_DISTANCE`) are stricter in the mask: their bits sit inside the
+`moves_remaining > 0` block, while the executor has no moves check for either.
+That is the safe direction (the mask never offers a rejected action; it only
+withholds some the executor would accept) and is left as is. Only move offered
+actions the executor rejects.
 
 ## Fog of war
 

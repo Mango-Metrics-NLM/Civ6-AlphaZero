@@ -20,12 +20,15 @@ from alpha_zero.envs.microciv import MicroCivEnv
 BOARD_SIZE = 8
 
 
-def _play(game_seed: int, board_size: int = BOARD_SIZE) -> tuple[int, int, int]:
+def _play(
+    game_seed: int, board_size: int = BOARD_SIZE, max_turns: int | None = None
+) -> tuple[int, int, int]:
     """Play one seeded random game on mask-legal actions only.
 
     Returns (steps, rejections, invalid_move_rejections).
     """
-    env = MicroCivEnv(board_size=board_size, seed=game_seed)
+    kwargs = {} if max_turns is None else {"max_turns": max_turns}
+    env = MicroCivEnv(board_size=board_size, seed=game_seed, **kwargs)
     env.reset(seed=game_seed)
     rng = np.random.default_rng(game_seed)
     steps = rejections = invalid_moves = 0
@@ -43,28 +46,37 @@ def _play(game_seed: int, board_size: int = BOARD_SIZE) -> tuple[int, int, int]:
     return steps, rejections, invalid_moves
 
 
-def _total_rejections(num_games: int) -> tuple[int, int, int]:
+SHIPPED_MAX_TURNS = 30  # the training/evaluation default (board 8 / 30 turns)
+
+
+def _total_rejections(num_games: int, max_turns: int | None) -> tuple[int, int, int]:
     steps = rejected = invalid = 0
     for seed in range(num_games):
-        s, r, i = _play(seed)
+        s, r, i = _play(seed, max_turns=max_turns)
         steps += s
         rejected += r
         invalid += i
     return steps, rejected, invalid
 
 
-def test_no_invalid_move_in_20_seeded_random_games() -> None:
-    steps, rejected, invalid = _total_rejections(20)
+def _assert_clean(num_games: int, max_turns: int | None) -> None:
+    steps, rejected, invalid = _total_rejections(num_games, max_turns)
     assert steps > 0
     assert invalid == 0, f"{invalid} 'Invalid move' rejections in {steps} steps"
     assert rejected == 0, f"{rejected} rejected actions of any kind in {steps} steps"
+
+
+def test_no_invalid_move_in_20_seeded_random_games() -> None:
+    """Long games (env default max_turns=200): dense in late-game collisions."""
+    _assert_clean(20, None)
 
 
 def test_no_invalid_move_in_200_seeded_random_games() -> None:
-    steps, rejected, invalid = _total_rejections(200)
-    assert steps > 0
-    assert invalid == 0, f"{invalid} 'Invalid move' rejections in {steps} steps"
-    assert rejected == 0, f"{rejected} rejected actions of any kind in {steps} steps"
+    """200 games at the shipped max_turns=30; fast enough for CI's coverage job.
+
+    The old mask gave ~94 rejections per 20 such games, so 200 keep ample power.
+    """
+    _assert_clean(200, SHIPPED_MAX_TURNS)
 
 
 def _occupied_target_env(occupant_is_enemy: bool) -> tuple[MicroCivEnv, int]:
@@ -134,22 +146,69 @@ def test_mask_matches_executor_for_every_move_action() -> None:
             break
 
 
+def _bridge_state() -> dict:
+    """Converted-state dict as ``StateConverter.convert`` emits it (cheap to build)."""
+    terrain = {
+        (x, y): {"type": "plains", "features": [], "yields": {}} for x in range(4) for y in range(4)
+    }
+    terrain[(2, 0)]["type"] = "mountain"
+    units = [
+        {"_id": 1, "player": 0, "type": "warrior", "position": (0, 0), "moves_remaining": 2},
+        {"_id": 2, "player": 0, "type": "warrior", "position": (1, 0), "moves_remaining": 2},
+        {"_id": 3, "player": 1, "type": "warrior", "position": (1, 1), "moves_remaining": 2},
+    ]
+    return {
+        "turn": 1,
+        "current_player": 0,
+        "_map_size": (4, 4),
+        "terrain": terrain,
+        "units": units,
+        "cities": [],
+    }
+
+
+def _walk_and_compare(env: object, steps: int, seed: int) -> None:
+    """Step ``env`` along a seeded trajectory, comparing every mask source each state."""
+    rng = np.random.default_rng(seed)
+    for _ in range(steps):
+        mask = env.get_valid_actions()  # type: ignore[attr-defined]
+        assert np.array_equal(env.get_observation()["action_mask"], mask)  # type: ignore[attr-defined]
+        _, _, term, trunc, _ = env.step(int(rng.choice(np.flatnonzero(mask > 0))))  # type: ignore[attr-defined]
+        if term or trunc:
+            break
+
+
 def test_all_mask_builders_agree() -> None:
-    """get_valid_actions, the observation mask and the vectorized env share one builder."""
+    """Every env that exposes a move mask agrees with ``get_valid_actions`` along whole games.
+
+    All paths share ``MicroCivActionSpace.get_valid_mask``; this fails if one ever grows
+    its own builder (for example a fogged mask) that drifts from the others.
+    """
+    from alpha_zero.bridge.mcts_policy import BridgeMCTSEnv
+    from alpha_zero.envs.microciv_enhanced import EnhancedMicroCivEnv
     from alpha_zero.envs.vectorized_env import VectorizedEnvConfig, VectorizedMicroCivEnv
 
-    env = MicroCivEnv(board_size=BOARD_SIZE, seed=5)
-    obs, _ = env.reset(seed=5)
-    assert np.array_equal(obs["action_mask"], env.get_valid_actions())
-    for _ in range(15):
-        legal = np.flatnonzero(env.get_valid_actions() > 0)
-        obs, *_ = env.step(int(legal[0]))
-        assert np.array_equal(obs["action_mask"], env.get_valid_actions())
+    base = MicroCivEnv(board_size=BOARD_SIZE, seed=5, max_turns=SHIPPED_MAX_TURNS)
+    base.reset(seed=5)
+    _walk_and_compare(base, 150, 5)
+
+    enhanced = EnhancedMicroCivEnv(board_size=BOARD_SIZE, seed=6, max_turns=SHIPPED_MAX_TURNS)
+    enhanced.reset(seed=6)
+    _walk_and_compare(enhanced, 150, 6)
+
+    _walk_and_compare(BridgeMCTSEnv.from_bridge_state(_bridge_state(), max_turns=40), 100, 7)
 
     vec = VectorizedMicroCivEnv(
-        VectorizedEnvConfig(num_envs=3, board_size=BOARD_SIZE, seed_offset=7)
+        VectorizedEnvConfig(
+            num_envs=3, board_size=BOARD_SIZE, max_turns=SHIPPED_MAX_TURNS, seed_offset=7
+        )
     )
     vec.reset_all()
-    _, _, masks = vec.get_observations()
-    for i, sub in enumerate(vec._envs):
-        assert np.array_equal(masks[i], sub.get_valid_actions())
+    rng = np.random.default_rng(8)
+    for _ in range(60):
+        _, _, masks = vec.get_observations()
+        for i, sub in enumerate(vec._envs):
+            assert np.array_equal(masks[i], sub.get_valid_actions())
+        actions = np.array([int(rng.choice(np.flatnonzero(m > 0))) for m in masks], dtype=np.int64)
+        vec.step_all(actions)
+        vec.reset_done()

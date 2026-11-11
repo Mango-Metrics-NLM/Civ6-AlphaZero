@@ -11,14 +11,15 @@ disagreement was a wasted action that also forfeited the unit's turn
 (CLAUDE.md §5.3, `docs/evidence/draw_rate_sweep/report.md`). This is defect
 LF-B1 of the local-first plan and must land before any learning-evidence run.
 
-Measured before the fix: seeded random play over mask-legal actions produced
+Measured before the fix (board 8, `max_turns` 200, the env default): seeded random
+play over mask-legal actions produced
 5,748 "Invalid move" rejections in 20 games (48,779 steps) and 50,450 in 200 games.
 
 ## What Changes
 
 - The move branch of `get_valid_mask` excludes every tile holding a unit (any player).
-- No other mask branch changes: attack, skip, found-city and produce already match
-  the executor's rejection conditions.
+- No other mask branch changes. Attack and produce match the executor; skip and
+  found-city are stricter than it for zero-move units (see `design.md`), the safe direction.
 - Fog of war is not touched: the mask is built from the same (true) state as before.
   Hidden-unit semantics are LF-B6 and need their own change.
 
