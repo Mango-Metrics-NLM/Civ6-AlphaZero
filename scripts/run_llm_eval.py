@@ -57,7 +57,7 @@ def main() -> int:
     if importlib.util.find_spec("eval_harness") is None:
         print(
             "[run_llm_eval] langfuse-eval-harness is not installed; "
-            "skipping the LLM eval gate (not applicable).\n"
+            "skipping the StrategyAdvisor eval harness (not applicable).\n"
             "               Install it with:  pip install -e '.[eval]'",
             file=sys.stderr,
         )

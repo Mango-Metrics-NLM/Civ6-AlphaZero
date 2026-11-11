@@ -2,7 +2,7 @@
 
 Creates:
 1. Artifact Registry repo: civ6az-muzero-world-model
-2. GCS bucket: civ6az-muzero-training
+2. GCS bucket: $CIV6AZ_GCS_BUCKET (required; no default)
 
 Uses direct REST API with IPv4 enforcement to avoid gcloud CLI IPv6 hang.
 
@@ -37,10 +37,15 @@ socket.getaddrinfo = _ipv4_only_getaddrinfo  # type: ignore[assignment]
 import requests  # noqa: E402
 
 # --- Configuration ---
-PROJECT = os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain")
-REGION = "us-central1"
+PROJECT = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+REGION = os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1")
 AR_REPO = "civ6az-muzero-world-model"
-GCS_BUCKET = "civ6az-muzero-training"
+GCS_BUCKET = os.environ.get("CIV6AZ_GCS_BUCKET")
+if not PROJECT or not GCS_BUCKET:
+    raise SystemExit(
+        "CIV6AZ_VERTEX_PROJECT and CIV6AZ_GCS_BUCKET must both be set; there are no "
+        "built-in defaults (a default bucket name is a takeover vector)."
+    )
 
 _ADC_PATH = pathlib.Path(
     os.environ.get(

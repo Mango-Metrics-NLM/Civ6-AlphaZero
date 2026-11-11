@@ -46,10 +46,33 @@ class WinRateResult:
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate as percentage."""
+        """Legacy win rate as a percentage (draws count as losses).
+
+        Routed through :mod:`alpha_zero.evaluation.scoring` so it cannot drift
+        from :attr:`score_rate`; the ``* 100`` scale is historical and every
+        consumer divides it back out.
+        """
+        from alpha_zero.evaluation.scoring import win_rate
+
         if self.total_games == 0:
             return 0.0
-        return self.wins / self.total_games * 100
+        return win_rate(self.wins, self.draws, self.losses) * 100
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware rate as a percentage: ``(wins + 0.5 * draws) / total * 100``.
+
+        Same 0-100 scale as its siblings so the existing extractors
+        (``run_baseline_eval.extract_win_rate_metrics``,
+        ``MLflowLogger.log_evaluation_result``) normalise it the same way.
+        Returns ``0.0`` for an empty record to match them (the SSOT's
+        no-information value is 0.5 on the unit scale).
+        """
+        from alpha_zero.evaluation.scoring import score_rate
+
+        if self.total_games == 0:
+            return 0.0
+        return score_rate(self.wins, self.draws, self.losses) * 100
 
     @property
     def loss_rate(self) -> float:
@@ -67,7 +90,7 @@ class WinRateResult:
 
     def __str__(self) -> str:
         return (
-            f"WinRate: {self.win_rate:.1f}% "
+            f"WinRate: {self.win_rate:.1f}% ScoreRate: {self.score_rate:.1f}% "
             f"({self.wins}W/{self.losses}L/{self.draws}D of {self.total_games})"
         )
 
@@ -94,6 +117,8 @@ class EvaluationResult:
             f"EVALUATION SUMMARY\n"
             f"{'=' * 50}\n"
             f"Win Rate: {self.win_rate.win_rate:.1f}%\n"
+            f"Score Rate: {self.win_rate.score_rate:.1f}% "
+            f"(draw rate {self.win_rate.draw_rate:.1f}%)\n"
             f"  Wins:   {self.win_rate.wins}\n"
             f"  Losses: {self.win_rate.losses}\n"
             f"  Draws:  {self.win_rate.draws}\n"

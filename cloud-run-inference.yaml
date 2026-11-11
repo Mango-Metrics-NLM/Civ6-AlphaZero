@@ -4,7 +4,7 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: civ6az-inference
+  name: alphazero-inference
   labels:
     cloud.googleapis.com/location: us-central1
   annotations:
@@ -29,11 +29,11 @@ spec:
     spec:
       containerConcurrency: 5  # MCTS is GPU-intensive; matches Terraform concurrency var
       timeoutSeconds: 300  # 5 minute timeout for MCTS searches
-      serviceAccountName: civ6az-inference@hrmtrain.iam.gserviceaccount.com
+      serviceAccountName: alphazero-inference@YOUR_GCP_PROJECT.iam.gserviceaccount.com  # replace before applying
 
       containers:
       - name: inference
-        image: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-inference:latest
+        image: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-inference:latest
 
         ports:
         - name: http1
@@ -41,11 +41,11 @@ spec:
 
         env:
         - name: CIV6AZ_VERTEX_PROJECT
-          value: hrmtrain
+          value: YOUR_GCP_PROJECT  # replace before applying
         - name: CIV6AZ_VERTEX_REGION
           value: us-central1
         - name: CIV6AZ_GCS_BUCKET
-          value: civ6az-training
+          value: YOUR_BUCKET  # replace before applying
         - name: CIV6AZ_GCS_PREFIX
           value: models/
         - name: PYTORCH_CUDA_ALLOC_CONF

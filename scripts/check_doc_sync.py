@@ -13,9 +13,19 @@ Checks (error codes are stable and referenced by ``tests/governance/``):
       ``fail_under``; historical prose is not matched
   D4  the README contains no forbidden pattern (retired ``wandb`` tooling,
       ``requirements-dev.txt``); a ``<!-- doc-sync: allow -->`` line is exempt
+  D4b ``README.md`` and ``ROADMAP.md`` carry no forbidden *claim* pattern
+      (``FORBIDDEN_CLAIM_PATTERNS``: unmeasured speed-ups, "production-ready",
+      "convergence validated", ...); the allow marker exempts a line
   D5  every ``pip install -e '.[X]'`` names a real ``pyproject`` extra
-  D6  every relative Markdown link in the README and ``docs/README.md`` resolves
+  D6  every relative Markdown link resolves in the README, ``docs/README.md`` and
+      the governance files (``PROJECT_CHARTER``, ``ROADMAP``, ``CONTRIBUTING``,
+      ``SUPPORT``, ``SECURITY``, ``GOVERNANCE``); anchors, http(s) and mailto skipped
   D7  the first released ``## [X.Y.Z]`` changelog heading equals ``pyproject`` version
+  D8  every tracked ``docs/**/*.md`` outside ``docs/archive/`` (and other than the
+      index itself) is linked from ``docs/README.md`` exactly once
+  D9  every bullet under the ROADMAP "Now" heading names an issue (``#123``) or an
+      OpenSpec change (``openspec/changes/<id>``)
+  D1  (CFF) if ``CITATION.cff`` exists, its ``version:`` equals ``pyproject`` version
 
 Exit codes: 0 = pass, 1 = violations, 2 = usage / internal error.
 """
@@ -39,6 +49,40 @@ FORBIDDEN_README_PATTERNS = (
     "requirements-dev.txt",
 )
 _ALLOW_MARKER = "<!-- doc-sync: allow -->"
+
+# D4b: claims the public documents may not make until a committed measurement
+# supports them. Matched case-insensitively, line by line, in README.md and
+# ROADMAP.md. The en dash (U+2013) and multiplication sign (U+00D7) are accepted
+# alongside the ASCII forms because the repository's own prose writes them.
+FORBIDDEN_CLAIM_PATTERNS = (
+    r"\b1[0-9](?:x\b|\u00d7)",
+    r"5[\u2013-]10[x\u00d7]",
+    r"production[- ]ready",
+    r"LLM eval gate",
+    r"convergence (?:validated|proven)",
+    r"Hub integration complete",
+)
+_CLAIM_RES = tuple(re.compile(p, re.IGNORECASE) for p in FORBIDDEN_CLAIM_PATTERNS)
+_CLAIM_TARGETS = ("README.md", "ROADMAP.md")
+
+# D6: files whose relative links must resolve.
+_LINK_TARGETS = (
+    "README.md",
+    "docs/README.md",
+    "PROJECT_CHARTER.md",
+    "ROADMAP.md",
+    "CONTRIBUTING.md",
+    "SUPPORT.md",
+    "SECURITY.md",
+    "GOVERNANCE.md",
+)
+
+# D9: what a "Now" bullet must carry to count as actionable.
+_NOW_REF_RE = re.compile(r"#\d+|openspec/changes/[A-Za-z0-9][A-Za-z0-9_.-]*")
+_NOW_HEADING_RE = re.compile(r"^(#{1,6})\s*Now\b")
+_ANY_HEADING_RE = re.compile(r"^(#{1,6})\s")
+_BULLET_RE = re.compile(r"^\s*[-*+]\s+")
+_CFF_VERSION_RE = re.compile(r"^version:\s*[\"']?([^\"'\s]+)", re.MULTILINE)
 
 _INIT_VERSION_RE = re.compile(r"__version__\s*=\s*[\"']([^\"']+)[\"']")
 _SETUP_VERSION_RE = re.compile(r"version\s*=\s*[\"']([^\"']+)[\"']")
@@ -94,6 +138,19 @@ def _check_versions(root: Path, pyproject: dict, issues: list[Issue]) -> None:
                     "D1",
                     f"setup.py version '{match.group(1)}' != pyproject '{canonical}'",
                     setup_path,
+                )
+            )
+    cff_path = root / "CITATION.cff"
+    if cff_path.is_file():
+        match = _CFF_VERSION_RE.search(cff_path.read_text(encoding="utf-8"))
+        if match is None:
+            issues.append(Issue("D1", "CITATION.cff declares no 'version:'", cff_path))
+        elif match.group(1) != canonical:
+            issues.append(
+                Issue(
+                    "D1",
+                    f"CITATION.cff version '{match.group(1)}' != pyproject '{canonical}'",
+                    cff_path,
                 )
             )
 
@@ -178,6 +235,22 @@ def _check_forbidden_readme(root: Path, issues: list[Issue]) -> None:
                 issues.append(Issue("D4", f"forbidden pattern '{pattern}' in README", readme, idx))
 
 
+def _check_forbidden_claims(root: Path, issues: list[Issue]) -> None:
+    for rel in _CLAIM_TARGETS:
+        doc = root / rel
+        if not doc.is_file():
+            continue
+        for idx, raw in enumerate(doc.read_text(encoding="utf-8").splitlines(), start=1):
+            if _ALLOW_MARKER in raw:
+                continue
+            for pattern in _CLAIM_RES:
+                found = pattern.search(raw)
+                if found:
+                    issues.append(
+                        Issue("D4b", f"forbidden claim '{found.group(0)}' in {rel}", doc, idx)
+                    )
+
+
 def _check_extras(root: Path, pyproject: dict, issues: list[Issue]) -> None:
     extras = set(pyproject.get("project", {}).get("optional-dependencies", {}))
     targets = [root / "README.md", root / "CONTRIBUTING.md", root / "CLAUDE.md"]
@@ -195,7 +268,7 @@ def _check_extras(root: Path, pyproject: dict, issues: list[Issue]) -> None:
 
 
 def _check_links(root: Path, issues: list[Issue]) -> None:
-    for rel in ("README.md", "docs/README.md"):
+    for rel in _LINK_TARGETS:
         doc = root / rel
         if not doc.is_file():
             continue
@@ -207,6 +280,88 @@ def _check_links(root: Path, issues: list[Issue]) -> None:
                     continue
                 if not (base / clean).exists():
                     issues.append(Issue("D6", f"broken link '{target}'", doc, idx))
+
+
+def _tracked_docs(root: Path) -> list[Path]:
+    """Markdown files under ``docs/`` that D8 holds to the index.
+
+    Uses ``git ls-files`` when ``root`` is a git checkout so that scratch files
+    are not counted; falls back to a filesystem walk otherwise (fixtures).
+    """
+    docs = root / "docs"
+    if not docs.is_dir():
+        return []
+    paths: list[Path] = []
+    if (root / ".git").exists():
+        import subprocess
+
+        try:
+            out = subprocess.run(
+                ["git", "-C", str(root), "ls-files", "--", "docs"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout
+            paths = [root / line for line in out.splitlines() if line.endswith(".md")]
+        except (OSError, subprocess.CalledProcessError):
+            paths = []
+    if not paths:
+        paths = sorted(docs.rglob("*.md"))
+    index = docs / "README.md"
+    return [
+        p
+        for p in paths
+        if p.is_file() and p != index and "archive" not in p.relative_to(docs).parts
+    ]
+
+
+def _check_docs_index(root: Path, issues: list[Issue]) -> None:
+    index = root / "docs" / "README.md"
+    if not index.is_file():
+        return
+    counts: dict[Path, int] = {}
+    base = index.parent
+    for raw in index.read_text(encoding="utf-8").splitlines():
+        for target in _LINK_RE.findall(raw):
+            clean = target.split("#", 1)[0].strip()
+            if not clean:
+                continue
+            try:
+                resolved = (base / clean).resolve()
+            except OSError:
+                continue
+            counts[resolved] = counts.get(resolved, 0) + 1
+    for doc in _tracked_docs(root):
+        n = counts.get(doc.resolve(), 0)
+        rel = doc.relative_to(root)
+        if n == 0:
+            issues.append(Issue("D8", f"'{rel}' is not linked from docs/README.md", index))
+        elif n > 1:
+            issues.append(Issue("D8", f"'{rel}' is linked {n} times from docs/README.md", index))
+
+
+def _check_roadmap_now(root: Path, issues: list[Issue]) -> None:
+    roadmap = root / "ROADMAP.md"
+    if not roadmap.is_file():
+        return
+    level: int | None = None
+    for idx, raw in enumerate(roadmap.read_text(encoding="utf-8").splitlines(), start=1):
+        heading = _ANY_HEADING_RE.match(raw)
+        if heading:
+            now = _NOW_HEADING_RE.match(raw)
+            if now:
+                level = len(now.group(1))
+            elif level is not None and len(heading.group(1)) <= level:
+                level = None
+            continue
+        if level is None or not _BULLET_RE.match(raw):
+            continue
+        if not _NOW_REF_RE.search(raw):
+            issues.append(
+                Issue(
+                    "D9", "'Now' bullet names no issue (#N) or openspec/changes/<id>", roadmap, idx
+                )
+            )
 
 
 def _check_changelog(root: Path, pyproject: dict, issues: list[Issue]) -> None:
@@ -235,8 +390,11 @@ def run(root: Path) -> list[Issue]:
     _check_module_reference(root, issues)
     _check_coverage_gate(root, pyproject, issues)
     _check_forbidden_readme(root, issues)
+    _check_forbidden_claims(root, issues)
     _check_extras(root, pyproject, issues)
     _check_links(root, issues)
+    _check_docs_index(root, issues)
+    _check_roadmap_now(root, issues)
     _check_changelog(root, pyproject, issues)
     return issues
 

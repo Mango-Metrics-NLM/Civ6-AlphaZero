@@ -1,5 +1,7 @@
 # Draw rate vs board size and turn limit (random play)
 
+> **Pre-fix artifact (superseded).** Generated before the 2026-09-04 search fixes (`e9d0572`: sign-correct value backup, completed-Q policy target, per-iteration seeds). The numbers below are a record of the mechanism and the wall clock, not evidence of strength. See [`docs/evidence/README.md`](../README.md) for the epoch convention.
+
 Generated 2026-09-02 from commit `50144cc` (default-branch head), Python 3.11.15,
 torch 2.14.0, numpy 2.4.6, CPU, `OMP_NUM_THREADS=2`. Reproduce with:
 

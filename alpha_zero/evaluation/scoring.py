@@ -8,8 +8,12 @@ Site                                             Statistic
 ===============================================  ==================================
 ``cloud/gcp/arena.py``                           ``wins / (wins + draws + losses)``
 ``scripts/run_encoder_ab.py``                    ``(wins + 0.5 * draws) / total``
-``evaluation/sequential_testing.py``             ``wins / (wins + losses)``
+``evaluation/sequential_testing.py`` (deleted)   ``wins / (wins + losses)``
 ===============================================  ==================================
+
+(``sequential_testing.py`` was removed in the 2026-09-02 dead-code pass; its
+decisive-rate statistic survives here as :func:`decisive_win_rate`, as a
+diagnostic rather than a gate.)
 
 The first scores **every draw as a loss**. Its ceiling is ``1 - draw_rate``, so
 against the conventional ``0.55`` threshold promotion becomes arithmetically
@@ -39,17 +43,23 @@ __all__ = [
     "ScoreSummary",
     "decisive_win_rate",
     "effective_n",
+    "elo_from_score_rate",
+    "elo_interval",
+    "games_for_score_rate",
     "minimum_detectable_effect",
     "promotion_decision",
     "score_interval",
     "score_rate",
+    "score_rate_from_elo",
     "score_variance",
     "summarize",
+    "win_rate",
 ]
 
 # Two-sided normal quantiles for the confidence levels we actually use. Computed
 # rather than approximated so there is no repeat of the sign defect that made
-# ``sequential_testing._get_z_score`` return a negative quantile.
+# the (since deleted) ``sequential_testing._get_z_score`` return a negative
+# quantile.
 _Z_TWO_SIDED = {0.90: 1.6448536269514722, 0.95: 1.959963984540054, 0.99: 2.5758293035489004}
 
 #: Confidence levels :func:`score_interval` can evaluate. Exposed so callers can
@@ -86,6 +96,21 @@ def score_rate(wins: int, draws: int, losses: int) -> float:
     if total == 0:
         return 0.5
     return (wins + 0.5 * draws) / total
+
+
+def win_rate(wins: int, draws: int, losses: int) -> float:
+    """``wins / (wins + draws + losses)`` -- the legacy statistic, draws as losses.
+
+    Kept **only** so that every site which still logs a ``win_rate`` for
+    artifact compatibility computes it in one place, next to the draw-aware
+    :func:`score_rate` it must be reported alongside. Its ceiling is
+    ``1 - draw_rate``; it is never the gate (see the module docstring). Returns
+    ``0.0`` for an empty record, matching every legacy call site.
+    """
+    total = _total(wins, draws, losses)
+    if total == 0:
+        return 0.0
+    return wins / total
 
 
 def decisive_win_rate(wins: int, losses: int) -> float | None:
@@ -188,6 +213,65 @@ def minimum_detectable_effect(
         raise ValueError(f"unsupported alpha={alpha} / power={power}")
     sigma = math.sqrt((1.0 - draw_rate) / 4.0)
     return (z_alpha + z_power) * sigma / math.sqrt(n_games)
+
+
+# Clip for the Elo transform: a score rate of exactly 0 or 1 maps to an
+# infinite rating difference, which no finite record supports.
+_ELO_CLIP = 1e-9
+
+
+def elo_from_score_rate(p: float) -> float:
+    """Elo difference implied by an expected score rate ``p``.
+
+    The standard logistic relation ``Elo = -400 * log10(1 / p - 1)``, so that
+    ``p = 0.5`` is ``0`` Elo, ``p = 0.52`` is about ``+13.9`` and ``p = 0.55``
+    about ``+34.9``. The transform is monotone, which is what lets
+    :func:`elo_interval` map a score-rate interval bound-for-bound.
+
+    ``p`` is clipped to ``(0, 1)`` exclusive before the logarithm; the
+    endpoints would otherwise be ``-inf``/``+inf``.
+    """
+    if not 0.0 <= p <= 1.0:
+        raise ValueError(f"score rate must be in [0, 1], got {p}")
+    clipped = min(max(p, _ELO_CLIP), 1.0 - _ELO_CLIP)
+    return -400.0 * math.log10(1.0 / clipped - 1.0)
+
+
+def score_rate_from_elo(elo: float) -> float:
+    """Inverse of :func:`elo_from_score_rate`: ``1 / (1 + 10 ** (-elo / 400))``."""
+    return 1.0 / (1.0 + math.pow(10.0, -elo / 400.0))
+
+
+def elo_interval(
+    wins: int, draws: int, losses: int, confidence: float = 0.95
+) -> tuple[float, float]:
+    """Confidence interval for the implied Elo difference.
+
+    A monotone transform of :func:`score_interval`, so it inherits that
+    interval's ternary variance and pseudo-count behaviour: symmetric records
+    give a symmetric interval around 0, and the width shrinks with ``n``.
+    """
+    low, high = score_interval(wins, draws, losses, confidence)
+    return (elo_from_score_rate(low), elo_from_score_rate(high))
+
+
+def games_for_score_rate(
+    target_score_rate: float, draw_rate: float, alpha: float = 0.05, power: float = 0.80
+) -> int:
+    """Games needed so that ``target_score_rate`` is the MDE at ``alpha``/``power``.
+
+    Inverts :func:`minimum_detectable_effect`: ``n = ((z_alpha + z_power) *
+    sigma / delta) ** 2`` with ``delta = target_score_rate - 0.5`` and
+    ``sigma ** 2 = (1 - draw_rate) / 4``. Rounded up. This is the sample size
+    for a one-sided superiority test at parity, not for a threshold above it.
+    """
+    delta = target_score_rate - 0.5
+    if delta <= 0.0:
+        raise ValueError(f"target_score_rate must exceed 0.5, got {target_score_rate}")
+    # Reuse the quantile tables through the forward function at n=1:
+    # MDE(1) = (z_alpha + z_power) * sigma.
+    unit = minimum_detectable_effect(1, draw_rate, alpha=alpha, power=power)
+    return math.ceil((unit / delta) ** 2)
 
 
 @dataclass(frozen=True)

@@ -5,9 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Project ID** | `hrmtrain` |
-| **Project Number** | `1019219508001` |
 | **Region** | `us-central1` |
-| **Account** | `ianshank@gmail.com` |
+| **Account** | the maintainer (@ianshank) |
 
 ## Resources
 
@@ -21,27 +20,34 @@
 | `muzero-world-model` | DOCKER | us-central1 | Legacy MuZero images |
 | `vertex-ai-training` | DOCKER | us-central1 | General Vertex AI training |
 
+**Image paths.** Every build config pushes to `civ6az/alphazero-training` (training,
+`cloudbuild.yaml` and `dockerfiles/cloudbuild.yaml`) and `civ6az/alphazero-inference`
+(`infra/cloudbuild-gameplay.yaml`), and every launcher and manifest pulls the same paths
+(`tests/regression/test_cloud_build_images_regression.py` keeps them aligned). Images built
+before 2026-11-10 live under an older image name in the same repository; to keep running one
+of them, set `CIV6AZ_CONTAINER_IMAGE_URI` to its full URI.
+
 **Active Image:**
 
 ```
-us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.2.0
+us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-training:v1.2.0
 ```
 
 **Stabilized Image (post bug-fix):**
 
 ```
-us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized
+us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-training:v15-stabilized
 ```
 
 ### GCS Buckets
 
 | Bucket | Purpose |
 |--------|---------|
-| `civ6az-training` | Models, trajectories, checkpoints, logs |
-| `civ6az-muzero-training` | MuZero world model artifacts |
+| `<training-bucket>` | Models, trajectories, checkpoints, logs |
+| `<muzero-bucket>` | MuZero world model artifacts |
 | `hrmtrain_cloudbuild` | Cloud Build source tarballs |
 
-**Bucket Structure — `gs://civ6az-training/`:**
+**Bucket Structure — `gs://<training-bucket>/`:**
 
 ```
 models/civ6az/v000/           # Initial model (v0)
@@ -59,7 +65,7 @@ logs/civ6az/                  # Training logs
 |--------|-------|
 | Total iterations | 49 |
 | Model versions | v000 → v219 |
-| Container image | `civ6az-training:v1.2.0` |
+| Container image | `alphazero-training:v1.2.0` |
 | W&B project | `civ6-alphazero` |
 | W&B group | `dashing-firebrand-1393` |
 
@@ -67,7 +73,7 @@ logs/civ6az/                  # Training logs
 
 | Field | Value |
 |-------|-------|
-| Display Name | `civ6az-training-iter049` |
+| Display Name | `civ6az-mzwm-training-iter049` |
 | Job ID | `4029264727690444800` |
 | State | ✅ `JOB_STATE_SUCCEEDED` |
 | Duration | 5m 32s (21:24:44 → 21:30:16 UTC) |
@@ -100,8 +106,8 @@ logs/civ6az/                  # Training logs
 |----------|-------|--------|
 | `CIV6AZ_VERTEX_PROJECT` | `hrmtrain` | Required |
 | `CIV6AZ_VERTEX_REGION` | `us-central1` | Required |
-| `CIV6AZ_GCS_BUCKET` | `civ6az-training` | Required |
-| `CIV6AZ_CONTAINER_IMAGE_URI` | `us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized` | Required |
+| `CIV6AZ_GCS_BUCKET` | `<training-bucket>` | Required |
+| `CIV6AZ_CONTAINER_IMAGE_URI` | `us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-training:v15-stabilized` | Required |
 | `CIV6AZ_ENCODER_TYPE` | `patch_embed` | Default |
 | `CIV6AZ_MLFLOW_ENABLED` | `true` | Optional |
 | `CIV6AZ_MLFLOW_TRACKING_URI` | `sqlite:///mlflow.db` | Optional |
@@ -110,7 +116,7 @@ logs/civ6az/                  # Training logs
 
 ## IAM & Service Accounts
 
-- **Active Account**: `ianshank@gmail.com` (owner)
+- **Active Account**: the maintainer (@ianshank), owner
 - **ADC**: Application Default Credentials configured
 - **Container SA**: Uses Vertex AI default compute service account
 
@@ -154,12 +160,12 @@ python -m alpha_zero.cloud.gcp.cli init --upload-model --version 218
 
 ```bash
 # Delete training artifacts (DESTRUCTIVE)
-gcloud storage rm -r gs://civ6az-training/trajectories/
-gcloud storage rm -r gs://civ6az-training/checkpoints/
+gcloud storage rm -r gs://<training-bucket>/trajectories/
+gcloud storage rm -r gs://<training-bucket>/checkpoints/
 
 # Delete container images
 gcloud artifacts docker images delete \
-  us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v15-stabilized
+  us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az/alphazero-training:v15-stabilized
 
 # Cancel running jobs
 gcloud ai custom-jobs cancel JOB_ID --region=us-central1

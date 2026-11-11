@@ -203,10 +203,19 @@ class PlayerStanding:
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate."""
+        """Legacy win rate (draws count as losses), from the scoring SSOT."""
+        from alpha_zero.evaluation.scoring import win_rate
+
         if self.total_games == 0:
             return 0.0
-        return self.wins / self.total_games
+        return win_rate(self.wins, self.draws, self.losses)
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware companion: ``(wins + 0.5 * draws) / total_games``."""
+        from alpha_zero.evaluation.scoring import score_rate
+
+        return score_rate(self.wins, self.draws, self.losses)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -220,6 +229,7 @@ class PlayerStanding:
             "points": self.points,
             "total_games": self.total_games,
             "win_rate": self.win_rate,
+            "score_rate": self.score_rate,
         }
 
 

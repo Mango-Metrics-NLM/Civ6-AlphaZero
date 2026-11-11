@@ -46,6 +46,7 @@ def _make_win_rate_result(
     wr.total_games = total_games
     # Replicate real property values
     wr.win_rate = wins / total_games * 100 if total_games > 0 else 0.0
+    wr.score_rate = (wins + 0.5 * draws) / total_games * 100 if total_games > 0 else 0.0
     wr.draw_rate = draws / total_games * 100 if total_games > 0 else 0.0
     wr.loss_rate = losses / total_games * 100 if total_games > 0 else 0.0
     return wr
@@ -290,11 +291,26 @@ class TestExtractGameStatsMetrics:
 class TestResultToMlflowMetrics:
     """Tests for the combined result_to_mlflow_metrics()."""
 
-    def test_returns_14_metrics(self) -> None:
-        """Combined function should return 14 metrics (7 win-rate + 7 stats)."""
+    def test_returns_15_metrics(self) -> None:
+        """Combined function returns 15 metrics (8 win-rate incl. score_rate + 7 stats).
+
+        Was 14 before ``WinRateResult.score_rate`` (draw-aware, E1) existed.
+        """
         result = _make_eval_result()
         metrics = result_to_mlflow_metrics(result, "baseline/random")
-        assert len(metrics) == 14
+        assert len(metrics) == 15
+        assert "baseline/random/score_rate" in metrics
+
+    def test_score_rate_is_draw_aware_and_normalised(self) -> None:
+        """4 W / 2 D / 14 L over 20 games scores (4 + 0.5 * 2) / 20 = 0.25, logged on 0-1.
+
+        The fixture once left ``score_rate`` unset, so the extractor normalised an
+        auto-created mock and the test passed against a nonsense value.
+        """
+        result = _make_eval_result(wins=4, draws=2, losses=14, total_games=20)
+        metrics = result_to_mlflow_metrics(result, "baseline/random")
+        assert metrics["baseline/random/score_rate"] == pytest.approx(0.25)
+        assert metrics["baseline/random/win_rate"] == pytest.approx(0.20)
 
     def test_all_keys_prefixed(self) -> None:
         """All keys should have the given prefix."""

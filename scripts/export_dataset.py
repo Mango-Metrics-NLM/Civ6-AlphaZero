@@ -16,7 +16,7 @@ Usage::
     python scripts/export_dataset.py \\
         --type elo \\
         --source-path ./results/ \\
-        --repo-id Mango-Metrics-NLM/civ6-elo-tournament \\
+        --repo-id ianshank/civ6-elo-tournament \\
         --publish
 """
 
@@ -39,7 +39,7 @@ try:
     _HUB_AVAILABLE = True
 except ImportError:
     _HUB_AVAILABLE = False
-    HF_ORG = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+    HF_ORG = os.environ.get("HF_ORG", "ianshank")
 
 logging.basicConfig(
     level=logging.INFO,

@@ -120,7 +120,7 @@ class TestOrchestratorContainerGuard:
             mock.patch.dict(
                 os.environ,
                 {
-                    "CIV6AZ_VERTEX_PROJECT": "hrmtrain",
+                    "CIV6AZ_VERTEX_PROJECT": "my-gcp-project",
                     "CIV6AZ_GCS_BUCKET": "test-bucket",
                     "CIV6AZ_CONTAINER_IMAGE_URI": "gcr.io/test/image:v1",
                 },

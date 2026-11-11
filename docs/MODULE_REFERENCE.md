@@ -4,7 +4,7 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v1.8.0, 2026-09-04 (`core/mcts/backup.py` and `utils/seeding.py` added;
+- **As of:** v2.0.0, 2026-11-10 (`core/mcts/backup.py` and `utils/seeding.py` added;
   module set unchanged since the 2026-09-02 Tier A dead-code removal)
 - **Submodule count:** 29
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
@@ -17,7 +17,7 @@ or removed.
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
-| `evaluation` | 12 | MCTS evaluation, promotion scoring SSOT (`scoring.py`) and policy registry (`promotion.py`), + `llm_harness/` callable target for the LLM eval gate |
+| `evaluation` | 13 | MCTS evaluation, promotion scoring SSOT (`scoring.py`) and policy registry (`promotion.py`), + `llm_harness/` callable target for the StrategyAdvisor eval harness |
 | `hexcrystal` | 7 | Hex-topology spatial encoders + encoder registry — torch-only, standalone-reusable; optional Hub mixin (`hub` extra) |
 | `hub` | 5 | Hugging Face Hub integration: model card generation, dataset exporter, upload utility, hub mixins (`hub` extra) |
 | `envs` | 11 | MicroCiv environment, vectorized env, state→tensor encoders |

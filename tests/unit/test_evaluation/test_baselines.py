@@ -9,6 +9,7 @@ from alpha_zero.evaluation.baselines import (
     BaselineFactory,
     HeuristicPlayer,
     RandomPlayer,
+    SimpleMCTSPlayer,
 )
 from alpha_zero.evaluation.config import (
     BaselineConfig,
@@ -269,3 +270,51 @@ class TestBaselineFactory:
 
         with pytest.raises(ValueError, match="Unknown baseline type"):
             BaselineFactory.create(config)
+
+
+class TestSimpleMCTSPlayer:
+    """``BaselineType.SIMPLE_MCTS``: a network-free search behind the player protocol."""
+
+    def test_factory_builds_it_with_the_configured_budget(self) -> None:
+        config = BaselineConfig(type=BaselineType.SIMPLE_MCTS, name="rollouts", mcts_simulations=3)
+        player = BaselineFactory.create(config, seed=5)
+        assert isinstance(player, SimpleMCTSPlayer)
+        assert player.name == "rollouts"
+        assert player.num_simulations == 3
+        assert player.mcts.num_simulations == 3
+
+    def test_string_type_round_trips(self) -> None:
+        assert BaselineConfig(type="simple_mcts").type is BaselineType.SIMPLE_MCTS
+
+    def test_plays_a_legal_move_on_a_real_env(self) -> None:
+        from alpha_zero.envs.microciv import MicroCivEnv
+
+        env = MicroCivEnv(board_size=6, max_turns=4, seed=1)
+        obs, _ = env.reset()
+        player = SimpleMCTSPlayer(num_simulations=2, seed=1)
+        action = player.select_action(env, obs)
+        assert obs["action_mask"][action] > 0
+
+    def test_same_seed_same_moves(self) -> None:
+        from alpha_zero.envs.microciv import MicroCivEnv
+
+        def play(seed: int) -> list[int]:
+            env = MicroCivEnv(board_size=6, max_turns=4, seed=1)
+            obs, _ = env.reset()
+            player = SimpleMCTSPlayer(num_simulations=2, seed=seed)
+            moves = []
+            for _ in range(6):
+                action = player.select_action(env, obs)
+                moves.append(action)
+                obs, _r, terminated, truncated, _i = env.step(action)
+                if terminated or truncated:
+                    break
+            return moves
+
+        assert play(3) == play(3)
+
+    def test_reset_and_stats(self) -> None:
+        player = SimpleMCTSPlayer(num_simulations=4)
+        player.reset()
+        stats = player.get_stats()
+        assert stats["type"] == "simple_mcts" and stats["games_played"] == 1

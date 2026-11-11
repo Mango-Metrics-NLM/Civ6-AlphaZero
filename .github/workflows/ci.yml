@@ -2,7 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main, "feature/*", "next-steps-*", "claude/**"]
+    # Two concrete branch names, deliberately. The first is the repository's
+    # default branch today; the second is what the maintainer will rename it to
+    # before the public release. Listing both means the rename cannot open a
+    # window in which pushes to the default branch run no CI, and
+    # tests/regression/test_workflow_pinning_regression.py holds this list to
+    # {default branch, main, globs} so a third stale name cannot creep back in.
+    # `feature/*` and `next-steps-*` were dropped 2026-11-10: `git branch -r`
+    # showed no branch matching either. `claude/**` stays because agent working
+    # branches push there and want a CI run before a pull request exists.
+    branches:
+      - claude/civ6-alphazero-implementation-vMnun
+      - main
+      - "claude/**"
   # No `branches:` filter, deliberately. It used to read `branches: [main]`,
   # but this repository's default branch is not `main` -- it is
   # `claude/civ6-alphazero-implementation-vMnun`. Pull requests into the real
@@ -19,9 +31,24 @@ concurrency:
 
 # Least privilege for the default GITHUB_TOKEN. Every job here only checks out
 # and uploads artifacts (actions/upload-artifact needs no extra scope); none
-# writes to the repository, packages, or PRs.
+# writes to the repository, packages, or PRs. Every checkout also sets
+# `persist-credentials: false`: no step here pushes, so the token has no
+# business sitting in .git/config where any later step (or an uploaded
+# artifact that happens to include .git) can read it.
 permissions:
   contents: read
+
+env:
+  # Every job that installs the package installs torch from the CPU wheel index
+  # FIRST, then `pip install -e ".[dev]"` finds the requirement already
+  # satisfied and never resolves the default PyPI build -- which on a Linux
+  # runner is the CUDA build plus ~2.6 GB of nvidia-*/triton wheels. PR #132's
+  # test job failed before a single test ran on a cut-off triton download.
+  # The version floor stays in pyproject.toml; this only chooses the index.
+  # TORCH_FLAVOR is part of every pip cache key so a cache built against one
+  # index is never restored for the other.
+  TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+  TORCH_FLAVOR: cpu
 
 jobs:
   lint:
@@ -30,19 +57,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
 
+      # Keyed on pyproject.toml alone: it is the only file CI installs from.
+      # requirements.txt is a drifting mirror that no job reads, so hashing it
+      # only invalidated the cache for changes that could not affect the install.
       - name: Cache pip dependencies
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-lint-${{ hashFiles('**/pyproject.toml', '**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-lint-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-lint-
+            ${{ runner.os }}-pip-lint-torch-${{ env.TORCH_FLAVOR }}-
 
       # The dev extra pins ruff/mypy (same versions as .pre-commit-config.yaml)
       # and installs the project itself, so mypy sees real dependencies instead
@@ -50,6 +82,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
           pip install -e ".[dev]"
 
       - name: Run ruff linter
@@ -68,13 +101,29 @@ jobs:
     name: Test (Python ${{ matrix.python-version }})
     timeout-minutes: 40
     runs-on: ubuntu-latest
+    # 3.13 is advisory: `experimental: true` lets it fail without failing the
+    # workflow, so a 3.13-only break is visible in the run but does not block a
+    # merge. Promote it to the required list by moving it into `python-version`
+    # once it has run green for a few weeks.
+    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12"]
+        experimental: [false]
+        include:
+          - python-version: "3.13"
+            experimental: true
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Full history: tests/regression/test_coverage_floors_ratchet.py
+          # compares coverage-floors.json against its merge base, which a
+          # depth-1 checkout cannot resolve -- the ratchet then skipped on every
+          # CI run and only ever ran on a developer's machine.
+          fetch-depth: 0
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -85,14 +134,14 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('**/pyproject.toml', '**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-${{ matrix.python-version }}-
-            ${{ runner.os }}-pip-
+            ${{ runner.os }}-pip-${{ matrix.python-version }}-torch-${{ env.TORCH_FLAVOR }}-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
           pip install -e ".[dev]"
 
       - name: Run unit tests
@@ -133,6 +182,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -143,14 +194,17 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-cloud-${{ hashFiles('**/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-cloud-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-cloud-
+            ${{ runner.os }}-pip-cloud-torch-${{ env.TORCH_FLAVOR }}-
 
+      # pytest-cov comes from the dev extra; the bare `pytest-cov` that used to
+      # trail this line installed an unpinned second copy for nothing.
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]" pytest-cov
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
+          pip install -e ".[dev]"
 
       # alpha_zero/cloud/* is omitted from the global gate, so the deployed path
       # was unmeasured by any job. These tests already exercised it; they now
@@ -182,6 +236,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           # Full history: `gitleaks git` scans every commit, and a secret removed
           # in a later commit is still published in the one that added it.
           fetch-depth: 0
@@ -194,6 +249,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
           pip install -e ".[dev]"
 
       - name: Run security sanity tests
@@ -203,12 +259,15 @@ jobs:
       # here. This job used to restate the install and both scan commands, which
       # is how it came to run `gitleaks dir .` -- reading gitignored files --
       # while the Makefile comment beside it claimed a tracked-tree scan. The
-      # target installs its own version-pinned binary; scoping to HEAD's lineage
-      # and staging the committable file set are documented there.
+      # target installs its own version-pinned binary (SHA-256 verified against
+      # the pin in the Makefile); scoping to HEAD's lineage and staging the
+      # committable file set are documented there.
       - name: Scan for secrets (tracked tree + this branch's history)
         run: make security-secrets
 
-      - name: Run bandit security scan
+      # Blocking: high severity AND high confidence over the package. Zero
+      # findings today; a new one is a real defect.
+      - name: Run bandit security scan (high/high, blocking)
         run: bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high -f json -o bandit-report.json
 
       - name: Upload bandit report
@@ -218,6 +277,26 @@ jobs:
           name: bandit-report
           path: bandit-report.json
 
+      # Advisory: medium severity / medium confidence over the package, the
+      # scripts and the launcher, reported against the accepted-findings
+      # baseline so only NEW findings appear in the report. The baseline was
+      # generated on 2026-11-10 (30 findings, all reviewed as accepted or
+      # tracked) with exactly the command in the Makefile's
+      # `test-security-medium` comment. continue-on-error until the maintainer
+      # has watched a few runs; flip it to blocking by deleting that line.
+      - name: Run bandit security scan (medium/medium vs baseline, advisory)
+        continue-on-error: true
+        run: >
+          bandit -r alpha_zero scripts infra -s B101 -ll -ii
+          -b .security/bandit-baseline.json -f json -o bandit-medium-report.json
+
+      - name: Upload bandit medium report
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: bandit-medium-report
+          path: bandit-medium-report.json
+
   governance:
     name: Governance Gates
     timeout-minutes: 15
@@ -225,8 +304,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Full history so validate_kb.py's handoff-immutability check (added in a
-          # later phase) can resolve origin/main on push events.
+          persist-credentials: false
+          # Full history: validate_kb.py --git makes the handoff-immutability
+          # check (K7) mandatory and FAILS on a shallow clone, so this must stay.
           fetch-depth: 0
 
       - name: Set up Python
@@ -234,8 +314,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Both pinned. tests/regression/test_workflow_pinning_regression.py fails
+      # any `pip install <name>` here without `==`, because an unpinned tool in
+      # a gate is a gate whose definition changes under you.
       - name: Install governance tools
-        run: pip install ruff==0.15.8 pytest
+        run: pip install ruff==0.15.8 pytest==9.2.0
 
       - name: Lint governance code
         run: >-
@@ -265,6 +348,19 @@ jobs:
           pytest -c tests/governance/pytest.ini
           --confcutdir=tests/governance -p no:cacheprovider tests/governance
 
+      # Static audit of the workflows themselves (unpinned actions, persisted
+      # credentials, template injection, excessive permissions). --offline so
+      # it needs no token and cannot be rate-limited. Advisory for now: the
+      # 2026-11-10 local run was clean after the persist-credentials and
+      # template-injection fixes landed; make it blocking once a few CI runs
+      # agree.
+      - name: Install zizmor
+        run: pip install zizmor==1.32.0
+
+      - name: Audit workflows with zizmor (advisory)
+        continue-on-error: true
+        run: zizmor --offline .github/workflows
+
   eval-harness:
     name: LLM Eval Harness
     timeout-minutes: 20
@@ -275,6 +371,8 @@ jobs:
     # deterministic (stub LLM), so failures here are real contract regressions.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -285,19 +383,20 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-eval-${{ hashFiles('**/pyproject.toml') }}
+          key: ${{ runner.os }}-pip-eval-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-eval-
+            ${{ runner.os }}-pip-eval-torch-${{ env.TORCH_FLAVOR }}-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
           pip install -e ".[eval]"
 
       - name: Probe eval-harness import (distinguishes deps-broke from gate-failed)
         run: python -c "import eval_harness; print('eval_harness importable')"
 
-      - name: Run LLM eval gate
+      - name: Run the StrategyAdvisor output-contract gate
         run: make eval-llm
 
   coverage:
@@ -308,6 +407,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # This job runs tests/regression/ too, so the floor ratchet needs a
+          # resolvable merge base here as well (see the test job).
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
@@ -318,14 +422,15 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-cov-${{ hashFiles('**/pyproject.toml', '**/requirements.txt') }}
+          key: ${{ runner.os }}-pip-cov-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
           restore-keys: |
-            ${{ runner.os }}-pip-cov-
+            ${{ runner.os }}-pip-cov-torch-${{ env.TORCH_FLAVOR }}-
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -e ".[dev]" pytest-cov
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
+          pip install -e ".[dev]"
 
       # `--ignore=tests/unit/test_distributed` was removed 2026-09-02: that
       # directory has never existed (the DDP suites are flat

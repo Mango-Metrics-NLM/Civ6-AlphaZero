@@ -1,0 +1,50 @@
+{
+  "_comment": [
+    "Data for tests/regression/test_public_readiness_regression.py. Patterns are Python",
+    "regexes. Every *_allowlist maps a tracked path to a reason; an entry whose path no",
+    "longer exists or no longer matches is STALE and fails the gate, so this file cannot",
+    "silently accumulate exemptions. Decision record: plan 2.4 (scrub by sensitivity) and",
+    "docs/audits/2026-11-10-public-release-review.md 3."
+  ],
+  "email_allowlist": {},
+  "forbidden_always": [
+    "1019219508001",
+    "[0-9]{6,}-compute@developer\\.gserviceaccount\\.com",
+    "@hrmtrain\\.iam\\.gserviceaccount\\.com"
+  ],
+  "bucket_literals": [
+    "civ6az-training",
+    "civ6az-muzero-training",
+    "civ6az-inference"
+  ],
+  "bucket_literal_allowlist": {},
+  "project_id": "hrmtrain",
+  "project_id_baseline_count": 7,
+  "project_id_allowlist": {
+    "CHANGELOG.md": "History is not rewritten (plan 2.4); the changelog records the deployments as they were.",
+    "kb/specs/20260902-tech-debt-hardening.md": "kb/ is left alone by decision (plan 2.4): append-only workflow history.",
+    "kb/summaries/dev-sqe.md": "kb/ is left alone by decision (plan 2.4): append-only workflow history."
+  },
+  "binary_allowlist": {},
+  "user_path_allowlist": {
+    "tests/unit/test_bridge_config.py": "Synthetic /home/testuser fixture monkeypatched over Path.home(); not a real account."
+  },
+  "forbidden_claims": [
+    "\\+31\\.4\\s*Elo",
+    "\\b13x\\b",
+    "5[\u2013-]10x",
+    "LLM eval gate",
+    "Hub integration complete"
+  ],
+  "claim_scan_exclusions": {
+    "CHANGELOG.md": "History: records claims as they were made.",
+    "docs/evidence/": "Measured numbers live here by design; the claim ban is about prose that quotes them elsewhere.",
+    "docs/archive/": "Frozen, unmaintained documents.",
+    "kb/": "Append-only workflow history.",
+    "docs/audits/": "The audit quotes the claims in order to retract them.",
+    "scripts/check_doc_sync.py": "Defines the README/ROADMAP forbidden-claim patterns; must spell them.",
+    "tests/governance/": "Negative controls for check_doc_sync spell the claims on purpose.",
+    "tests/regression/test_public_readiness_regression.py": "This gate's own controls.",
+    "tests/regression/public_readiness_manifest.json": "This manifest spells the patterns."
+  }
+}

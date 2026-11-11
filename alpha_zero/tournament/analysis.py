@@ -132,6 +132,11 @@ class GenerationComparison:
     elo_difference: float = 0.0
     significant: bool = False
     sample_size: int = 0
+    #: Draw-aware companions (E1). ``significant`` still derives from the win
+    #: rates pending a recorded decision.
+    gen_a_score_rate: float = 0.0
+    gen_b_score_rate: float = 0.0
+    draw_rate: float = 0.0
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -140,6 +145,9 @@ class GenerationComparison:
             "gen_b": self.gen_b,
             "gen_a_win_rate": self.gen_a_win_rate,
             "gen_b_win_rate": self.gen_b_win_rate,
+            "gen_a_score_rate": self.gen_a_score_rate,
+            "gen_b_score_rate": self.gen_b_score_rate,
+            "draw_rate": self.draw_rate,
             "elo_difference": self.elo_difference,
             "significant": self.significant,
             "sample_size": self.sample_size,
@@ -454,6 +462,7 @@ class TournamentAnalyzer:
         # Count wins for each generation in cross-generation matches
         gen_a_wins = 0
         gen_b_wins = 0
+        gen_draws = 0
         total_matches = 0
 
         for player_a in gen_a_players:
@@ -462,13 +471,22 @@ class TournamentAnalyzer:
                 if h2h["total_games"] > 0:
                     gen_a_wins += h2h["player1_wins"]
                     gen_b_wins += h2h["player2_wins"]
+                    # Older head-to-head payloads (and test doubles) carry no draws key.
+                    gen_draws += int(h2h.get("draws", 0))
                     total_matches += h2h["total_games"]
 
         comparison.sample_size = total_matches
 
         if total_matches > 0:
-            comparison.gen_a_win_rate = gen_a_wins / total_matches
-            comparison.gen_b_win_rate = gen_b_wins / total_matches
+            # total_matches == gen_a_wins + gen_b_wins + gen_draws, so the SSOT
+            # reproduces the former divisions exactly and adds the score rates.
+            from alpha_zero.evaluation.scoring import score_rate, win_rate
+
+            comparison.gen_a_win_rate = win_rate(gen_a_wins, gen_draws, gen_b_wins)
+            comparison.gen_b_win_rate = win_rate(gen_b_wins, gen_draws, gen_a_wins)
+            comparison.gen_a_score_rate = score_rate(gen_a_wins, gen_draws, gen_b_wins)
+            comparison.gen_b_score_rate = score_rate(gen_b_wins, gen_draws, gen_a_wins)
+            comparison.draw_rate = gen_draws / total_matches
         else:
             logger.warning(f"No matches found between generations {gen_a} and {gen_b}")
 

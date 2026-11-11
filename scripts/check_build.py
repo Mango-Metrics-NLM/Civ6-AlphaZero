@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 import sys
 import urllib.request
 import warnings
@@ -20,7 +21,9 @@ warnings.warn(
 )
 
 BUILD_ID = sys.argv[1] if len(sys.argv) > 1 else "283ca181-47bb-4029-b1c0-5a81690b8756"
-PROJECT = sys.argv[2] if len(sys.argv) > 2 else "hrmtrain"
+PROJECT = sys.argv[2] if len(sys.argv) > 2 else os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not PROJECT:
+    raise SystemExit("Pass the project as argv[2] or set CIV6AZ_VERTEX_PROJECT (no default).")
 
 creds, _ = google.auth.default()
 creds.refresh(google.auth.transport.requests.Request())

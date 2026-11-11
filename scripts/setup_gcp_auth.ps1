@@ -346,7 +346,7 @@ function Main {
         Write-Status "GCP configuration is complete!" "OK"
         Write-Host ""
         Write-Host "You can now run Vertex AI training jobs:" -ForegroundColor Cyan
-        Write-Host "  python -m alpha_zero.cloud.gcp.cli train --config configs/vertex_training.yaml" -ForegroundColor Gray
+        Write-Host "  python -m alpha_zero.cloud.gcp.cli train --config configs/local/vertex_training.yaml  (copy configs/vertex_training.example.yaml there first)" -ForegroundColor Gray
         return 0
     }
     else {

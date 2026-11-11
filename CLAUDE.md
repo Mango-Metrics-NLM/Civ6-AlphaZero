@@ -59,9 +59,9 @@ from numerical instability, and race conditions in distributed components.
 ### 2.1 Hard Constraints (Violations = Failure)
 
 ```
-- Language/Runtime: Python 3.10+ (type hints required)
+- Language/Runtime: Python 3.11+ (type hints required; `requires-python = ">=3.11"`)
 - Required Dependencies:
-  - torch >= 1.13.0 (neural networks)
+  - torch >= 2.0.0 (neural networks)
   - numpy >= 1.23.0 (numerical operations)
   - gymnasium >= 0.29.0 (RL environments)
   - pyyaml >= 6.0 (configuration)
@@ -126,7 +126,7 @@ IN SCOPE:
 - All files in alpha_zero/
 - All files in tests/
 - Configuration files in configs/
-- Root-level Python files (pyproject.toml, run_*.py)
+- Root-level configuration (pyproject.toml) and the runners in scripts/ (scripts/run_*.py)
 - Documentation files (CLAUDE.md, README.md)
 - Environment templates (.env.template)
 - Requirements files (requirements.txt)
@@ -270,7 +270,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/ -v --cov=alpha_zero` | Run tests with coverage |
 | `ruff check alpha_zero/` | Lint Python code |
 | `mypy alpha_zero/` | Type check |
-| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, LLM eval gate) — use this instead of hand-assembling the sequence |
+| `make verify` | **Reproduce every CI gate locally** (lint, format, types, CI's four suites, security incl. bandit, governance, validators, coverage, advisor output-contract gate) — use this instead of hand-assembling the sequence |
 | `OMP_NUM_THREADS=2 pytest tests/unit -q -m "not slow"` | **Run the suite in this sandbox.** Without the thread cap, two tests wedge in `torch.conv2d` on the OpenMP spin-wait (§5.3) and hit the 120 s timeout. With it: 9,921 passed in 3m39s. Applies to any local suite run touching torch. |
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
@@ -283,14 +283,18 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.training_civ6 --seed 42` | Reproducible training run — two runs at one seed are identical |
 | `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies |
 | `python scripts/run_baseline_eval.py --seed 42 ...` | Reproducible evaluation probe (see `docs/evidence/seeded_probe_reproducibility/`) |
+| `python scripts/benchmark_suite.py --help` | Benchmark protocol over the promotion judge's own `run_arena` (paired seats, seeded search, evidence block); see `docs/EVALUATION.md` §4 |
+| `python -m alpha_zero.training_civ6 --mcts gumbel ...` | Run the local trainer and its evaluation on the Gumbel search (default `civ6` = PUCT is unchanged) |
+| `python -m alpha_zero.cloud.gcp.evaluation_worker --seed 42 ...` | Seeded arena evaluation on the deployed path (`derive_seed(seed, EVAL_ENV, iteration)`) |
+| `CIV6AZ_PROMOTION_MAX_IMPLIED_ELO=50` | Ceiling above which the promotion feasibility report warns that the configured gate is under-powered at the configured game count |
 | `pytest tests/regression/test_training_determinism_regression.py -v` | Determinism gate (~7 s) |
 | `python -m alpha_zero.distributed.coordinator --dry_run` | Distributed smoke test |
 | `python -m alpha_zero.orchestrator --help` | Show orchestrator options |
 | `python -m alpha_zero.orchestrator --preset fast --dry_run` | Fast preset smoke test |
 | `python -m alpha_zero.orchestrator --config configs/orchestrator.yaml --dry_run` | Config file smoke test |
 | `pip install -e '.[eval]'` | Install the LLM eval-harness (langfuse-eval-harness from git) |
-| `make eval-llm` | Run the StrategyAdvisor LLM eval gate (offline, exit-code propagating) |
-| `python scripts/run_llm_eval.py` | Run the LLM eval gate directly (both analyze + report configs) |
+| `make eval-llm` | Run the StrategyAdvisor output-contract gate (offline stub LLM, exit-code propagating) |
+| `python scripts/run_llm_eval.py` | Run the advisor contract gate directly (both analyze + report configs) |
 | `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
 | `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
@@ -302,8 +306,8 @@ When making changes, update the relevant sections below:
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
-| `python run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
-| `python run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
+| `python scripts/run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
+| `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides) |
 | `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |
 | `python scripts/run_encoder_ab.py train` | Train both encoder arms locally (device auto-detected, seeded) |
 | `python scripts/run_encoder_ab.py arena --num_games 800` | Head-to-head arena; writes counts + Wilson 95% CI |
@@ -369,6 +373,7 @@ When making changes, update the relevant sections below:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-10 | Public-release readiness as one OpenSpec change (`openspec/changes/public-release-readiness`) | A five-role panel review (`docs/audits/2026-11-10-public-release-review.md`) argued each decision as thesis → counter → rebuttal. Decisions that overturned the first draft: **scrub by sensitivity, not by grep count** (project ids are not secrets; the project number + service-account address, bucket names as code defaults, and the personal email are); **do not scrub `kb/`** (handoffs are immutable under K7, ledger lines are never rewritten, and the session ids are opaque and already in 201 commit messages — frame them instead); **2.0.0 not 1.9.0** (four BREAKING sections under the SemVer promise); **claims need an epoch** (`docs/evidence/SCHEMA.md`: every artifact says whether it predates the 2026-09-04 search fixes; none is post-fix yet); **the benchmark is the promotion judge's own code path**, not a new script; **metrics are additive** (`score_rate`/`draw_rate` beside every `win_rate`, never renamed). Deliberately NOT done here (CONFIRM-FIRST or maintainer): key rotation, IAM, branch rename, the promotion-default flip, lock-file strategy, coordinator/orchestrator seeding, the CLAUDE.md split (its citation-resolution gate landed first), the distribution rename. |
 | 2026-01-10 | 13-channel MicroCiv encoder | Simplified encoding for faster Phase 1 training |
 | 2026-01-10 | Hierarchical action space | Reduces effective branching factor from ~10^6 to ~10^3 |
 | 2026-01-10 | SimpleMCTS + Civ6MCTS | SimpleMCTS for testing, Civ6MCTS for training |
@@ -408,7 +413,7 @@ When making changes, update the relevant sections below:
 | 2026-05-21 | MLflow monitoring layer (alpha_zero/monitoring/) | Centralised experiment tracking with SQLite backend; file-store mlruns/ is deprecated. Combines PR #78 (orchestrator + tournament dashboards + stateless metric helpers) and PR #79 (log_evaluation_result + AlphaZeroMLflowEvaluator + analysis scripts). `MLflowConfig` is the single-source dataclass; `MonitoringConfig` retained as a backwards-compat alias. |
 | 2026-05-21 | env_loader.py zero-dependency .env loader | No python-dotenv dep; CIV6AZ_ env var convention; graceful missing-key warnings |
 | 2026-05-21 | EvaluationResult API: WinRateResult nesting | win_rate is WinRateResult object (0-100 scale); MLflow logs normalise to 0-1 |
-| 2026-05-21 | log_evaluation_result() 14-metric logging | 4 counts + 3 normalised rates + 7 game stats per evaluation run |
+| 2026-05-21 (15 metrics since 2026-11-10) | log_evaluation_result() metric logging | 4 counts + 4 normalised rates (incl. `score_rate`, added 2026-11-10) + 7 game stats per evaluation run |
 | 2026-05-21 | TournamentMlflowLogger (PR #78) | Match / round / leaderboard / head-to-head facade for tournament telemetry |
 | 2026-05-21 | Stateless monitoring helpers (PR #78) | `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` (NaN-safe, importable from `alpha_zero.monitoring`) |
 | 2026-05-21 | W&B coexists with MLflow | Phased rollout; both backends can be enabled simultaneously. W&B remains primary in `cloud/`, `pbt/`, `evaluation/`, `optimizations/` pending follow-up sweep. Optional `[monitoring]` extra. |
@@ -467,7 +472,7 @@ When making changes, update the relevant sections below:
 
 | Issue | Workaround |
 |-------|------------|
-| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects a measured +31 Elo model (score_rate 0.545). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
+| Promotion gate cannot promote at the shipped defaults | Measured: 73.5% draws at `board_size=8`/`max_turns=30` (`docs/evidence/hexcrystal_ab/`), so `legacy_win_rate`'s ceiling is `1 - draw_rate` = 0.265 against a 0.55 threshold — arithmetically impossible. Switching policy alone is *not* enough: 0.55 read as a **score** rate demands ~+35 Elo from one iteration, and rejects the A/B's headline model (score_rate 0.545; that result is superseded, see `docs/evidence/README.md`). Fix and arithmetic: **[`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)** — recommends `CIV6AZ_PROMOTION_POLICY=score_rate_lower_bound` with `CIV6AZ_PROMOTION_THRESHOLD=0.52` (~+14 Elo, significance-gated). Code defaults deliberately unchanged. The upstream problem is the draw rate, not the threshold. |
 | The move action mask disagrees with the executor (~6 rejections per game at the shipped 8/30, ~22 at 8/60) | `core/civ6_actions.py:629-635` marks a move legal if on-board and not mountain; `envs/microciv.py:807-818` also rejects any tile occupied by a unit, and on rejection `:549-551` zeroes the unit's `moves_remaining`. 18,103 `Invalid move` rejections in 720 random games across all cells, every inspected one a unit collision (`docs/evidence/draw_rate_sweep/report.md`). The masked policy loss and MCTS both treat the mask as ground truth. Fix is WS-D2 in `kb/specs/20260902-validated-learning-plan.md` (add the collision check to the mask; regression test over seeded random play). |
 | **UNREMEDIATED: a W&B API key is in git history** | Found 2026-08-30 by the new repo-wide secret audit. 5 findings, one distinct 40-hex value (real W&B key format), all in commit `87cd68a2` (2026-03-19) on `origin/feature/sprint6-validation-and-nplayer-foundation` — **not** on the default branch, **not** in any current PR, and all six files deleted from the tree. Deletion does not remove it from history. **The key must be rotated**; purging objects is cleanup, not remediation. W&B being retired (NG-5) does not make a leaked credential safe. Full triage: [`docs/runbooks/secret-scanning.md`](docs/runbooks/secret-scanning.md). |
 | ~~Training and evaluation runs cannot be reproduced~~ (resolved 2026-08-30) | `--seed` on `training_civ6.py`, `run_baseline_eval.py` and `post_run_evaluation.py` now determines environments, every search, the random opponent, replay sampling, batch order and network init. Gated by `tests/regression/test_training_determinism_regression.py` (~7 s). Evidence: `docs/evidence/seeded_probe_reproducibility/`. **Does not** fix the draw rate — see the promotion-gate row above. |
@@ -537,7 +542,7 @@ When making changes, update the relevant sections below:
 # 1. Read this file (CLAUDE.md) and PROJECT_CHARTER.md (scope, non-goals, invariants)
 
 # 2. Check environment
-python --version  # Should be 3.10+
+python --version  # Should be 3.11+
 
 # 3. Install dependencies if needed
 pip install -r requirements.txt
@@ -1255,7 +1260,7 @@ project has since shipped through v1.8.0:
 - **v1.5.0** — convergence validation + MLflow monitoring + batch self-play groundwork
 - **v1.6.0** — cloud-deploy prep: Vertex launcher, runbook, GCP OAuth/VM fixes, 85%→80% CI gate
 - **v1.7.0** — full-Civ6 local gameplay (`BridgeAgentLoop` wires the agent to Civ6) and the
-  `langfuse-eval-harness` LLM eval gate for `StrategyAdvisor` (`make eval-llm`)
+  `langfuse-eval-harness` advisor output-contract gate for `StrategyAdvisor` (`make eval-llm`)
 - **v1.8.0** — headless FireTuner socket bridge (`tuner_socket_bridge.py`): live Civ6
   gameplay verified over the socket, no GUI relay needed (coverage gate back to 85%
   as of 2026-07-13)
@@ -1297,7 +1302,7 @@ project has since shipped through v1.8.0:
    trainer would index past). What remains: no config selects `batch_gumbel`
    (`--num_parallel_games` now defaults to 1 and warns when parallelism is
    requested with a variant that cannot use it, rather than silently running
-   sequential), and the claimed 5-10x still has no benchmark artifact. (The LEGACY
+   sequential), and the batch-throughput target still has no benchmark artifact. (The LEGACY
    `cloud/selfplay_worker.py` and its `Dockerfile.selfplay` were deleted 2026-09-02.)
 2. **Fog of war** (gap G10): partly done, and the remaining items are
    **sequential, not parallel**. Fog is implemented in `MicroCivEnv` (flag,
@@ -1441,7 +1446,7 @@ Copy and edit `.claude/settings.local.json` for personal settings:
 ```json
 {
   "env": {
-    "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_your_token_here"
+    "GITHUB_PERSONAL_ACCESS_TOKEN": "<redacted: never commit a real token>"
   }
 }
 ```
@@ -1450,6 +1455,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-07-25*
-*Version: v1.8.0 (enterprise docs overhaul + OpenSpec governance gates)*
+*Last updated: 2026-11-10*
+*Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

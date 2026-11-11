@@ -418,10 +418,22 @@ class PlayerStats:
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate."""
+        """Legacy win rate ``wins / games_played`` (draws count as losses).
+
+        Kept verbatim: ``games_played`` is an independent counter and the
+        rating record is persisted with this key. Report :attr:`score_rate`
+        beside it. Allow-listed in ``tests/regression/draw_aware_allowlist.toml``.
+        """
         if self.games_played == 0:
             return 0.0
         return self.wins / self.games_played
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware companion: ``(wins + 0.5 * draws) / (wins + draws + losses)``."""
+        from alpha_zero.evaluation.scoring import score_rate
+
+        return score_rate(self.wins, self.draws, self.losses)
 
     @property
     def loss_rate(self) -> float:

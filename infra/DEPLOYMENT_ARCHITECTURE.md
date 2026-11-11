@@ -188,7 +188,7 @@ VPC: civ6az-gameplay-vpc (10.0.0.0/16)
 
 | SA Name | Roles | Used By |
 |:---|:---|:---|
-| `civ6az-inference@` | storage.objectViewer, run.invoker | AI Inference Cloud Run |
+| `alphazero-inference@` | storage.objectViewer, run.invoker | AI Inference Cloud Run |
 | `civ6az-spacetimedb@` | storage.objectAdmin, compute.instanceAdmin.v1 | SpacetimeDB GCE |
 | `civ6az-auth@` | firebaseauth.admin, run.invoker, secretmanager.secretAccessor | Auth Service |
 | `civ6az-matchmaker@` | datastore.user, run.invoker | Matchmaking Service |
@@ -235,7 +235,7 @@ GitHub Push (main or release/*)
 ### Model Update Pipeline (separate trigger)
 
 ```
-GCS Model Upload (gs://civ6az-training/models/civ6az/v*/model.pt)
+GCS Model Upload (gs://<training-bucket>/models/civ6az/v*/model.pt)
        |
        v
   Cloud Function (GCS trigger)

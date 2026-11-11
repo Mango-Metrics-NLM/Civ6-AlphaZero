@@ -1,0 +1,48 @@
+# EXAMPLE CONFIGURATION. Copy to configs/local/vertex_training_smoke.yaml (gitignored) and replace
+# the YOUR_* placeholders with your own project, bucket and image before use.
+# Vertex AI Training Smoke Test Configuration
+#
+# Usage:
+#   1. Copy this file to configs/local/vertex_training_smoke.yaml
+#   2. Optionally set MLFLOW_TRACKING_URI via one of:
+#      a) Google Secret Manager (recommended for production)
+#      b) Environment variable in your local copy
+#   3. Everything under configs/local/ is gitignored and safe for real values
+#
+# For Secret Manager integration, replace the MLFLOW_TRACKING_URI env block with:
+#   - name: MLFLOW_TRACKING_URI
+#     valueFrom:
+#       secretKeyRef:
+#         name: 'wandb-api-key'    # Secret Manager secret name
+#         key: 'latest'            # Secret version
+
+workerPoolSpecs:
+  - machineSpec:
+      machineType: n1-standard-4
+    replicaCount: 1
+    containerSpec:
+      imageUri: us-central1-docker.pkg.dev/YOUR_GCP_PROJECT/civ6az-muzero-world-model/civ6az-muzero:v16-full-fix
+      args:
+        - "--mode=training"
+        - "--iteration=1"
+        - "--trajectory_iterations=1"
+        - "--epochs=5"
+        - "--batch_size=128"
+        - "--learning_rate=0.001"
+        - "--board_size=6"
+        - "--action_space_size=376"
+        - "--num_res_blocks=2"
+        - "--num_filters=32"
+      env:
+        # MLFLOW_TRACKING_URI: point at your MLflow server (or omit for file store).
+        # DO NOT commit real keys here. See header for setup instructions.
+        - name: MLFLOW_EXPERIMENT_NAME
+          value: "civ6az-muzero-world-model"
+        - name: MLFLOW_ENABLED
+          value: "true"
+        - name: CIV6AZ_GCS_BUCKET
+          value: "YOUR_BUCKET"
+        - name: CIV6AZ_VERTEX_PROJECT
+          value: "YOUR_GCP_PROJECT"
+        - name: CIV6AZ_VERTEX_REGION
+          value: "us-central1"

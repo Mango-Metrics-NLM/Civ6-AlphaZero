@@ -16,7 +16,7 @@ Example::
 
     upload_model_to_hub(
         model=my_hub_model,
-        repo_id="Mango-Metrics-NLM/civ6-encoder",
+        repo_id="ianshank/civ6-hexcrystal-encoder",
         metadata=ModelCardMetadata(model_name="civ6-encoder"),
         dry_run=True,
     )

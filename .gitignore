@@ -95,6 +95,12 @@ checkpoints/
 logs/
 *.pt
 *.pth
+# Other model-weight formats; none is tracked (git ls-files | grep -E '\.(safetensors|ckpt|npz|onnx|bin)$')
+*.safetensors
+*.ckpt
+*.npz
+*.onnx
+*.bin
 
 # RAG Data (generated vector database only, keep knowledge sources)
 data/knowledge_db/
@@ -111,7 +117,7 @@ training_results/
 models/
 artifacts/
 
-# Docker (build context only — tracked files are .dockerignore, Dockerfile and
+# Docker (build context only — tracked files are .dockerignore and
 # dockerfiles/Dockerfile.{vertex,inference}).
 #
 # The `!docker-compose.yml` un-ignore was removed on 2026-09-02: docker-compose.yml
@@ -250,6 +256,8 @@ test_output.txt
 # Local config overrides (may contain real API keys)
 configs/*_local.yaml
 configs/*_local_*.yaml
+# Filled-in copies of configs/*.example.yaml (real project ids, buckets, image URIs)
+configs/local/
 
 # ===========================================
 # PBT / Population-Based Training

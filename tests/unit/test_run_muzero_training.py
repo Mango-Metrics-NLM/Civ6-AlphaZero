@@ -1,7 +1,9 @@
-"""Unit tests for run_muzero_training.py."""
+"""Unit tests for scripts/run_muzero_training.py."""
 
 import os
+import sys
 import tempfile
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -12,8 +14,14 @@ from alpha_zero.core.muzero_network import MuZeroNetwork
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.training.muzero_trainer import GameTrajectory
 
+# The runner scripts live in scripts/, which is not on sys.path; bootstrap it the way
+# tests/scripts/ does. The module name stays bare so existing mock.patch targets hold.
+_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
 # Import the modules we're testing
-from run_muzero_training import (
+from run_muzero_training import (  # noqa: E402
     MuZeroRunConfig,
     create_mcts,
     create_network,

@@ -391,7 +391,7 @@ class TestOptionalDependencyImportsAreGuarded:
     def _repo_local_roots() -> set[str]:
         """Import roots that resolve inside this repository, not from PyPI.
 
-        A test importing ``demos`` or ``run_civ6_ai`` is importing repo-local
+        A test importing ``infra`` or ``run_civ6_ai`` is importing repo-local
         code that is present by construction; only a *distribution* can be
         absent. Computed from the tree so a new top-level module is covered
         automatically.
@@ -413,7 +413,7 @@ class TestOptionalDependencyImportsAreGuarded:
         # `scripts/gcp_diagnose.py` is imported as bare `gcp_diagnose`. Only
         # direct children, so this stays a bounded, derived set rather than a
         # walk of the whole tree.
-        for parent in ("scripts", "infra", "demos", "examples"):
+        for parent in ("scripts", "infra", "examples"):
             directory = REPO_ROOT / parent
             if directory.is_dir():
                 roots.update(f.stem for f in directory.glob("*.py"))
@@ -623,7 +623,7 @@ class TestSearchTestsAssertSomething:
                 if not node.name.startswith("test_") or self._is_fixture(node):
                     continue
                 checked += 1
-                qualified = f"{path.relative_to(REPO_ROOT)}::{node.name}"
+                qualified = f"{path.relative_to(REPO_ROOT).as_posix()}::{node.name}"
                 if qualified in self.ASSERTION_FREE_BY_DESIGN:
                     continue
                 if not self._asserts_something(node):

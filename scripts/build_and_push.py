@@ -264,10 +264,10 @@ def main() -> None:
         using_defaults = True
 
     if not bucket_name:
-        print("WARNING: CIV6AZ_GCS_BUCKET not set, using default 'civ6az-muzero-training'")
-        print("  Set this environment variable for your GCS bucket.")
-        bucket_name = "civ6az-muzero-training"
-        using_defaults = True
+        # No default bucket: a bucket-name default is a takeover vector.
+        print("ERROR: CIV6AZ_GCS_BUCKET is not set and there is no default bucket.")
+        print("  export CIV6AZ_GCS_BUCKET=<your-bucket-name>")
+        raise SystemExit(2)
 
     if using_defaults:
         print("\nTo configure, set environment variables or create .env file:")

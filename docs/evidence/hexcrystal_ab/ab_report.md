@@ -1,5 +1,7 @@
 # Encoder A/B evidence: patch_embed vs hex_crystalline
 
+> **Pre-fix artifact (superseded).** Generated before the 2026-09-04 search fixes (`e9d0572`: sign-correct value backup, completed-Q policy target, per-iteration seeds). The numbers below are a record of the mechanism and the wall clock, not evidence of strength. See [`docs/evidence/README.md`](../README.md) for the epoch convention.
+
 Generated 2026-08-10T11:44:12.220492+00:00 from commit `b14534a5ad84050f8c2583f8f3246643a25d4380`.
 
 ## Head-to-head result
@@ -46,3 +48,5 @@ Both arms were trained from the same code, seed, and budget; they differ only in
 ## Scope and limitations
 
 This is a reduced-scale MicroCiv comparison (13-channel encoder, 8x8 board), not a full-Civ6 result. Each arm was trained **once**, so training-run variance is not captured: the interval above reflects game sampling only, and a different seed could plausibly reorder the arms. Treat this as evidence that both encoders train and play, plus a bound on how large any difference between them could be at this budget.
+
+**Evaluation status: superseded.** An 800-game head-to-head (2026-08-10, commit `b14534a`, CUDA) scored hex_crystalline 142 W / 588 D / 70 L against patch_embed (score rate 0.545; ternary 95% CI 0.527–0.562, game-sampling noise only). This result is **not evidence that either encoder is better**: both arms were trained once each, with a search implementation later found to back up values with the wrong sign on same-player moves and to train on one-hot policy targets (fixed 2026-09-04), and 280 of the 800 evaluation games reused training seeds. A re-run on disjoint seeds with the corrected search is tracked in the public backlog (milestone v2.1). The encoder's architecture description is unaffected.

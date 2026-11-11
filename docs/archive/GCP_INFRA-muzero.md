@@ -29,8 +29,8 @@ us-central1-docker.pkg.dev/hrmtrain/civ6az-muzero-world-model/civ6az-muzero:v16-
 
 | Principal | Role | Scope |
 |-----------|------|-------|
-| `1019219508001-compute@developer.gserviceaccount.com` | `artifactregistry.reader` | AR repo |
-| `1019219508001-compute@developer.gserviceaccount.com` | `storage.objectAdmin` | GCS bucket |
+| default compute service account (`<project-number>-compute@…`) | `artifactregistry.reader` | AR repo |
+| default compute service account (`<project-number>-compute@…`) | `storage.objectAdmin` | GCS bucket |
 | Cloud Build SA | `artifactregistry.writer` | AR repo |
 | Cloud Build SA | `storage.admin` | Cloud Build staging bucket |
 

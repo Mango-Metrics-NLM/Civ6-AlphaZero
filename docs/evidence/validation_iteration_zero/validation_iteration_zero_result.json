@@ -385,5 +385,32 @@
   "scoring_method": "winner_take_all",
   "spatial_channels": 13,
   "value_head": "scalar",
-  "wall_clock_seconds": 1478.521
+  "wall_clock_seconds": 1478.521,
+  "evidence": {
+    "schema_version": 1,
+    "git_sha": "0c394f98d7f7ffbf4accfa65e139a471abc99f59",
+    "generated_utc": "2026-08-28T02:44:55.233985+00:00",
+    "search_epoch": "pre-2026-09-04",
+    "seed": null,
+    "seed_null_reason": "the run predates --seed on training_civ6.py",
+    "command": "python -m alpha_zero.training_civ6 --board_size 8 --max_turns 20 --num_simulations 12 --num_iterations 5 --num_games 20 --save_interval 1 --device cpu",
+    "hardware": {
+      "cpu_model": null,
+      "gpu_model": null,
+      "logical_cores": 2,
+      "omp_num_threads": 2,
+      "hardware_null_reason": "not recorded when generated; backfilled 2026-11-10"
+    },
+    "python": "3.11.15",
+    "torch": "2.13.0+cu130",
+    "numpy": null,
+    "games_total": 100,
+    "claims": [
+      "the local training loop runs end to end on CPU and produces checkpoints"
+    ],
+    "non_claims": [
+      "learning: the final checkpoint scores 0.25-0.40 against random, below parity"
+    ],
+    "backfilled": "2026-11-10: block added retroactively from the artifact's own provenance; no measurement changed"
+  }
 }

@@ -24,8 +24,11 @@ setting.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainer at **ianshank@gmail.com**. All complaints will
-be reviewed and investigated promptly and fairly.
+reported to the maintainer via a private GitHub Security Advisory on this
+repository ("Report a vulnerability" on the Security tab — it is the one private
+channel GitHub provides) or a direct message to
+[@ianshank](https://github.com/ianshank). All complaints will be reviewed and
+investigated promptly and fairly, and the reporter's identity kept confidential.
 
 ## Attribution
 

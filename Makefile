@@ -2,10 +2,11 @@
 #
 # Usage:
 #   make help              - Show available targets
+#   make verify            - Reproduce every CI gate locally
+#   make verify-fast       - The cheap gates only (lint, types, governance, regression)
 #   make build-all         - Build the deployed image (dockerfiles/Dockerfile.vertex)
 #   make push              - Push it to Artifact Registry
 #   make local-smoke       - Dry-run the deployed self-play worker
-#   make deploy-pipeline   - Deploy Vertex AI pipeline
 
 # ============================================================================
 # Configuration
@@ -39,6 +40,11 @@ LOCAL_BASE_IMAGE ?= civ6-alphazero-base:$(VERSION)
 PYTHON ?= python3
 PIP ?= pip3
 
+# Hugging Face namespace for `publish-spaces`. The maintainer's account unless
+# overridden; the Space names below are the ones .github/workflows/deploy_spaces.yml
+# publishes, so the two paths cannot drift onto differently-named Spaces.
+HF_ORG ?= ianshank
+
 # Secret scanning. Pinned so a local run and CI detect the same things; override
 # with `make security-secrets GITLEAKS_VERSION=x.y.z`. GITLEAKS_BIN lets a machine
 # with gitleaks already on PATH skip the download entirely.
@@ -56,6 +62,18 @@ GITLEAKS_VERSION ?= 8.30.0
 GITLEAKS_BIN ?= $(CURDIR)/.tools/gitleaks-$(GITLEAKS_VERSION)
 GITLEAKS_CONFIG ?= .gitleaks.toml
 
+# SHA-256 of each release archive, copied from
+# https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_checksums.txt
+# A version-pinned URL alone pins nothing: the asset behind it can be replaced.
+# When GITLEAKS_VERSION moves, every line below must move with it (the installer
+# refuses to run a platform that has no pinned sum, so a half-updated table fails
+# loudly rather than installing an unverified binary).
+GITLEAKS_SHA256_linux_x64     ?= 79a3ab579b53f71efd634f3aaf7e04a0fa0cf206b7ed434638d1547a2470a66e
+GITLEAKS_SHA256_linux_arm64   ?= b4cbbb6ddf7d1b2a603088cd03a4e3f7ce48ee7fd449b51f7de6ee2906f5fa2f
+GITLEAKS_SHA256_darwin_x64    ?= ca221d012d247080c2f6f61f4b7a83bffa2453806b0c195c795bbe9a8c775ed5
+GITLEAKS_SHA256_darwin_arm64  ?= b251ab2bcd4cd8ba9e56ff37698c033ebf38582b477d21ebd86586d927cf87e7
+GITLEAKS_SHA256_windows_x64   ?= 54fe94f644b832dd08e8c3a5915efb3bfa862386d59fb27ca0792cb687a83573
+
 # ============================================================================
 # Help
 # ============================================================================
@@ -65,13 +83,15 @@ help:
 	@echo "Civ6 AlphaZero - Vertex AI Deployment"
 	@echo ""
 	@echo "Development:"
-	@echo "  make install           Install Python dependencies"
-	@echo "  make install-dev       Install development dependencies"
+	@echo "  make install           Install the project with the dev extra (pip install -e '.[dev]')"
+	@echo "  make install-dev       Alias of install"
 	@echo "  make lint              Run linting (ruff)"
 	@echo "  make typecheck         Run type checking (mypy)"
 	@echo "  make test-unit         Run unit tests"
 	@echo "  make test-integration  Run integration tests"
+	@echo "  make test-regression   Run the repository-hygiene regression suite"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
+	@echo "  make verify-fast       Lint, types, governance + regression only (minutes, not an hour)"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
 	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
@@ -86,9 +106,11 @@ help:
 	@echo "  make local-smoke       Dry-run the deployed self-play worker"
 	@echo ""
 	@echo "Vertex AI:"
-	@echo "  make run-iteration     Run single training iteration (infra.vertex_launcher, LEGACY)"
-	@echo "  make deploy-pipeline   NOT IMPLEMENTED - use alpha_zero.cloud.gcp.vertex_orchestrator"
-	@echo "  make estimate-cost     NOT IMPLEMENTED - see docs/GCP_INFRA.md"
+	@echo "  python -m alpha_zero.cloud.gcp.vertex_orchestrator --help   (the deployed orchestrator)"
+	@echo "  python -m infra.vertex_launcher --help                       (LEGACY launcher, dry-run only)"
+	@echo ""
+	@echo "Hugging Face:"
+	@echo "  make publish-spaces    Upload both Gradio Spaces to $(HF_ORG)/ (override with HF_ORG=...)"
 	@echo ""
 	@echo "Configuration:"
 	@echo "  PROJECT_ID=$(PROJECT_ID)"
@@ -99,14 +121,16 @@ help:
 # Development
 # ============================================================================
 
+# One install path, the same one README, CONTRIBUTING, CLAUDE.md and every CI
+# job use. `install` used to run `pip install -r requirements.txt` (a file that
+# drifts from pyproject.toml) and `install-dev` layered unpinned tool versions on
+# top, so a developer's ruff/mypy could disagree with the pinned ones in [dev].
 .PHONY: install
 install:
-	$(PIP) install -r requirements.txt
-	$(PIP) install -e .
+	$(PIP) install -e '.[dev]'
 
 .PHONY: install-dev
 install-dev: install
-	$(PIP) install pytest pytest-cov pytest-asyncio mypy ruff
 
 .PHONY: install-cloud
 install-cloud: install
@@ -141,6 +165,12 @@ test-unit:
 .PHONY: test-integration
 test-integration:
 	$(PYTHON) -m pytest tests/integration/ -v --tb=short
+
+# Repository-hygiene invariants and known-bug reproductions (~10 s). The same
+# invocation CI's `test` job and the pre-push hook use.
+.PHONY: test-regression
+test-regression:
+	$(PYTHON) -m pytest tests/regression/ -v --tb=short
 
 # Mirrors the CI `coverage` job: same suites, same marker filter, same gate.
 # It previously ran the whole tests/ tree at --cov-fail-under=80 while CI used
@@ -186,7 +216,13 @@ test-security:
 	$(PYTHON) -m pytest tests/security/ -v --tb=short
 	$(PYTHON) -m bandit -r alpha_zero/ -s B101 --severity-level high --confidence-level high
 
-# Fetch the pinned gitleaks binary only when it is not already available.
+# CI's advisory medium/medium bandit pass, gated on the accepted-findings
+# baseline. Regenerate the baseline (and review the diff) with:
+#   bandit -r alpha_zero scripts infra -s B101 -ll -ii -f json -o .security/bandit-baseline.json
+.PHONY: test-security-medium
+test-security-medium:
+	$(PYTHON) -m bandit -r alpha_zero scripts infra -s B101 -ll -ii -b .security/bandit-baseline.json
+
 # Print the pinned gitleaks version so CI reads it from here rather than
 # restating it. One definition, two consumers.
 .PHONY: print-gitleaks-version
@@ -199,6 +235,10 @@ print-gitleaks-version:
 # binary on macOS and ARM -- silently, since `make verify` would then fail on a
 # confusing exec error rather than on the missing tool.
 # Artifact names verified against the v8.30.0 release.
+#
+# The archive is downloaded to disk and its SHA-256 compared with the pinned sum
+# BEFORE anything is extracted. Piping `curl | tar` executed whatever the URL
+# served; a mismatch now deletes the download and fails the target.
 .PHONY: gitleaks-install
 gitleaks-install:
 	@if [ ! -x "$(GITLEAKS_BIN)" ]; then \
@@ -214,18 +254,34 @@ gitleaks-install:
 			arm64|aarch64) cpu=arm64 ;; \
 			*) echo "gitleaks: unsupported arch '$$arch'. Install it yourself and set GITLEAKS_BIN." >&2; exit 1 ;; \
 		esac; \
-		if [ "$$plat" = "windows" ]; then ext=zip; else ext=tar.gz; fi; \
+		case "$${plat}_$${cpu}" in \
+			linux_x64)     want="$(GITLEAKS_SHA256_linux_x64)" ;; \
+			linux_arm64)   want="$(GITLEAKS_SHA256_linux_arm64)" ;; \
+			darwin_x64)    want="$(GITLEAKS_SHA256_darwin_x64)" ;; \
+			darwin_arm64)  want="$(GITLEAKS_SHA256_darwin_arm64)" ;; \
+			windows_x64)   want="$(GITLEAKS_SHA256_windows_x64)" ;; \
+			*) echo "gitleaks: no pinned SHA-256 for $${plat}_$${cpu}; add GITLEAKS_SHA256_$${plat}_$${cpu} from the release checksums file." >&2; exit 1 ;; \
+		esac; \
+		if [ "$$plat" = "windows" ]; then ext=zip; bin=gitleaks.exe; else ext=tar.gz; bin=gitleaks; fi; \
 		url="https://github.com/gitleaks/gitleaks/releases/download/v$(GITLEAKS_VERSION)/gitleaks_$(GITLEAKS_VERSION)_$${plat}_$${cpu}.$${ext}"; \
+		archive="$(CURDIR)/.tools/gitleaks-$(GITLEAKS_VERSION)-$${plat}_$${cpu}.$${ext}"; \
 		echo "Installing gitleaks $(GITLEAKS_VERSION) ($${plat}_$${cpu}) -> $(CURDIR)/.tools"; \
 		mkdir -p $(CURDIR)/.tools; \
-		if [ "$$ext" = "zip" ]; then \
-			curl -sSfL "$$url" -o $(CURDIR)/.tools/gitleaks.zip && \
-			unzip -oq $(CURDIR)/.tools/gitleaks.zip -d $(CURDIR)/.tools && \
-			rm -f $(CURDIR)/.tools/gitleaks.zip; \
-		else \
-			curl -sSfL "$$url" | tar -xz -C $(CURDIR)/.tools gitleaks; \
+		curl -sSfL "$$url" -o "$$archive" || { rm -f "$$archive"; exit 1; }; \
+		got=$$($(PYTHON) -c 'import hashlib, sys; print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())' "$$archive"); \
+		if [ "$$got" != "$$want" ]; then \
+			echo "gitleaks: SHA-256 mismatch for $$url" >&2; \
+			echo "  expected $$want" >&2; \
+			echo "  got      $$got" >&2; \
+			rm -f "$$archive"; exit 1; \
 		fi; \
-		mv -f $(CURDIR)/.tools/gitleaks $(GITLEAKS_BIN); \
+		if [ "$$ext" = "zip" ]; then \
+			unzip -oq "$$archive" "$$bin" -d $(CURDIR)/.tools; \
+		else \
+			tar -xzf "$$archive" -C $(CURDIR)/.tools "$$bin"; \
+		fi; \
+		rm -f "$$archive"; \
+		mv -f "$(CURDIR)/.tools/$$bin" $(GITLEAKS_BIN); \
 	fi
 
 # Secret scan: the tracked tree AND the built branch's own history. History
@@ -291,6 +347,11 @@ test:
 	$(PYTHON) -m pytest tests/cloud/unit/ -v --tb=short -x
 	$(PYTHON) -m pytest tests/cloud/smoke/ -v --tb=short
 
+# `validate_kb.py --git` makes the handoff-immutability check (K7) mandatory: on
+# a shallow clone it FAILS rather than printing a note, because `make validate`
+# passing with the rule unenforced is what the 2026-09-04 audit found (G7).
+# `git fetch --unshallow` once, or run `scripts/validate_kb.py` without the flag
+# for the K1-K6 subset.
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
@@ -320,6 +381,15 @@ hooks-install:
 verify: lint-check typecheck test test-security security-secrets test-governance validate test-all test-cloud-coverage eval-llm
 	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage (global + cloud floor) and eval gates"
 
+# The gates that finish in minutes: everything in `verify` except the test
+# suites that need torch time (unit/integration/e2e/cloud/coverage/eval) and the
+# gitleaks download. Not a substitute for `verify` before a PR -- a fast green
+# here says the change is lint-, type- and governance-clean and broke no
+# repository-hygiene invariant, nothing about behaviour.
+.PHONY: verify-fast
+verify-fast: lint-check typecheck test-governance test-regression validate
+	@echo "verify-fast: lint, types, governance tests, regression suite and validators are green (run 'make verify' before a PR)"
+
 .PHONY: eval-llm
 eval-llm:
 	$(PYTHON) scripts/run_llm_eval.py
@@ -336,18 +406,23 @@ upload-hub:
 export-datasets:
 	$(PYTHON) scripts/export_dataset.py --type $(DATASET_TYPE) --source-path $(SOURCE_PATH) $(EXPORT_ARGS)
 
+# Same Space ids as .github/workflows/deploy_spaces.yml (`<HF_ORG>/microciv-explorer`
+# and `<HF_ORG>/elo-dashboard`). The two used to name different Spaces in
+# different namespaces, so a manual upload and a workflow run published to
+# different places.
 .PHONY: publish-spaces
 publish-spaces:
-	huggingface-cli upload Mango-Metrics-NLM/Civ6-AlphaZero-Microciv-Explorer ./spaces/microciv-explorer --repo-type space
-	huggingface-cli upload Mango-Metrics-NLM/Civ6-AlphaZero-Elo-Dashboard ./spaces/elo-dashboard --repo-type space
+	huggingface-cli upload $(HF_ORG)/microciv-explorer ./spaces/microciv-explorer --repo-type space
+	huggingface-cli upload $(HF_ORG)/elo-dashboard ./spaces/elo-dashboard --repo-type space
 
 # ============================================================================
 # Docker Build
 # ============================================================================
 # The deployed image is dockerfiles/Dockerfile.vertex, built by cloudbuild.yaml
-# (`make deploy-pipeline`). The per-role images (base/selfplay/trainer/evaluator)
-# and the LEGACY alpha_zero.cloud.{selfplay_worker,trainer,evaluator} modules they
-# entrypointed were removed on 2026-09-02 as dead code; nothing built them.
+# (`gcloud builds submit --config cloudbuild.yaml .`). The per-role images
+# (base/selfplay/trainer/evaluator) and the LEGACY
+# alpha_zero.cloud.{selfplay_worker,trainer,evaluator} modules they entrypointed
+# were removed on 2026-09-02 as dead code; nothing built them.
 
 .PHONY: build-all
 build-all:
@@ -397,11 +472,15 @@ clean-test-storage:
 # GCS Setup
 # ============================================================================
 
+# Bucket creation only. This target also ran `gsutil lifecycle set
+# infra/gcs_lifecycle.json`, a file that has never existed in the repository, so
+# it failed on every invocation after creating the bucket. Lifecycle rules are
+# set in the console or with a policy file you supply:
+#   gsutil lifecycle set <policy.json> gs://$(BUCKET)
 .PHONY: setup-bucket
 setup-bucket:
 	@echo "Creating GCS bucket gs://$(BUCKET)..."
 	gsutil mb -p $(PROJECT_ID) -l $(REGION) gs://$(BUCKET) || true
-	gsutil lifecycle set infra/gcs_lifecycle.json gs://$(BUCKET)
 
 .PHONY: setup-secrets
 setup-secrets:
@@ -418,69 +497,16 @@ setup-secrets:
 # ============================================================================
 # Vertex AI
 # ============================================================================
-
-# BROKEN: `pipelines/` does not exist in this repository and never has, so this
-# target fails immediately. Kept with the failure made explicit rather than
-# silently advertising a deployment path that cannot work. The live orchestrator
-# is `python -m alpha_zero.cloud.gcp.vertex_orchestrator`.
-.PHONY: deploy-pipeline
-deploy-pipeline:
-	@echo "deploy-pipeline is not implemented: the 'pipelines' package does not exist."
-	@echo "Use: $(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator --help"
-	@exit 1
-
-# LEGACY, and only partly working. `infra/vertex_launcher.py` is not the deployed
-# path -- cloudbuild.yaml builds only dockerfiles/Dockerfile.vertex, which
-# entrypoints alpha_zero.cloud.gcp.entrypoint. Its --dry-run works; a real submit
-# does not: the submit path imports `get_machine_profile` from
-# alpha_zero.cloud.config, which does not exist (verified against the default
-# branch, so this predates the 2026-09-02 deletion). Use
-# `$(PYTHON) -m alpha_zero.cloud.gcp.vertex_orchestrator` for real runs.
-.PHONY: run-iteration
-run-iteration:
-	@echo "Running training iteration $(ITERATION)..."
-	$(PYTHON) -m infra.vertex_launcher \
-		--mode=iteration \
-		--iteration=$(ITERATION) \
-		--selfplay-profile=selfplay_t4_spot \
-		--train-profile=train_l4_single \
-		--eval-profile=eval_l4_spot
-
-.PHONY: run-selfplay
-run-selfplay:
-	$(PYTHON) -m infra.vertex_launcher \
-		--mode=selfplay \
-		--iteration=$(ITERATION) \
-		--num-workers=$(NUM_WORKERS) \
-		--games-per-worker=$(GAMES_PER_WORKER)
-
-.PHONY: run-trainer
-run-trainer:
-	$(PYTHON) -m infra.vertex_launcher \
-		--mode=train \
-		--iteration=$(ITERATION) \
-		--training-steps=$(TRAINING_STEPS)
-
-.PHONY: run-evaluator
-run-evaluator:
-	$(PYTHON) -m infra.vertex_launcher \
-		--mode=eval \
-		--iteration=$(ITERATION) \
-		--num-games=$(EVAL_GAMES)
-
-# BROKEN: `CloudConfig.estimate_iteration_cost()` does not exist and never has
-# (checked against the default branch), so this target has always raised
-# AttributeError. Kept with the failure made explicit rather than silently
-# advertising a number the code cannot produce. The live estimator is
-# per-job, not per-iteration: `alpha_zero.cloud.gcp.cost.CostEstimator
-# .estimate_job_cost(machine_type, accelerator_type, count, hours, is_spot)`.
-# Measured per-iteration costs are tabulated in docs/GCP_INFRA.md.
-.PHONY: estimate-cost
-estimate-cost:
-	@echo "estimate-cost is not implemented: CloudConfig has no estimate_iteration_cost()."
-	@echo "Per-job estimates: alpha_zero.cloud.gcp.cost.CostEstimator.estimate_job_cost(...)"
-	@echo "Measured per-iteration costs: docs/GCP_INFRA.md"
-	@exit 1
+# The six targets that lived here (`deploy-pipeline`, `estimate-cost`,
+# `run-iteration`, `run-selfplay`, `run-trainer`, `run-evaluator`) were deleted
+# on 2026-11-10. Two had been rewritten to `exit 1` with an apology because the
+# code they called never existed; the four `run-*` wrappers drove
+# `infra/vertex_launcher.py`, whose real-submit path imports a function that
+# does not exist, so only their `--dry-run` form ever worked. A target that
+# cannot run is documentation pretending to be automation.
+#
+# The deployed path:  python -m alpha_zero.cloud.gcp.vertex_orchestrator --help
+# The legacy launcher (dry-run only):  python -m infra.vertex_launcher --help
 
 # ============================================================================
 # Utilities

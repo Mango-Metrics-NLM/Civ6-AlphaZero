@@ -3,6 +3,7 @@
 This module provides various baseline opponents for measuring model performance:
 - RandomPlayer: Uniform random action selection
 - HeuristicPlayer: Rule-based player with configurable weights
+- SimpleMCTSPlayer: Network-free random-rollout search (``simple_mcts``)
 - NeuralNetworkPlayer: Trained model with optional MCTS
 
 Usage:
@@ -24,7 +25,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, cast, runtime_checkable
 
 import numpy as np
 
@@ -361,6 +362,56 @@ class HeuristicPlayer:
         }
 
 
+class SimpleMCTSPlayer:
+    """Network-free random-rollout search as a baseline opponent.
+
+    Wraps :class:`alpha_zero.core.mcts.simple.SimpleMCTS` behind the
+    :class:`BaselinePlayer` protocol. Strength scales with ``num_simulations``;
+    64 rollouts on a 6x6 board already beats random play decisively, which is
+    what makes it a useful rung between ``RandomPlayer`` and a trained network.
+    """
+
+    def __init__(
+        self,
+        num_simulations: int = 50,
+        seed: int | None = None,
+        name: str = "simple_mcts",
+    ) -> None:
+        from alpha_zero.core.mcts.simple import SimpleMCTS
+
+        self._name = name
+        self.num_simulations = num_simulations
+        self._games_played = 0
+        self.mcts = SimpleMCTS(num_simulations=num_simulations, seed=seed)
+
+    @property
+    def name(self) -> str:
+        """Player name for identification."""
+        return self._name
+
+    def select_action(
+        self,
+        env: MicroCivEnv,
+        observation: dict[str, np.ndarray],
+    ) -> int:
+        """Greedy action from a random-rollout search over ``env``."""
+        action_probs, _ = self.mcts.search(cast(Any, env))
+        return int(self.mcts.select_action(action_probs, temperature=0.0))
+
+    def reset(self) -> None:
+        """Reset player state for new game."""
+        self._games_played += 1
+
+    def get_stats(self) -> dict[str, Any]:
+        """Get player statistics."""
+        return {
+            "name": self._name,
+            "type": "simple_mcts",
+            "num_simulations": self.num_simulations,
+            "games_played": self._games_played,
+        }
+
+
 class NeuralNetworkPlayer:
     """Neural network player with optional MCTS.
 
@@ -649,6 +700,13 @@ class BaselineFactory:
                 weights=config.heuristic_weights,
                 name=config.name,
                 seed=seed,
+            )
+
+        elif config.type == BaselineType.SIMPLE_MCTS:
+            return SimpleMCTSPlayer(
+                num_simulations=config.mcts_simulations,
+                seed=seed,
+                name=config.name,
             )
 
         elif config.type in (BaselineType.PREVIOUS_MODEL, BaselineType.SPECIFIC_CHECKPOINT):

@@ -10,7 +10,7 @@
 | AC1 | `test_no_command_field_set` matches production code | prd-fix-tournament-test | ✅ PASS | L996 assertion updated: `["python", "-m", "alpha_zero.cloud.gcp.entrypoint"]` matches `vertex_jobs.py:1023` |
 | AC2 | No regression in tournament test suite | prd-fix-tournament-test | ⏳ BLOCKED | pytest hangs on PyTorch import; needs `--import-mode=importlib` or CI |
 | AC3 | Container builds with all smoke tests | prd-container-rebuild | ⏳ IN PROGRESS | Cloud Build submitted, awaiting result |
-| AC4 | `.env` updated with Artifact Registry URI | prd-container-rebuild | ✅ PASS | `CIV6AZ_CONTAINER_IMAGE_URI=us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training:v1.1.0` |
+| AC4 | `.env` updated with Artifact Registry URI | prd-container-rebuild | ✅ PASS | `CIV6AZ_CONTAINER_IMAGE_URI=us-central1-docker.pkg.dev/<project>/civ6az/alphazero-training:v1.1.0` |
 | AC5 | W&B API key configured | prd-container-rebuild | ✅ PASS | `.env:63` has `WANDB_API_KEY=26a08...` — already present |
 | AC6 | Selfplay produces trajectories | prd-container-rebuild | ⏳ PENDING | Requires successful container build + smoke test |
 | AC7 | Training consumes trajectories | prd-container-rebuild | ⏳ PENDING | Requires AC6 first |

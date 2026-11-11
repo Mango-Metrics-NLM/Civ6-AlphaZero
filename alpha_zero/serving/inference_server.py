@@ -7,7 +7,12 @@ action selected by GumbelMCTS search.
 
 Environment Variables:
     CIV6AZ_MODEL_VERSION: Model version to load (e.g., "v268").
-    CIV6AZ_GCS_BUCKET: GCS bucket containing model weights.
+    CIV6AZ_GCS_BUCKET: GCS bucket containing model weights. **No default** -- a
+        bucket-name default is a takeover vector (whoever registers the name
+        serves the model), so startup fails closed when it is unset.
+    CIV6AZ_ALLOW_RANDOM_WEIGHTS: Set to ``1`` to serve a randomly initialised
+        network when no bucket is configured or the download fails. Off by
+        default; intended only for local smoke tests, never for a deployment.
     CIV6AZ_MCTS_SIMS: Number of MCTS simulations per move (default: 16).
     CIV6AZ_BOARD_SIZE: Board size (default: 8).
     CIV6AZ_ACTION_SPACE_SIZE: Action space size (default: 376).
@@ -43,7 +48,19 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 MODEL_VERSION = os.environ.get("CIV6AZ_MODEL_VERSION", "v268")
-GCS_BUCKET = os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training")
+GCS_BUCKET: str | None = os.environ.get("CIV6AZ_GCS_BUCKET") or None
+ALLOW_RANDOM_WEIGHTS: bool = os.environ.get("CIV6AZ_ALLOW_RANDOM_WEIGHTS", "").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+_NO_BUCKET_MESSAGE = (
+    "CIV6AZ_GCS_BUCKET is not set, so there is nowhere to load model weights from. "
+    "Refusing to start: serving a randomly initialised network would look healthy and "
+    "play nonsense. Set CIV6AZ_GCS_BUCKET to the bucket holding "
+    "models/civ6az/<version>/model.pt, or set CIV6AZ_ALLOW_RANDOM_WEIGHTS=1 for a "
+    "local smoke test only."
+)
 MCTS_SIMS = int(os.environ.get("CIV6AZ_MCTS_SIMS", "16"))
 BOARD_SIZE = int(os.environ.get("CIV6AZ_BOARD_SIZE", "8"))
 ACTION_SPACE = int(
@@ -89,25 +106,41 @@ def _load_model() -> None:
 
     network = Civ6TransformerNetwork(config)
 
-    # Download model from GCS
+    # Download model from GCS. Fail closed: random weights only on explicit opt-in.
     model_path = f"models/civ6az/{MODEL_VERSION}/model.pt"
     cache_dir = os.environ.get("CIV6AZ_MODEL_CACHE_DIR", "/tmp")  # noqa: S108
-    local_path: str | None = f"{cache_dir}/{MODEL_VERSION}_model.pt"
+    local_path: str | None = None
 
-    try:
-        from google.cloud import storage as gcs_storage
-
-        client = gcs_storage.Client()
-        bucket = client.bucket(GCS_BUCKET)
-        blob = bucket.blob(model_path)
-        blob.download_to_filename(local_path)
-        logger.info("Downloaded model from gs://%s/%s", GCS_BUCKET, model_path)
-    except Exception:
+    if GCS_BUCKET is None:
+        if not ALLOW_RANDOM_WEIGHTS:
+            raise RuntimeError(_NO_BUCKET_MESSAGE)
         logger.warning(
-            "Failed to download model from GCS. Using random weights for testing.",
-            exc_info=True,
+            "CIV6AZ_GCS_BUCKET is not set; serving RANDOM weights because "
+            "CIV6AZ_ALLOW_RANDOM_WEIGHTS is set. Never deploy this configuration."
         )
-        local_path = None
+    else:
+        candidate = f"{cache_dir}/{MODEL_VERSION}_model.pt"
+        try:
+            from google.cloud import storage as gcs_storage
+
+            client = gcs_storage.Client()
+            bucket = client.bucket(GCS_BUCKET)
+            blob = bucket.blob(model_path)
+            blob.download_to_filename(candidate)
+            logger.info("Downloaded model from gs://%s/%s", GCS_BUCKET, model_path)
+            local_path = candidate
+        except Exception as exc:
+            if not ALLOW_RANDOM_WEIGHTS:
+                raise RuntimeError(
+                    f"Failed to download gs://{GCS_BUCKET}/{model_path}: {exc!r}. Refusing "
+                    "to serve random weights; set CIV6AZ_ALLOW_RANDOM_WEIGHTS=1 only for a "
+                    "local smoke test."
+                ) from exc
+            logger.warning(
+                "Failed to download model from GCS; serving RANDOM weights because "
+                "CIV6AZ_ALLOW_RANDOM_WEIGHTS is set.",
+                exc_info=True,
+            )
 
     if local_path is not None:
         state_dict = torch.load(local_path, map_location=_device, weights_only=True)

@@ -45,7 +45,7 @@ python scripts/upload_to_hub.py \
 python scripts/upload_to_hub.py \
     --model-type transformer \
     --checkpoint-path ./checkpoints/best.pt \
-    --repo-id Mango-Metrics-NLM/civ6-alphazero-transformer \
+    --repo-id ianshank/civ6-alphazero-transformer \
     --publish
 ```
 
@@ -62,7 +62,7 @@ model = Civ6TransformerNetworkForHub(embed_dim=256, num_layers=12)
 # Upload
 upload_model_to_hub(
     model=model,
-    repo_id="Mango-Metrics-NLM/civ6-transformer",
+    repo_id="ianshank/civ6-transformer",
     metadata=ModelCardMetadata(
         model_name="civ6-transformer",
         description="Civ6 AlphaZero policy/value network",
@@ -76,7 +76,7 @@ upload_model_to_hub(
 ```python
 from alpha_zero.core.transformer_hub_mixin import Civ6TransformerNetworkForHub
 
-model = Civ6TransformerNetworkForHub.from_pretrained("Mango-Metrics-NLM/civ6-alphazero-transformer")
+model = Civ6TransformerNetworkForHub.from_pretrained("ianshank/civ6-alphazero-transformer")
 ```
 
 ## Publishing Datasets
@@ -87,7 +87,7 @@ model = Civ6TransformerNetworkForHub.from_pretrained("Mango-Metrics-NLM/civ6-alp
 python scripts/export_dataset.py \
     --type elo \
     --source-path ./results/ \
-    --repo-id Mango-Metrics-NLM/civ6-elo-tournament \
+    --repo-id ianshank/civ6-elo-tournament \
     --publish
 ```
 
@@ -106,7 +106,7 @@ python scripts/export_dataset.py \
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HF_TOKEN` | (from `huggingface-cli login`) | HF API token |
-| `HF_ORG` | `Mango-Metrics-NLM` | Hub organisation name |
+| `HF_ORG` | `ianshank` | Hub namespace. The publishing account; a `Mango-Metrics-NLM` organisation does not exist on the Hub yet, so set this once it does |
 | `HF_LIBRARY_NAME` | `alpha-zero-civ6` | Library name in Hub metadata |
 | `HF_LICENSE` | `MIT` | SPDX licence identifier |
 | `HF_CARD_TEMPLATE` | `alpha_zero/hub/templates/model_card.md.template` | Model card template path |

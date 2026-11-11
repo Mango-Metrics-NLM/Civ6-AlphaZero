@@ -4,7 +4,7 @@
 
 **As a** training infrastructure engineer  
 **I want** validated batch self-play using `BatchGumbelMCTS` + `VectorizedMicroCivEnv`  
-**So that** I can deploy 5-10x throughput self-play workers on Vertex AI GPU instances
+**So that** I can deploy higher-throughput self-play workers (speed-up still unmeasured) on Vertex AI GPU instances
 
 ## Background
 

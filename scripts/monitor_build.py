@@ -3,7 +3,7 @@
 
 Usage:
     python scripts/monitor_build.py BUILD_ID
-    python scripts/monitor_build.py BUILD_ID --project hrmtrain
+    python scripts/monitor_build.py BUILD_ID --project YOUR_GCP_PROJECT
     python scripts/monitor_build.py BUILD_ID --poll-interval 30
     python scripts/monitor_build.py BUILD_ID --no-show-log
 """
@@ -195,8 +195,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("build_id", help="Cloud Build ID to monitor")
     parser.add_argument(
         "--project",
-        default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain"),
-        help="GCP project ID (default: $CIV6AZ_VERTEX_PROJECT or 'hrmtrain')",
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        required=not os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        help="GCP project ID (default: $CIV6AZ_VERTEX_PROJECT; there is no built-in default)",
     )
     parser.add_argument(
         "--poll-interval",

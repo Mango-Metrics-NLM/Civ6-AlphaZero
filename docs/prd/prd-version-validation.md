@@ -26,7 +26,7 @@ The root cause of the current incident was a mismatch between orchestrator expec
 
 **Given** the container image,
 **When** invoked with `--version`,
-**Then** it prints a structured version string (e.g., `civ6az-training v1.0.0 (commit: abc123)`).
+**Then** it prints a structured version string (e.g., `alphazero-training v1.0.0 (commit: abc123)`).
 
 ### AC-2: Orchestrator validates container
 

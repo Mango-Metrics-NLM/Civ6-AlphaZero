@@ -113,10 +113,18 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # Build config from environment
+    project_id = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+    bucket = os.environ.get("CIV6AZ_GCS_BUCKET")
+    if not project_id or not bucket:
+        logging.error(
+            "CIV6AZ_VERTEX_PROJECT and CIV6AZ_GCS_BUCKET must both be set; there are no "
+            "built-in defaults (a default bucket name is a takeover vector)."
+        )
+        return 2
     config = GCPConfig(
-        project_id=os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain"),
+        project_id=project_id,
         region=os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1"),
-        bucket=os.environ.get("CIV6AZ_GCS_BUCKET", "civ6az-training"),
+        bucket=bucket,
         paths=GCSPathConfig(agent_id=args.agent_id),
     )
     storage = GCSTrajectoryStorage(config, compress=True)

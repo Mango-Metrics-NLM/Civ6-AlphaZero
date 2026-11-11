@@ -1,5 +1,12 @@
 name: Deploy Gradio Spaces
 
+# Manual only. This workflow used to also fire on `push: branches: [main]
+# paths: [spaces/**]`. That trigger was dormant -- the default branch is not
+# `main` -- and would have come alive the moment the maintainer renames the
+# default branch to `main` before the public release, auto-publishing two
+# scaffold Spaces to a public Hugging Face namespace with HF_TOKEN on the first
+# push that touched spaces/. Publishing is a deliberate act: run it from the
+# Actions tab, choosing which Space.
 on:
   workflow_dispatch:
     inputs:
@@ -12,18 +19,18 @@ on:
           - all
           - microciv-explorer
           - elo-dashboard
-  push:
-    branches:
-      - main
-    paths:
-      - 'spaces/**'
 
+# Never cancel a half-finished upload; queue instead.
 concurrency:
-  group: deploy-spaces-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-spaces
+  cancel-in-progress: false
 
 env:
-  HF_ORG: ${{ vars.HF_ORG || 'Mango-Metrics-NLM' }}
+  # Namespace: the maintainer's account unless the repository variable HF_ORG
+  # says otherwise. Space ids (`<HF_ORG>/microciv-explorer`,
+  # `<HF_ORG>/elo-dashboard`) are the same ones `make publish-spaces` uses, so a
+  # manual upload and a workflow run land on the same Spaces.
+  HF_ORG: ${{ vars.HF_ORG || 'ianshank' }}
 
 # The deploy jobs push to Hugging Face with HF_TOKEN, not to GitHub; the
 # GITHUB_TOKEN only needs to read the checkout.
@@ -32,26 +39,36 @@ permissions:
 
 jobs:
   # ------------------------------------------------------------------
-  # Gate: only deploy if hub extra is installable (validation)
+  # Gate: the Space apps import and lint cleanly with the extras they need
   # ------------------------------------------------------------------
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: '3.11'
           cache: pip
-      - name: Install hub extra
-        run: pip install -e '.[hub]'
+          # Key includes the torch index choice (CPU) so a CUDA-resolved cache is never reused.
+          cache-dependency-path: |
+            pyproject.toml
+            .github/workflows/deploy_spaces.yml
+      # dev brings the pinned ruff (one pin, in pyproject), hub the Hub client,
+      # spaces the gradio the apps import. Validating with only `hub` meant the
+      # import smoke test could pass while the app failed to start on the Space.
+      - name: Install dev, hub and spaces extras
+        run: |
+          python -m pip install --upgrade pip
+          # CPU torch first so the dev extra never pulls the CUDA build (see ci.yml).
+          python -m pip install "torch>=2.0.0" --index-url https://download.pytorch.org/whl/cpu
+          pip install -e '.[dev,hub,spaces]'
       - name: Validate Space apps import cleanly
-        run: |
-          python -m pytest tests/smoke/test_spaces_import.py -v --tb=short
+        run: python -m pytest tests/smoke/test_spaces_import.py -v --tb=short
       - name: Ruff check Space apps
-        run: |
-          pip install ruff
-          python -m ruff check spaces/
+        run: python -m ruff check spaces/
 
   # ------------------------------------------------------------------
   # Deploy microciv-explorer
@@ -60,28 +77,31 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # HF_TOKEN lives on this environment, so it is only released to a run that
+    # passed validate and (if the maintainer configures reviewers) was approved.
+    environment: huggingface
     if: >
       github.event.inputs.space == 'microciv-explorer' ||
-      github.event.inputs.space == 'all' ||
-      github.event_name == 'push'
+      github.event.inputs.space == 'all'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
           lfs: false
 
       - name: Push microciv-explorer to HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_NAME: microciv-explorer
+          SPACE_DIR: spaces/microciv-explorer
         run: |
-          pip install huggingface_hub
+          pip install huggingface_hub==0.36.2
           python - <<'EOF'
           import os
           from huggingface_hub import HfApi
 
           api = HfApi(token=os.environ["HF_TOKEN"])
-          hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
-          repo_id = f"{hf_org}/microciv-explorer"
+          repo_id = f"{os.environ['HF_ORG']}/{os.environ['SPACE_NAME']}"
 
           # Create the Space if it doesn't exist
           api.create_repo(
@@ -94,7 +114,7 @@ jobs:
 
           # Upload the app folder
           api.upload_folder(
-              folder_path="spaces/microciv-explorer",
+              folder_path=os.environ["SPACE_DIR"],
               repo_id=repo_id,
               repo_type="space",
               commit_message=f"Deploy from commit {os.environ.get('GITHUB_SHA', 'local')[:8]}",
@@ -110,28 +130,29 @@ jobs:
     needs: validate
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    environment: huggingface
     if: >
       github.event.inputs.space == 'elo-dashboard' ||
-      github.event.inputs.space == 'all' ||
-      github.event_name == 'push'
+      github.event.inputs.space == 'all'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
+          persist-credentials: false
           lfs: false
 
       - name: Push elo-dashboard to HF Spaces
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          SPACE_NAME: elo-dashboard
+          SPACE_DIR: spaces/elo-dashboard
         run: |
-          pip install huggingface_hub
+          pip install huggingface_hub==0.36.2
           python - <<'EOF'
           import os
           from huggingface_hub import HfApi
 
           api = HfApi(token=os.environ["HF_TOKEN"])
-          hf_org = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
-          repo_id = f"{hf_org}/elo-dashboard"
+          repo_id = f"{os.environ['HF_ORG']}/{os.environ['SPACE_NAME']}"
 
           api.create_repo(
               repo_id=repo_id,
@@ -142,7 +163,7 @@ jobs:
           )
 
           api.upload_folder(
-              folder_path="spaces/elo-dashboard",
+              folder_path=os.environ["SPACE_DIR"],
               repo_id=repo_id,
               repo_type="space",
               commit_message=f"Deploy from commit {os.environ.get('GITHUB_SHA', 'local')[:8]}",

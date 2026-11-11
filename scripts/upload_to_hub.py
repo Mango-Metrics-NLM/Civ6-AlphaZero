@@ -15,7 +15,7 @@ Usage::
     python scripts/upload_to_hub.py \\
         --model-type transformer \\
         --checkpoint-path ./checkpoints/civ6/best.pt \\
-        --repo-id Mango-Metrics-NLM/civ6-alphazero-transformer \\
+        --repo-id ianshank/civ6-alphazero-transformer \\
         --publish
 
 Environment Variables:

@@ -1,0 +1,19 @@
+# Accepted pip-audit findings for .github/workflows/security-scan.yml.
+#
+# scripts/diff_audit_baseline.py exits 1 on any finding that is NOT listed here,
+# and (with --strict) on a finding covered only by an entry whose `expires` has
+# passed. Every entry needs all four keys; a malformed entry is an input error,
+# not a warning, because a silent exemption is how an accepted vulnerability
+# becomes a permanent blind spot.
+#
+# Add an entry only after reading the advisory and deciding the finding does not
+# apply (or cannot be fixed yet) -- say which in `reason`, name the tracking
+# issue, and give it an expiry no more than ~90 days out so it is re-read.
+#
+# [[ignore]]
+# id = "GHSA-xxxx-xxxx-xxxx"      # the finding's id or any alias (PYSEC-, CVE-)
+# package = "example"             # distribution name as pip-audit prints it
+# reason = "not reachable: we never call X; upstream fix tracked in #NN"
+# expires = 2027-02-01
+
+schema = 1

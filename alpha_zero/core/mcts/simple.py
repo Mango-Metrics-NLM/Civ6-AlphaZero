@@ -61,11 +61,16 @@ class SimpleMCTS:
             },
         )
 
-    def search(self, env: MCTSEnvironment) -> tuple[np.ndarray, float]:
+    def search(self, env: MCTSEnvironment, add_noise: bool = False) -> tuple[np.ndarray, float]:
         """Run MCTS search.
 
         Args:
             env: Game environment (must support clone(), step(), get_valid_actions()).
+            add_noise: Accepted for call-site parity with the network-guided
+                variants and ignored -- random rollouts need no Dirichlet
+                noise. Without it ``run_arena`` (which passes
+                ``add_noise=False`` to every non-MuZero search) could not use
+                this variant as an opponent.
 
         Returns:
             Tuple of (action_probs, root_value).

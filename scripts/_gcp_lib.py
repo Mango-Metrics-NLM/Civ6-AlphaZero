@@ -16,9 +16,11 @@ Centralises three patterns that were duplicated across ~8 ad-hoc scripts
    holds a refresh token; this function POSTs it to ``oauth2.googleapis.com``
    and returns the ``access_token`` string.
 
-3. **Project / region defaults** (:data:`PROJECT`, :data:`REGION`) — read
-   from ``CIV6AZ_VERTEX_PROJECT`` / ``CIV6AZ_VERTEX_REGION``, with the
-   project defaults documented in MEMORY.md.
+3. **Project / region** (:data:`PROJECT`, :data:`REGION`) — read from
+   ``CIV6AZ_VERTEX_PROJECT`` / ``CIV6AZ_VERTEX_REGION``. The region defaults
+   to ``us-central1``; the project has **no default** and importing
+   :data:`PROJECT` (or either API base URL) raises a clear error when it is
+   unset, so a script cannot silently address ``projects/None``.
 
 The scripts in this directory are *debug utilities*, not part of the
 training package; this module deliberately lives here (under ``scripts/``)
@@ -41,18 +43,44 @@ logger = logging.getLogger(__name__)
 # Project / region defaults
 # ---------------------------------------------------------------------------
 
-#: GCP project ID (override via ``CIV6AZ_VERTEX_PROJECT``).
-PROJECT: str = os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain")
 #: GCP region (override via ``CIV6AZ_VERTEX_REGION``).
 REGION: str = os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1")
-#: Vertex AI API base URL for the configured project + region.
-VERTEX_API_BASE: str = (
-    f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{PROJECT}/locations/{REGION}"
-)
 #: Cloud Logging entries:list endpoint.
 LOGGING_ENTRIES_URL: str = "https://logging.googleapis.com/v2/entries:list"
-#: Cloud Build API base URL for the configured project.
-CLOUDBUILD_API_BASE: str = f"https://cloudbuild.googleapis.com/v1/projects/{PROJECT}"
+
+_PROJECT_REQUIRED = (
+    "CIV6AZ_VERTEX_PROJECT is not set. The GCP debug utilities have no default "
+    "project: export CIV6AZ_VERTEX_PROJECT=<your-gcp-project-id> (or put it in "
+    ".env) and re-run."
+)
+
+
+def require_project() -> str:
+    """Return the GCP project ID, or raise a clear error when it is unset."""
+    project = os.environ.get("CIV6AZ_VERTEX_PROJECT", "").strip()
+    if not project:
+        raise RuntimeError(_PROJECT_REQUIRED)
+    return project
+
+
+def __getattr__(name: str) -> str:
+    """Lazily resolve the project-dependent constants (PEP 562).
+
+    ``from scripts._gcp_lib import PROJECT`` therefore fails at import time
+    with :data:`_PROJECT_REQUIRED` when the variable is unset, instead of
+    interpolating ``None`` into a request URL.
+    """
+    if name == "PROJECT":
+        return require_project()
+    if name == "VERTEX_API_BASE":
+        project = require_project()
+        return (
+            f"https://{REGION}-aiplatform.googleapis.com/v1/projects/{project}/locations/{REGION}"
+        )
+    if name == "CLOUDBUILD_API_BASE":
+        return f"https://cloudbuild.googleapis.com/v1/projects/{require_project()}"
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 # ---------------------------------------------------------------------------
 # IPv4 enforcement
@@ -182,14 +210,15 @@ def configure_script_logging(level: int = logging.INFO) -> None:
     )
 
 
+# PROJECT, VERTEX_API_BASE and CLOUDBUILD_API_BASE are resolved by the module
+# __getattr__ above (PEP 562) so they can fail closed; `from ... import NAME`
+# works for them, but they are deliberately absent from __all__.
 __all__ = [
-    "CLOUDBUILD_API_BASE",
     "LOGGING_ENTRIES_URL",
-    "PROJECT",
     "REGION",
-    "VERTEX_API_BASE",
     "auth_headers",
     "configure_script_logging",
     "force_ipv4_only",
     "get_access_token",
+    "require_project",
 ]

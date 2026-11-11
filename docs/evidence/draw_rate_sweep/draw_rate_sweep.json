@@ -215,5 +215,34 @@
       },
       "mean_steps": 1413.4
     }
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "git_sha": "50144cc",
+    "generated_utc": "2026-09-02T00:00:00+00:00",
+    "search_epoch": "pre-2026-09-04",
+    "seed": null,
+    "seed_null_reason": "per-cell seeds recorded in rows; no single run seed",
+    "command": "python docs/evidence/draw_rate_sweep/draw_rate_sweep.py",
+    "hardware": {
+      "cpu_model": null,
+      "gpu_model": null,
+      "logical_cores": null,
+      "omp_num_threads": 2,
+      "hardware_null_reason": "not recorded when generated; backfilled 2026-11-10"
+    },
+    "python": "3.11.15",
+    "torch": "2.14.0",
+    "numpy": "2.4.6",
+    "games_total": 720,
+    "claims": [
+      "draw rate under uniform random play falls with the turn limit (0.68/0.47/0.37 at 30/60/100 turns, board 8)",
+      "board size at 30 turns raises the draw rate"
+    ],
+    "non_claims": [
+      "any statement about trained-agent strength",
+      "the draw rate under the corrected (post-2026-09-04) search"
+    ],
+    "backfilled": "2026-11-10: block added retroactively from the artifact's own provenance; no measurement changed"
+  }
 }

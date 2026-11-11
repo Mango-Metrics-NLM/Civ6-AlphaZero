@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
+
 import numpy as np
 import pytest
 import torch
 
-from run_enhanced_training import (
+# The runner scripts live in scripts/, which is not on sys.path; bootstrap it the way
+# tests/scripts/ does. The module name stays bare so existing mock.patch targets hold.
+_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from run_enhanced_training import (  # noqa: E402
     ReplayBuffer,
     ReplayDataset,
     TrainingExample,

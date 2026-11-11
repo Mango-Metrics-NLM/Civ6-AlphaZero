@@ -20,8 +20,14 @@ early session-key-less entries pass while blocking new drift. This keeps the 12
 historical ledger lines valid without weakening the schema going forward.
 
 Modes:
-  (default)     K1-K6 + full-history K7 (skipped on a shallow clone)
-  --git         K1-K6 + full-history K7 (for CI; checkout must be unshallowed)
+  (default)     K1-K6 + full-history K7, which is SKIPPED WITH A NOTE on a
+                shallow clone (a developer's depth-1 checkout can still run
+                the pre-commit hook)
+  --git         K1-K6 + full-history K7, MANDATORY: a shallow clone is a K7
+                failure (exit 1), not a note. For CI and `make validate`; the
+                checkout must be unshallowed (fetch-depth: 0). Before 2026-11-10
+                this flag changed nothing, so `make validate` passed on a
+                shallow clone with the immutability rule unenforced (audit G7).
   --no-git      K1-K6 only (skip K7) -- used by the fast PostToolUse hook path
   --path FILE   validate a single file in isolation: the ledger (K1-K4) or a
                 session-state file (K6); no cross-file (K5) or git (K7) checks
@@ -197,12 +203,30 @@ def _is_shallow_clone() -> bool:
     return out.stdout.strip() == "true"
 
 
-def _validate_handoff_immutability(issues: list[Issue], *, quiet: bool) -> None:
-    """K7: no reachable commit may modify/delete/rename a kb/handoffs/ file."""
+def _validate_handoff_immutability(
+    issues: list[Issue], *, quiet: bool, require: bool = False
+) -> None:
+    """K7: no reachable commit may modify/delete/rename a kb/handoffs/ file.
+
+    ``require`` (the ``--git`` flag) turns an unverifiable history into a
+    failure: on a shallow clone ``git log`` sees only the fetched commits, so a
+    tampered handoff behind the cut-off would pass. A gate that prints a note
+    and exits 0 in that state is not a gate.
+    """
     if _is_shallow_clone():
-        if not quiet:
+        if require:
+            issues.append(
+                Issue(
+                    "K7",
+                    "shallow clone: handoff history cannot be verified; --git requires "
+                    "an unshallowed checkout (git fetch --unshallow, or fetch-depth: 0 in CI)",
+                    REPO_ROOT,
+                )
+            )
+        elif not quiet:
             print(
-                "note: shallow clone -- skipping handoff-immutability check (K7)",
+                "note: shallow clone -- skipping handoff-immutability check (K7); "
+                "run with --git to make this a failure",
                 file=sys.stderr,
             )
         return
@@ -255,13 +279,17 @@ def _validate_path(path: Path, issues: list[Issue]) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate the kb/ workflow.")
     parser.add_argument(
-        "--git", action="store_true", help="run the git-based K7 immutability check"
+        "--git",
+        action="store_true",
+        help="require the git-based K7 immutability check (a shallow clone fails)",
     )
     parser.add_argument("--no-git", action="store_true", help="skip the git-based K7 check")
     parser.add_argument("--path", help="validate a single file in isolation (hook mode)")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.git and args.no_git:
+        parser.error("--git and --no-git are mutually exclusive")
 
     issues: list[Issue] = []
     try:
@@ -271,7 +299,7 @@ def main(argv: list[str] | None = None) -> int:
             _validate_ledger(LEDGER, issues, cross_file=True)
             _validate_sessions(issues)
             if not args.no_git:
-                _validate_handoff_immutability(issues, quiet=args.quiet)
+                _validate_handoff_immutability(issues, quiet=args.quiet, require=args.git)
     except OSError as exc:  # pragma: no cover - defensive I/O guard
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2

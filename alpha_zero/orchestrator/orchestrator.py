@@ -1504,15 +1504,29 @@ class TrainingOrchestrator:
         # Play evaluation games
         num_eval_games = self.config.training.evaluation_games
         wins = 0
+        draws = 0
         total_reward = 0.0
 
         for _ in range(num_eval_games):
             result = self._play_single_game()
             if result.winner == 1:
                 wins += 1
+            elif result.winner is None:
+                # MicroCiv reports a drawn game as winner=None (the GameResult
+                # annotation says int; the environment does not).
+                draws += 1
             total_reward += result.total_reward
 
-        win_rate = wins / max(num_eval_games, 1)
+        # One SSOT for every rate (E1). `win_rate` keeps its historical
+        # meaning -- wins over all games, draws as losses -- and still drives
+        # best-model selection and stagnation below, pending a recorded
+        # decision; score_rate and draw_rate are reported beside it.
+        from alpha_zero.evaluation import scoring
+
+        losses = max(num_eval_games - wins - draws, 0)
+        win_rate = scoring.win_rate(wins, draws, losses) if num_eval_games else 0.0
+        score_rate = scoring.score_rate(wins, draws, losses)
+        draw_rate = draws / max(num_eval_games, 1)
         avg_reward = total_reward / max(num_eval_games, 1)
 
         self.state.current_win_rate = win_rate
@@ -1522,17 +1536,27 @@ class TrainingOrchestrator:
             self.state.best_win_rate = win_rate
             self._checkpointer.save_best(
                 self._network,
-                metrics={"win_rate": win_rate, "avg_reward": avg_reward},
+                metrics={
+                    "win_rate": win_rate,
+                    "score_rate": score_rate,
+                    "draw_rate": draw_rate,
+                    "avg_reward": avg_reward,
+                },
             )
             logger.info(f"New best model saved with win_rate={win_rate:.3f}")
 
-        logger.info(f"Evaluation: win_rate={win_rate:.3f}, avg_reward={avg_reward:.3f}")
+        logger.info(
+            f"Evaluation: win_rate={win_rate:.3f}, score_rate={score_rate:.3f}, "
+            f"draw_rate={draw_rate:.3f}, avg_reward={avg_reward:.3f}"
+        )
 
         # Log the fast champion-vs-self signal to MLflow every evaluation step.
         if self._mlflow_logger is not None:
             self._mlflow_logger.log_metrics(
                 {
                     "eval/champion/win_rate": float(win_rate),
+                    "eval/champion/score_rate": float(score_rate),
+                    "eval/champion/draw_rate": float(draw_rate),
                     "eval/champion/avg_reward": float(avg_reward),
                 },
                 step=self.state.iteration,
@@ -1546,7 +1570,12 @@ class TrainingOrchestrator:
         # requests a graceful stop.
         self._check_training_stagnation(win_rate)
 
-        return {"win_rate": win_rate, "avg_reward": avg_reward}
+        return {
+            "win_rate": win_rate,
+            "score_rate": score_rate,
+            "draw_rate": draw_rate,
+            "avg_reward": avg_reward,
+        }
 
     def _run_periodic_full_evaluation(self, win_rate: float) -> None:
         """Run EvaluationPipeline + ELO update every ``full_eval_interval`` iters.
@@ -1758,9 +1787,16 @@ class TrainingOrchestrator:
             train_metrics: Training metrics.
             iteration_time: Time taken for iteration.
         """
-        # Compute game metrics
+        # Compute game metrics. Rates come from the scoring SSOT (E1);
+        # win_rate keeps its historical draws-as-losses meaning.
+        from alpha_zero.evaluation import scoring
+
         wins = sum(1 for r in game_results if r.winner == 1)
-        win_rate = wins / max(len(game_results), 1)
+        draws = sum(1 for r in game_results if r.winner is None)
+        losses = max(len(game_results) - wins - draws, 0)
+        win_rate = scoring.win_rate(wins, draws, losses) if game_results else 0.0
+        score_rate = scoring.score_rate(wins, draws, losses)
+        draw_rate = draws / max(len(game_results), 1)
         avg_turns = np.mean([r.turns for r in game_results]) if game_results else 0
 
         # Log to console
@@ -1779,6 +1815,8 @@ class TrainingOrchestrator:
             game_metrics: dict[str, float] = {
                 "game/games": float(len(game_results)),
                 "game/win_rate": float(win_rate),
+                "game/score_rate": float(score_rate),
+                "game/draw_rate": float(draw_rate),
                 "game/avg_game_length": float(avg_turns),
             }
             train_metrics_ns: dict[str, float] = {

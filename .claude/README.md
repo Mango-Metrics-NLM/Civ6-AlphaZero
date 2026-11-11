@@ -1,0 +1,99 @@
+# `.claude/` — the Claude Code harness
+
+This directory configures the coding agent the maintainer uses on this
+repository. **A human contributor does not need any of it**; `CONTRIBUTING.md`
+is the complete guide for people. It is published because the harness is part
+of how the repository was built and because the pattern is reusable — with the
+caveats in *Threat model* below.
+
+## Files
+
+| Path | Git | Purpose |
+|------|-----|---------|
+| `settings.json` | committed | Permission allow/deny lists, hook registrations, environment variables. |
+| `settings.local.json` | gitignored | Personal overrides (tokens, machine-specific paths). Never committed. |
+| `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`. |
+| `skills/*/SKILL.md` | committed | Ten skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`. Each has frontmatter validated by `scripts/validate_skills.py`. |
+
+`.agents/skills/` (a sibling directory, three entries) is **validated but never
+loaded**: `validate_skills.py` scans it, the PostToolUse hook routes it, and
+`tests/governance/` covers it, but no session loads skills from there. Treat it
+as gated documentation (CLAUDE.md §5.2, row dated 2026-09-02).
+
+## What each hook does
+
+| Event | Script | Behaviour |
+|-------|--------|-----------|
+| `SessionStart` | `hooks/sessionstart_bootstrap.sh` | Checks Python ≥ 3.11, installs the `dev` extra, and reports what is *actually* true: install failure with the log tail, missing packages, and a tool/interpreter split (a `mypy` resolved from an isolated tool venv cannot see the project's stubs and reports phantom errors). It used to print "pytest ready" unconditionally. |
+| `PreToolUse` (Bash) | `hooks/pretooluse_guard.sh` | Denies `git commit` / `git push` that would land on `main` **or** the repository's default branch (resolved from `CIV6AZ_DEFAULT_BRANCH`, then `origin/HEAD`, then `main`), force-pushes (`--force-with-lease` allowed), and self-play/training invocations above the 1000-game cap. Matching is anchored to the command itself so a quoted mention does not trip it. If the payload cannot be parsed (no `jq`, no `python3`) it **denies**, because a guard that fails open is invisible. |
+| `PostToolUse` (Write/Edit) | `hooks/posttooluse_lint.sh` | `ruff check --fix` + `ruff format` on the edited Python file. F401 and RUF100 are deferred to the commit-time gates so an import added in one edit is not stripped before its first use lands in the next. Never fails the originating tool call. |
+| `PostToolUse` (Write/Edit **and** Bash) | `hooks/posttooluse_governance.sh` | Runs the matching governance validator in single-file mode for `openspec/`, `kb/` and skills, a whole-repo `check_doc_sync.py` for documentation, and the dead-code ratchet when a file appears under or leaves `alpha_zero/` (which is why it is also on the Bash matcher — a deletion is not a Write). |
+| `PreCompact` | `hooks/precompact_state.sh` | Folds KB session state, recent ledger lines and a `git diff --stat` into the compacted context so workflow state survives compaction. |
+| `Stop` | inline `echo` | Reminds the agent to run its role's handoff skill (CLAUDE.md §14). |
+
+## What the permission allowlist allows
+
+`settings.json` pre-approves, without a prompt: `ruff`, `mypy`, `pytest`,
+`mlflow`, `pip install` / `pip list`, `python -m alpha_zero …`, `python -c …`,
+`python scripts/…`, the `make` targets for lint / type / test / verify / validate /
+security, read-only `git` (`status`, `diff`, `log`, `branch`) **and** mutating
+`git` (`checkout`, `add`, `commit`, `push`, `fetch`, `pull`, `stash`), plus `ls`,
+`wc`, `which`, `node`, `npx`.
+
+It denies: `rm -rf /`, `rm -rf ~`, `docker push`, `gcloud`, `gsutil`, `kubectl`,
+and `Edit`/`Write` to `.env` and `.env.local`.
+
+Environment set for every session: `PYTHONDONTWRITEBYTECODE=1`,
+`PYTEST_TIMEOUT=300`, `OMP_NUM_THREADS=2` (torch's intra-op pool wedges on
+oversubscribed VMs — CLAUDE.md §5.3), and `CIV6AZ_DEFAULT_BRANCH` so the push
+guard protects the real default branch rather than the literal `main`.
+
+## Threat model — read before copying this
+
+**This is a heuristic PreToolUse guard, not a sandbox.** It inspects the
+command string the agent proposes and pattern-matches it. It does not confine
+the process, the filesystem or the network. Specifically:
+
+- **Known bypasses.** Wrapping the command defeats the anchoring: `bash -c "git
+  push --force origin main"`, `sh -c`, `eval`, `xargs`, and `gh pr merge` all
+  pass the guard. A pre-approved script can also reach a denied tool (a helper
+  that shells out to `gcloud` is allowed even though `gcloud` is denied). These
+  are recorded as finding **S7** in
+  [`docs/audits/2026-09-04-standards-audit.md`](../docs/audits/2026-09-04-standards-audit.md)
+  and are not fixed.
+- **Open items for the maintainer.** `enableAllProjectMcpServers: true` trusts
+  every MCP server a project configuration names, and `Bash(python -c:*)` /
+  `Bash(python3 -c:*)` / `Bash(npx:*)` / `Bash(node:*)` pre-approve arbitrary
+  code execution. Narrowing these is a maintainer decision tracked under the
+  public-release OpenSpec change; until it lands, assume an agent running under
+  this configuration can execute anything the invoking user can.
+- **Bash-mediated writes to `.env`** (`echo … > .env`) are not pattern-blocked;
+  only the `Edit`/`Write` tools are.
+- **What the guard is for:** the *accidental* commit to the default branch,
+  the *accidental* force-push, and the *accidental* 5,000-game self-play run —
+  the mistakes an agent makes in passing. It will not stop a determined or
+  adversarial process, and it has had its own fail-open bugs (jq missing →
+  allow; literal `main` vs the real default branch) — see the 2026-09-02 and
+  2026-09-04 rows in CLAUDE.md §5.2.
+
+If you reuse this harness, run `tests/governance/test_pretooluse_guard.py`
+against *your* checkout: it drives the script with real stdin payloads under a
+minimal `PATH`, which is how the fail-open bug was found.
+
+## Adapting it to another repository
+
+1. Copy `settings.json` and `hooks/`. Set `CIV6AZ_DEFAULT_BRANCH` (or rename the
+   variable) to your default branch, and change the `1000`-game cap or delete
+   that rule.
+2. Replace the governance validators the PostToolUse hook calls
+   (`scripts/validate_*.py`, `scripts/check_doc_sync.py`) with your own, or
+   delete `posttooluse_governance.sh` from `settings.json`.
+3. Decide on the allowlist deliberately: remove `python -c`, `npx`, `node` and
+   the mutating `git` entries unless you want them prompt-free, and set
+   `enableAllProjectMcpServers` to `false` unless you audit every MCP server in
+   the project configuration.
+4. The skills assume this repository's `kb/` layout and OpenSpec tree; start
+   from `docs/templates/CLAUDE_TEMPLATE.md` and
+   `docs/templates/PROJECT_CHARTER_TEMPLATE.md` rather than from `CLAUDE.md`.
+5. Keep the hooks under test (`tests/governance/`). A hook that nothing
+   exercises is prose.

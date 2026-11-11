@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import tempfile
 from pathlib import Path
 
@@ -9,15 +10,13 @@ import numpy as np
 import pytest
 import torch
 
-from alpha_zero.core.civ6_mcts import SimpleMCTS
-from alpha_zero.core.civ6_network import MicroCivNetwork
-from alpha_zero.utils.curriculum_learning import CurriculumConfig, CurriculumManager
-from alpha_zero.utils.enhanced_rewards import create_enhanced_reward_shaper
-from alpha_zero.utils.environment_tuning import (
-    create_tuned_environment,
-    get_default_fast_config,
-)
-from run_enhanced_training import (
+# The runner scripts live in scripts/, which is not on sys.path; bootstrap it the way
+# tests/scripts/ does. The module name stays bare so existing mock.patch targets hold.
+_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+from run_enhanced_training import (  # noqa: E402
     ReplayDataset,
     TrainingExample,
     evaluate_network,
@@ -25,6 +24,18 @@ from run_enhanced_training import (
     run_self_play_enhanced,
     self_play_game_enhanced,
     train_epoch,
+)
+
+from alpha_zero.core.civ6_mcts import SimpleMCTS  # noqa: E402
+from alpha_zero.core.civ6_network import MicroCivNetwork  # noqa: E402
+from alpha_zero.utils.curriculum_learning import (  # noqa: E402
+    CurriculumConfig,
+    CurriculumManager,
+)
+from alpha_zero.utils.enhanced_rewards import create_enhanced_reward_shaper  # noqa: E402
+from alpha_zero.utils.environment_tuning import (  # noqa: E402
+    create_tuned_environment,
+    get_default_fast_config,
 )
 
 

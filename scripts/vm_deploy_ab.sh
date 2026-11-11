@@ -1,11 +1,14 @@
 #!/bin/bash
 set -e
+PROJECT_ID="${CIV6AZ_VERTEX_PROJECT:?CIV6AZ_VERTEX_PROJECT must be set (no default project)}"
+BUCKET="${CIV6AZ_GCS_BUCKET:?CIV6AZ_GCS_BUCKET must be set (no default bucket)}"
+IMAGE="gcr.io/${PROJECT_ID}/alphazero-training:v0.14.1"
 LOG=/tmp/ab_deploy.log
 date > "$LOG"
 echo "Starting v0.14.1 A/B deploy" >> "$LOG"
 
 echo "Pulling v0.14.1..." >> "$LOG"
-docker pull gcr.io/hrmtrain/civ6az-training:v0.14.1 >> "$LOG" 2>&1
+docker pull "${IMAGE}" >> "$LOG" 2>&1
 echo "Pull complete" >> "$LOG"
 
 if docker ps -a --format '{{.Names}}' | grep -q civ6az-ab-run-a; then
@@ -16,14 +19,14 @@ fi
 echo "Launching Run A (patch_embed)..." >> "$LOG"
 docker run -d \
   --name civ6az-ab-run-a \
-  -e CIV6AZ_VERTEX_PROJECT=hrmtrain \
+  -e CIV6AZ_VERTEX_PROJECT="${PROJECT_ID}" \
   -e CIV6AZ_VERTEX_REGION=us-central1 \
-  -e CIV6AZ_GCS_BUCKET=civ6az-training \
-  -e CIV6AZ_CONTAINER_IMAGE_URI=gcr.io/hrmtrain/civ6az-training:v0.14.1 \
+  -e CIV6AZ_GCS_BUCKET="${BUCKET}" \
+  -e CIV6AZ_CONTAINER_IMAGE_URI="${IMAGE}" \
   -e WANDB_API_KEY="${WANDB_API_KEY}" \
   -e WANDB_PROJECT=civ6-alphazero \
   -e WANDB_ENABLED=true \
-  gcr.io/hrmtrain/civ6az-training:v0.14.1 \
+  "${IMAGE}" \
   python -u -m alpha_zero.cloud.gcp.entrypoint \
     --mode=orchestrator \
     --iterations=20 \

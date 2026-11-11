@@ -44,8 +44,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Find Vertex AI Custom Jobs")
     parser.add_argument(
         "--project",
-        default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "hrmtrain"),
-        help="GCP project ID (default: $CIV6AZ_VERTEX_PROJECT or 'hrmtrain')",
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        required=not os.environ.get("CIV6AZ_VERTEX_PROJECT"),
+        help="GCP project ID (default: $CIV6AZ_VERTEX_PROJECT; there is no built-in default)",
     )
     parser.add_argument(
         "--region",

@@ -67,7 +67,15 @@ class TierProgress:
 
     @property
     def win_rate_in_tier(self) -> float:
-        """Win rate in current tier."""
+        """Win rate in current tier.
+
+        The league records only wins and losses (``record_win`` /
+        ``record_loss``; there is no draw path), so this is a *decisive* rate
+        ``wins / (wins + losses)`` rather than the draws-as-losses statistic
+        the E1 draw-aware work replaced elsewhere. Promotion and demotion
+        decisions below still read it, pending a recorded decision on how a
+        drawn league game should count.
+        """
         if self.games_in_tier == 0:
             return 0.0
         return self.wins_in_tier / self.games_in_tier

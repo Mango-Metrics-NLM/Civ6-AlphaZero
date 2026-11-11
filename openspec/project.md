@@ -15,13 +15,16 @@ not hardcode it elsewhere.
 
 ## Tech stack
 
-- **Language / runtime:** Python 3.11 and 3.12 (type hints throughout).
+- **Language / runtime:** Python 3.11 and 3.12, with 3.13 exercised in CI as
+  experimental (type hints throughout).
 - **Core:** PyTorch, NumPy, Gymnasium.
 - **Experiment tracking:** MLflow is the sole tracker (Weights & Biases was
   retired on 2026-07-13). ``alpha_zero/monitoring/`` is the MLflow package.
-- **Hyperparameter search:** Optuna (``run_sweep.py``, ``configs/sweep_muzero.yaml``).
+- **Hyperparameter search:** Optuna (``scripts/run_sweep.py``, ``configs/sweep_muzero.yaml``).
 - **Cloud:** Google Cloud Vertex AI, GCS, Cloud Build (see ``infra/``, ``dockerfiles/``).
-- **Quality tooling:** pytest, ruff 0.8.0 (100-char lines), mypy (advisory), bandit.
+- **Quality tooling:** pytest, ruff 0.15.8 (100-char lines; the pin lives in
+  ``pyproject.toml``'s ``dev`` extra and ``.pre-commit-config.yaml``), mypy
+  (**blocking** CI gate on ``alpha_zero/``), bandit, gitleaks.
 
 ## Entry points
 
@@ -30,8 +33,9 @@ Invocation is via ``python -m`` — there are **no** installed console scripts.
 - ``python -m alpha_zero.orchestrator`` — unified training orchestrator.
 - ``python -m alpha_zero.web`` — Human-vs-AI web interface.
 - ``python -m alpha_zero.cloud.gcp`` — Vertex AI job launcher.
-- Top-level runners: ``run_sweep.py``, ``run_civ6_ai.py``,
-  ``run_enhanced_training.py``, ``run_muzero_training.py``.
+- Runners live in ``scripts/`` (``scripts/run_sweep.py``, ``scripts/run_civ6_ai.py``,
+  ``scripts/run_enhanced_training.py``, ``scripts/run_muzero_training.py``, …);
+  there are no runners at the repository root.
 
 ## Conventions
 

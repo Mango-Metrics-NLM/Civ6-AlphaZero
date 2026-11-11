@@ -58,7 +58,7 @@ The in-flight work on this branch is a **MuZero rebrand + production hardening**
 | TD-2 | ADC refresh-token exchange duplicated across 8 scripts | Centralised in `scripts/_gcp_lib.get_access_token()` + `auth_headers()`. Surfaces clearer errors when ADC file is missing or is a service-account key. |
 | TD-3 | `scripts/_fetch_logs_tmp.py` debug leftover (`_tmp` suffix; functionally identical to `_fetch_job_logs.py`) | **Deleted.** |
 | TD-4 | Hardcoded default job IDs in `_fetch_worker_logs.py:14` and `_poll_build.py:21` referencing specific past runs | Removed; now require explicit CLI arg, exit 2 with usage on missing arg. |
-| TD-5 | Hardcoded project number `1019219508001` (line 41 of `_fetch_job_logs.py`) | Replaced with `f"projects/{PROJECT}"` driven by `CIV6AZ_VERTEX_PROJECT` env. |
+| TD-5 | Hardcoded project number `<project-number>` (line 41 of `_fetch_job_logs.py`) | Replaced with `f"projects/{PROJECT}"` driven by `CIV6AZ_VERTEX_PROJECT` env. |
 | TD-6 | `test_search_call_in_selfplay_uses_obs_and_mask` used hardcoded absolute Windows path `C:\Users\iansh\OneDrive\Documents\Civ6-AlphaZero\...` — would fail in any other checkout, worktree, or CI | Now resolves via `inspect.getfile(selfplay_worker)`. Portable. |
 | TD-7 | Lack of structured logging in utility scripts (mix of `print` for results + nothing for errors) | All refactored scripts now use `logger` for diagnostics on stderr and `print` for tool output on stdout; `configure_script_logging()` provides consistent format. |
 | TD-8 | Missing module docstrings + type hints in utility scripts | Every refactored script now has a module docstring, usage banner, typed `main()`, and explicit return code semantics. |

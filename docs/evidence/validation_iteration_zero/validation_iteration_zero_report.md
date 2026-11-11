@@ -1,5 +1,7 @@
 # Validation Iteration Zero: first post-fix training run
 
+> **Pre-fix artifact (superseded).** Generated before the 2026-09-04 search fixes (`e9d0572`: sign-correct value backup, completed-Q policy target, per-iteration seeds). The numbers below are a record of the mechanism and the wall clock, not evidence of strength. See [`docs/evidence/README.md`](../README.md) for the epoch convention.
+
 Generated 2026-08-28T02:44:55.233985+00:00 from commit `0c394f98d7f7ffbf4accfa65e139a471abc99f59`.
 
 ## Per-iteration results

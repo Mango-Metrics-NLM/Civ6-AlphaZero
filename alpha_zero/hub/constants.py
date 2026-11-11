@@ -23,7 +23,7 @@ __all__ = [
 ]
 
 #: Hugging Face organisation / user that owns the published repos.
-HF_ORG: str = os.environ.get("HF_ORG", "Mango-Metrics-NLM")
+HF_ORG: str = os.environ.get("HF_ORG", "ianshank")
 
 #: Library name written into model cards and Hub metadata.
 LIBRARY_NAME: str = os.environ.get("HF_LIBRARY_NAME", "alpha-zero-civ6")

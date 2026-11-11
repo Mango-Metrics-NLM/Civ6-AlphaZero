@@ -274,10 +274,27 @@ class EvaluationResult:
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate."""
+        """Legacy win rate: ``wins / games_played``, draws count as losses.
+
+        Kept verbatim because ``games_played`` is an independent counter here
+        (it need not equal ``wins + losses + draws``), and because PBT's
+        fitness decisions still read this field pending a recorded decision
+        to move them to :attr:`score_rate`. Allow-listed in
+        ``tests/regression/draw_aware_allowlist.toml``.
+        """
         if self.games_played == 0:
             return 0.0
         return self.wins / self.games_played
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware companion: ``(wins + 0.5 * draws) / (wins + draws + losses)``.
+
+        Reported alongside :attr:`win_rate`; not yet used by any decision.
+        """
+        from alpha_zero.evaluation.scoring import score_rate
+
+        return score_rate(self.wins, self.draws, self.losses)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -289,6 +306,7 @@ class EvaluationResult:
             "losses": self.losses,
             "draws": self.draws,
             "win_rate": self.win_rate,
+            "score_rate": self.score_rate,
             "details": self.details,
             "timestamp": self.timestamp,
         }

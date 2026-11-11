@@ -19,8 +19,8 @@ Usage::
     python scripts/run_baseline_eval.py --model_version 91 --sqlite
 
 Environment Variables (auto-loaded from .env if present):
-    CIV6AZ_GCS_BUCKET      GCS bucket name (e.g. civ6az-training)
-    CIV6AZ_VERTEX_PROJECT  GCP project ID (e.g. hrmtrain)
+    CIV6AZ_GCS_BUCKET      GCS bucket name (e.g. my-bucket)
+    CIV6AZ_VERTEX_PROJECT  GCP project ID (e.g. my-gcp-project)
 """
 
 from __future__ import annotations
@@ -162,7 +162,7 @@ def extract_win_rate_metrics(result: Any, prefix: str) -> dict[str, float]:
 
     The ``EvaluationResult.win_rate`` field is a ``WinRateResult`` object with:
     - ``.wins``, ``.losses``, ``.draws``, ``.total_games``  (int counts)
-    - ``.win_rate``, ``.draw_rate``, ``.loss_rate``          (float, 0-100 %)
+    - ``.win_rate``, ``.score_rate``, ``.draw_rate``, ``.loss_rate``  (float, 0-100 %)
 
     This function re-scales percentages to 0-1 fractions for MLflow convention.
 
@@ -187,8 +187,8 @@ def extract_win_rate_metrics(result: Any, prefix: str) -> dict[str, float]:
             except (TypeError, ValueError):
                 logger.debug("Could not convert %s.%s to float", count_attr, val)
 
-    # win_rate/draw_rate/loss_rate are 0-100 on WinRateResult — normalise to 0-1
-    for rate_attr in ("win_rate", "draw_rate", "loss_rate"):
+    # win_rate/score_rate/draw_rate/loss_rate are 0-100 on WinRateResult — normalise to 0-1
+    for rate_attr in ("win_rate", "score_rate", "draw_rate", "loss_rate"):
         val = getattr(wr, rate_attr, None)
         if val is not None:
             try:

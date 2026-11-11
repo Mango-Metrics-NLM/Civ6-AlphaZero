@@ -210,13 +210,8 @@ def _fake_arch() -> Mock:
     )
 
 
-def test_load_model_falls_back_to_random_weights_without_gcs(reset_model_state):
-    """When GCS is unavailable the loader keeps random weights and still serves."""
-    srv._model = None
-    fake_net = Mock()
-    fake_net.to.return_value = fake_net
-
-    with (
+def _network_patches(fake_net: Mock):
+    return (
         patch(
             "alpha_zero.cloud.gcp.config.NetworkArchitectureConfig.from_env",
             return_value=_fake_arch(),
@@ -226,19 +221,87 @@ def test_load_model_falls_back_to_random_weights_without_gcs(reset_model_state):
             return_value=fake_net,
         ),
         patch("alpha_zero.core.transformer_network.TransformerConfig"),
+    )
+
+
+def _install_failing_gcs(monkeypatch) -> None:
+    """A ``google.cloud.storage`` whose client cannot be built (no credentials)."""
+    fake_storage = types.ModuleType("google.cloud.storage")
+    fake_storage.Client = Mock(side_effect=OSError("no credentials"))
+    fake_cloud = types.ModuleType("google.cloud")
+    fake_cloud.storage = fake_storage
+    fake_google = types.ModuleType("google")
+    fake_google.cloud = fake_cloud
+    monkeypatch.setitem(sys.modules, "google", fake_google)
+    monkeypatch.setitem(sys.modules, "google.cloud", fake_cloud)
+    monkeypatch.setitem(sys.modules, "google.cloud.storage", fake_storage)
+
+
+def test_load_model_refuses_to_start_without_a_bucket(reset_model_state, monkeypatch):
+    """No bucket and no opt-in: fail closed, never serve random weights.
+
+    The previous default was the maintainer's bucket name. A bucket-name default
+    is a takeover vector (whoever registers the name serves the model), and the
+    old fallback would then have served a randomly initialised network behind a
+    green health check.
+    """
+    srv._model = None
+    monkeypatch.setattr(srv, "GCS_BUCKET", None)
+    monkeypatch.setattr(srv, "ALLOW_RANDOM_WEIGHTS", False)
+    fake_net = Mock()
+    fake_net.to.return_value = fake_net
+
+    with (
+        patch.multiple("builtins"),
+        pytest.raises(RuntimeError, match="CIV6AZ_GCS_BUCKET is not set"),
     ):
-        # No google.cloud.storage installed -> ImportError -> fallback branch.
+        p1, p2, p3 = _network_patches(fake_net)
+        with p1, p2, p3:
+            srv._load_model()
+
+    assert srv._model is None
+
+
+def test_load_model_refuses_random_weights_when_download_fails(reset_model_state, monkeypatch):
+    """A configured bucket whose download fails is an error, not a silent downgrade."""
+    srv._model = None
+    monkeypatch.setattr(srv, "GCS_BUCKET", "some-bucket")
+    monkeypatch.setattr(srv, "ALLOW_RANDOM_WEIGHTS", False)
+    _install_failing_gcs(monkeypatch)
+    fake_net = Mock()
+    fake_net.to.return_value = fake_net
+
+    p1, p2, p3 = _network_patches(fake_net)
+    with p1, p2, p3, pytest.raises(RuntimeError, match="Refusing to serve random weights"):
+        srv._load_model()
+
+    assert srv._model is None
+    fake_net.load_state_dict.assert_not_called()
+
+
+def test_load_model_serves_random_weights_only_on_explicit_opt_in(reset_model_state, monkeypatch):
+    """``CIV6AZ_ALLOW_RANDOM_WEIGHTS=1`` is the one path to random weights."""
+    srv._model = None
+    monkeypatch.setattr(srv, "GCS_BUCKET", None)
+    monkeypatch.setattr(srv, "ALLOW_RANDOM_WEIGHTS", True)
+    fake_net = Mock()
+    fake_net.to.return_value = fake_net
+
+    p1, p2, p3 = _network_patches(fake_net)
+    with p1, p2, p3:
         srv._load_model()
 
     assert srv._model is fake_net
     assert srv._model_version == srv.MODEL_VERSION
     assert srv._startup_time >= 0.0
     fake_net.to.assert_called_once()
+    fake_net.load_state_dict.assert_not_called()
 
 
 def test_load_model_loads_state_dict_when_gcs_succeeds(reset_model_state, monkeypatch):
     """Cover the GCS-download + state_dict load branch with fully mocked I/O."""
     srv._model = None
+    monkeypatch.setattr(srv, "GCS_BUCKET", "some-bucket")
     fake_net = Mock()
     fake_net.to.return_value = fake_net
 

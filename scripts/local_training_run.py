@@ -16,8 +16,8 @@ Usage:
         --trajectories_per_iter 3
 
 Set env vars before running:
-    $env:CIV6AZ_GCS_BUCKET = "civ6az-training"
-    $env:CIV6AZ_VERTEX_PROJECT = "hrmtrain"
+    $env:CIV6AZ_GCS_BUCKET = "YOUR_BUCKET"
+    $env:CIV6AZ_VERTEX_PROJECT = "YOUR_GCP_PROJECT"
     $env:CIV6AZ_VERTEX_REGION = "us-central1"
 """
 
@@ -141,8 +141,9 @@ def main() -> int:
     # -----------------------------------------------------------------------
     # GCP config — reads CIV6AZ_* env vars
     # -----------------------------------------------------------------------
-    os.environ.setdefault("CIV6AZ_GCS_BUCKET", "civ6az-training")
-    os.environ.setdefault("CIV6AZ_VERTEX_PROJECT", "hrmtrain")
+    missing = [k for k in ("CIV6AZ_GCS_BUCKET", "CIV6AZ_VERTEX_PROJECT") if not os.environ.get(k)]
+    if missing:
+        raise SystemExit(f"{', '.join(missing)} must be set; there are no built-in defaults.")
     os.environ.setdefault("CIV6AZ_VERTEX_REGION", "us-central1")
     config = GCPConfig()
 

@@ -1,0 +1,16 @@
+# Evidence index
+
+Committed measurements, with the one fact a reader needs before quoting any of
+them: whether the search had the 2026-09-04 correctness fixes when the number was
+produced. Contract: [`SCHEMA.md`](SCHEMA.md).
+
+| Artifact | Generated (commit) | Search epoch | Seeded | What it supports | Status |
+|---|---|---|---|---|---|
+| [`draw_rate_sweep/`](draw_rate_sweep/report.md) | 2026-09-02 (`50144cc`) | pre-fix | per cell | draw rate under *random* play vs board size and turn limit (0.68 / 0.47 / 0.37 at 30 / 60 / 100 turns on 8×8) | current for random play; re-measure under trained post-fix play is open |
+| [`hexcrystal_ab/`](hexcrystal_ab/ab_report.md) | 2026-08-10 (`b14534a`) | pre-fix | 42 (280/800 arena games reused training seeds) | the A/B harness runs and is reproducible | **superseded** — not evidence that either encoder is stronger |
+| [`seeded_probe_reproducibility/`](seeded_probe_reproducibility/README.md) | 2026-08-30 (`0b75871`) | pre-fix | yes | seeded probes are identical; unseeded probes spread 0.30–0.45 | current (reproducibility only) |
+| [`validation_iteration_zero/`](validation_iteration_zero/validation_iteration_zero_report.md) | 2026-08-28 (`0c394f9`) | pre-fix | no | the local loop runs end to end on CPU; the checkpoint scores below parity against random | **superseded** as a learning measurement |
+| [`tech_debt_baseline/`](tech_debt_baseline/baseline.json) | rolling | n/a | n/a | code-metric ratchet (`tests/regression/test_debt_ratchet.py`) | current |
+
+No committed artifact was generated on post-2026-09-04 code. The first one is
+tracked under milestone v2.1 (`docs/EVALUATION.md` → "First post-fix run").

@@ -82,5 +82,32 @@
     0.3,
     0.4,
     0.45
-  ]
+  ],
+  "evidence": {
+    "schema_version": 1,
+    "git_sha": "0b75871",
+    "generated_utc": "2026-08-30T00:00:00+00:00",
+    "search_epoch": "pre-2026-09-04",
+    "seed": 4242,
+    "seed_null_reason": null,
+    "command": "see README.md (train_seed 2026, probe_seed 4242)",
+    "hardware": {
+      "cpu_model": null,
+      "gpu_model": null,
+      "logical_cores": null,
+      "omp_num_threads": 2,
+      "hardware_null_reason": "not recorded when generated; backfilled 2026-11-10"
+    },
+    "python": null,
+    "torch": null,
+    "numpy": null,
+    "games_total": 200,
+    "claims": [
+      "five seeded probes of one checkpoint are identical; five unseeded probes span 0.30-0.45"
+    ],
+    "non_claims": [
+      "agent strength (the checkpoint trained on 4 self-play games)"
+    ],
+    "backfilled": "2026-11-10: block added retroactively from the artifact's own provenance; no measurement changed"
+  }
 }

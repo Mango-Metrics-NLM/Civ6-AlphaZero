@@ -28,6 +28,8 @@ from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSCheckpointStorage
 from alpha_zero.cloud.gcp.training_worker import create_model, train_epoch
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.evaluation.scoring import ScoreSummary, summarize
+from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.monitoring.config import MonitoringConfig
 from alpha_zero.monitoring.mlflow_logger import MLflowLogger
 from tests.mocks.cloud_mocks import MockStorageBackend
@@ -155,10 +157,15 @@ def _build_synthetic_trajectories(
 
 def _evaluate_vs_random(
     model: torch.nn.Module, cfg: ValidationConfig, device: torch.device
-) -> float:
-    """Play eval_games against random; return network win rate."""
+) -> ScoreSummary:
+    """Play eval_games against random; return the draw-aware record.
+
+    The legacy win rate (draws as losses) is ``scoring.win_rate(summary.wins,
+    summary.draws, summary.losses)``; callers log both.
+    """
     env = MicroCivEnv(board_size=cfg.board_size)
     wins = 0
+    draws = 0
     for _ in range(cfg.eval_games):
         obs, _ = env.reset()
         net_player = int(np.random.randint(2))
@@ -177,10 +184,13 @@ def _evaluate_vs_random(
             obs, _r, terminated, truncated, info = env.step(action)
             turn += 1
             if terminated or truncated:
-                if info.get("winner") == net_player:
+                winner = info.get("winner")
+                if winner == net_player:
                     wins += 1
+                elif winner is None:
+                    draws += 1
                 break
-    return wins / max(cfg.eval_games, 1)
+    return summarize(wins, draws, cfg.eval_games - wins - draws)
 
 
 def run(cfg: ValidationConfig) -> int:
@@ -203,6 +213,8 @@ def run(cfg: ValidationConfig) -> int:
 
     iteration_losses: list[float] = []
     iteration_win_rates: list[float] = []
+    iteration_score_rates: list[float] = []
+    iteration_draw_rates: list[float] = []
 
     monitoring = MonitoringConfig.from_env()
     monitoring.run_name = monitoring.run_name or "validate_convergence"
@@ -249,8 +261,11 @@ def run(cfg: ValidationConfig) -> int:
             assert reloaded is not None and reloaded["step"] == it
             model.load_state_dict(reloaded["model_state_dict"])
 
-            win_rate = _evaluate_vs_random(model, cfg, device)
+            eval_summary = _evaluate_vs_random(model, cfg, device)
+            win_rate = legacy_win_rate(eval_summary.wins, eval_summary.draws, eval_summary.losses)
             iteration_win_rates.append(win_rate)
+            iteration_score_rates.append(eval_summary.score_rate)
+            iteration_draw_rates.append(eval_summary.draw_rate)
 
             ml.log_metrics(
                 {
@@ -258,14 +273,18 @@ def run(cfg: ValidationConfig) -> int:
                     "validation/value_loss": avg_value,
                     "validation/total_loss": avg_total,
                     "validation/win_rate_vs_random": win_rate,
+                    "validation/score_rate_vs_random": eval_summary.score_rate,
+                    "validation/draw_rate_vs_random": eval_summary.draw_rate,
                 },
                 step=it,
             )
             logger.info(
-                "  policy_loss=%.4f value_loss=%.4f win_rate=%.1f%%",
+                "  policy_loss=%.4f value_loss=%.4f win_rate=%.1f%% score_rate=%.3f draw_rate=%.1f%%",
                 avg_policy,
                 avg_value,
                 win_rate * 100,
+                eval_summary.score_rate,
+                eval_summary.draw_rate * 100,
             )
 
         # Convergence gates.
@@ -294,6 +313,11 @@ def run(cfg: ValidationConfig) -> int:
                 {
                     "validation/win_rate_first": iteration_win_rates[0],
                     "validation/win_rate_last": iteration_win_rates[-1],
+                    "validation/score_rate_first": iteration_score_rates[0],
+                    "validation/score_rate_last": iteration_score_rates[-1],
+                    # Trend endpoints only; the pass/fail gate below still
+                    # reads win_rate pending a recorded decision.
+                    "validation/draw_rate_last": iteration_draw_rates[-1],
                 }
             )
 

@@ -1,0 +1,64 @@
+name: OpenSSF Scorecard
+
+# Standard OSSF template (https://github.com/ossf/scorecard-action), pinned.
+#
+# `publish_results: true` sends the score to the public Scorecard API, which is
+# what the README badge and deps.dev read. That publication only happens for
+# runs on the DEFAULT branch of a PUBLIC repository; on the private repository
+# the step logs that it skipped publishing, and the SARIF upload below still
+# needs code scanning to be available. Advisory until the repository is public
+# and the maintainer has seen the first score.
+on:
+  branch_protection_rule:
+  schedule:
+    - cron: "17 5 * * 3" # Wednesdays 05:17 UTC
+  push:
+    branches:
+      - claude/civ6-alphazero-implementation-vMnun
+      - main
+  workflow_dispatch:
+
+permissions: read-all
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    # Scorecard publishes results only for public repositories; skipped while
+    # private so the check is informative, not red.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # upload the SARIF to code scanning
+      id-token: write # OIDC token, required by publish_results to sign the result
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run analysis
+        uses: ossf/scorecard-action@fa7117db83c52d787ae5a89f350999701505d78e # v2.5.0
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: SARIF file
+          path: results.sarif
+          retention-days: 5
+
+      - name: Upload to code-scanning
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: results.sarif

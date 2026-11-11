@@ -63,7 +63,7 @@ The inference service provides real-time MCTS-based predictions for Civ6 gamepla
 
 ### Base URL
 
-- **Cloud Run**: `https://civ6az-inference-<hash>-uc.a.run.app`
+- **Cloud Run**: `https://alphazero-inference-<hash>-uc.a.run.app`
 - **GKE**: `http://<load-balancer-ip>`
 
 ### Endpoints
@@ -227,7 +227,7 @@ Load a different model version.
 ./scripts/deploy_inference.sh cloud-run v1.0.0
 
 # Get service URL
-gcloud run services describe civ6az-inference \
+gcloud run services describe alphazero-inference \
   --region=us-central1 \
   --format="value(status.url)"
 ```
@@ -255,7 +255,7 @@ gcloud run services describe civ6az-inference \
 **Deploy:**
 ```bash
 # Create GKE cluster with GPU node pool
-gcloud container clusters create civ6az-inference \
+gcloud container clusters create alphazero-inference \
   --region=us-central1 \
   --machine-type=n1-standard-8 \
   --accelerator=type=nvidia-tesla-t4,count=1 \
@@ -271,7 +271,7 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 kubectl apply -f k8s/inference-deployment.yaml
 
 # Get external IP
-kubectl get svc civ6az-inference-service -n civ6az
+kubectl get svc alphazero-inference-service -n civ6az
 ```
 
 **Cost Estimate (3× T4 GPU nodes):**
@@ -288,7 +288,7 @@ kubectl get svc civ6az-inference-service -n civ6az
 from alpha_zero.inference.client import InferenceClient, create_random_game_state
 
 # Create client
-client = InferenceClient("https://civ6az-inference.run.app")
+client = InferenceClient("https://<service-url>")
 
 # Check health
 health = client.health()
@@ -319,10 +319,10 @@ client.close()
 
 ```bash
 # Health check
-curl https://civ6az-inference.run.app/health
+curl https://<service-url>/health
 
 # Inference
-curl -X POST https://civ6az-inference.run.app/v1/infer \
+curl -X POST https://<service-url>/v1/infer \
   -H "Content-Type: application/json" \
   -d '{
     "game_state": {
@@ -377,7 +377,7 @@ for request in requests:
 results = await engine.batch_infer(requests)  # 1 GPU call
 ```
 
-**Speedup:** ~5-10x for batch size 32
+**Speedup:** not yet measured; a benchmark artifact is still to be committed
 
 ### 2. Model Caching
 

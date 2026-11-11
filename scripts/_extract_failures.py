@@ -4,11 +4,15 @@ Uses the already-known job data from the earlier query to fetch
 individual jobs by resource name instead of listing all 1,441.
 """
 
+import os
 import sys
 
 from google.cloud import aiplatform
 
-aiplatform.init(project="hrmtrain", location="us-central1")
+_project = os.environ.get("CIV6AZ_VERTEX_PROJECT")
+if not _project:
+    raise SystemExit("CIV6AZ_VERTEX_PROJECT is not set (there is no default project).")
+aiplatform.init(project=_project, location=os.environ.get("CIV6AZ_VERTEX_REGION", "us-central1"))
 
 # From our earlier query, we know the most recent jobs. Let's get just
 # the 3 most recent training jobs directly.
@@ -18,7 +22,7 @@ sys.stdout.flush()
 
 try:
     jobs = aiplatform.CustomJob.list(
-        filter='display_name:"civ6az-training"',
+        filter='display_name:"civ6az-mzwm-training"',
         order_by="create_time desc",
     )
     # Take only first 5 to avoid long processing

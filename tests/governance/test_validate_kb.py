@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 _SCRIPT = Path(__file__).resolve().parents[2] / "scripts" / "validate_kb.py"
 _spec = importlib.util.spec_from_file_location("validate_kb", _SCRIPT)
 assert _spec is not None and _spec.loader is not None
@@ -196,3 +198,92 @@ def test_validation_run_is_an_accepted_event(tmp_path, monkeypatch, capsys):
     )
     assert vk.main(["--no-git"]) == 0
     assert "K3" not in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# K7 on a shallow clone: a note by default, a FAILURE under --git.
+#
+# Audit finding G7 (2026-09-04): `validate_kb.py --git` printed "shallow clone --
+# skipping K7" and exited 0, so `make validate` passed with the immutability rule
+# unenforced on any shallow checkout. The flag now makes K7 mandatory.
+#
+# Negative control (performed 2026-11-10): with the `require` branch disabled in
+# scripts/validate_kb.py, test_k7_shallow_clone_fails_under_git_flag failed with
+# `assert 0 == 1`; restored, it passes.
+# ---------------------------------------------------------------------------
+
+
+def _make_shallow_clone(tmp_path: Path) -> Path:
+    """A depth-1 clone of a two-commit repo with a handoff in it."""
+    src = tmp_path / "src"
+    src.mkdir()
+    _make_git_repo(src)
+    handoffs = src / "kb" / "handoffs"
+    handoffs.mkdir(parents=True)
+    (handoffs / "20260101-a-to-b.md").write_text("original\n", encoding="utf-8")
+    ledger = src / "kb" / "ledger" / "ledger.jsonl"
+    ledger.parent.mkdir(parents=True)
+    ledger.write_text(CURRENT_LINE + "\n", encoding="utf-8")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-q", "-m", "add handoff")
+    (src / "README.md").write_text("second commit so depth=1 cuts history\n", encoding="utf-8")
+    _git(src, "add", "-A")
+    _git(src, "commit", "-q", "-m", "second")
+
+    dst = tmp_path / "shallow"
+    subprocess.run(
+        ["git", "clone", "-q", "--depth", "1", f"file://{src}", str(dst)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    probe = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"],
+        cwd=dst,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    assert probe.stdout.strip() == "true", "fixture is not shallow; the tests below are vacuous"
+    return dst
+
+
+def test_k7_shallow_clone_fails_under_git_flag(tmp_path, monkeypatch, capsys):
+    shallow = _make_shallow_clone(tmp_path)
+    _point_at(monkeypatch, shallow)
+    assert vk.main(["--git"]) == 1
+    err = capsys.readouterr().err
+    assert "K7" in err
+    assert "shallow" in err
+
+
+def test_k7_shallow_clone_is_only_a_note_without_the_flag(tmp_path, monkeypatch, capsys):
+    """Today's default behaviour is preserved: the pre-commit hook still runs."""
+    shallow = _make_shallow_clone(tmp_path)
+    _point_at(monkeypatch, shallow)
+    assert vk.main([]) == 0
+    captured = capsys.readouterr()
+    assert "shallow clone" in captured.err
+    assert "OK" in captured.out
+
+
+def test_k7_full_clone_passes_under_git_flag(tmp_path, monkeypatch):
+    """The flag fails only an UNVERIFIABLE history, not a verifiable clean one."""
+    shallow = _make_shallow_clone(tmp_path)
+    subprocess.run(
+        ["git", "fetch", "-q", "--unshallow"],
+        cwd=shallow,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    _point_at(monkeypatch, shallow)
+    assert vk.main(["--git"]) == 0
+
+
+def test_git_and_no_git_are_mutually_exclusive(tmp_path, monkeypatch):
+    _point_at(monkeypatch, tmp_path)
+    _write_ledger(tmp_path, CURRENT_LINE)
+    with pytest.raises(SystemExit) as excinfo:
+        vk.main(["--git", "--no-git"])
+    assert excinfo.value.code == 2

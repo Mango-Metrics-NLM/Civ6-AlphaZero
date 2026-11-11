@@ -9,7 +9,7 @@ default_install_hook_types: [pre-commit, pre-push]
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v6.0.0
     hooks:
       # `&maintained`: the code paths CI keeps clean. Anchored here (not as a
       # global `files:` default, which would AND with the local hooks' own
@@ -22,9 +22,22 @@ repos:
         exclude: ^kb/handoffs/
       - id: check-yaml
         args: ["--allow-multiple-documents"]  # k8s manifests use --- separators
+      # 200 KB. The largest files a change here legitimately adds are the
+      # bandit baseline (~155 KB) and evidence JSON; a checkpoint, a dataset
+      # shard or an mlruns/ artifact is far bigger and belongs in GCS or the
+      # Hub, never in git history where it cannot be removed.
       - id: check-added-large-files
-        args: ["--maxkb=1000"]
+        args: ["--maxkb=200"]
       - id: check-merge-conflict
+
+  # Same version the Makefile pins (GITLEAKS_VERSION) and CI runs via
+  # `make security-secrets`, so a commit is scanned with the ruleset that will
+  # judge it. This hook scans the staged diff only; the tree-and-history scan
+  # stays in the Makefile target.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.15.8
@@ -66,11 +79,14 @@ repos:
         # tree that decision was written to close, left open on this side.
         files: ^(\.claude|\.agents)/skills/
         pass_filenames: false
+      # `setup.py` was dropped from this pattern 2026-11-10: the project has no
+      # setup.py (pyproject.toml is the build definition), so the entry matched
+      # nothing. CITATION.cff carries the version too and must move with it.
       - id: check-doc-sync
         name: check doc sync
         entry: python scripts/check_doc_sync.py
         language: system
-        files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|docs/|pyproject\.toml|alpha_zero/__init__\.py|setup\.py|CHANGELOG\.md)
+        files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|CITATION\.cff|docs/|pyproject\.toml|alpha_zero/__init__\.py|CHANGELOG\.md)
         pass_filenames: false
       # Scoped to tests/regression/ (2026-09-02): the unit suite cannot complete
       # in the dev sandbox, so a pre-push hook running it was either skipped

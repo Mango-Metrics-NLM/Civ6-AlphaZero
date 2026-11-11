@@ -1,27 +1,28 @@
 {
-    "last_session_id": "session_01EcSsbbTYiSkmZsMVyipm7G",
-    "last_timestamp": "2026-09-02T14:05:00Z",
-    "current_focus": "Tech-debt plan Core scope implemented and pushed (PR #116); handed off to Pre-PR",
+    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
+    "last_timestamp": "2026-11-10T06:06:16Z",
+    "current_focus": "Public-release readiness implemented and pushed (PR #132, v2.0.0 roll); handed off to Pre-PR",
     "resume_pointers": {
-        "current_task": "Pre-PR review of PR #116; then Tier B and WS5/WS3.2/WS6/WS7 once the maintainer answers spec §9",
+        "current_task": "Pre-PR review of PR #132; then the maintainer checklist (review \u00a79) before flipping the repository public",
         "blocked_on": [
-            "GCS champion-lineage inventory before the safe-load default reaches production (needs maintainer GCS access; escape hatch is CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1)",
-            "spec §9.1 Tier B rows B1-B14 (18,133 lines)",
-            "spec §9.3 architectural authorization for WS3.2, WS5, WS7.1",
-            "WS0 maintainer-only: rotate the W&B key, close #72/#69/#49/#32, merge Dependabot"
+            "maintainer: rotate the W&B key (commit is the head of closed PR #72; branch deletion does nothing)",
+            "maintainer: remove the four allUsers IAM bindings / confirm services undeployed",
+            "maintainer: merge P5 before renaming the default branch to main; protection with required checks and zero approvals",
+            "maintainer: make ianshank/Agents public or remove the eval extra from make verify",
+            "maintainer: ratify the charter commit c66f12b; tag v2.0.0 on the merge commit"
         ],
         "next_steps": [
-            "Run `python scripts/measure_debt.py` and `scripts/audit_import_graph.py` before any further deletion — both are the authoritative census now",
-            "WS5 decompositions may start only after the mock.patch enumeration test passes on the current tree (spec WS5 note)",
-            "Raise the alpha_zero/cloud floor in coverage-floors.json as selfplay_worker (48%), training_worker (52%) and vertex_orchestrator (60%) gain tests",
-            "Burn down the two allowlists: 8 files hardcoding 376, 8 remaining weights_only=False sites"
+            "Pre-PR: independent review of PR #132 per .claude/skills/pre-pr-handoff",
+            "After merge: openspec-archive for public-release-readiness, harden-governance-gates and reproducible-runs",
+            "Milestone v2.1: first post-fix learning run per docs/EVALUATION.md \u00a77; CONFIRM-FIRST hunks for coordinator.py / vertex_orchestrator.py (E5, seeding)",
+            "Open the public backlog issues from the review \u00a710 (security items stay private)"
         ]
     },
     "context_files": [
-        "kb/specs/20260902-tech-debt-hardening.md",
-        "kb/handoffs/20260902-devsqe-to-prepr-tech-debt-core-scope.md",
-        "docs/evidence/tech_debt_baseline/baseline.json",
-        "coverage-floors.json",
-        "CLAUDE.md"
+        "kb/specs/20261110-public-release-readiness.md",
+        "docs/audits/2026-11-10-public-release-review.md",
+        "openspec/changes/public-release-readiness/tasks.md",
+        "docs/EVALUATION.md",
+        "kb/handoffs/20261110-devsqe-to-prepr-public-release-readiness.md"
     ]
 }

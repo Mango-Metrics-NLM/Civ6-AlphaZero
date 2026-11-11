@@ -1,6 +1,6 @@
 substitutions:
   _TAG_NAME: v1.6.0
-  _IMAGE: us-central1-docker.pkg.dev/hrmtrain/civ6az/civ6az-training
+  _IMAGE: us-central1-docker.pkg.dev/$PROJECT_ID/civ6az/alphazero-training
 
 steps:
 - name: 'python:3.12-slim'
@@ -9,7 +9,7 @@ steps:
   args:
   - -c
   - |
-    pip install --quiet ruff && \
+    pip install --quiet ruff==0.15.8 && \
     ruff check alpha_zero/ --select E,F --ignore E501 --exit-non-zero-on-fix
 
 - name: 'gcr.io/cloud-builders/docker'
@@ -24,6 +24,23 @@ steps:
   waitFor:
   - lint
 
+# Runs INSIDE the image just built. The base is nvcr.io/nvidia/pytorch:24.09-py3;
+# the Dockerfile comment says Python 3.12 but NGC's 24.09 release notes list
+# 3.10, and because the image uses PYTHONPATH rather than `pip install -e .`,
+# `requires-python = ">=3.11"` is never enforced at build time. This step reports
+# the image's Python in the build log and warns below 3.11. It is report-only on
+# purpose: alpha_zero/ uses no 3.11-only construct today, so failing here would
+# break a build that works. It becomes a hard check once the base image moves to a
+# Python 3.11+ release (Dependabot #130, a maintainer decision).
+- name: '${_IMAGE}:${_TAG_NAME}'
+  id: check-python-version
+  entrypoint: python
+  args:
+  - -c
+  - 'import sys; v = sys.version_info; print("python", sys.version); v >= (3, 11) or print("WARNING: image Python", f"{v.major}.{v.minor}", "is below requires-python >=3.11; the base-image bump (Dependabot #130) is pending a maintainer decision")'
+  waitFor:
+  - build
+
 - name: '${_IMAGE}:${_TAG_NAME}'
   id: smoke-test
   entrypoint: python
@@ -32,7 +49,7 @@ steps:
   - -c
   - import sys; sys.path.insert(0, "/app"); from alpha_zero.cloud.gcp.config import GCPConfig; print("Container smoke test passed")
   waitFor:
-  - build
+  - check-python-version
 
 - name: '${_IMAGE}:${_TAG_NAME}'
   id: test-selfplay
@@ -156,6 +173,9 @@ tags:
 - vertex-ai
 
 options:
+  # _IMAGE embeds $PROJECT_ID; a manual `gcloud builds submit` expands that
+  # nested reference only with dynamic substitutions on (triggers always do).
+  dynamicSubstitutions: true
   logging: CLOUD_LOGGING_ONLY
   machineType: E2_HIGHCPU_8
 

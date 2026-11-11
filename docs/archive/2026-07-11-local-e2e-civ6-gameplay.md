@@ -47,7 +47,7 @@
 
 Run (Git Bash):
 ```bash
-cd "/c/Users/iansh/OneDrive/Documents/Civ6-AlphaZero"
+cd "/c/Users/<user>/OneDrive/Documents/Civ6-AlphaZero"
 git status --porcelain
 git branch --show-current
 ```

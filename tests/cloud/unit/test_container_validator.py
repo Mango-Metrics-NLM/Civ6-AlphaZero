@@ -30,17 +30,18 @@ class TestExtractImageTag:
 
     def test_gcr_uri_with_tag(self) -> None:
         """Extracts tag from GCR URI."""
-        assert extract_image_tag("gcr.io/hrmtrain/civ6az-training:v1.0.0") == "v1.0.0"
+        assert extract_image_tag("gcr.io/my-gcp-project/alphazero-training:v1.0.0") == "v1.0.0"
 
     def test_artifact_registry_uri_with_tag(self) -> None:
         """Extracts tag from Artifact Registry URI."""
         assert (
-            extract_image_tag("us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2.1") == "v2.1"
+            extract_image_tag("us-central1-docker.pkg.dev/my-gcp-project/civ6az/training:v2.1")
+            == "v2.1"
         )
 
     def test_uri_without_tag_returns_latest(self) -> None:
         """URI without a tag defaults to 'latest'."""
-        assert extract_image_tag("gcr.io/hrmtrain/civ6az-training") == "latest"
+        assert extract_image_tag("gcr.io/my-gcp-project/alphazero-training") == "latest"
 
     def test_tag_with_sha(self) -> None:
         """Handles tag that looks like a sha."""
@@ -87,12 +88,14 @@ class TestBuildDescribeCommand:
 
     def test_gcr_command(self) -> None:
         """GCR URIs use 'gcloud container images describe'."""
-        cmd = _build_describe_command("gcr.io/hrmtrain/civ6az-training:v1.0.0")
+        cmd = _build_describe_command("gcr.io/my-gcp-project/alphazero-training:v1.0.0")
         assert cmd[:3] == ["gcloud", "container", "images"]
 
     def test_artifact_registry_command(self) -> None:
         """Artifact Registry URIs use 'gcloud artifacts docker images describe'."""
-        cmd = _build_describe_command("us-central1-docker.pkg.dev/hrmtrain/civ6az/training:v2")
+        cmd = _build_describe_command(
+            "us-central1-docker.pkg.dev/my-gcp-project/civ6az/training:v2"
+        )
         assert cmd[:4] == ["gcloud", "artifacts", "docker", "images"]
 
 

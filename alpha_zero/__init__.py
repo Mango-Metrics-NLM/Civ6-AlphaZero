@@ -41,7 +41,7 @@ from __future__ import annotations
 
 # Keep this a literal assignment: scripts/check_doc_sync.py parses it by regex
 # to enforce the version triple (D1).
-__version__ = "1.8.0"
+__version__ = "2.0.0"
 
 # Python <3.11 compatibility: patch datetime.UTC before anything imports it.
 # This must stay eager — the patch has to land before any dependent import.

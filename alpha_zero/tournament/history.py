@@ -178,10 +178,22 @@ class PlayerStatistics:
 
     @property
     def win_rate(self) -> float:
-        """Calculate win rate."""
+        """Legacy win rate ``wins / total_games`` (draws count as losses).
+
+        Kept verbatim: ``total_games`` is an independent counter, and the
+        persisted history JSON carries this key. Report :attr:`score_rate`
+        beside it. Allow-listed in ``tests/regression/draw_aware_allowlist.toml``.
+        """
         if self.total_games == 0:
             return 0.0
         return self.wins / self.total_games
+
+    @property
+    def score_rate(self) -> float:
+        """Draw-aware companion: ``(wins + 0.5 * draws) / (wins + draws + losses)``."""
+        from alpha_zero.evaluation.scoring import score_rate
+
+        return score_rate(self.wins, self.draws, self.losses)
 
     @property
     def rating_volatility(self) -> float:
@@ -197,6 +209,7 @@ class PlayerStatistics:
             "losses": self.losses,
             "draws": self.draws,
             "win_rate": self.win_rate,
+            "score_rate": self.score_rate,
             "current_rating": self.current_rating,
             "peak_rating": self.peak_rating,
             "lowest_rating": self.lowest_rating,
@@ -649,13 +662,20 @@ class MatchHistory:
                     else:
                         draws += 1
 
+            # Every match is exactly one of win/loss/draw, so the three counts
+            # sum to len(matches) and the SSOT's rates are the same numbers.
+            from alpha_zero.evaluation.scoring import score_rate, win_rate
+
             return {
                 "total_games": len(matches),
                 "player1_wins": p1_wins,
                 "player2_wins": p2_wins,
                 "draws": draws,
-                "player1_win_rate": p1_wins / len(matches) if matches else 0,
-                "player2_win_rate": p2_wins / len(matches) if matches else 0,
+                "player1_win_rate": win_rate(p1_wins, draws, p2_wins) if matches else 0,
+                "player2_win_rate": win_rate(p2_wins, draws, p1_wins) if matches else 0,
+                "player1_score_rate": score_rate(p1_wins, draws, p2_wins) if matches else 0,
+                "player2_score_rate": score_rate(p2_wins, draws, p1_wins) if matches else 0,
+                "draw_rate": draws / len(matches) if matches else 0,
             }
 
     def get_recent_matches(

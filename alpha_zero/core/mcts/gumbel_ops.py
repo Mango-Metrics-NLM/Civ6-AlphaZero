@@ -91,6 +91,20 @@ def compute_completed_q(
     visits would have returned the root value. This provides a principled
     way to compare actions with different visit counts.
 
+    Known deviations from Danihelka et al. (2022), recorded, not changed
+    --------------------------------------------------------------------
+    * **Completion rule.** The paper completes an *unvisited* action's Q with
+      the root's value mixture and leaves a *visited* action's Q as its mean
+      (eq. 9: ``completedQ(a) = q(a)`` if ``N(a) > 0`` else ``v_pi``). This
+      function instead blends every action: ``q + ((maxN - N) / maxN) *
+      root_value``, a non-convex combination that leaks root value into
+      visited actions in proportion to how far they sit below the best-visited
+      one. At equal visit counts (sequential halving's survivors) the two
+      agree; elsewhere they do not.
+    * **No Q normalisation.** The paper's ``sigma`` is applied to Q values
+      min-max normalised over the tree (their Appendix); here raw Q in
+      ``[-1, 1]`` is used, so ``c_scale`` acts on a different scale.
+
     Args:
         q_value: Current Q-value estimate for the action.
         visit_count: Number of visits to this action.
@@ -136,6 +150,24 @@ def build_completed_q_policy(
 
     Danihelka et al. (2022) define the improved policy over the *completed* Q
     values instead, which is what this builds.
+
+    Known deviations from the paper, recorded here so a reader comparing the
+    target against the reference does not have to rediscover them (behaviour
+    is deliberately unchanged; each is a separate, measurable decision):
+
+    * ``c_scale`` defaults to **1.0** (``utils/constants.py:GUMBEL_C_SCALE``)
+      where the paper uses **0.1** with ``c_visit = 50``. Combined with the
+      missing normalisation below, ``sigma`` is ~10x the reference, so the
+      searched values dominate the prior sooner than the paper's targets do.
+    * **No min-max Q normalisation** before ``sigma`` (see
+      :func:`compute_completed_q`).
+    * **Non-convex completion** ``q + ((maxN - N) / maxN) * root_value`` for
+      visited actions, where the paper keeps a visited action's own Q.
+    * **Zero mass on unvisited actions.** The paper's improved policy is a
+      softmax over the *whole* action set with unvisited actions completed by
+      the root value; this target restricts the softmax to the considered
+      set, so an action the search never expanded gets exactly 0, which is a
+      harder target for the policy head than the paper's.
 
     Args:
         priors: Network prior over the whole action space.
