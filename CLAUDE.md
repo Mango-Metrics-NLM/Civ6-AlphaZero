@@ -373,6 +373,7 @@ When making changes, update the relevant sections below:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-11 | Deployed base image NGC 24.09 → 26.10; Python guard hard again | The images run with `PYTHONPATH`, so `requires-python` is never enforced in them, and 24.09 shipped a Python below that floor while the Dockerfile claimed 3.12. 26.10 ships 3.12 / CUDA 13.4 / torch 2.15.0a0. Two non-obvious parts: (1) `pip install` takes a constraint generated from the image's own torch distribution version, because NGC's torch is a pre-release and a resolver that rejects it would pull a PyPI wheel built for another CUDA — with the constraint a conflicting dependency fails the build instead; (2) the gate *executes* each Cloud Build check step under a faked `version_info`. **Gotcha found by the negative control:** faking it with a plain tuple made the old warn-only step crash on `v.major`, i.e. exit non-zero for the wrong reason, so the gate passed against the very defect it targets; the fake is now a namedtuple with the real field names. The CUDA 13 driver floor is not in NGC's release notes — a Vertex job on each machine profile is the verification, not this repo's CI. |
 | 2026-11-10 | Public-release readiness as one OpenSpec change (`openspec/changes/public-release-readiness`) | A five-role panel review (`docs/audits/2026-11-10-public-release-review.md`) argued each decision as thesis → counter → rebuttal. Decisions that overturned the first draft: **scrub by sensitivity, not by grep count** (project ids are not secrets; the project number + service-account address, bucket names as code defaults, and the personal email are); **do not scrub `kb/`** (handoffs are immutable under K7, ledger lines are never rewritten, and the session ids are opaque and already in 201 commit messages — frame them instead); **2.0.0 not 1.9.0** (four BREAKING sections under the SemVer promise); **claims need an epoch** (`docs/evidence/SCHEMA.md`: every artifact says whether it predates the 2026-09-04 search fixes; none is post-fix yet); **the benchmark is the promotion judge's own code path**, not a new script; **metrics are additive** (`score_rate`/`draw_rate` beside every `win_rate`, never renamed). Deliberately NOT done here (CONFIRM-FIRST or maintainer): key rotation, IAM, branch rename, the promotion-default flip, lock-file strategy, coordinator/orchestrator seeding, the CLAUDE.md split (its citation-resolution gate landed first), the distribution rename. |
 | 2026-01-10 | 13-channel MicroCiv encoder | Simplified encoding for faster Phase 1 training |
 | 2026-01-10 | Hierarchical action space | Reduces effective branching factor from ~10^6 to ~10^3 |
@@ -1455,6 +1456,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-11-10*
+*Last updated: 2026-11-11*
 *Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*
