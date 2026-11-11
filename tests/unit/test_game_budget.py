@@ -190,7 +190,12 @@ class TestOtherModels:
             "validate_convergence",
             "benchmark_batch_selfplay",
             "local_muzero_launcher",
+            "calibrate_throughput",
         }
+
+    def test_calibrate_throughput_prices_one_game_per_game(self) -> None:
+        assert worst_case_games("calibrate_throughput", {"games": 2}) == 2
+        assert worst_case_games("calibrate_throughput", {"games": 1001}) == 1_001
 
 
 class TestMuzeroCommandGames:
@@ -629,6 +634,51 @@ class TestScriptRunnersRefuse:
             script.main()  # 50 x 2 x 11 = 1,100
         _assert_refused(excinfo, capsys)
         storage.assert_not_called()
+
+
+class TestCalibrateThroughput:
+    """``--games`` reached ``run_self_play`` unchecked before it was priced."""
+
+    @staticmethod
+    def _script_and_spy(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, mock.MagicMock]:
+        script = _import_script("calibrate_throughput")
+        calibrate = mock.MagicMock(return_value={"ms_per_eval": 1.0})
+        monkeypatch.setattr(script, "calibrate", calibrate)
+        return script, calibrate
+
+    def test_over_the_cap_is_refused_before_anything_runs(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, calibrate = self._script_and_spy(monkeypatch)
+        with pytest.raises(SystemExit) as excinfo:
+            script.main(["--games", "1001"])
+        _assert_refused(excinfo, capsys)
+        calibrate.assert_not_called()
+
+    def test_a_small_run_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, calibrate = self._script_and_spy(monkeypatch)
+        assert script.main(["--games", "2"]) == 0
+        calibrate.assert_called_once()
+        capsys.readouterr()
+
+    def test_approval_ref_raises_the_cap(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, calibrate = self._script_and_spy(monkeypatch)
+        assert script.main(["--games", "1001", "--approval_ref", "#142"]) == 0
+        calibrate.assert_called_once()
+        capsys.readouterr()
+
+    def test_max_games_can_lower_the_cap(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, calibrate = self._script_and_spy(monkeypatch)
+        with pytest.raises(SystemExit) as excinfo:
+            script.main(["--games", "5", "--max_games", "4"])
+        _assert_refused(excinfo, capsys)
+        calibrate.assert_not_called()
 
 
 class TestRunCiv6Ai:

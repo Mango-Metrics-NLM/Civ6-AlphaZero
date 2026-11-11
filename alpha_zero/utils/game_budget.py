@@ -264,6 +264,11 @@ def _benchmark_batch_selfplay(r: Mapping[str, Any]) -> int:
     return 2 * (_nonneg(r["games"]) + _nonneg(r.get("warmup_games", 0)))
 
 
+def _calibrate_throughput(r: Mapping[str, Any]) -> int:
+    """``games`` complete self-play games (no evaluation phase)."""
+    return _nonneg(r["games"])
+
+
 def _local_muzero_launcher(r: Mapping[str, Any]) -> int:
     return (
         _nonneg(r["iterations"])
@@ -287,6 +292,7 @@ _MODELS: dict[str, Callable[[Mapping[str, Any]], int]] = {
     "validate_convergence": _validate_convergence,
     "benchmark_batch_selfplay": _benchmark_batch_selfplay,
     "local_muzero_launcher": _local_muzero_launcher,
+    "calibrate_throughput": _calibrate_throughput,
 }
 
 

@@ -32,6 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.training_civ6 import TrainingConfig, run_self_play
 from alpha_zero.utils.device import resolve_device_str
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 from alpha_zero.utils.seeding import derive_seed
 
 logger = logging.getLogger("calibrate_throughput")
@@ -142,12 +143,15 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--games", type=int, default=2)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--out", type=Path, default=None, help="write JSON here")
+    add_budget_arguments(p)
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
+    # Game budget: refuse before the network is built or any game is played.
+    enforce_cli("calibrate_throughput", {"games": args.games}, args)
     result = calibrate(
         args.board_size,
         args.max_turns,
