@@ -14,6 +14,7 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 
 - **Pinned source**: `git archive <sha>` extracted read-only to `<run_dir>/src`, so a run executes the code at a named commit rather than whatever checkout is installed globally.
 - **Pinned environment**: a venv at `<data_root>/envs/<sha12>` built from a non-editable wheel of that commit and reused for the same commit.
+- **GCP isolation**: `enter_local_mode` scrubs cloud variables and returns an allowlisted child environment; `GCSBackend` (constructor and lazy `client`) raises `LocalModeViolation` (a `BaseException`) under `CIV6AZ_LOCAL_RUN=1`.
 - **Preflight**: `assert_running_pinned` proves `alpha_zero.__file__` lies inside the pinned source or venv and that its version equals `pyproject.toml`.
 
 ---
@@ -24,6 +25,7 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 |---------|-------|-----|
 | **Dependency injection** | `pinned_env.py` — `runner` callable for every subprocess | Unit tests build no real venv |
 | **Fail closed** | `pinned_env.py` — `assert_running_pinned` raises `PinnedEnvError` | An editable or stale install must never pass as the pinned code |
+| **Fail closed** | `isolation.py` — `guard_gcs`, `LocalModeViolation(BaseException)` | `except Exception` state saves must not swallow a GCP touch |
 | **Idempotent cache** | `pinned_env.py` — `.pinned.json` marker names the full SHA | Reuse a venv only when it provably matches |
 
 ---
@@ -33,5 +35,6 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 | File | Responsibility |
 |------|---------------|
 | `pinned_env.py` | `prepare_pinned_run`, `assert_running_pinned`, `child_env`, `PinnedEnv` |
+| `isolation.py` | `enter_local_mode`, `guard_gcs`, `is_local_mode`, `LocalModeViolation` (stdlib-only) |
 
 The data root these functions depend on lives in `alpha_zero/utils/data_root.py`.

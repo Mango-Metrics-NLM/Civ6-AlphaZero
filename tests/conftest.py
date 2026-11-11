@@ -136,6 +136,21 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 # Fixtures for cloud testing
+@pytest.fixture(autouse=True)
+def _strip_cloud_and_local_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's cloud env (and local-mode flag) out of every test.
+
+    A workstation may carry ``CIV6AZ_GCS_BUCKET`` or ``GOOGLE_*`` at user scope;
+    a leaked ``CIV6AZ_LOCAL_RUN=1`` would make ``GCSBackend`` unconstructible.
+    A test that needs one of these sets it itself.
+    """
+    for name in list(os.environ):
+        if name in {"CIV6AZ_LOCAL_RUN", "CIV6AZ_GCS_BUCKET"} or name.startswith(
+            ("GOOGLE_", "VERTEX_")
+        ):
+            monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def gcp_credentials_available() -> bool:
     """Check if GCP credentials are available.
