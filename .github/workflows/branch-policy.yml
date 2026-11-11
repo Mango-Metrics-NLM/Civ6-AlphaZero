@@ -1,0 +1,68 @@
+name: Branch Policy
+
+# Branch Direction (plan S3.4): may this pull request's head merge into its
+# base? A required status check on dev, qa and main once the maintainer adds it
+# to the rulesets (scripts/maintainer/branch_cutover.sh, step 5).
+#
+# `edited` is included because changing a PR's base is an edit: the check must
+# be re-judged against the new base. The script reads base and head from the
+# API, not from this event's payload, for the same reason.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  # PR runs only (no push trigger), so superseding a run loses no record.
+  cancel-in-progress: true
+
+jobs:
+  branch-direction:
+    # The job name IS the status-check context the rulesets require; renaming it
+    # silently un-gates every protected branch.
+    # tests/regression/test_branch_rulesets_regression.py holds the two together.
+    name: Branch Direction
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Every rule is ancestry over origin/<branch> and rc tags.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # The judge comes from the default branch, not from this PR's merge ref:
+      # otherwise a PR could rewrite scripts/check_branch_direction.py to pass
+      # itself. The default branch is protected, so its copy is reviewed code.
+      # Fallback: before the script has landed on the default branch (only the
+      # PR that introduces it), the PR's own copy runs with a warning; the check
+      # is not required until the maintainer adds it after that merge.
+      - name: Fetch the judge from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          judge="$RUNNER_TEMP/check_branch_direction.py"
+          if git cat-file -e "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" 2>/dev/null; then
+            git show "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" > "$judge"
+          else
+            echo "::warning::scripts/check_branch_direction.py is not on ${DEFAULT_BRANCH} yet; running this PR's copy"
+            cp scripts/check_branch_direction.py "$judge"
+          fi
+
+      - name: Check branch direction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python "$RUNNER_TEMP/check_branch_direction.py"
