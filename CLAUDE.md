@@ -738,7 +738,7 @@ Civ6-AlphaZero/
 └── CLAUDE.md                    # This file
 ```
 
-> **Authoritative module list:** `alpha_zero/` has **29 submodules** as of v1.8.0.
+> **Authoritative module list:** `alpha_zero/` has **30 submodules** as of v1.8.0.
 > File counts above are recursive `*.py` counts (excluding `__pycache__`). The
 > single source of truth — one row per submodule with responsibility — lives in
 > [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md); update it when adding/removing modules.

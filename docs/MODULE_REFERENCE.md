@@ -6,14 +6,14 @@ or removed.
 
 - **As of:** v2.0.0, 2026-11-10 (`core/mcts/backup.py` and `utils/seeding.py` added;
   module set unchanged since the 2026-09-02 Tier A dead-code removal)
-- **Submodule count:** 29
+- **Submodule count:** 30
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
 
 | Module | Files | Responsibility |
 |--------|------:|----------------|
 | `core` | 36 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero) sharing one sign-correct value backup (`mcts/backup.py`), action space |
-| `utils` | 27 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`), per-stream seed derivation (`seeding.py`), worst-case game-count cost models and the 1,000-game cap (`game_budget.py`) |
+| `utils` | 28 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`), per-stream seed derivation (`seeding.py`), worst-case game-count cost models and the 1,000-game cap (`game_budget.py`), the `CIV6AZ_DATA_ROOT` resolver and ACL hardening (`data_root.py`) |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
@@ -26,6 +26,7 @@ or removed.
 | `cloud` | 28 | `gcp/` Vertex AI orchestration and the deployed self-play / training / arena workers |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
+| `local` | 2 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, with the running-pinned preflight (`pinned_env.py`) |
 | `bridge` | 15 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
 | `distributed` | 8 | Process-based distributed training: actor, learner, coordinator, shared storage |
 | `optimizations` | 7 | Training optimization strategies + Optuna hyperparameter search |

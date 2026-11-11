@@ -15,6 +15,7 @@ import re
 import time
 from collections import deque
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
 import numpy as np
@@ -43,6 +44,13 @@ from alpha_zero.multiplayer.scoring import (
     compute_rankings,
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.data_root import (
+    assert_safe_data_root,
+    default_checkpoint_dir,
+    default_run_id,
+    resolve_data_root,
+    validate_run_id,
+)
 from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
 from alpha_zero.utils.game_budget import (
     DEFAULT_TRAINING_EVAL_GAMES,
@@ -1239,6 +1247,25 @@ def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, A
     }
 
 
+def resolve_checkpoint_dir(explicit: str | None, run_id: str | None, seed: int | None) -> str:
+    """Pick the checkpoint directory.
+
+    An explicit ``--checkpoint_dir`` always wins. Otherwise, with
+    ``CIV6AZ_DATA_ROOT`` unset the historical ``checkpoints/civ6`` is kept; with
+    it set, the directory is ``<root>/runs/<run_id>/checkpoints`` after the root
+    has passed :func:`assert_safe_data_root`.
+    """
+    if run_id is not None:
+        validate_run_id(run_id)
+    if explicit is not None:
+        return explicit
+    root = resolve_data_root()
+    if root is None:
+        return "checkpoints/civ6"
+    assert_safe_data_root(root, Path(__file__).resolve().parents[1])
+    return str(default_checkpoint_dir(root, run_id or default_run_id(seed)))
+
+
 def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
@@ -1285,7 +1312,25 @@ def main() -> None:
     parser.add_argument("--num_epochs", type=int, default=10)
     parser.add_argument("--num_res_blocks", type=int, default=6)
     parser.add_argument("--num_filters", type=int, default=64)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/civ6")
+    parser.add_argument(
+        "--checkpoint_dir",
+        type=str,
+        default=None,
+        help=(
+            "Where checkpoints are written. Default: 'checkpoints/civ6', or "
+            "<CIV6AZ_DATA_ROOT>/runs/<run_id>/checkpoints when that variable is set."
+        ),
+    )
+    parser.add_argument(
+        "--run_id",
+        type=str,
+        default=None,
+        help=(
+            "Run identifier (^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$). Only used to place the "
+            "default checkpoint directory under CIV6AZ_DATA_ROOT. Default: "
+            "train-<seed or 'unseeded'>-<UTC timestamp>."
+        ),
+    )
     parser.add_argument(
         "--resume_from",
         type=str,
@@ -1333,6 +1378,7 @@ def main() -> None:
     )
     add_budget_arguments(parser)
     args = parser.parse_args()
+    checkpoint_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.run_id, args.seed)
 
     config = TrainingConfig(
         board_size=args.board_size,
@@ -1346,7 +1392,7 @@ def main() -> None:
         num_epochs=args.num_epochs,
         num_res_blocks=args.num_res_blocks,
         num_filters=args.num_filters,
-        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_dir=checkpoint_dir,
         resume_from=args.resume_from,
         start_iteration=args.start_iteration,
         max_turns=args.max_turns,
