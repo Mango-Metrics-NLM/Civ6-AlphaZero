@@ -67,6 +67,24 @@ def test_generated_run_id_when_not_given(monkeypatch: pytest.MonkeyPatch, tmp_pa
     assert got.parent.name.startswith("train-7-")
 
 
+def test_main_runs_the_real_safety_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without the autouse stub: a data root inside the repo must abort ``main``.
+
+    Negative control: deleting the ``assert_safe_data_root`` call in
+    ``resolve_checkpoint_dir`` makes this fail.
+    """
+    monkeypatch.undo()  # drop the autouse stub (and env cleanup, re-applied below)
+    monkeypatch.delenv(dr.ENV_VAR, raising=False)
+    repo = Path(training_civ6.__file__).resolve().parents[1]
+    monkeypatch.setenv(dr.ENV_VAR, str(repo / "scratch-data-root"))
+    monkeypatch.setattr(dr, "_is_windows", lambda: True)
+    monkeypatch.setattr(dr, "_volume_filesystem", lambda path: "NTFS")
+    monkeypatch.setattr(dr, "_is_removable_drive", lambda path: False)
+    monkeypatch.setattr(dr, "_free_bytes", lambda path: 500 * 1024**3)
+    with pytest.raises(dr.DataRootError, match="repo"):
+        _run_main([])
+
+
 def test_bad_run_id_is_rejected() -> None:
     with pytest.raises(dr.DataRootError):
         _run_main(["--run_id", "../escape"])

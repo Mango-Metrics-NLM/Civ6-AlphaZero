@@ -102,7 +102,7 @@ def test_editable_install_fails_preflight(tmp_path: Path) -> None:
     src = _fake_src_tree(tmp_path)
     env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
     with pytest.raises(pe.PinnedEnvError, match="not inside"):
-        pe.assert_running_pinned(env)
+        pe.assert_running_pinned(env, prefix=tmp_path / "venv")
 
 
 def test_pinned_module_passes_preflight(tmp_path: Path) -> None:
@@ -111,7 +111,7 @@ def test_pinned_module_passes_preflight(tmp_path: Path) -> None:
     module = types.SimpleNamespace(
         __file__=str(src / "alpha_zero" / "__init__.py"), __version__="2.0.0"
     )
-    pe.assert_running_pinned(env, module=module)
+    pe.assert_running_pinned(env, module=module, prefix=tmp_path / "venv")
 
 
 def test_installed_in_venv_passes_preflight(tmp_path: Path) -> None:
@@ -122,7 +122,7 @@ def test_installed_in_venv_passes_preflight(tmp_path: Path) -> None:
         __file__=str(venv / "Lib" / "site-packages" / "alpha_zero" / "__init__.py"),
         __version__="2.0.0",
     )
-    pe.assert_running_pinned(env, module=module)
+    pe.assert_running_pinned(env, module=module, prefix=venv)
 
 
 def test_version_mismatch_fails_preflight(tmp_path: Path) -> None:
@@ -132,10 +132,27 @@ def test_version_mismatch_fails_preflight(tmp_path: Path) -> None:
         __file__=str(src / "alpha_zero" / "__init__.py"), __version__="1.8.0"
     )
     with pytest.raises(pe.PinnedEnvError, match="version"):
-        pe.assert_running_pinned(env, module=module)
+        pe.assert_running_pinned(env, module=module, prefix=tmp_path / "venv")
 
 
 def test_child_env_is_isolated() -> None:
     env = pe.child_env({"PATH": "p", "PYTHONPATH": "leak"})
     assert env["PYTHONNOUSERSITE"] == "1"
     assert "PYTHONPATH" not in env
+
+
+def test_system_python_with_cwd_src_fails_preflight(tmp_path: Path) -> None:
+    """alpha_zero imports from src (cwd) but under the system interpreter: deps unpinned."""
+    src = _fake_src_tree(tmp_path)
+    env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
+    module = types.SimpleNamespace(
+        __file__=str(src / "alpha_zero" / "__init__.py"), __version__="2.0.0"
+    )
+    with pytest.raises(pe.PinnedEnvError, match="prefix"):
+        pe.assert_running_pinned(env, module=module, prefix=tmp_path / "system-python")
+
+
+def test_pinned_env_rejects_non_venv_interpreter(tmp_path: Path) -> None:
+    """A system python.exe would make venv its drive root and allow everything."""
+    with pytest.raises(pe.PinnedEnvError, match="venv interpreter"):
+        pe.PinnedEnv(python=tmp_path / "python.exe", src=tmp_path)

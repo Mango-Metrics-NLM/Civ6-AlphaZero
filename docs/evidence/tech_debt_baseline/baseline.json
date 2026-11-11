@@ -9,7 +9,7 @@
   "except_pass_handlers": 18,
   "files_over_1000_lines": 24,
   "functions_over_max_statements": 3,
-  "noqa_comments": 71,
+  "noqa_comments": 72,
   "package_files": 332,
   "package_lines": 149197,
   "pytest_skip_sites": 147,

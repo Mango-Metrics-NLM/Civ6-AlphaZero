@@ -51,12 +51,6 @@ _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$|^HEAD$")
 
 Runner = Callable[..., str]
 
-# Every argv handed to this is a list built by this module from a regex-validated SHA and
-# fixed arguments, never a shell string. Bound to a name so the call below is not read as
-# a bare ``subprocess.run`` of unknown input (ruff S603), without growing the ruff-ignore
-# ratchet for a case that is not actually untrusted.
-_exec = subprocess.run
-
 
 class PinnedEnvError(RuntimeError):
     """Pinned source/env could not be prepared, or the process is not running from it."""
@@ -70,6 +64,12 @@ class PinnedEnv:
     src: Path
     sha: str = ""
     wheel_sha256: str = ""
+
+    def __post_init__(self) -> None:
+        if self.python.parent.name not in {"Scripts", "bin"}:
+            raise PinnedEnvError(
+                f"{self.python} is not a venv interpreter (expected a Scripts/ or bin/ parent)"
+            )
 
     @property
     def venv(self) -> Path:
@@ -88,7 +88,7 @@ def _default_runner(
     cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
 ) -> str:
     logger.debug("run: %s", " ".join(str(c) for c in cmd))
-    result = _exec(
+    result = subprocess.run(  # noqa: S603 - argv built from a regex-validated SHA
         [str(c) for c in cmd],
         cwd=cwd,
         env=dict(env) if env is not None else None,
@@ -227,15 +227,23 @@ def _pyproject_version(src: Path) -> str:
     return str(data["project"]["version"])
 
 
-def assert_running_pinned(env: PinnedEnv, *, module: Any = None) -> None:
+def assert_running_pinned(
+    env: PinnedEnv, *, module: Any = None, prefix: str | Path | None = None
+) -> None:
     """Preflight: this process imported ``alpha_zero`` from ``env`` and the version matches.
 
     ``alpha_zero.__file__`` must lie inside ``env.src`` or ``env.venv`` and
-    ``alpha_zero.__version__`` must equal ``<src>/pyproject.toml``'s version.
+    ``sys.prefix`` must be the pinned venv (a system python with cwd=src would otherwise
+    pass while every dependency is unpinned) and ``alpha_zero.__version__`` must equal ``<src>/pyproject.toml``'s version.
     ``module`` is injectable for tests; by default the imported package is used.
     """
     if module is None:
         import alpha_zero as module
+    active = Path(sys.prefix if prefix is None else prefix).resolve()
+    if active != env.venv.resolve():
+        raise PinnedEnvError(
+            f"running under interpreter prefix {active}, not the pinned venv {env.venv.resolve()}"
+        )
     file = Path(module.__file__).resolve()
     allowed = [env.src.resolve(), env.venv.resolve()]
     if not any(root == file or root in file.parents for root in allowed):

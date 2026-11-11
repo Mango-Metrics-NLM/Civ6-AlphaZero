@@ -114,7 +114,9 @@ def _onedrive_roots() -> list[Path]:
 def _kernel32() -> Any:
     import ctypes
 
-    return vars(ctypes)["windll"].kernel32
+    if sys.platform == "win32":
+        return ctypes.windll.kernel32
+    raise DataRootError("Windows volume probes are unavailable off Windows")
 
 
 def _volume_filesystem(path: Path) -> str:
