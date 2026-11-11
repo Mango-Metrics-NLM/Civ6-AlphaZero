@@ -20,6 +20,13 @@
 | `muzero-world-model` | DOCKER | us-central1 | Legacy MuZero images |
 | `vertex-ai-training` | DOCKER | us-central1 | General Vertex AI training |
 
+**Image paths.** Every build config pushes to `civ6az/alphazero-training` (training,
+`cloudbuild.yaml` and `dockerfiles/cloudbuild.yaml`) and `civ6az/alphazero-inference`
+(`infra/cloudbuild-gameplay.yaml`), and every launcher and manifest pulls the same paths
+(`tests/regression/test_cloud_build_images_regression.py` keeps them aligned). Images built
+before 2026-11-10 live under an older image name in the same repository; to keep running one
+of them, set `CIV6AZ_CONTAINER_IMAGE_URI` to its full URI.
+
 **Active Image:**
 
 ```

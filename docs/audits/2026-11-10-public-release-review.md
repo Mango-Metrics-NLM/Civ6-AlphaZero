@@ -129,6 +129,9 @@ summarise; the planted-defect tests that run on every CI pass are the `TestNegat
 6. Ratify the charter commit (P4).
 7. Decide Discussions (SUPPORT.md promises them) and a Code of Conduct contact alias.
 8. Tag `v2.0.0` on the merge commit of P6 and check the release artifacts.
+   The first Cloud Build after the merge pushes to `civ6az/alphazero-training` (and
+   `civ6az/alphazero-inference`), a new Artifact Registry path; set
+   `CIV6AZ_CONTAINER_IMAGE_URI` to keep launching an image built under the old path.
 9. Triage the open pull requests: merge #124, #129, #131 (workflow SHA bumps); close #125 (fails CI; the pin moves at five sites together), #120 (orphan Dockerfile removed), #95 (codecov no longer used), #99–#102 (superseded by the Dependabot rewrite), #32 and #49 (charter NG-6), #69 (per the recorded disposition), #106 (close and open a salvage issue — the atomic-IPC work never landed); hold #130 as `status:needs-decision`.
 10. Archive stale remote branches, disable the wiki, set the repository description and topics.
 
