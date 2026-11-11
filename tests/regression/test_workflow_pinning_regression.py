@@ -314,6 +314,26 @@ def cancel_in_progress_offenders(doc: dict, protected: tuple[str, ...]) -> list[
     return [b for b in pushed if f'"refs/heads/{b}"' not in value]
 
 
+def shared_group_offenders(doc: dict, protected: tuple[str, ...]) -> list[str]:
+    """Protected branches whose push runs share a concurrency group with a later push.
+
+    ``cancel-in-progress: false`` is not enough: a group holds one running and
+    ONE PENDING run, and a third push cancels the pending one -- so the middle
+    commit on dev/qa/main gets no CI and can never be released. A protected push
+    therefore needs a group of its own: an expression that names
+    ``refs/heads/<branch>`` for every protected branch the push trigger lists
+    and appends ``github.run_id``. No concurrency block queues nothing, so is fine.
+    """
+    pushed = [b for b in _push_branches(doc) if b in protected]
+    concurrency = doc.get("concurrency")
+    if not pushed or not isinstance(concurrency, dict):
+        return []
+    group = concurrency.get("group")
+    if not isinstance(group, str) or "github.run_id" not in group:
+        return pushed
+    return [b for b in pushed if f'"refs/heads/{b}"' not in group]
+
+
 def _pip_install_args(command: str) -> list[str] | None:
     """The arguments of a ``pip install`` in one shell command, or None."""
     try:
@@ -446,6 +466,18 @@ def test_runs_on_protected_branches_are_never_cancelled(path: Path) -> None:
 
 
 @pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
+def test_protected_branch_pushes_get_a_unique_concurrency_group(path: Path) -> None:
+    doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    offenders = shared_group_offenders(doc, protected_branches())
+    assert not offenders, (
+        f"{path.name}: push runs on {offenders} share a concurrency group, so a third push "
+        "cancels the pending run and a middle commit gets no CI. Append "
+        "`${{ contains(fromJSON('[\"refs/heads/<branch>\", ...]'), github.ref) && "
+        "format('-{0}', github.run_id) || '' }}` to the group."
+    )
+
+
+@pytest.mark.parametrize("path", _workflow_files(), ids=lambda p: p.name)
 def test_every_pip_install_is_pinned(path: Path) -> None:
     doc = yaml.safe_load(path.read_text(encoding="utf-8"))
     offenders = []
@@ -538,6 +570,31 @@ class TestTheNewChecksDiscriminate:
         assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == []
         doc = yaml.safe_load(self._CANCEL.format(cancel="  cancel-in-progress: false\n"))
         assert cancel_in_progress_offenders(doc, ("dev", "qa", "main")) == []
+
+    _GROUP = "on:\n  push:\n    branches: [dev, qa]\nconcurrency:\n  group: {group}\njobs: {{}}\n"
+
+    def test_a_shared_group_on_a_protected_push_is_reported(self) -> None:
+        doc = yaml.safe_load(self._GROUP.format(group="${{ github.workflow }}-${{ github.ref }}"))
+        assert shared_group_offenders(doc, ("dev", "qa", "main")) == ["dev", "qa"]
+
+    def test_a_run_id_group_missing_a_branch_is_reported(self) -> None:
+        expr = (
+            "${{ github.ref }}${{ contains(fromJSON('[\"refs/heads/dev\"]'), github.ref) "
+            "&& format('-{0}', github.run_id) || '' }}"
+        )
+        doc = yaml.safe_load(self._GROUP.format(group="x"))
+        doc["concurrency"]["group"] = expr
+        assert shared_group_offenders(doc, ("dev", "qa", "main")) == ["qa"]
+
+    def test_a_complete_run_id_group_or_no_concurrency_is_accepted(self) -> None:
+        expr = (
+            '${{ github.ref }}${{ contains(fromJSON(\'["refs/heads/dev","refs/heads/qa"]\'),'
+            " github.ref) && format('-{0}', github.run_id) || '' }}"
+        )
+        doc = yaml.safe_load(self._GROUP.format(group="x"))
+        doc["concurrency"]["group"] = expr
+        assert shared_group_offenders(doc, ("dev", "qa", "main")) == []
+        assert shared_group_offenders({"on": {"push": {"branches": ["dev"]}}}, ("dev",)) == []
 
     def test_cancelling_feature_branch_runs_is_fine(self) -> None:
         doc = yaml.safe_load(
