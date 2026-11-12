@@ -93,10 +93,20 @@ so the benchmark and production cannot disagree:
   search, so two runs at one seed are identical;
 - opponents `random`, `heuristic`, `simple_mcts` (random-rollout search) and
   `checkpoint:<sha256>` (a previous model);
-- output `result.json` = `{benchmark_schema_version, protocol, evidence, results[]}`
-  where `evidence` is the block from [`evidence/SCHEMA.md`](evidence/SCHEMA.md)
-  and each result embeds the versioned `EvaluationResult` plus `draw_rate`,
-  `decisive_win_rate`, the interval and the MDE at that `n`.
+- output `result.json` = `{benchmark_schema_version: 2, protocol, candidate, shard,
+  evidence, results[]}` where `evidence` is the block from
+  [`evidence/SCHEMA.md`](evidence/SCHEMA.md) (`search_epoch: post-2026-09-04`,
+  `claims`, `non_claims`, a `shlex`-joined command) and each result embeds the
+  versioned `EvaluationResult` plus `draw_rate`, `decisive_win_rate`, the MDE at
+  that `n`, the per-game records `{pair, seat, result}`, and an `intervals` block:
+  at 95% and 99%, the iid ternary interval, the pair-clustered interval
+  (`scoring.pair_score_interval`, the seat-swapped pair as the unit) and their
+  hull `[min(lows), max(highs)]`, beside `mde_alpha025_80pct` and the same
+  widened by the hull ratio;
+- `--candidate heuristic|random` benchmarks a baseline as the candidate (a
+  positive control); `--shard i/N` plays the `i`-th block of whole pairs with
+  the unsharded run's seeds, and `--merge` recombines shards and recomputes every
+  statistic, so the merged file equals the unsharded one.
 
 Run it with `python scripts/benchmark_suite.py --help`. The CI smoke runs the
 protocol at tiny settings and asserts something that can fail: the greedy

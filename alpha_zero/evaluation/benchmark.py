@@ -28,10 +28,24 @@ and the record is summarised as a draw-aware score rate with a ternary-variance
 confidence interval, the implied Elo, and the minimum detectable effect the game
 budget affords. ``n_games`` must be even.
 
+Evidence producer (LF-D6)
+-------------------------
+Every result row keeps the per-game records ``{pair, seat, result}`` and reports,
+at 95% and 99%, the iid ternary interval, the pair-clustered interval
+(:func:`~alpha_zero.evaluation.scoring.pair_score_interval`) and their hull --
+the bounds the pre-registered A1 decision rule reads. ``--shard i/N`` plays the
+``i``-th contiguous block of whole pairs with the seeds the unsharded run would
+use; ``--merge`` recombines shard files and recomputes every statistic, so the
+merged file equals the unsharded one. ``--candidate heuristic|random`` fields a
+baseline as the candidate (the positive control). ``result.json``'s ``evidence``
+block follows ``docs/evidence/SCHEMA.md``.
+
 Usage::
 
     python -m alpha_zero.evaluation.benchmark --checkpoint ckpt.pt \\
         --opponents random,heuristic,simple_mcts --seed 42 --out bench/
+    python -m alpha_zero.evaluation.benchmark ... --shard 1/2 --out s1/
+    python -m alpha_zero.evaluation.benchmark --merge s1/ s2/ --out merged/
 
 The ``scripts/benchmark_suite.py`` wrapper is the same CLI.
 """
@@ -42,21 +56,31 @@ import argparse
 import hashlib
 import json
 import logging
-import os
-import platform
+import shlex
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.evaluation.benchmark_evidence import (
+    EVIDENCE_SCHEMA_VERSION,
+    SEARCH_EPOCH,
+    benchmark_claims,
+    collect_evidence,
+    hardware_summary,
+    interval_summary,
+    pair_scores,
+    parse_shard,
+    shard_pairs,
+)
 from alpha_zero.evaluation.scoring import (
     elo_from_score_rate,
     elo_interval,
     minimum_detectable_effect,
     summarize,
 )
+from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.storage.models import EvaluationResult
 from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 from alpha_zero.utils.seeding import SeedStream, derive_seed
@@ -65,28 +89,33 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "BENCHMARK_SCHEMA_VERSION",
+    "CANDIDATE_KINDS",
     "CHECKPOINT_OPPONENT_PREFIX",
     "DEFAULT_OPPONENTS",
+    "EVIDENCE_SCHEMA_VERSION",
+    "REPORTED_CONFIDENCE_LEVELS",
     "SEARCH_EPOCH",
     "BenchmarkProtocol",
+    "benchmark_budget_inputs",
     "checkpoint_opponent_id",
     "collect_evidence",
     "hardware_summary",
+    "interval_summary",
     "main",
+    "merge_shards",
+    "pair_scores",
+    "parse_shard",
     "render_report",
     "run_benchmark",
+    "shard_pairs",
     "validate_envelope",
 ]
 
-#: Bump when the envelope's shape changes incompatibly.
-BENCHMARK_SCHEMA_VERSION = 1
+#: Bump when the envelope's shape changes incompatibly. 2 (LF-D6) added
+#: ``candidate``, ``shard``, per-game records, the interval block and the
+#: evidence block's ``schema_version`` / ``claims`` / ``non_claims``.
+BENCHMARK_SCHEMA_VERSION = 2
 
-#: Identifies the search semantics a result was produced under. Results from
-#: different epochs are not comparable: the 2026-09-04 fixes changed the value
-#: backup sign rule and the policy target, which changes how strong a given
-#: checkpoint *plays*, not just how it was trained. Update when the search
-#: changes in a way that alters play at fixed weights.
-SEARCH_EPOCH = "2026-09-04.to_play-backup+completed-q"
 
 OPPONENT_RANDOM = "random"
 OPPONENT_HEURISTIC = "heuristic"
@@ -95,12 +124,21 @@ CHECKPOINT_OPPONENT_PREFIX = "checkpoint:"
 
 DEFAULT_OPPONENTS: tuple[str, ...] = (OPPONENT_RANDOM, OPPONENT_HEURISTIC, OPPONENT_SIMPLE_MCTS)
 
-#: Confidence level every benchmark interval is reported at.
+#: Confidence level of the legacy ``ci_low`` / ``ci_high`` / ``elo_ci_*`` fields.
 BENCHMARK_CONFIDENCE = 0.95
 
+#: Levels the interval block reports. A1 reads 95% for its arms and 99% for the
+#: symmetry control, so both are always present and no flag selects one.
+REPORTED_CONFIDENCE_LEVELS: tuple[float, ...] = (0.95, 0.99)
+
+CANDIDATE_CHECKPOINT = "checkpoint"
+CANDIDATE_KINDS: tuple[str, ...] = (CANDIDATE_CHECKPOINT, "heuristic", "random")
+
+
 # Envelope keys, named once so the validator and the writer cannot drift.
-_TOP_KEYS = ("benchmark_schema_version", "protocol", "evidence", "results")
+_TOP_KEYS = ("benchmark_schema_version", "protocol", "candidate", "shard", "evidence", "results")
 _EVIDENCE_KEYS = (
+    "schema_version",
     "git_sha",
     "generated_utc",
     "search_epoch",
@@ -111,6 +149,8 @@ _EVIDENCE_KEYS = (
     "torch",
     "numpy",
     "games_total",
+    "claims",
+    "non_claims",
 )
 _HARDWARE_KEYS = ("cpu_model", "gpu_model", "logical_cores", "omp_num_threads")
 _RESULT_EXTRA_KEYS = (
@@ -122,6 +162,12 @@ _RESULT_EXTRA_KEYS = (
     "elo_estimate",
     "elo_ci_low",
     "elo_ci_high",
+    "games",
+    "pairs",
+    "intervals",
+    "mde_alpha025_80pct",
+    "hull_ratio",
+    "mde_alpha025_80pct_hull",
 )
 
 
@@ -209,75 +255,11 @@ def checkpoint_opponent_id(path: str | Path) -> str:
     return f"{CHECKPOINT_OPPONENT_PREFIX}{digest.hexdigest()}"
 
 
-def _cpu_model() -> str | None:
-    cpuinfo = Path("/proc/cpuinfo")
-    fallback = platform.processor() or None
-    if not cpuinfo.exists():
-        return fallback
-    try:
-        text = cpuinfo.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return fallback
-    for line in text.splitlines():
-        if line.lower().startswith("model name"):
-            return line.split(":", 1)[1].strip()
-    return fallback
-
-
-def hardware_summary() -> dict[str, Any]:
-    """CPU, GPU, core count and thread cap -- the things that move timings."""
-    gpu_model: str | None = None
-    try:
-        import torch
-
-        if torch.cuda.is_available():
-            gpu_model = torch.cuda.get_device_name(0)
-    except Exception:  # pragma: no cover - torch missing or CUDA probe failing
-        gpu_model = None
-    return {
-        "cpu_model": _cpu_model(),
-        "gpu_model": gpu_model,
-        "logical_cores": os.cpu_count(),
-        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
-    }
-
-
-def _git_sha(start: Path | None = None) -> str | None:
-    """Commit at ``HEAD`` without a subprocess; ``None`` when it cannot be resolved.
-
-    The implementation lives in ``utils.checkpoint.read_git_sha`` so checkpoint
-    provenance and the benchmark envelope record the same value.
-    """
-    from alpha_zero.utils.checkpoint import read_git_sha
-
-    return read_git_sha(start)
-
-
-def _version_of(module_name: str) -> str | None:
-    try:
-        module = __import__(module_name)
-    except Exception:
-        return None
-    version = getattr(module, "__version__", None)
-    return str(version) if version is not None else None
-
-
-def collect_evidence(
-    seed: int | None, games_total: int, command: str | None = None
-) -> dict[str, Any]:
-    """Everything needed to reproduce or dismiss the number in ``results``."""
-    return {
-        "git_sha": _git_sha(),
-        "generated_utc": datetime.now(UTC).isoformat(),
-        "search_epoch": SEARCH_EPOCH,
-        "seed": seed,
-        "command": command if command is not None else " ".join(sys.argv),
-        "hardware": hardware_summary(),
-        "python": platform.python_version(),
-        "torch": _version_of("torch"),
-        "numpy": _version_of("numpy"),
-        "games_total": games_total,
-    }
+def _shard_games(protocol: BenchmarkProtocol, shard: tuple[int, int] | None) -> int:
+    """Games one opponent plays in ``shard`` (all of them when unsharded)."""
+    if shard is None:
+        return protocol.n_games
+    return 2 * len(shard_pairs(protocol.num_pairs, *shard))
 
 
 # A factory receives the per-game seed the arena derives for that side.
@@ -322,15 +304,17 @@ def _opponent(
 
 
 def _result_record(
-    opponent_id: str,
-    wins: int,
-    draws: int,
-    losses: int,
-    legacy_win_rate: float,
-    generated_utc: str,
+    opponent_id: str, games: Sequence[Mapping[str, Any]], generated_utc: str
 ) -> dict[str, Any]:
-    """One opponent's row: the storage record plus the draw-aware statistics."""
-    n = wins + draws + losses
+    """One opponent's row from its per-game records: the storage record plus statistics.
+
+    Every number is recomputed from ``games``, which is what lets
+    :func:`merge_shards` rebuild a row from shard files exactly.
+    """
+    games = sorted((dict(g) for g in games), key=lambda g: (g["pair"], g["seat"]))
+    results = [g["result"] for g in games]
+    wins, draws, losses = (results.count(r) for r in ("win", "draw", "loss"))
+    n = len(games)
     summary = summarize(wins, draws, losses, BENCHMARK_CONFIDENCE)
     record = EvaluationResult(
         iteration=0,
@@ -340,7 +324,7 @@ def _result_record(
         candidate_wins=wins,
         champion_wins=losses,
         draws=draws,
-        win_rate=legacy_win_rate,
+        win_rate=legacy_win_rate(wins, draws, losses),
         promoted=False,
         # The envelope's generation time, so one scrub covers the whole file.
         timestamp=generated_utc,
@@ -349,6 +333,11 @@ def _result_record(
         ci_high=summary.ci_high,
     )
     elo_low, elo_high = elo_interval(wins, draws, losses, BENCHMARK_CONFIDENCE)
+    intervals = {str(c): interval_summary(games, c) for c in REPORTED_CONFIDENCE_LEVELS}
+    iid95, hull95 = intervals["0.95"]["iid"], intervals["0.95"]["hull"]
+    iid_width = iid95[1] - iid95[0]
+    hull_ratio = (hull95[1] - hull95[0]) / iid_width if iid_width > 0 else 1.0
+    mde_025 = minimum_detectable_effect(n, summary.draw_rate, alpha=0.025)
     row = record.to_dict()
     row.update(
         {
@@ -362,9 +351,23 @@ def _result_record(
             "elo_estimate": elo_from_score_rate(summary.score_rate),
             "elo_ci_low": elo_low,
             "elo_ci_high": elo_high,
+            "games": games,
+            "pairs": len(pair_scores(games)),
+            "intervals": intervals,
+            # The A1 INCONCLUSIVE report: one-sided 2.5% MDE at the observed draw
+            # rate, and the same widened by how much the hull exceeds the iid width.
+            "mde_alpha025_80pct": mde_025,
+            "hull_ratio": hull_ratio,
+            "mde_alpha025_80pct_hull": mde_025 * hull_ratio,
         }
     )
     return row
+
+
+def _candidate_kind(candidate_id: str) -> str:
+    if candidate_id in CANDIDATE_KINDS:
+        return candidate_id
+    return CANDIDATE_CHECKPOINT if candidate_id.startswith(CHECKPOINT_OPPONENT_PREFIX) else "other"
 
 
 def run_benchmark(
@@ -377,6 +380,8 @@ def run_benchmark(
     opponent_models: Mapping[str, Any] | None = None,
     device: Any = None,
     command: str | None = None,
+    shard: tuple[int, int] | None = None,
+    candidate_id: str | None = None,
 ) -> dict[str, Any]:
     """Play the candidate against each opponent under ``protocol``; return the envelope.
 
@@ -393,7 +398,12 @@ def run_benchmark(
             another baseline, as the strength self-test does).
         opponent_models: Models for ``checkpoint:`` opponents.
         device: Torch device for the searches; the arena defaults to CPU.
-        command: Recorded verbatim in ``evidence``; defaults to ``sys.argv``.
+        command: Recorded verbatim in ``evidence``; defaults to the running CLI,
+            ``shlex``-joined.
+        shard: ``(i, N)``: play only the ``i``-th of ``N`` contiguous blocks of
+            pairs (1-based), each game with the seeds the unsharded run gives it.
+        candidate_id: How the envelope names the candidate (``checkpoint:<sha256>``,
+            ``heuristic``, ...). Defaults to ``network`` or ``factory``.
 
     Returns:
         The envelope, already valid under :func:`validate_envelope`.
@@ -406,7 +416,19 @@ def run_benchmark(
         raise ValueError("run_benchmark needs at least one opponent")
 
     models = dict(opponent_models or {})
-    evidence = collect_evidence(seed, protocol.n_games * len(opponents), command)
+    shard_block: dict[str, Any] | None = None
+    game_indices: list[int] | None = None
+    if shard is not None:
+        pairs = shard_pairs(protocol.num_pairs, *shard)
+        shard_block = {"index": shard[0], "count": shard[1], "pairs": [pairs.start, pairs.stop]}
+        game_indices = [g for p in pairs for g in (2 * p, 2 * p + 1)]
+    n_played = _shard_games(protocol, shard)
+    if candidate_id is None:
+        candidate_id = "network" if candidate_factory is None else "factory"
+    claims, non_claims = benchmark_claims(candidate_id, opponents, n_played, shard_block)
+    evidence = collect_evidence(
+        seed, n_played * len(opponents), command, claims=claims, non_claims=non_claims
+    )
     env_seeds = protocol.env_seeds(seed)
     results: list[dict[str, Any]] = []
     for opponent_id in opponents:
@@ -414,8 +436,8 @@ def run_benchmark(
         logger.info(
             "Benchmark: candidate vs %s, %d games (%d maps, both seats), %s x%d, board %d / %d turns",
             opponent_id,
-            protocol.n_games,
-            protocol.num_pairs,
+            n_played,
+            n_played // 2,
             protocol.mcts_type,
             protocol.num_simulations,
             protocol.board_size,
@@ -436,21 +458,15 @@ def run_benchmark(
             player_a_factory=candidate_factory,
             player_b_factory=factory,
             env_seeds=env_seeds,
+            game_indices=game_indices,
         )
-        results.append(
-            _result_record(
-                opponent_id,
-                arena.wins,
-                arena.draws,
-                arena.losses,
-                arena.win_rate,
-                evidence["generated_utc"],
-            )
-        )
+        results.append(_result_record(opponent_id, arena.games, evidence["generated_utc"]))
 
     envelope = {
         "benchmark_schema_version": BENCHMARK_SCHEMA_VERSION,
         "protocol": protocol.to_dict(),
+        "candidate": {"kind": _candidate_kind(candidate_id), "id": candidate_id},
+        "shard": shard_block,
         "evidence": evidence,
         "results": results,
     }
@@ -458,12 +474,47 @@ def run_benchmark(
     return envelope
 
 
+def _row_problems(i: int, row: Mapping[str, Any], expected_pairs: range | None) -> list[str]:
+    """Contract violations in one result row (counts, games, pairs, intervals)."""
+    required = ("candidate_wins", "champion_wins", "draws", "num_games", "score_rate")
+    problems = [
+        f"results[{i}] missing {key!r}" for key in required + _RESULT_EXTRA_KEYS if key not in row
+    ]
+    if problems:
+        return problems
+    total = row["candidate_wins"] + row["champion_wins"] + row["draws"]
+    if total != row["num_games"]:
+        problems.append(f"results[{i}] counts sum to {total} != num_games {row['num_games']}")
+    outcomes = [g.get("result") for g in row["games"]]
+    counts = (outcomes.count("win"), outcomes.count("draw"), outcomes.count("loss"))
+    expected = (row["candidate_wins"], row["draws"], row["champion_wins"])
+    if counts != expected or len(outcomes) != row["num_games"]:
+        problems.append(f"results[{i}] counts disagree with its per-game records")
+    try:
+        pair_scores(row["games"])
+    except (KeyError, ValueError) as exc:
+        problems.append(f"results[{i}] games: {exc}")
+    if expected_pairs is not None:
+        seats = [(g.get("pair"), g.get("seat")) for g in row["games"]]
+        if sorted(seats) != [(p, seat) for p in expected_pairs for seat in (0, 1)]:
+            problems.append(
+                f"results[{i}] games are not exactly pairs "
+                f"[{expected_pairs.start}, {expected_pairs.stop}) from both seats"
+            )
+    for level in REPORTED_CONFIDENCE_LEVELS:
+        if set(row["intervals"].get(str(level), {})) != {"iid", "pair", "hull"}:
+            problems.append(f"results[{i}] intervals missing the {level} iid/pair/hull block")
+    return problems
+
+
 def validate_envelope(envelope: Mapping[str, Any]) -> None:
-    """Raise :class:`ValueError` unless ``envelope`` has the schema-1 shape.
+    """Raise :class:`ValueError` unless ``envelope`` has the current schema's shape.
 
     Checks keys, the schema version, that the protocol round-trips through
-    :class:`BenchmarkProtocol`, that every result carries the storage record's
-    counts plus the benchmark's extra keys, and that counts add up.
+    :class:`BenchmarkProtocol`, the evidence block's keys and epoch, and for each
+    result: the storage record's counts plus the benchmark's extra keys, that the
+    counts add up and agree with the per-game records, and that those records are
+    exactly the whole pairs this run (or shard) was meant to play.
     """
     problems: list[str] = []
     for key in _TOP_KEYS:
@@ -477,16 +528,25 @@ def validate_envelope(envelope: Mapping[str, Any]) -> None:
             f"benchmark_schema_version {envelope['benchmark_schema_version']!r} != "
             f"{BENCHMARK_SCHEMA_VERSION}"
         )
+    expected_pairs: range | None = None
     try:
         protocol = BenchmarkProtocol.from_dict(envelope["protocol"])
-    except (TypeError, ValueError) as exc:
-        problems.append(f"protocol does not parse: {exc}")
-        protocol = None
+        shard = envelope["shard"]
+        if shard is None:
+            expected_pairs = range(protocol.num_pairs)
+        else:
+            expected_pairs = shard_pairs(protocol.num_pairs, shard["index"], shard["count"])
+            if [expected_pairs.start, expected_pairs.stop] != shard["pairs"]:
+                problems.append(f"shard pairs {shard['pairs']} do not match shard {shard}")
+    except (TypeError, ValueError, KeyError) as exc:
+        problems.append(f"protocol or shard does not parse: {exc}")
 
     evidence = envelope["evidence"]
     for key in _EVIDENCE_KEYS:
         if key not in evidence:
             problems.append(f"evidence missing {key!r}")
+    if evidence.get("search_epoch") != SEARCH_EPOCH:
+        problems.append(f"evidence.search_epoch {evidence.get('search_epoch')!r} != {SEARCH_EPOCH}")
     hardware = evidence.get("hardware", {})
     for key in _HARDWARE_KEYS:
         if key not in hardware:
@@ -497,25 +557,101 @@ def validate_envelope(envelope: Mapping[str, Any]) -> None:
         problems.append("results must be a non-empty list")
         results = []
     for i, row in enumerate(results):
-        for key in ("candidate_wins", "champion_wins", "draws", "num_games", "score_rate"):
-            if key not in row:
-                problems.append(f"results[{i}] missing {key!r}")
-        for key in _RESULT_EXTRA_KEYS:
-            if key not in row:
-                problems.append(f"results[{i}] missing {key!r}")
-        if all(k in row for k in ("candidate_wins", "champion_wins", "draws", "num_games")):
-            total = row["candidate_wins"] + row["champion_wins"] + row["draws"]
-            if total != row["num_games"]:
-                problems.append(
-                    f"results[{i}] counts sum to {total} != num_games {row['num_games']}"
-                )
-            if protocol is not None and row["num_games"] != protocol.n_games:
-                problems.append(
-                    f"results[{i}] num_games {row['num_games']} != protocol n_games "
-                    f"{protocol.n_games}"
-                )
+        problems.extend(_row_problems(i, row, expected_pairs))
     if problems:
         raise ValueError("invalid benchmark envelope: " + "; ".join(problems))
+
+
+def merge_shards(
+    envelopes: Sequence[Mapping[str, Any]], command: str | None = None
+) -> dict[str, Any]:
+    """Recombine the shard envelopes of one run into the unsharded envelope.
+
+    Every shard must come from the same protocol, candidate, seed, commit and
+    opponent list, and the set must be exactly shards ``1..N`` of one ``N``.
+    Rows are rebuilt from the union of the per-game records, so every statistic
+    is recomputed, not averaged; the result validates as an unsharded run.
+    """
+    if not envelopes:
+        raise ValueError("merge_shards needs at least one shard envelope")
+    for envelope in envelopes:
+        validate_envelope(envelope)
+    if any(e["shard"] is None for e in envelopes):
+        raise ValueError("merge_shards takes shard envelopes; one is already unsharded")
+    shards = sorted(envelopes, key=lambda e: e["shard"]["index"])
+    count = shards[0]["shard"]["count"]
+    found = [(e["shard"]["index"], e["shard"]["count"]) for e in shards]
+    if found != [(i, count) for i in range(1, count + 1)]:
+        raise ValueError(f"need exactly shards 1..{count} of {count}, got {found}")
+    first = shards[0]
+    checks: dict[str, Callable[[Mapping[str, Any]], Any]] = {
+        "protocol": lambda e: e["protocol"],
+        "candidate": lambda e: e["candidate"],
+        "seed": lambda e: e["evidence"]["seed"],
+        "git_sha": lambda e: e["evidence"]["git_sha"],
+        "opponents": lambda e: [r["opponent_id"] for r in e["results"]],
+    }
+    for name, get in checks.items():
+        if any(get(e) != get(first) for e in shards[1:]):
+            raise ValueError(f"shards disagree on {name}: {[get(e) for e in shards]}")
+
+    protocol = BenchmarkProtocol.from_dict(first["protocol"])
+    opponents = [r["opponent_id"] for r in first["results"]]
+    claims, non_claims = benchmark_claims(
+        first["candidate"]["id"], opponents, protocol.n_games, None
+    )
+    evidence = collect_evidence(
+        first["evidence"]["seed"],
+        protocol.n_games * len(opponents),
+        command,
+        claims=claims,
+        non_claims=non_claims,
+    )
+    # The games were played by the shards' commit, not by whoever merges them.
+    evidence["git_sha"] = first["evidence"]["git_sha"]
+    evidence.pop("git_sha_null_reason", None)
+    if evidence["git_sha"] is None:
+        evidence["git_sha_null_reason"] = first["evidence"].get("git_sha_null_reason")
+    evidence["shards"] = [
+        {
+            "index": e["shard"]["index"],
+            "count": e["shard"]["count"],
+            "pairs": e["shard"]["pairs"],
+            "generated_utc": e["evidence"]["generated_utc"],
+            "command": e["evidence"]["command"],
+            "hardware": e["evidence"]["hardware"],
+        }
+        for e in shards
+    ]
+    results = [
+        _result_record(
+            opponent_id,
+            [g for e in shards for g in e["results"][i]["games"]],
+            evidence["generated_utc"],
+        )
+        for i, opponent_id in enumerate(opponents)
+    ]
+    merged = {
+        "benchmark_schema_version": BENCHMARK_SCHEMA_VERSION,
+        "protocol": first["protocol"],
+        "candidate": first["candidate"],
+        "shard": None,
+        "evidence": evidence,
+        "results": results,
+    }
+    validate_envelope(merged)
+    return merged
+
+
+def _shard_note(envelope: Mapping[str, Any]) -> str:
+    shard = envelope["shard"]
+    if shard is not None:
+        return (
+            f"**Shard {shard['index']}/{shard['count']}** (pairs {shard['pairs'][0]} to "
+            f"{shard['pairs'][1] - 1}): a partial result; merge every shard before quoting it."
+        )
+    merged = envelope["evidence"].get("shards")
+    return f"Merged from {len(merged)} shards." if merged else "Unsharded run."
 
 
 def render_report(envelope: Mapping[str, Any]) -> str:
@@ -528,6 +664,8 @@ def render_report(envelope: Mapping[str, Any]) -> str:
         "",
         f"Generated {evidence['generated_utc']} at commit `{evidence.get('git_sha') or 'unknown'}` "
         f"(search epoch `{evidence['search_epoch']}`), seed `{evidence['seed']}`.",
+        "",
+        f"Candidate: `{envelope['candidate']['id']}`. " + _shard_note(envelope),
         "",
         "## Protocol",
         "",
@@ -563,6 +701,26 @@ def render_report(envelope: Mapping[str, Any]) -> str:
         "(`alpha_zero/evaluation/scoring.py`). `MDE @80%` is the smallest true "
         "edge over 0.5 this many games can detect at 80% power, one-sided alpha 0.05, "
         "at the observed draw rate.",
+        "",
+        "## Intervals: iid, pair-clustered and hull",
+        "",
+        "| Opponent | Pairs | Level | iid | pair | hull | MDE a=0.025 (x hull ratio) |",
+        "|---|---:|---:|---|---|---|---:|",
+    ]
+    for row in envelope["results"]:
+        for level, block in row["intervals"].items():
+            iid, pair, hull = block["iid"], block["pair"], block["hull"]
+            lines.append(
+                f"| `{row['opponent_id']}` | {row['pairs']} | {float(level):.0%} "
+                f"| [{iid[0]:.3f}, {iid[1]:.3f}] | [{pair[0]:.3f}, {pair[1]:.3f}] "
+                f"| [{hull[0]:.3f}, {hull[1]:.3f}] "
+                f"| {row['mde_alpha025_80pct']:.3f} ({row['mde_alpha025_80pct_hull']:.3f}) |"
+            )
+    lines += [
+        "",
+        "`iid` treats games as independent (ternary variance); `pair` takes each "
+        "seat-swapped map pair as the unit; `hull` is `[min(lows), max(highs)]`, the "
+        "bounds a pre-registered decision reads.",
         "",
         "## Evidence",
         "",
@@ -607,6 +765,16 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
     return network
 
 
+_MODULE = "alpha_zero.evaluation.benchmark"
+
+
+def _shard_arg(spec: str) -> tuple[int, int]:
+    try:
+        return parse_shard(spec)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="benchmark_suite",
@@ -619,10 +787,19 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="Candidate checkpoint. Omitted: a freshly initialised network (smoke mode).",
     )
     parser.add_argument(
+        "--candidate",
+        choices=CANDIDATE_KINDS,
+        default=CANDIDATE_CHECKPOINT,
+        help="checkpoint (default: --checkpoint, or an untrained network), or a baseline "
+        "candidate -- heuristic or random -- for a positive control. Baselines take no "
+        "--checkpoint.",
+    )
+    parser.add_argument(
         "--opponents",
         type=str,
         default=",".join(DEFAULT_OPPONENTS),
-        help="Comma-separated opponent ids (random, heuristic, simple_mcts).",
+        help="Comma-separated opponent ids (random, heuristic, simple_mcts); "
+        "--opponents= for none (checkpoint opponents only).",
     )
     parser.add_argument(
         "--opponent-checkpoint",
@@ -641,66 +818,127 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         "--mcts-type", type=str, default=BenchmarkProtocol.mcts_type, choices=["gumbel", "civ6"]
     )
     parser.add_argument("--device", type=str, default="cpu")
+    parser.add_argument(
+        "--shard",
+        type=_shard_arg,
+        default=None,
+        metavar="i/N",
+        help="Play only the i-th (1-based) of N contiguous blocks of seat-swapped pairs, "
+        "with the seeds the unsharded run would use. Combine with --merge.",
+    )
+    parser.add_argument(
+        "--merge",
+        type=Path,
+        nargs="+",
+        default=None,
+        metavar="SHARD",
+        help="Merge shard result.json files (or directories holding one) into --out, "
+        "recomputing every statistic. Plays no games.",
+    )
     parser.add_argument("--out", type=Path, default=Path("benchmark_out"))
     add_budget_arguments(parser)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.candidate != CANDIDATE_CHECKPOINT and args.checkpoint is not None:
+        parser.error(f"--candidate {args.candidate} plays a baseline; drop --checkpoint")
+    if args.merge is not None and args.shard is not None:
+        parser.error("--merge combines shards; it does not take --shard")
+    return args
 
 
 def benchmark_budget_inputs(args: argparse.Namespace) -> dict[str, int]:
-    """Resolved ``benchmark`` cost-model inputs for parsed CLI ``args``."""
+    """Resolved ``benchmark`` cost-model inputs for parsed CLI ``args``.
+
+    ``n_games`` is what one opponent plays in *this* invocation: the shard's
+    whole pairs under ``--shard``, and 0 under ``--merge``.
+    """
+    n_games = 0 if args.merge is not None else args.n_games
+    if args.merge is None and args.shard is not None:
+        n_games = 2 * len(shard_pairs(args.n_games // 2, *args.shard))
     return {
-        "n_games": args.n_games,
+        "n_games": n_games,
         "num_opponents": len([o for o in args.opponents.split(",") if o.strip()]),
         "num_opponent_checkpoints": len(args.opponent_checkpoint),
     }
 
 
+def _read_envelope(path: Path) -> dict[str, Any]:
+    target = path / "result.json" if path.is_dir() else path
+    data: dict[str, Any] = json.loads(target.read_text(encoding="utf-8"))
+    return data
+
+
+def _candidate(
+    args: argparse.Namespace, protocol: BenchmarkProtocol
+) -> tuple[Any, PlayerFactory | None, str]:
+    """``(network, factory, id)`` for the candidate the CLI asked for."""
+    if args.candidate == "heuristic":
+        from alpha_zero.evaluation.baseline_agents import GreedyHeuristicAgent
+
+        return None, (lambda s: GreedyHeuristicAgent(seed=s)), "heuristic"
+    if args.candidate == "random":
+        from alpha_zero.evaluation.baseline_agents import RandomAgent
+
+        return None, (lambda s: RandomAgent(seed=s)), "random"
+    if args.checkpoint is not None:
+        network = _load_network(args.checkpoint, args.device, protocol.max_turns)
+        return network, None, checkpoint_opponent_id(args.checkpoint)
+
+    import torch
+
+    from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.envs.microciv import MicroCivEnv
+
+    logger.warning("No --checkpoint given: benchmarking a freshly initialised network.")
+    torch.manual_seed(args.seed or 0)
+    network = MicroCivNetwork(
+        board_size=protocol.board_size,
+        action_space_size=int(MicroCivEnv(board_size=protocol.board_size).action_space.n),
+    )
+    network.eval()
+    return network, None, f"untrained-network:torch_seed={args.seed or 0}"
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    """CLI: run the protocol and write ``result.json`` + ``report.md`` to ``--out``."""
+    """CLI: run the protocol (or merge shards) and write ``result.json`` + ``report.md``."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
     # Refuse before loading any network: games = n_games per opponent.
     enforce_cli("benchmark", benchmark_budget_inputs(args), args)
-    protocol = BenchmarkProtocol(
-        board_size=args.board_size,
-        max_turns=args.max_turns,
-        num_simulations=args.sims,
-        gumbel_k=args.gumbel_k,
-        n_games=args.n_games,
-        mcts_type=args.mcts_type,
-    )
+    command = shlex.join(["python", "-m", _MODULE, *(sys.argv[1:] if argv is None else argv)])
 
-    import torch
-
-    if args.checkpoint is not None:
-        candidate = _load_network(args.checkpoint, args.device, protocol.max_turns)
+    if args.merge is not None:
+        envelope = merge_shards([_read_envelope(p) for p in args.merge], command=command)
     else:
-        from alpha_zero.core.civ6_network import MicroCivNetwork
-        from alpha_zero.envs.microciv import MicroCivEnv
-
-        logger.warning("No --checkpoint given: benchmarking a freshly initialised network.")
-        torch.manual_seed(args.seed or 0)
-        candidate = MicroCivNetwork(
-            board_size=protocol.board_size,
-            action_space_size=int(MicroCivEnv(board_size=protocol.board_size).action_space.n),
+        protocol = BenchmarkProtocol(
+            board_size=args.board_size,
+            max_turns=args.max_turns,
+            num_simulations=args.sims,
+            gumbel_k=args.gumbel_k,
+            n_games=args.n_games,
+            mcts_type=args.mcts_type,
         )
-        candidate.eval()
+        import torch
 
-    opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
-    opponent_models: dict[str, Any] = {}
-    for path in args.opponent_checkpoint:
-        opponent_id = checkpoint_opponent_id(path)
-        opponent_models[opponent_id] = _load_network(path, args.device, protocol.max_turns)
-        opponents.append(opponent_id)
+        candidate, candidate_factory, candidate_id = _candidate(args, protocol)
+        opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
+        opponent_models: dict[str, Any] = {}
+        for path in args.opponent_checkpoint:
+            opponent_id = checkpoint_opponent_id(path)
+            opponent_models[opponent_id] = _load_network(path, args.device, protocol.max_turns)
+            opponents.append(opponent_id)
 
-    envelope = run_benchmark(
-        protocol,
-        candidate,
-        opponents,
-        args.seed,
-        opponent_models=opponent_models,
-        device=torch.device(args.device),
-    )
+        envelope = run_benchmark(
+            protocol,
+            candidate,
+            opponents,
+            args.seed,
+            candidate_factory=candidate_factory,
+            opponent_models=opponent_models,
+            device=torch.device(args.device),
+            command=command,
+            shard=args.shard,
+            candidate_id=candidate_id,
+        )
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "result.json").write_text(json.dumps(envelope, indent=2), encoding="utf-8")
     (args.out / "report.md").write_text(render_report(envelope), encoding="utf-8")
