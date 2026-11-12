@@ -102,7 +102,17 @@ def test_confirmatory_runs_share_no_arena_map() -> None:
     a1, a1r = (bench_map_seeds(base) for base in CONFIRMATORY)
     assert overlap(a1, a1r) == 0
     for exploratory in EXPLORATORY:
-        assert overlap(bench_map_seeds(exploratory), a1) == 0
+        for confirmatory in (a1, a1r):
+            assert overlap(bench_map_seeds(exploratory), confirmatory) == 0
+
+
+def test_no_arena_map_of_any_seed_is_a_training_map_of_any_seed() -> None:
+    """By content, across all five seeds: no arena map repeats, none was trained on."""
+    env = MicroCivEnv(board_size=BOARD, max_turns=MAX_TURNS)
+    train = {_fingerprint(env, s) for base in BASE_SEEDS for s in self_play_map_seeds(base)}
+    arena = [_fingerprint(env, s) for base in BASE_SEEDS for s in bench_map_seeds(base)]
+    assert len(set(arena)) == len(arena), "two seeds' arenas share a map"
+    assert not train & set(arena)
 
 
 def test_negative_control_arithmetic_maps_would_overlap() -> None:

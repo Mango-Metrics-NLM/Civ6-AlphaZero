@@ -25,6 +25,8 @@ from alpha_zero.evaluation.a1_protocol import (
     PROTOCOL_BEGIN,
     PROTOCOL_END,
     ProtocolMarkerError,
+    iid_positive_control_void_probability,
+    pairs_from_games,
     positive_control_void_probability,
     protocol_sha256,
     read_registered_protocol,
@@ -201,6 +203,15 @@ def test_card_equals_the_registered_commands_token_for_token(
     assert rc.price_card(card).total == 980
 
 
+@pytest.mark.parametrize("file", ["a1.yaml", "a1r.yaml"])
+def test_placeholder_card_is_refused_before_its_run_dir_exists(tmp_path: Path, file: str) -> None:
+    """The shipped cards' all-zero sha is refused after pricing, before anything is created."""
+    root = tmp_path / "root"
+    with pytest.raises(rc.RunCardError, match="placeholder sha"):
+        rc.run_card(CARDS / file, data_root=root, repo_root=REPO_ROOT)
+    assert not root.exists()
+
+
 def test_price_only_prints_980(capsys: pytest.CaptureFixture[str]) -> None:
     assert rc.main([str(CARDS / "a1.yaml"), "--price_only"]) == 0
     last = capsys.readouterr().out.strip().splitlines()[-1]
@@ -283,37 +294,79 @@ def test_the_hash_is_not_written_inside_the_region(section: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Positive-control calibration (T11 review I2): P(hull L <= 0.5)
+# Positive-control calibration (T11 review I2, T13 review I1): P(hull L <= 0.5)
 # ---------------------------------------------------------------------------
 
+#: Map-decided pairs: the map hands both games to one side. Score 0.75, no draws.
+CLUSTERED = [("win", "win")] * 30 + [("loss", "loss")] * 10
 
-def test_calibration_reproduces_the_t11_review_figures() -> None:
-    """d ~ 0 at 40 games ~14% (so the 60-game branch); 60 games ~3%; d = 0.3 at 40 ~3%."""
-    near_zero_draws_40 = positive_control_void_probability(0.7375, 0.0, 40, reps=4000)
-    near_zero_draws_60 = positive_control_void_probability(0.7375, 0.0, 60, reps=4000)
-    draws_40 = positive_control_void_probability(0.7375 - 0.15, 0.3, 40, reps=4000)
+
+def test_pair_bootstrap_sees_clustering_the_iid_model_cannot() -> None:
+    """The registered method must not inherit the iid model's blindness to maps.
+
+    On map-decided pairs the pair-clustered interval is wide, so the hull VOIDs
+    the control far more often than independent games at the same score would.
+    Measured: pair 0.37 / iid 0.10 at 40 games; pair 0.19 / iid 0.02 at 60.
+    """
+    pair_40 = positive_control_void_probability(CLUSTERED, 40, reps=4000)
+    iid_40 = iid_positive_control_void_probability(0.75, 0.0, 40, reps=4000)
+    pair_60 = positive_control_void_probability(CLUSTERED, 60, reps=4000)
+    iid_60 = iid_positive_control_void_probability(0.75, 0.0, 60, reps=4000)
+    assert pair_40 > iid_40 + 0.15, (pair_40, iid_40)
+    assert pair_60 > iid_60 + 0.10, (pair_60, iid_60)
+    # The rule's two answers diverge exactly where it matters: iid says 60 games
+    # would do (< 5%), the pairs say they would not.
+    assert iid_60 < 0.05 < pair_60
+
+
+def test_pair_bootstrap_of_a_dominant_control_never_voids() -> None:
+    assert positive_control_void_probability([("win", "win")] * 5, 40, reps=200) == 0.0
+
+
+def test_pairs_from_games_keeps_seat_order_and_rejects_half_pairs() -> None:
+    games = [
+        {"pair": 1, "seat": 1, "result": "loss"},
+        {"pair": 0, "seat": 0, "result": "win"},
+        {"pair": 1, "seat": 0, "result": "draw"},
+        {"pair": 0, "seat": 1, "result": "win"},
+    ]
+    assert pairs_from_games(games) == [("win", "win"), ("draw", "loss")]
+    with pytest.raises(ValueError, match="incomplete"):
+        pairs_from_games(games[:3])
+
+
+def test_iid_fallback_reproduces_the_t11_figures_and_the_crossover() -> None:
+    """Informational only: d ~ 0 at 40 games ~14%; the 5% crossover is near d = 0.23."""
+    near_zero_draws_40 = iid_positive_control_void_probability(0.7375, 0.0, 40, reps=4000)
     assert 0.11 <= near_zero_draws_40 <= 0.18, near_zero_draws_40
-    assert near_zero_draws_60 <= 0.05, near_zero_draws_60
-    assert 0.015 <= draws_40 <= 0.045, draws_40
+    below = iid_positive_control_void_probability(0.7375 - 0.10, 0.20, 40, reps=8000)
+    above = iid_positive_control_void_probability(0.7375 - 0.13, 0.26, 40, reps=8000)
+    assert below > 0.05 > above, (below, above)
 
 
 def test_calibration_is_seeded() -> None:
-    a = positive_control_void_probability(0.7, 0.1, 40, reps=500, seed=7)
-    assert a == positive_control_void_probability(0.7, 0.1, 40, reps=500, seed=7)
+    a = positive_control_void_probability(CLUSTERED, 40, reps=300, seed=7)
+    assert a == positive_control_void_probability(CLUSTERED, 40, reps=300, seed=7)
 
 
 @pytest.mark.parametrize(
-    ("p_win", "p_draw", "n_games", "reps"),
+    ("pairs", "n_games", "reps"),
     [
-        (0.7, 0.1, 41, 10),
-        (0.7, 0.1, 0, 10),
-        (0.7, 0.1, 40, 0),
-        (0.8, 0.3, 40, 10),
-        (-0.1, 0.1, 40, 10),
+        (CLUSTERED, 41, 10),
+        (CLUSTERED, 0, 10),
+        (CLUSTERED, 40, 0),
+        ([("win", "win")], 40, 10),
+        ([("win", "tie"), ("win", "win")], 40, 10),
     ],
 )
-def test_calibration_rejects_bad_arguments(
-    p_win: float, p_draw: float, n_games: int, reps: int
+def test_pair_calibration_rejects_bad_arguments(
+    pairs: list[tuple[str, str]], n_games: int, reps: int
 ) -> None:
     with pytest.raises(ValueError):
-        positive_control_void_probability(p_win, p_draw, n_games, reps=reps)
+        positive_control_void_probability(pairs, n_games, reps=reps)
+
+
+@pytest.mark.parametrize(("p_win", "p_draw"), [(0.8, 0.3), (-0.1, 0.1)])
+def test_iid_calibration_rejects_bad_probabilities(p_win: float, p_draw: float) -> None:
+    with pytest.raises(ValueError):
+        iid_positive_control_void_probability(p_win, p_draw, 40, reps=10)

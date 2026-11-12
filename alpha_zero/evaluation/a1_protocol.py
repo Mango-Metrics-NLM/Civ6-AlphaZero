@@ -15,7 +15,11 @@ be computable by code rather than by hand:
   the heuristic really is stronger: ``P(hull L <= 0.5)`` at the registered game
   count, where ``L`` is the low end of the 95% hull the verdict reads (T11 review
   I2: the hull, not the iid ``ci_low``). :func:`positive_control_void_probability`
-  is that number by seeded simulation through the benchmark's own
+  is the registered method: a seeded **pair bootstrap** over T0b's measured
+  seat-swapped pairs, so the calibration inherits the real map clustering the
+  hull exists for (T13 review I1). :func:`iid_positive_control_void_probability`
+  draws games independently; it ignores clustering, so it is reported only as an
+  informational lower bound. Both read the hull from the benchmark's own
   :func:`~alpha_zero.evaluation.benchmark_evidence.interval_summary`.
 
 ``python scripts/check_learning_trend.py --print-protocol-sha`` prints the hash.
@@ -24,7 +28,9 @@ be computable by code rather than by hand:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -34,6 +40,8 @@ __all__ = [
     "PROTOCOL_BEGIN",
     "PROTOCOL_END",
     "ProtocolMarkerError",
+    "iid_positive_control_void_probability",
+    "pairs_from_games",
     "positive_control_void_probability",
     "protocol_sha256",
     "read_registered_protocol",
@@ -87,7 +95,90 @@ def protocol_sha256(text: str) -> str:
     return hashlib.sha256(registered_protocol(text).encode("utf-8")).hexdigest()
 
 
+def pairs_from_games(games: Sequence[Mapping[str, Any]]) -> list[tuple[str, str]]:
+    """``[(seat-0 result, seat-1 result)]`` per pair, in pair order, from a result row's games.
+
+    ``games`` is a benchmark result row's ``games`` list (``{pair, seat, result}``,
+    results from the candidate's side). Pools from several result files are made
+    by concatenating the lists this returns, file by file.
+
+    Raises:
+        ValueError: if a pair lacks a seat, repeats one, or a result is unknown.
+    """
+    by_pair: dict[int, dict[int, str]] = {}
+    for game in games:
+        result = str(game["result"])
+        if result not in _RESULTS:
+            raise ValueError(f"unknown result {result!r}")
+        seats = by_pair.setdefault(int(game["pair"]), {})
+        seat = int(game["seat"])
+        if seat in seats:
+            raise ValueError(f"pair {game['pair']} has two games from seat {seat}")
+        seats[seat] = result
+    out = []
+    for pair in sorted(by_pair):
+        if set(by_pair[pair]) != {0, 1}:
+            raise ValueError(f"pair {pair} is incomplete: seats {sorted(by_pair[pair])}")
+        out.append((by_pair[pair][0], by_pair[pair][1]))
+    return out
+
+
+def _hull_low_share(replicates: Sequence[Sequence[tuple[str, str]]], confidence: float) -> float:
+    at_or_below = 0
+    for sample in replicates:
+        games = [
+            {"pair": p, "seat": seat, "result": result}
+            for p, pair in enumerate(sample)
+            for seat, result in enumerate(pair)
+        ]
+        if interval_summary(games, confidence)["hull"][0] <= 0.5:
+            at_or_below += 1
+    return at_or_below / len(replicates)
+
+
+def _check_size(n_games: int, reps: int) -> None:
+    if n_games <= 0 or n_games % 2:
+        raise ValueError(f"n_games must be a positive even number, got {n_games}")
+    if reps <= 0:
+        raise ValueError(f"reps must be positive, got {reps}")
+
+
 def positive_control_void_probability(
+    pairs: Sequence[tuple[str, str]],
+    n_games: int,
+    *,
+    reps: int = 20_000,
+    seed: int = 1111,
+    confidence: float = 0.95,
+) -> float:
+    """``P(hull low <= 0.5)`` for an arm of ``n_games`` games, by pair bootstrap.
+
+    **The registered method** (``docs/EVALUATION.md`` section 7.1). Each
+    replicate draws ``n_games // 2`` whole seat-swapped pairs with replacement
+    from ``pairs`` -- T0b's measured pairs (:func:`pairs_from_games` of each of
+    its result files, concatenated) -- and reads the low end of the
+    ``confidence`` hull from
+    :func:`~alpha_zero.evaluation.benchmark_evidence.interval_summary`. Resampling
+    pairs, not games, keeps whatever the maps do to both games of a pair, which
+    is what the pair-clustered half of the hull answers to. The default seed
+    makes the number reproducible; it is not a game seed.
+
+    Raises:
+        ValueError: for an odd or non-positive ``n_games``, non-positive
+            ``reps``, fewer than 2 pairs, or a malformed pair.
+    """
+    _check_size(n_games, reps)
+    if len(pairs) < 2:
+        raise ValueError(f"need at least 2 measured pairs, got {len(pairs)}")
+    for pair in pairs:
+        if len(pair) != 2 or any(r not in _RESULTS for r in pair):
+            raise ValueError(f"malformed pair {pair!r}")
+    rng = np.random.default_rng(seed)
+    picks = rng.integers(0, len(pairs), size=(reps, n_games // 2))
+    return _hull_low_share([[pairs[int(i)] for i in row] for row in picks], confidence)
+
+
+def iid_positive_control_void_probability(
     p_win: float,
     p_draw: float,
     n_games: int,
@@ -96,36 +187,27 @@ def positive_control_void_probability(
     seed: int = 1111,
     confidence: float = 0.95,
 ) -> float:
-    """``P(hull low <= 0.5)`` for an arm of ``n_games`` independent games.
+    """``P(hull low <= 0.5)`` with every game drawn independently -- informational only.
 
-    Each replicate draws ``n_games`` outcomes iid with probabilities
-    ``(p_win, p_draw, 1 - p_win - p_draw)``, seats them as consecutive
-    seat-swapped pairs (game ``g`` is pair ``g // 2``, seat ``g % 2``), and reads
-    the low end of the ``confidence`` hull from
-    :func:`~alpha_zero.evaluation.benchmark_evidence.interval_summary` -- the
-    statistic the A1 verdict reads for the positive control. The default seed
-    makes the number reproducible; it is not a game seed.
+    Outcomes are iid with probabilities ``(p_win, p_draw, 1 - p_win - p_draw)``
+    and seated as consecutive pairs. Independence leaves the pair interval no
+    excess width, so this ignores map clustering and is a **lower bound** on the
+    VOID risk (T13 review I1 measured 2.75% here against 7.2% under per-map
+    clustering at d = 0.3). Section 7.1 reports it beside the registered
+    :func:`positive_control_void_probability`; the branch rule never reads it.
 
     Raises:
         ValueError: for an odd or non-positive ``n_games``, non-positive
             ``reps``, or probabilities outside ``[0, 1]`` / summing above 1.
     """
-    if n_games <= 0 or n_games % 2:
-        raise ValueError(f"n_games must be a positive even number, got {n_games}")
-    if reps <= 0:
-        raise ValueError(f"reps must be positive, got {reps}")
+    _check_size(n_games, reps)
     p_loss = 1.0 - p_win - p_draw
     if not (0.0 <= p_win <= 1.0 and 0.0 <= p_draw <= 1.0 and p_loss >= -1e-12):
         raise ValueError(f"invalid outcome probabilities: win {p_win}, draw {p_draw}")
-    probabilities = [p_win, p_draw, max(0.0, p_loss)]
     rng = np.random.default_rng(seed)
-    draws = rng.choice(len(_RESULTS), size=(reps, n_games), p=probabilities)
-    at_or_below = 0
-    for row in draws:
-        games = [
-            {"pair": g // 2, "seat": g % 2, "result": _RESULTS[int(outcome)]}
-            for g, outcome in enumerate(row)
-        ]
-        if interval_summary(games, confidence)["hull"][0] <= 0.5:
-            at_or_below += 1
-    return at_or_below / reps
+    draws = rng.choice(len(_RESULTS), size=(reps, n_games), p=[p_win, p_draw, max(0.0, p_loss)])
+    replicates = [
+        [(_RESULTS[int(row[2 * p])], _RESULTS[int(row[2 * p + 1])]) for p in range(n_games // 2)]
+        for row in draws
+    ]
+    return _hull_low_share(replicates, confidence)

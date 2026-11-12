@@ -173,9 +173,22 @@ Written before the run so the result cannot move the goalposts:
 
 Registered 2026-11-11 (task T13), before any A1-family run, exploratory runs
 included. Source: `kb/specs/20261111-local-first-and-branching-plan.md` §5.2.
-The A1 artifact records the sha256 of this text. Any change after the first
-A1-family run is a new registration with a new hash, and a run is judged only
-under the registration whose hash its artifact records.
+The A1 artifact records the sha256 of this text, and a run is judged only
+under the registration whose hash its artifact records. Every registered
+digest is logged after this section ("Registration log").
+
+**Amendments.** Before any A1-family run starts, this section may be
+re-registered, with a new log row. **Once any exploratory run has started**,
+the only amendments allowed are the slots marked "pending T0b": the measured
+positive-control reference and its P values, the 40/60 branch in force, and
+the cards' `sha`. Any other change (an arm, a threshold, a verdict row, the
+search settings, the card form) is a **new registration with a new
+confirmatory seed pair**; 20261111 and 20261112 are then retired unrun.
+
+**Code binding.** The card's pinned `sha` must contain this section with the
+digest the A1 artifact records; T14 checks `protocol_sha256` of
+`docs/EVALUATION.md` at `run.json`'s `sha`. The settings below are the ones
+that commit's code resolves.
 
 **Question.** Does the local training loop, run on the fixed search at this
 budget, produce a network that beats its own random initialisation under the
@@ -197,19 +210,16 @@ same search? A1 answers it once at seed 20261111. A1-R repeats it at seed
   the exploratory and confirmatory derived seeds are all distinct.
   `tests/regression/test_a1_seed_disjointness_regression.py` gates this, and
   its negative control is the arithmetic `seed + pair` rule, which overlaps on
-  99 of 100 maps. To reproduce for one seed (seconds):
+  99 of 100 maps. To reproduce for one seed (seconds). The block is Python,
+  fenced as `text` so that no formatter rewrites registered text:
 
-  ```python
+  ```text
   from alpha_zero.envs.microciv import MicroCivEnv
   from alpha_zero.utils.seeding import SeedStream, derive_seed
   import hashlib
-
-
   def fp(s):
       obs, _ = MicroCivEnv(board_size=8, max_turns=60).reset(seed=s)
       return hashlib.sha256(obs["spatial"].tobytes() + obs["vector"].tobytes()).hexdigest()
-
-
   S = 20261111
   train = {fp(derive_seed(S, SeedStream.SELF_PLAY_ENV, it, g)) for it in range(20) for g in range(24)}
   bench = {fp(derive_seed(S, SeedStream.BENCH_ENV, p)) for p in range(100)}
@@ -261,10 +271,30 @@ The memo is the reference.
   re-registered before any A1-family run.** That means a new section 7.1 and a
   new hash.
 
+**Arena search.** Every searching side of every arena arm is `GumbelMCTS`,
+built by `create_mcts` inside `run_arena` (`alpha_zero/cloud/gcp/arena.py`):
+
+- `num_simulations` 24 and `num_sampled_actions` 8, from `--sims` and
+  `--gumbel-k`;
+- a seed per game and side, `derive_seed(seed, "arena.search", game, side)`;
+- no root noise; every other `GumbelMCTSConfig` field at its default
+  (`c_visit` 50.0, `c_scale` 1.0, `policy_target` `completed_q`, sequential
+  halving on);
+- the move played is `select_action(target, temperature=0)`, the argmax of the
+  target;
+- board 8, `max_turns` 60, gameplay preset `default`.
+
+Each `result.json` records `protocol` and `evidence.search` (`mcts_type`,
+`num_simulations`, `gumbel_k`, `search_semantics`); T14 compares them with this
+paragraph.
+
 #### Registered commands
 
 `<D>` is `E:\civ6az-data\runs\<card>`, where `<card>` is the run card's
-`card_id`. The commands run in this order. Each is executed through
+`card_id`. A card therefore runs with `--data_root E:\civ6az-data` (or
+`CIV6AZ_DATA_ROOT` set to it); under any other root, `run.json` and the run's
+outputs land in different trees, and the run is VOID for want of a
+`COMPLETED` `run.json` at `<D>`. The commands run in this order. Each is executed through
 `scripts/run_card.py` from the card's pinned SHA (T1b); the cards are
 `configs/run_cards/a1.yaml` (A1) and `configs/run_cards/a1r.yaml` (A1-R).
 Every arena arm has its own `--out`, because `result.json` is never overwritten
@@ -312,7 +342,10 @@ python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --
 The total is priced across every invocation, each by its runner's own parser
 (`run_card --price_only`). No invocation exceeds 1,000 games.
 `tests/scripts/test_a1_registration.py` holds these commands, the cards and the
-price together.
+price together. Under `run_card`, a benchmark child runs as
+`python -m alpha_zero.evaluation.benchmark` with the same arguments (the same
+CLI as `scripts/benchmark_suite.py`), and its `result.json` records that entry
+point; compare the arguments, not the leading tokens.
 
 - **The 60-game branch** (see the positive control below) replaces two
   invocations. The total stays 980:
@@ -329,11 +362,14 @@ python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --
   "60" and, for "60", puts the two branch commands into both cards.
 - **A1-R** is the same card with every `--seed 20261111` replaced by
   `--seed 20261112`, under its own `<card>`.
-- **Sharding.** If T0b's wall-clock ETA for the card is over 12 h, A1 runs as
-  two cards under this one registration: the training card, then the arena card.
-  An arena arm may then be split with `--shard i/N` into separate `--out`
-  directories and recombined with `--merge`. The merged `result.json` equals the
-  unsharded one (§4). Wall-clock is not estimated in advance; T0b measures it.
+- **Only the one-card form is registered.** If T0b's wall-clock ETA for the
+  card is over 12 h, A1 may instead run as two cards (training, then a sharded
+  arena), but that form is **not registered here**. Before it is used it needs a
+  re-registration of its exact commands, both cards' `<D>` directories, the
+  `--shard i/N` and `--merge` commands with their `--out` directories, and the
+  rule that every card's `run.json` must say `COMPLETED`. That is a change of
+  card form, so it must be registered **before any exploratory run starts**
+  (see Amendments). Wall-clock is not estimated in advance; T0b measures it.
 
 #### Intervals
 
@@ -400,27 +436,40 @@ variable.
 
 - **Rule** (T11 review I2): the calibration is computed on the hull, as
   **P(hull L ≤ 0.5)**, not P(`ci_low` ≤ 0.5).
-- **How it is computed:**
-  `alpha_zero.evaluation.a1_protocol.positive_control_void_probability(p_win,
-  p_draw, 40)`, with its defaults (20,000 replicates, seed 1111, 95%). It
-  simulates iid games at T0b's pooled measured proportions and puts each
-  replicate through the benchmark's own `interval_summary`.
+- **How it is computed: pair bootstrap of T0b's measured pairs** (T13 review
+  I1). `pairs` is the concatenation, in seed order 1001, 1002, 1003, of
+  `a1_protocol.pairs_from_games(row["games"])` for the heuristic-vs-random row
+  of each of T0b's three `result.json` files (about 300 seat-swapped pairs).
+  P(n) is `alpha_zero.evaluation.a1_protocol.positive_control_void_probability(pairs,
+  n)` with its defaults (20,000 replicates, seed 1111, 95%): each replicate
+  draws n / 2 whole pairs with replacement and reads L from the benchmark's own
+  `interval_summary`. Resampling pairs keeps the map clustering the hull exists
+  for.
+- `iid_positive_control_void_probability(p_win, p_draw, 40)` at T0b's pooled
+  proportions is reported beside it as an **informational lower bound**: it
+  draws games independently, so it cannot see clustering. The branch rule never
+  reads it.
 - **Reference:** T0b measures it on post-B1 code at board 8 / 60 turns,
   heuristic vs random, seeds 1001–1003 × 200 games. This replaces the board-6
   figure of 0.725.
-  - **Measured reference: pending T0b.** T0b records W/D/L, the score and its
-    hull, and P at n = 40, here, before any confirmatory run.
+  - **Measured reference: pending T0b.** T0b records here, before any
+    exploratory or confirmatory run: W/D/L, the score and its hull, the number
+    of pooled pairs, P(40) and P(60) by pair bootstrap, and the iid P(40).
   - Pre-B1 reference, superseded by T0b: 0.7375, CI [0.711, 0.761].
-- **Branch:** if P > 0.05 at n = 40, the positive control takes 60 games and
-  "final vs random" drops to 20, keeping the card at 980.
-- **The 60-game branch is likely.** At μ = 0.7375 the probability depends on
-  the arm's draw rate:
+- **Branch:** if P(40) > 0.05, the positive control takes 60 games and
+  "final vs random" drops to 20, keeping the card at 980. If P(60) also
+  exceeds 0.05, the branch is still 60 (the most the 980-game card allows), and
+  T0b records P(60) as the VOID risk the run accepts.
+- **Either branch is plausible.** At μ = 0.7375 the iid lower bound crosses
+  5% near d ≈ 0.23 (5.9% at d = 0.20, 4.6% at d = 0.24), and clustering raises
+  it. The pre-B1 reference cannot settle it, because its game count is not
+  recorded. Figures (informational, μ = 0.7375):
 
-  | Draw rate | P at n = 40 | P at n = 60 |
+  | Model | P(40) | P(60) |
   |---|---|---|
-  | d ≈ 0 | about 14% (T11 review) | about 3% |
-  | d = 0.3 | about 3% | — |
-  | d = 0.3, map-clustered games (κ = 2) | 6.9% | — |
+  | iid, d ≈ 0 | about 14% (T11 review) | about 3% |
+  | iid, d = 0.3 | about 3% | about 0.3% |
+  | per-map clustering (κ = 2), d = 0.3 | about 7% (T11 and T13 reviews) | about 1.4% |
 
 #### Trend (LF-A2)
 
@@ -439,11 +488,11 @@ Registered from the memo's §6, with the T12 review's corrections. All
 quantities are the A13 fields in `iterations.jsonl`, computed over
 **non-forced positions only**.
 
-- **`sᵢ`** is `prequential.target_share_above_greedy_threshold` at iteration
-  `i`, and **`mᵢ`** is `prequential.target_max_p_mean`. An iteration whose record
-  carries an `error`, or whose value is `null` (no non-forced positions),
-  contributes nothing.
-- **`s₀`** is `s` from A1's iteration-0 record: loop index 0, written as
+- **`sᵢ`** is `prequential.target_share_above_greedy_threshold` at loop index
+  `i` (the record with `"iteration": i + 1`), and **`mᵢ`** is
+  `prequential.target_max_p_mean`. A record that carries an `error`, or whose
+  value is `null` (no non-forced positions), contributes nothing.
+- **`s₀`** is `s` from A1's loop-index-0 record, written as
   `"iteration": 1`. It is used **only if** that record has
   `generator == "network"` (A1 runs `--bootstrap none`) and carries no `error`.
   **Otherwise, or if that share is `null`, `s₀ := 0`**, and the 0.25 floor
@@ -451,8 +500,9 @@ quantities are the A13 fields in `iterations.jsonl`, computed over
 
 After A1 finishes, whatever its verdict, check:
 
-- **T1:** `sᵢ > max(0.25, 5 · s₀)` at any iteration `i ≥ 1`; or
-- **T2:** `mᵢ > 0.80` at any iteration.
+- **T1:** `sᵢ > max(0.25, 5 · s₀)` at any loop index `i ≥ 1` (any record with
+  `"iteration"` ≥ 2); or
+- **T2:** `mᵢ > 0.80` in any record, the first included.
 
 For reference, the non-forced starting values in the review's A1-style
 self-play were about 0–1.5% for the share (0.4% measured through the code) and
@@ -489,6 +539,18 @@ A1 artifact records. Compute it with:
 - `alpha_zero.evaluation.a1_protocol.protocol_sha256(text)`.
 
 The hash is deliberately not written inside the region.
+
+**Registration log.** One row per registered version of section 7.1, newest
+last. `tests/regression/test_a1_registration_digest_regression.py` fails unless
+the last row's digest is the digest of the text as it stands, so an edit to the
+region, deliberate or a formatter's, needs a new row here in the same change.
+When T0b fills in the "pending T0b" slots it adds a row ("T0b slot fill-in:
+measured reference, branch N, card sha"), and the A1 artifact records that
+row's digest.
+
+| Date | sha256 of section 7.1 | Change |
+|---|---|---|
+| 2026-11-11 | `990989eea43b90e777a67a40da5bc319f62c2e49c82174b74530d4d1d6f2e377` | Initial registration (T13), with fix round 1: pair-bootstrap calibration, amendment limits, code binding, arena search, one-card form only, `text` fence |
 
 ## 8. The LLM advisor gate is not an evaluation
 
