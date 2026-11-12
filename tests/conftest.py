@@ -91,6 +91,12 @@ _CLOUD_ENV_EXACT = frozenset(
         "CIV6AZ_GCS_BUCKET",
         "CIV6AZ_SKIP_DOTENV",
         "CIV6AZ_STORAGE_BACKEND",
+        # Legacy and test-only names that select a real bucket or project
+        # (CLAUDE.md section 12.5; tests/e2e/test_gcp_integration.py fixtures).
+        "CIV6_GCS_BUCKET",
+        "CIV6_STORAGE_BACKEND",
+        "GCS_BUCKET_NAME",
+        "GCP_PROJECT_ID",
     }
 )
 _CLOUD_ENV_PREFIXES = ("GOOGLE_", "VERTEX_")
