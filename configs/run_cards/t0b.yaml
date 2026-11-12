@@ -1,0 +1,134 @@
+# Run card: T0b -- the positive-control reference and the wall-clock calibration
+# that section 7.1 of docs/EVALUATION.md leaves "pending T0b" (plan section 8.2).
+#
+#   python scripts/run_card.py configs/run_cards/t0b.yaml --price_only   # prints 604
+#
+# T0b runs are NOT A1-family runs (section 7.1, "Amendments"): they use seeds
+# 1001-1003 but lock nothing. Run it on the merged default branch after T7-T10.
+#
+# DO NOT RUN until:
+#   1. `sha` is the merged commit to calibrate (the all-zero placeholder below is
+#      refused by run_card after pricing and before anything is created);
+#   2. no MCTS_* variable is set and the data root is E:\civ6az-data;
+#   3. the machine is quiet (pause Windows Update; stop llama-server and WSL), or
+#      the throughput figure is not the machine's.
+#
+# Invocations: one wall-clock calibration of A1's search (board 8 / 60 turns,
+# gumbel k=8 n=24, CPU; 4 self-play games), then the registered positive-control
+# command (section 7.1 "positive-control") at seeds 1001, 1002 and 1003 with 200
+# games each -- only --seed, --n-games and --out differ from it.
+# tests/scripts/test_t0b_calibration.py holds that, and the price, in place.
+#
+# GPU1 timing is exploratory and runs outside run_card: the pinned venv carries
+# CPU-only torch (final review M-10).
+#
+# Then read it with (it never edits docs/EVALUATION.md; exit 1 unless registered):
+#   python -m alpha_zero.evaluation.a1_protocol calibrate
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1001
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1002
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1003
+#       --throughput E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json
+# It prints the reference, P(40) with its 95% interval, P(60), the iid P(40),
+# the branch in force and the exact replacement text for both slots. Filling
+# them is a reviewed dev PR with a registration-log row.
+card_id: t0b-20261112
+sha: '0000000000000000000000000000000000000000'
+max_games: 604
+description: T0b positive-control reference (heuristic vs random, 8/60, seeds 1001-1003 x 200) and A1 wall-clock calibration.
+invocations:
+  - name: throughput
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cpu'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json'
+  - name: seed-1001
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1001'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cpu'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1001'
+  - name: seed-1002
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1002'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cpu'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1002'
+  - name: seed-1003
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1003'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cpu'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1003'

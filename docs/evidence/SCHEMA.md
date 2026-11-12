@@ -47,8 +47,10 @@ artifact under the contract above: `bundle.json` carries the `evidence` block.
 `scripts/verify_release_evidence.py` checks it, and the `Release Evidence`
 workflow (`.github/workflows/release-evidence.yml`, pull requests only) runs it
 on every pull request into `main` except `hotfix/*` (exit 0 pass, 1 fail, 2
-missing). Generated example bundles live in
-`tests/scripts/release_evidence_fixture.py`.
+missing). `scripts/build_release_bundle.py` produces it from the run directories
+`run_card` leaves (and runs the verifier on it before writing anything);
+`tests/scripts/test_release_evidence_e2e.py` drives both on real producer output at tiny
+scale. Generated example bundles live in `tests/scripts/release_evidence_fixture.py`.
 
 | Field | Type | Meaning |
 |---|---|---|
@@ -72,6 +74,7 @@ Each `runs[]` entry is one attempt:
 | `run_json`, `iterations` | `{path, sha256}` of the run's `run.json` and `iterations.jsonl` |
 | `arms` | `{name: {path, sha256, wins, draws, losses, score_rate, confidence, hull}}`, one per registered arena invocation (`positive-control` -> `positive_control`); `hull` is at 99% for `symmetry`, 95% otherwise |
 | `verdict` | `a1_protocol.compute_verdict(...).to_dict()`: `verdict`, `reasons`, the three hulls, and for INCONCLUSIVE `mde_alpha025_80pct`, `hull_ratio`, `mde_alpha025_80pct_hull` |
+| `checkpoints` | written by the builder: `{path under the run directory: sha256}` of every checkpoint an arm names (the files are not committed). The builder refuses an arm whose `checkpoint:<sha256>` is not the file on disk; the verifier ignores this field |
 
 Paths are POSIX and relative to the bundle directory (`..` and absolute paths
 are refused). For every attempt the verifier:

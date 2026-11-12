@@ -32,6 +32,14 @@ be computable by code rather than by hand:
   records no learning result: a release cannot rest on it (section 7.1, "After a
   VOID").
 
+* **T0b's calibration.** ``python -m alpha_zero.evaluation.a1_protocol calibrate
+  DIR...`` reads T0b's heuristic-vs-random ``result.json`` files (one per seed,
+  ``configs/run_cards/t0b.yaml``), pools their pairs in seed order and prints the
+  reference, P(40) with its 95% interval, P(60), the iid P(40), the branch the
+  rule selects and the exact text for section 7.1's two "pending T0b" slots. It
+  never edits ``docs/EVALUATION.md``: filling the slots is a reviewed change with
+  a registration-log row (:func:`calibrate_t0b`, :func:`t0b_slot_text`).
+
 The registered commands are parsed by :mod:`alpha_zero.evaluation.a1_registration`.
 
 ``python scripts/check_learning_trend.py --print-protocol-sha`` prints the hash.
@@ -39,9 +47,12 @@ The registered commands are parsed by :mod:`alpha_zero.evaluation.a1_registratio
 
 from __future__ import annotations
 
+import argparse
 import hashlib
+import json
+import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +74,8 @@ __all__ = [
     "VERDICT_VOID",
     "A1Verdict",
     "ProtocolMarkerError",
+    "T0bReference",
+    "calibrate_t0b",
     "compute_verdict",
     "iid_positive_control_void_probability",
     "pairs_from_games",
@@ -71,6 +84,7 @@ __all__ = [
     "protocol_sha256",
     "read_registered_protocol",
     "registered_protocol",
+    "t0b_slot_text",
     "verdict_from_bounds",
 ]
 
@@ -453,3 +467,245 @@ def compute_verdict(
         hull_ratio=ratio,
         mde_alpha025_80pct_hull=widened,
     )
+
+
+# ---------------------------------------------------------------------------
+# T0b: the positive-control reference and the 40/60 branch (section 7.1)
+# ---------------------------------------------------------------------------
+
+#: T0b's registered shape: heuristic vs random at board 8 / 60 turns, these seeds,
+#: this many games each (section 7.1 "Positive control", plan section 8.2).
+T0B_SEEDS: tuple[int, ...] = (1001, 1002, 1003)
+T0B_GAMES = 200
+T0B_BOARD_SIZE = 8
+T0B_MAX_TURNS = 60
+#: The branch rule: 60 games when the upper bound of P(40)'s 95% interval exceeds this.
+BRANCH_VOID_RISK = 0.05
+#: The registered bootstrap parameters (section 7.1 "Positive control").
+REGISTERED_METHOD = {"reps": 20_000, "outer": 200, "inner": 2_000, "seed": 1111}
+#: The two "pending T0b" slots, verbatim, as section 7.1 holds them.
+REFERENCE_SLOT = (
+    "**Measured reference: pending T0b.** T0b records here, before any\n"
+    "    exploratory or confirmatory run: W/D/L, the score and its hull, the number\n"
+    "    of pooled pairs, P(40) with its 95% interval and P(60) by pair bootstrap,\n"
+    "    and the iid P(40)."
+)
+BRANCH_SLOT = "**Branch in force: pending T0b.**"
+#: The A1 card's 980 games less the heuristic-vs-random positive control: the
+#: games that search with a network (training self-play and every other arm).
+_A1_SEARCH_GAMES = {40: 980 - 40, 60: 980 - 60}
+
+
+@dataclass
+class T0bReference:
+    """What T0b records in section 7.1, computed from its result files."""
+
+    seeds: list[int]
+    games_per_seed: list[int]
+    wins: int
+    draws: int
+    losses: int
+    pairs: int
+    score_rate: float
+    hull: tuple[float, float]
+    p40: float
+    p40_interval: tuple[float, float]
+    p60: float
+    iid_p40: float
+    branch: int
+    shape_problems: list[str] = field(default_factory=list)
+    method: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def registered(self) -> bool:
+        """The registered shape (seeds, games, board, turns) and bootstrap parameters."""
+        return not self.shape_problems and self.method == REGISTERED_METHOD
+
+
+def _t0b_games(envelope: Mapping[str, Any], where: str, problems: list[str]) -> list[Any]:
+    """The heuristic-vs-random row's per-game records from one T0b ``result.json``."""
+    candidate = str((envelope.get("candidate") or {}).get("id"))
+    rows = [r for r in envelope.get("results") or [] if r.get("opponent_id") == "random"]
+    if candidate != "heuristic" or len(rows) != 1:
+        raise ValueError(f"{where}: not a heuristic-vs-random result (candidate {candidate!r})")
+    protocol = envelope.get("protocol") or {}
+    shape = (protocol.get("board_size"), protocol.get("max_turns"))
+    if shape != (T0B_BOARD_SIZE, T0B_MAX_TURNS):
+        problems.append(
+            f"{where}: board {shape[0]} / {shape[1]} turns, not {T0B_BOARD_SIZE} / {T0B_MAX_TURNS}"
+        )
+    if envelope.get("shard") is not None:
+        problems.append(f"{where}: a shard, not a whole result")
+    return list(rows[0]["games"])
+
+
+def calibrate_t0b(
+    envelopes: Sequence[Mapping[str, Any]],
+    *,
+    reps: int = 20_000,
+    outer: int = 200,
+    inner: int = 2_000,
+    seed: int = 1111,
+) -> T0bReference:
+    """Section 7.1's positive-control reference and branch from T0b's result files.
+
+    ``envelopes`` are the benchmark ``result.json`` objects, one per seed, in any
+    order; their pairs are pooled **in seed order** (section 7.1: "the
+    concatenation, in seed order 1001, 1002, 1003"). The defaults are the
+    registered method; other values are a quick look. A set of files that is not
+    the registered shape (seeds, games per seed, board, turns) is computed anyway
+    and listed in ``shape_problems``: it is not the registered reference.
+
+    Raises:
+        ValueError: a file is not a heuristic-vs-random result, records no
+            integer seed, or two files share a seed.
+    """
+    problems: list[str] = []
+    by_seed: dict[int, list[Any]] = {}
+    for index, envelope in enumerate(envelopes):
+        file_seed = (envelope.get("evidence") or {}).get("seed")
+        if not isinstance(file_seed, int) or isinstance(file_seed, bool):
+            raise ValueError(f"result {index + 1}: evidence.seed {file_seed!r} is not an integer")
+        if file_seed in by_seed:
+            raise ValueError(f"result {index + 1}: seed {file_seed} appears twice")
+        by_seed[file_seed] = _t0b_games(envelope, f"seed {file_seed}", problems)
+    seeds = sorted(by_seed)
+    if tuple(seeds) != T0B_SEEDS:
+        problems.append(f"seeds {seeds}, not the registered {list(T0B_SEEDS)}")
+    counts = [len(by_seed[s]) for s in seeds]
+    if any(n != T0B_GAMES for n in counts):
+        problems.append(f"games per seed {counts}, not {T0B_GAMES} each")
+    pairs = [pair for s in seeds for pair in pairs_from_games(by_seed[s])]
+    pooled = [
+        {"pair": index, "seat": seat, "result": result}
+        for index, pair in enumerate(pairs)
+        for seat, result in enumerate(pair)
+    ]
+    results = [g["result"] for g in pooled]
+    wins, draws, losses = (results.count(r) for r in _RESULTS)
+    total = len(results)
+    p40_interval = positive_control_void_probability_interval(
+        pairs, 40, outer=outer, inner=inner, seed=seed
+    )
+    return T0bReference(
+        seeds=seeds,
+        games_per_seed=counts,
+        wins=wins,
+        draws=draws,
+        losses=losses,
+        pairs=len(pairs),
+        score_rate=(wins + 0.5 * draws) / total,
+        hull=_hull(pooled, POSITIVE_CONTROL_CONFIDENCE),
+        p40=positive_control_void_probability(pairs, 40, reps=reps, seed=seed),
+        p40_interval=p40_interval,
+        p60=positive_control_void_probability(pairs, 60, reps=reps, seed=seed),
+        iid_p40=iid_positive_control_void_probability(
+            wins / total, draws / total, 40, reps=reps, seed=seed
+        ),
+        branch=60 if p40_interval[1] > BRANCH_VOID_RISK else 40,
+        shape_problems=problems,
+        method={"reps": reps, "outer": outer, "inner": inner, "seed": seed},
+    )
+
+
+def t0b_slot_text(ref: T0bReference) -> tuple[str, str]:
+    """``(reference, branch)``: the text that replaces section 7.1's two slots.
+
+    ``reference`` replaces :data:`REFERENCE_SLOT` (the list item keeps its
+    ``  - `` prefix); ``branch`` replaces :data:`BRANCH_SLOT`. For branch 60 the
+    two branch commands must also go into both cards (section 7.1).
+    """
+    low, high = ref.p40_interval
+    seeds = ", ".join(str(s) for s in ref.seeds)
+    games = ref.games_per_seed[0] if ref.games_per_seed else 0
+    reference = (
+        f"**Measured reference** (T0b, seeds {seeds} x {games} games, board "
+        f"{T0B_BOARD_SIZE} / {T0B_MAX_TURNS} turns, heuristic vs random): W/D/L "
+        f"{ref.wins}/{ref.draws}/{ref.losses}, score {ref.score_rate:.4f}, 95% hull "
+        f"[{ref.hull[0]:.4f}, {ref.hull[1]:.4f}], {ref.pairs} pooled pairs; P(40) = "
+        f"{ref.p40:.4f} (95% interval [{low:.4f}, {high:.4f}]) and P(60) = {ref.p60:.4f} "
+        f"by pair bootstrap; iid P(40) = {ref.iid_p40:.4f}."
+    )
+    return reference, f"**Branch in force: {ref.branch}.**"
+
+
+def _throughput_lines(path: Path, branch: int) -> list[str]:
+    """T0b's wall-clock calibration (``scripts/calibrate_throughput.py`` JSON) as an A1 ETA."""
+    results = json.loads(path.read_text(encoding="utf-8"))["results"]
+    s_per_game = float(results["s_per_game"])
+    games = _A1_SEARCH_GAMES[branch]
+    return [
+        f"throughput: {s_per_game:.1f} s per self-play game, "
+        f"{float(results.get('ms_per_eval', 0.0)):.2f} ms per evaluation ({path})",
+        f"A1 card at branch {branch}: {games} search games x {s_per_game:.1f} s = "
+        f"{games * s_per_game / 3600.0:.1f} h, training epochs not included "
+        "(section 7.1: over 12 h needs the two-card form registered first)",
+    ]
+
+
+def _calibrate_main(args: argparse.Namespace) -> int:
+    envelopes = []
+    for given in args.results:
+        path = given / "result.json" if given.is_dir() else given
+        envelopes.append(json.loads(path.read_text(encoding="utf-8")))
+    ref = calibrate_t0b(
+        envelopes, reps=args.reps, outer=args.outer, inner=args.inner, seed=args.seed
+    )
+    low, high = ref.p40_interval
+    print(f"seeds {ref.seeds}, games per seed {ref.games_per_seed}, pooled pairs {ref.pairs}")
+    print(
+        f"W/D/L {ref.wins}/{ref.draws}/{ref.losses}, score {ref.score_rate:.4f}, "
+        f"95% hull [{ref.hull[0]:.4f}, {ref.hull[1]:.4f}]"
+    )
+    print(f"P(40) = {ref.p40:.4f}, 95% interval [{low:.4f}, {high:.4f}]")
+    print(f"P(60) = {ref.p60:.4f}; iid P(40) = {ref.iid_p40:.4f} (informational lower bound)")
+    side = ">" if ref.branch == 60 else "<="
+    print(f"Branch in force: {ref.branch} (P(40) upper bound {high:.4f} {side} {BRANCH_VOID_RISK})")
+    if ref.branch == 60 and ref.p60 > BRANCH_VOID_RISK:
+        print(f"P(60) {ref.p60:.4f} > {BRANCH_VOID_RISK}: record it as the VOID risk A1 accepts")
+    if args.throughput is not None:
+        for line in _throughput_lines(args.throughput, ref.branch):
+            print(line)
+    reference, branch = t0b_slot_text(ref)
+    print("\nSection 7.1 slot text (replace each slot verbatim and add a registration-log row):")
+    print(f"- replace:\n  {REFERENCE_SLOT}\n  with:\n  {reference}")
+    print(f"- replace:\n  {BRANCH_SLOT}\n  with:\n  {branch}")
+    if not ref.registered:
+        print("\nNOT the registered T0b reference; do not fill the slots from this output:")
+        for problem in ref.shape_problems:
+            print(f"  - {problem}")
+        if ref.method != REGISTERED_METHOD:
+            print(f"  - bootstrap parameters {ref.method} are not {REGISTERED_METHOD}")
+        return 1
+    return 0
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """``python -m alpha_zero.evaluation.a1_protocol calibrate RESULT...``.
+
+    Exit 0 for the registered reference, 1 when the input or the bootstrap
+    parameters are not section 7.1's (the numbers are still printed).
+    """
+    parser = argparse.ArgumentParser(prog="python -m alpha_zero.evaluation.a1_protocol")
+    sub = parser.add_subparsers(dest="command", required=True)
+    cal = sub.add_parser("calibrate", help="T0b: reference, P(40)/P(60), the 40/60 branch")
+    cal.add_argument(
+        "results", nargs="+", type=Path, help="T0b result.json files or their --out directories"
+    )
+    cal.add_argument(
+        "--throughput", type=Path, default=None, help="scripts/calibrate_throughput.py JSON"
+    )
+    cal.add_argument("--reps", type=int, default=REGISTERED_METHOD["reps"])
+    cal.add_argument("--outer", type=int, default=REGISTERED_METHOD["outer"])
+    cal.add_argument("--inner", type=int, default=REGISTERED_METHOD["inner"])
+    cal.add_argument(
+        "--seed",
+        type=int,
+        default=REGISTERED_METHOD["seed"],
+        help="bootstrap seed, not a game seed",
+    )
+    return _calibrate_main(parser.parse_args(argv))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

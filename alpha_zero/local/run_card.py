@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import importlib
 import json
 import logging
 import os
@@ -178,6 +179,13 @@ def _orchestrator_inputs(argv: Sequence[str]) -> BudgetInputs:
     return game_budget.orchestrator_budget_inputs(config, args.dry_run), args
 
 
+def _calibrate_throughput_inputs(argv: Sequence[str]) -> BudgetInputs:
+    # By name: scripts/ is outside the type-checked package (``mypy alpha_zero/``).
+    calibrate_throughput = importlib.import_module("scripts.calibrate_throughput")
+    args = calibrate_throughput._parse_args(list(argv))
+    return {"games": args.games}, args
+
+
 @dataclass(frozen=True)
 class RunnerSpec:
     """A runner the driver can price and launch: ``python -m <module> <argv>``."""
@@ -191,6 +199,10 @@ RUNNERS: dict[str, RunnerSpec] = {
     "training_civ6": RunnerSpec("alpha_zero.training_civ6", _training_civ6_inputs),
     "benchmark": RunnerSpec("alpha_zero.evaluation.benchmark", _benchmark_inputs),
     "orchestrator": RunnerSpec("alpha_zero.orchestrator", _orchestrator_inputs),
+    # T0b's wall-clock calibration; children run it from the pinned src (cwd=src).
+    "calibrate_throughput": RunnerSpec(
+        "scripts.calibrate_throughput", _calibrate_throughput_inputs
+    ),
 }
 
 
