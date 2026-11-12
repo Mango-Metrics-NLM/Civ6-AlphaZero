@@ -1524,6 +1524,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-11-11*
+*Last updated: 2026-11-12*
 *Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*
