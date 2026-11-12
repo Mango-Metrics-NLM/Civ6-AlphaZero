@@ -28,7 +28,11 @@ be computable by code rather than by hand:
   (VOID, PASS, FAIL, INCONCLUSIVE; the first matching row wins) to an A1 run's
   per-game records. It is the one implementation: ``scripts/verify_release_evidence.py``
   (LF-D8) recomputes every stored verdict with it, and the table itself lives in
-  :func:`verdict_from_bounds` so its edges can be tested on exact bounds.
+  :func:`verdict_from_bounds` so its edges can be tested on exact bounds. A VOID
+  records no learning result: a release cannot rest on it (section 7.1, "After a
+  VOID").
+
+The registered commands are parsed by :mod:`alpha_zero.evaluation.a1_registration`.
 
 ``python scripts/check_learning_trend.py --print-protocol-sha`` prints the hash.
 """
@@ -412,13 +416,14 @@ def compute_verdict(
     :func:`~alpha_zero.evaluation.benchmark_evidence.facing_hull_ratio`.
 
     Raises:
-        ValueError: if an arm's records are not whole seat-swapped pairs or
-            hold an unknown result.
+        ValueError: if any arm's records hold an unknown result or are not
+            whole seat-swapped pairs.
     """
+    for arm in (primary_games, symmetry_games, positive_control_games):
+        unknown = sorted({str(g["result"]) for g in arm} - set(_RESULTS))
+        if unknown:
+            raise ValueError(f"unknown result(s) {unknown}")
     results = [str(g["result"]) for g in primary_games]
-    unknown = sorted(set(results) - set(_RESULTS))
-    if unknown:
-        raise ValueError(f"unknown result(s) {unknown}")
     wins, draws, losses = (results.count(r) for r in _RESULTS)
     summary = summarize(wins, draws, losses, PRIMARY_CONFIDENCE)
     primary = interval_summary(primary_games, PRIMARY_CONFIDENCE)

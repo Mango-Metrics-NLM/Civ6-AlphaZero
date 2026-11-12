@@ -17,7 +17,7 @@ or removed.
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
 | `multiplayer` | 18 | N-player MCTS (Max-N/Paranoid/Best-Reply), turn manager, opponent modeling, scoring |
-| `evaluation` | 15 | MCTS evaluation, promotion scoring SSOT (`scoring.py`) and policy registry (`promotion.py`), benchmark protocol + evidence producer (`benchmark.py`, `benchmark_evidence.py`), the A1 protocol hash and positive-control calibration (`a1_protocol.py`), + `llm_harness/` callable target for the StrategyAdvisor eval harness |
+| `evaluation` | 16 | MCTS evaluation, promotion scoring SSOT (`scoring.py`) and policy registry (`promotion.py`), benchmark protocol + evidence producer (`benchmark.py`, `benchmark_evidence.py`), the A1 protocol hash, positive-control calibration and verdict (`a1_protocol.py`) and its registered commands (`a1_registration.py`), + `llm_harness/` callable target for the StrategyAdvisor eval harness |
 | `hexcrystal` | 7 | Hex-topology spatial encoders + encoder registry — torch-only, standalone-reusable; optional Hub mixin (`hub` extra) |
 | `hub` | 5 | Hugging Face Hub integration: model card generation, dataset exporter, upload utility, hub mixins (`hub` extra) |
 | `envs` | 11 | MicroCiv environment, vectorized env, state→tensor encoders |

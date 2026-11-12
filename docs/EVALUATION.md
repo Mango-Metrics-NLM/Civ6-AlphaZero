@@ -437,6 +437,20 @@ The verdict is VOID unless `run.json` says `COMPLETED`. The same applies if any
 `"supersedes_earlier_record": true`, or if `run.json` names an `MCTS_`
 variable.
 
+**After a VOID.** A VOID records no learning result, so a release cannot rest
+on it: T14's verifier exits 1 when a role has no non-VOID attempt.
+
+1. Fix the cause. An interruption needs nothing fixed. A symmetry or
+   positive-control VOID needs the arena or harness fixed; that is a play-path
+   change, so it lands as a new rc.
+2. Run the same card again under a **new `card_id`** (for example
+   `a1-20261111-r2`, so `<D>` is new) at the **same seed**. Confirmatory runs
+   are deterministic on CPU, so a re-run at the same seed reproduces the games
+   and cannot be used to fish for another result. This is the one exception to
+   "neither has been run before".
+3. Keep the VOID attempt in the release bundle beside the re-run. Each role
+   has exactly one non-VOID attempt, and that attempt is the one judged.
+
 #### Positive control
 
 - **Rule** (T11 review I2): the calibration is computed on the hull, as
@@ -566,6 +580,7 @@ row's digest.
 |---|---|---|
 | 2026-11-11 | `990989eea43b90e777a67a40da5bc319f62c2e49c82174b74530d4d1d6f2e377` | Initial registration (T13), with fix round 1: pair-bootstrap calibration, amendment limits, code binding, arena search, one-card form only, `text` fence |
 | 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
+| 2026-11-12 | `9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e` | T14 review I-1 (before any A1-family run): "After a VOID" -- a VOID records no learning result; fix the cause and re-run under a new `card_id` at the same seed; the VOID attempt stays in the bundle and exactly one non-VOID attempt per role is judged |
 
 ## 8. The LLM advisor gate is not an evaluation
 

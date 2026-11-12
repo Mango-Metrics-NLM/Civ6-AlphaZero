@@ -33,6 +33,17 @@ from alpha_zero.evaluation.a1_protocol import (
     read_registered_protocol,
     registered_protocol,
 )
+from alpha_zero.evaluation.a1_registration import (
+    A1R_SEED as REGISTERED_A1R_SEED,
+)
+from alpha_zero.evaluation.a1_registration import (
+    DATA_ROOT,
+    RegistrationError,
+    branch_in_force,
+    command_block,
+    registered_invocations,
+    run_directory,
+)
 from alpha_zero.local import run_card as rc
 from alpha_zero.utils import game_budget
 
@@ -74,19 +85,12 @@ BRANCH_GAMES = {"positive-control": 60, "final-vs-random": 20}
 
 
 def _data_dir(card_id: str) -> str:
-    return "E:\\civ6az-data\\runs\\" + card_id
+    return run_directory(card_id)
 
 
 def parse_commands(section: str, block: str) -> list[tuple[str, str]]:
-    """``[(name, command)]`` from the ``<!-- a1-commands:<block> -->`` fenced block."""
-    marker = f"<!-- a1-commands:{block} -->"
-    assert section.count(marker) == 1, f"{marker} must occur once inside the hashed region"
-    start = section.index("```text\n", section.index(marker)) + len("```text\n")
-    lines = [ln for ln in section[start : section.index("```", start)].splitlines() if ln.strip()]
-    assert len(lines) % 2 == 0, "each command is a '# name' line followed by one command line"
-    pairs = list(zip(lines[::2], lines[1::2], strict=True))
-    assert all(name.startswith("# ") for name, _ in pairs)
-    return [(name[2:].strip(), command) for name, command in pairs]
+    """``[(name, command)]`` via the shared parser the release verifier also uses."""
+    return [(name, " ".join(tokens)) for name, tokens in command_block(section, block)]
 
 
 def to_invocation(name: str, command: str, card_id: str) -> rc.Invocation:
@@ -411,3 +415,68 @@ def test_pair_calibration_rejects_bad_arguments(
 def test_iid_calibration_rejects_bad_probabilities(p_win: float, p_draw: float) -> None:
     with pytest.raises(ValueError):
         iid_positive_control_void_probability(p_win, p_draw, 40, reps=10)
+
+
+# ---------------------------------------------------------------------------
+# The shared registration parser (a1_registration; the release verifier uses it)
+# ---------------------------------------------------------------------------
+
+
+def _with_branch(section: str, value: str) -> str:
+    old = "**Branch in force: pending T0b.**"
+    assert section.count(old) == 1
+    return section.replace(old, f"**Branch in force: {value}.**")
+
+
+def test_the_branch_is_pending_until_t0b(section: str) -> None:
+    with pytest.raises(RegistrationError, match="not registered yet"):
+        branch_in_force(section)
+    with pytest.raises(RegistrationError):
+        registered_invocations(section, card_id="a1-20261111", seed=20261111)
+
+
+@pytest.mark.parametrize("value", ["40", "60"])
+def test_registered_invocations_follow_the_branch_in_force(section: str, value: str) -> None:
+    filled = _with_branch(section, value)
+    assert branch_in_force(filled) == int(value)
+    got = registered_invocations(filled, card_id="a1-20261111", seed=20261111)
+    base = [to_invocation(n, c, "a1-20261111") for n, c in parse_commands(section, "base")]
+    assert list(got) == [i.name for i in base]
+    games = {"40": (40, 40), "60": (60, 20)}[value]
+    assert got["positive-control"][-3:-2] == [str(games[0])]
+    assert got["final-vs-random"][-3:-2] == [str(games[1])]
+    if value == "40":
+        assert got == {i.name: list(i.argv) for i in base}
+
+
+def test_registered_invocations_substitute_the_card_and_seed(section: str) -> None:
+    got = registered_invocations(
+        _with_branch(section, "40"), card_id="a1r-20261112", seed=REGISTERED_A1R_SEED
+    )
+    expected = [
+        _with_seed(to_invocation(n, c, "a1r-20261112"), A1R_SEED)
+        for n, c in parse_commands(section, "base")
+    ]
+    assert got == {i.name: list(i.argv) for i in expected}
+    assert all("<D>" not in a for args in got.values() for a in args)
+    assert got["train"][-1] == f"{DATA_ROOT}\\runs\\a1r-20261112\\ckpt"
+
+
+def test_prose_constants_match_the_registered_text(section: str) -> None:
+    assert f"`--seed {A1R_SEED}`" in section and str(REGISTERED_A1R_SEED) == A1R_SEED
+    assert f"`{DATA_ROOT}\\runs\\<card>`" in section
+
+
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda s: s.replace("<!-- a1-commands:base -->", "", 1),
+        lambda s: s.replace("# primary\n", "", 1),
+        lambda s: s.replace("--n-games 200", "--n-games '200'", 1),
+        lambda s: _with_branch(s, "50"),
+    ],
+    ids=["no-marker", "unpaired", "quoted", "bad-branch"],
+)
+def test_the_parser_fails_closed(section: str, mutate: object) -> None:
+    with pytest.raises(RegistrationError):
+        registered_invocations(mutate(section), card_id="x", seed=1)  # type: ignore[operator]

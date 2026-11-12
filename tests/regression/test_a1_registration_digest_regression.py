@@ -88,3 +88,15 @@ def test_the_region_holds_no_python_fence() -> None:
     region = registered_protocol(_text())
     fences = re.findall(r"^\s*```(\w*)", region, re.MULTILINE)
     assert all(lang in ("", "text") for lang in fences), fences
+
+
+def test_the_registration_constants_were_confirmed_against_the_last_row() -> None:
+    """``a1_registration.REGISTRATION_DIGEST`` pins the constants read from prose (T14 M-3).
+
+    A1-R's seed, the data root and the verdict table's thresholds are code, not
+    parsed. A re-registration must re-confirm them: update REGISTRATION_DIGEST
+    in the same change, after checking each one against the new text.
+    """
+    from alpha_zero.evaluation.a1_registration import REGISTRATION_DIGEST
+
+    assert registration_log(_text())[-1][1] == REGISTRATION_DIGEST

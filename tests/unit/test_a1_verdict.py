@@ -159,6 +159,14 @@ class TestComputeVerdict:
         with pytest.raises(ValueError, match="unknown"):
             a1.compute_verdict(bad, games(SYMMETRIC, 40), games(STRONG_GAMES, 40))
 
+    @pytest.mark.parametrize("arm", [1, 2])
+    def test_an_unknown_result_in_a_control_arm_is_a_value_error(self, arm: int) -> None:
+        """T14 review M-7: every arm is validated, not only the primary."""
+        arms = [games(STRONG_GAMES, 200), games(SYMMETRIC, 40), games(STRONG_GAMES, 40)]
+        arms[arm][0] = {**arms[arm][0], "result": "won"}
+        with pytest.raises(ValueError, match="unknown"):
+            a1.compute_verdict(*arms)
+
     def test_a_half_pair_is_refused(self) -> None:
         with pytest.raises(ValueError, match="incomplete"):
             a1.compute_verdict(
