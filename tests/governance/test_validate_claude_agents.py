@@ -130,7 +130,7 @@ def test_c1_name_without_prefix(tree: Path, capsys: pytest.CaptureFixture[str]) 
 def test_c1_name_with_colon(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _edit(_agent(tree, "developer"), "name: sdlc-developer", "name: sdlc:developer")
     err = _expect(capsys, "C1")
-    assert "':'" in err
+    assert "sdlc:developer" in err
 
 
 def test_c1_stray_file_in_directory(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -151,7 +151,7 @@ def test_c2_vacuous_description(tree: Path, capsys: pytest.CaptureFixture[str]) 
     path = _agent(tree, "scrum-master")
     lines = path.read_text(encoding="utf-8").splitlines()
     lines = [
-        ("description: Scrum master." if ln.startswith("description:") else ln) for ln in lines
+        ('description: "Scrum master."' if ln.startswith("description:") else ln) for ln in lines
     ]
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     _expect(capsys, "C2")
@@ -631,3 +631,91 @@ def test_negative_control_fixture_fails_only_because_the_check_exists(
     assert rc == 0, (
         f"{label}: with the {code} rule disabled the fixture should pass wrongly:\n{err}"
     )
+
+
+# --- N-1: cases D and E, and the plain-scalar whitelist -----------------------------
+
+
+def _plain_description(tree: Path, value: str) -> None:
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    path.write_text(text.replace(line, f"description: {value}"), encoding="utf-8")
+
+
+def test_n1_case_d_plain_description_starting_with_dash(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Real Claude Code fails to parse this (twice) and loads the role with a name only."""
+    _plain_description(
+        tree, "- Software architect for the SDLC. Use when a change needs a design and a review."
+    )
+    _expect(capsys, "C1")
+
+
+def test_n1_case_e_colon_then_tab(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _plain_description(tree, "Use when:\tx Software architect for the SDLC and its design review.")
+    _expect(capsys, "C1")
+    path = _agent(tree, "architect")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            'description: "', 'description: "Use when:\tx ', 1
+        ),
+        encoding="utf-8",
+    )
+    err = _expect(capsys, "C1")  # even inside quotes a TAB is refused
+    assert "TAB" in err
+
+
+def test_n1_description_must_be_double_quoted(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _plain_description(
+        tree, "Software architect for the SDLC and when to use it for a design review"
+    )
+    err = _expect(capsys, "C1")
+    assert "double-quoted" in err
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    path.write_text(
+        text.replace(line, "description: '" + line[len('description: "') : -1] + "'"),
+        encoding="utf-8",
+    )
+    _expect(capsys, "C1")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "-x",
+        "?x",
+        "- x",
+        "[x",
+        "{x",
+        "&x",
+        "*x",
+        "!x",
+        "|x",
+        ">x",
+        "%x",
+        "@x",
+        "a:\tb",
+        "a: b",
+        ":x",
+        "x:",
+    ],
+)
+def test_n1_plain_whitelist_rejects_yaml_special_starts(
+    tree: Path, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", f"model: opus\nmaxTurns: {value}\n")
+    _expect(capsys, "C1")
+
+
+def test_n1_plain_whitelist_still_accepts_what_the_real_files_use(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\nmaxTurns: 12\n")
+    rc, err = _run(capsys)
+    assert rc == 0, err

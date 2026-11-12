@@ -1531,7 +1531,7 @@ outputs, Constraints and Hand-off.
   `OMP_NUM_THREADS=<digits>` prefix; `python -c`, `git add|commit|push` stay denied) and
   `tests_only_write_guard.sh` (matcher `Edit|Write`). **Residual risk, stated plainly: pytest
   executes test code and conftest files, so a test can write anywhere. The qa guard is an accident
-  net, not a sandbox.** All of them are accident nets, not controls: identity (`civ6az-agent`) is the
+  net, not a sandbox: the flag list stops accidents, not a test author (a `tests/conftest.py` it writes runs), and `-c` is not allowed.** All of them are accident nets, not controls: identity (`civ6az-agent`) is the
   control (section 3.2, charter 4.6). Every hook command ends `|| exit 2`, so a guard that cannot
   start blocks instead of failing open; the validator requires it.
 - **Dispatch.** `planning-handoff` dispatches product-owner, scrum-master and architect, plus

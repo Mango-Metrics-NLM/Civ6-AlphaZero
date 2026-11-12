@@ -229,6 +229,10 @@ class Issue:
 
 
 _PLAIN_FORBIDDEN = re.compile(r"[{}\[\]*&#!|>%@`]|: |:$| #")
+# A plain (unquoted) scalar is accepted ONLY if it matches this whitelist. A blacklist missed
+# `description: - text` and a colon followed by a TAB, both of which Claude Code fails to
+# parse (twice: plain, then its quoting retry) and so loads the role with a name only.
+_PLAIN_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._,/()+=-]*$")
 
 
 def _scalar(raw: str) -> str | list[str]:
@@ -273,15 +277,15 @@ def _scalar(raw: str) -> str | list[str]:
         inner = s[1:-1].strip()
         items = [p.strip() for p in inner.split(",")] if inner else []
         for item in items:
-            if not item or _PLAIN_FORBIDDEN.search(item) or item[0] in "\"'":
+            if not item or not _PLAIN_OK.match(item):
                 raise ValueError(f"flow sequence item {item!r} is not a plain word")
         return items
     if not s:
         return s
-    if s[0] in "\"'{}]*&!|>%@`#?" or _PLAIN_FORBIDDEN.search(s):
+    if not _PLAIN_OK.match(s) or _PLAIN_FORBIDDEN.search(s):
         raise ValueError(
-            f"plain value {raw!r} starts with or contains a character YAML or Claude Code's "
-            "frontmatter fallback reads specially ({}[]*&#!|>%@ backtick, ': ', ' #'); quote it"
+            f"plain value {raw!r} is outside the conservative whitelist "
+            "([A-Za-z0-9][A-Za-z0-9 ._,/()+=-]*, no colon, no leading - ? [ { & * ! | > % @); quote it"
         )
     return s
 
@@ -312,6 +316,8 @@ def _parse_node(items: list[tuple[int, str]], pos: int, indent: int) -> tuple[ob
         if match is None:
             raise ValueError(f"cannot parse line {items[pos][1]!r}")
         key, rest = match.group(1), match.group(2)
+        if key == "description" and not (rest or "").strip().startswith('"'):
+            raise ValueError("description must be a double-quoted string (quote it)")
         if key in out:
             raise ValueError(f"duplicate key {key!r}")
         if rest is None or rest.strip() == "":
@@ -352,6 +358,8 @@ def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
             "'---' appears inside the frontmatter; Claude Code ends the block at the first '---' anywhere"
         )
     block = rest[:idx]
+    if "\t" in block:
+        raise ValueError("a TAB in the frontmatter (YAML and Claude Code read it differently)")
     body = rest[line_end + 1 :] if line_end >= 0 else ""
     items: list[tuple[int, str]] = []
     for raw in block.split("\n"):

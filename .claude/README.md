@@ -70,9 +70,10 @@ Check the files with `python scripts/validate_claude_agents.py`.
 
 `sdlc-qa-sdet` also gets `readonly_shell_guard.sh --qa`: the list above plus
 `python -m pytest <paths under tests/>` with `-q -x -v -s --tb=short -k <word> -m <word>
--p no:cacheprovider --maxfail=N -c <config under tests/>`, optionally after
+-p no:cacheprovider --maxfail=N --confcutdir=<tests path>` (no `-c`), optionally after
 `OMP_NUM_THREADS=<digits>`. **Residual risk:** pytest executes test code and conftest, so a test can
-write anywhere and this is an accident net, not a sandbox; the review reads the tests it ran.
+write anywhere and this is an accident net, not a sandbox; the flag list stops accidents, not a test
+author (a `tests/pytest.ini` or `conftest.py` it writes is picked up automatically). The review reads the tests it ran.
 
 ### Live verification (maintainer, once per checkout and after any guard or agent edit)
 

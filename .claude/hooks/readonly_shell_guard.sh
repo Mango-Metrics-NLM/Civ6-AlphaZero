@@ -23,7 +23,7 @@
 # Two modes, chosen by the first argument the hook command passes:
 #   (none)  the read-only roles
 #   --qa    sdlc-qa-sdet: everything above PLUS `python -m pytest <paths under tests/>`
-#           with a short list of safe flags and an optional leading
+#           with a short list of safe flags (no `-c`, no plugins, no rootdir) and an optional leading
 #           `OMP_NUM_THREADS=<digits>`. RESIDUAL RISK, stated plainly: pytest executes test
 #           code and conftest, so a test can write anywhere. This is an accident net, not a
 #           sandbox; the independent review reads the tests it ran, and identity is the control.
@@ -114,7 +114,7 @@ emit() {
 }
 
 deny() {
-  emit deny "read-only role shell guard: $1 Allowed: git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api (GET only); python scripts/{validate_,check_,verify_release_evidence}*.py. Return the text you wanted to write to your caller instead."
+  emit deny "read-only role shell guard: $1 Allowed (one plain command, no quotes, pipes, redirection or globs): git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api <one relative path> (GET only); python scripts/<one of ten vetted validate_/check_/verify_release_evidence checkers, exact options>.py; and, only for sdlc-qa-sdet (--qa), python -m pytest <paths under tests/> with safe flags and an optional OMP_NUM_THREADS=<digits> prefix. Return the text you wanted to write to your caller instead."
   exit 0
 }
 
@@ -427,10 +427,9 @@ pytest_check() {
         k=$((k + 1))
         [ "${tok[$k]:-}" = "no:cacheprovider" ] || deny "'-p' is allowed only as '-p no:cacheprovider'."
         ;;
-      -c)
-        k=$((k + 1))
-        tests_path_ok "${tok[$k]:-}" || deny "'-c' must name a config under tests/."
-        ;;
+      # `-c <config>` is deliberately absent: a config can set addopts, plugins and rootdir,
+      # which is more reach than a safe test run needs. Without it pytest still uses the
+      # repo's own configuration.
       -*) deny "pytest option '$tk' is not on the allowlist." ;;
       *)
         tests_path_ok "$tk" || deny "pytest may run paths under tests/ only; '$tk' is not one."
