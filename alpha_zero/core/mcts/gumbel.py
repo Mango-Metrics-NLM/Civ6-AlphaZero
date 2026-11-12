@@ -20,9 +20,11 @@ from alpha_zero.core.mcts.backup import (
     should_track_to_play,
 )
 from alpha_zero.core.mcts.gumbel_ops import (
+    SearchStats,
     build_completed_q_policy,
     compute_completed_q,
     gumbel_sample_actions,
+    halving_schedule,
 )
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment, MCTSNetwork
 from alpha_zero.core.mcts_constants import (
@@ -68,7 +70,10 @@ class GumbelMCTSConfig:
         c_visit: Controls value vs visit count trade-off in completed Q.
         c_scale: Scale factor for value estimates.
         use_sequential_halving: Use sequential halving for simulation allocation.
-        min_actions_after_halving: Stop halving when this many actions remain.
+        min_actions_after_halving: Lower bound on survivors per halving round.
+            Values below 2 act as 2 (see
+            :func:`~alpha_zero.core.mcts.gumbel_ops.halving_schedule`); it
+            reshapes the rounds but never changes the total budget.
         temperature: Temperature for final action selection (usually 0 for greedy).
         temperature_threshold: Turn after which to use temperature=0.
         policy_target: How ``search`` reports the improved policy. One of
@@ -281,6 +286,10 @@ class GumbelMCTS:
         # different search on every run -- the defect that made a "seeded"
         # self-play run only half determined.
         self._rng = np.random.default_rng(self.config.seed)
+        # What the most recent `search` actually spent. Measured, never copied
+        # from the plan, so a test can hold it against `planned_halving_sims`.
+        self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._sim_evals = 0
 
     def search(
         self,
@@ -312,7 +321,9 @@ class GumbelMCTS:
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
 
+        self._sim_evals = 0
         policy, value = self._evaluate(spatial, vector, action_mask)
+        self.last_search_stats = SearchStats(root_evals=1, sim_evals=0)
 
         # Expand root
         root.expand(policy, action_mask)
@@ -344,6 +355,7 @@ class GumbelMCTS:
         else:
             best_action = self._simple_search(env, root, sampled_actions)
 
+        self.last_search_stats = SearchStats(root_evals=1, sim_evals=self._sim_evals)
         action_probs = self._build_policy_target(root, best_action, env.action_space.n)
         return action_probs, root.value
 
@@ -455,51 +467,51 @@ class GumbelMCTS:
         Returns:
             Best action index.
         """
-        actions = list(candidate_actions)
-        scores = dict(zip(candidate_actions, gumbel_scores, strict=False))
+        actions = [int(a) for a in candidate_actions]  # rank order: best Gumbel score first
+        scores = {int(a): float(g) for a, g in zip(candidate_actions, gumbel_scores, strict=False)}
 
         if len(actions) == 0:
             return 0
 
-        if len(actions) == 1:
-            return int(actions[0])
+        # The schedule is defined once, in gumbel_ops, for every Gumbel search.
+        # It spends exactly num_simulations whenever two or more candidates
+        # enter, and nothing for a forced move.
+        schedule = halving_schedule(
+            self.config.num_sampled_actions,
+            self.config.num_simulations,
+            len(root.children),
+            min_survivors=self.config.min_actions_after_halving,
+        )
 
-        # Calculate number of halving rounds
-        num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
-        sims_per_round = max(1, self.config.num_simulations // num_rounds)
-
-        for _round_idx in range(num_rounds):
-            if len(actions) <= self.config.min_actions_after_halving:
-                break
-
-            # Allocate simulations evenly among remaining actions
-            sims_per_action = max(1, sims_per_round // len(actions))
-
-            # Run simulations for each remaining action
-            for action in actions:
-                for _ in range(sims_per_action):
-                    self._run_simulation_from_action(env, root, action)
-
-            # Compute completed Q-values
-            max_visits = max(root.children[a].visit_count for a in actions if a in root.children)
-
-            completed_qs = {}
-            for action in actions:
-                if action not in root.children:
-                    continue
-                child = root.children[action]
-                q_sign = perspective_sign(root.to_play, child.to_play)
-                q = q_sign * child.value if child.visit_count > 0 else 0.0
-                completed_qs[action] = compute_completed_q(
-                    q, child.visit_count, max_visits, root_value
-                )
-
-            # Combine with Gumbel scores and halve
-            combined = {a: completed_qs.get(a, 0.0) + scores.get(a, 0.0) for a in actions}
-            actions = sorted(actions, key=lambda a: -combined[a])
-            actions = actions[: max(len(actions) // 2, self.config.min_actions_after_halving)]
+        for halving_round in schedule:
+            survivors = actions[: halving_round.survivors]
+            for rank in halving_round.order():
+                self._run_simulation_from_action(env, root, survivors[rank])
+            actions = self._rank_by_completed_q(root, survivors, scores, root_value)
 
         return int(actions[0])
+
+    def _rank_by_completed_q(
+        self,
+        root: GumbelMCTSNode,
+        actions: list[int],
+        scores: dict[int, float],
+        root_value: float,
+    ) -> list[int]:
+        """Order ``actions`` best-first by completed Q plus Gumbel score."""
+        max_visits = max(
+            (root.children[a].visit_count for a in actions if a in root.children), default=0
+        )
+        combined: dict[int, float] = {}
+        for action in actions:
+            completed = 0.0
+            child = root.children.get(action)
+            if child is not None:
+                q_sign = perspective_sign(root.to_play, child.to_play)
+                q = q_sign * child.value if child.visit_count > 0 else 0.0
+                completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
+            combined[action] = completed + scores.get(action, 0.0)
+        return sorted(actions, key=lambda a: -combined[a])
 
     def _simple_search(
         self,
@@ -611,13 +623,14 @@ class GumbelMCTS:
                 action_mask = obs["action_mask"]
 
                 policy, value = self._evaluate(spatial, vector, action_mask)
+                self._sim_evals += 1
                 node.expand(policy, action_mask)
 
                 # Backpropagate
                 self._backpropagate(search_path, value)
                 return
 
-        # Terminal state
+        # Terminal state: the game's outcome is this simulation's leaf evaluation.
         info = sim_env.get_info()
         winner = info.get("winner")
         if winner is None:
@@ -627,6 +640,7 @@ class GumbelMCTS:
         else:
             value = -1.0
 
+        self._sim_evals += 1
         self._backpropagate(search_path, value)
 
     def _backpropagate(

@@ -51,6 +51,7 @@ from alpha_zero.core.mcts.backup import (
 from alpha_zero.core.mcts.gumbel import (
     POLICY_TARGET_COMPLETED_Q,
 )
+from alpha_zero.core.mcts.gumbel_ops import HalvingRound, SearchStats, halving_schedule
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
     DEFAULT_C_VISIT_DIVISOR,
@@ -85,7 +86,10 @@ class BatchMCTSConfig:
         c_visit: Controls value vs visit count trade-off in completed Q.
         c_scale: Scale factor for value estimates.
         use_sequential_halving: Use sequential halving for simulation allocation.
-        min_actions_after_halving: Stop halving when this many actions remain.
+        min_actions_after_halving: Lower bound on survivors per halving round.
+            Values below 2 act as 2 (see
+            :func:`~alpha_zero.core.mcts.gumbel_ops.halving_schedule`); it
+            reshapes the rounds but never changes the total budget.
         temperature: Temperature for final action selection.
         temperature_threshold: Turn after which to use temperature=0.
     """
@@ -183,6 +187,12 @@ class BatchGumbelMCTS:
         # self-play run only half determined.
         self._rng = np.random.default_rng(self.config.seed)
 
+        # What the most recent `batch_search` actually spent, per environment and
+        # summed. Measured, never copied from the plan.
+        self.last_batch_search_stats: list[SearchStats] = []
+        self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._env_sim_evals: list[int] = []
+
         # Metrics tracking for W&B logging
         self._search_count = 0
         self._track_to_play = True
@@ -221,10 +231,18 @@ class BatchGumbelMCTS:
 
         Returns:
             List of (action_probs, root_value) tuples, one per environment.
+
+        Raises:
+            ValueError: If ``envs`` is empty.
         """
+        if not envs:
+            # Previously an accidental `max()` of an empty sequence inside the
+            # halving loop; now an explicit contract.
+            raise ValueError("batch_search requires at least one environment")
         start_time = time.perf_counter()
         num_envs = len(envs)
         total_evals = 0
+        self._env_sim_evals = [0] * num_envs
 
         # Step 1: Initialize root nodes and get initial evaluations (batched)
         # Above two players a scalar sign flip cannot express the game; fall back
@@ -296,8 +314,14 @@ class BatchGumbelMCTS:
         else:
             best_actions = self._batch_simple_search(envs, roots, candidate_actions_list)
 
-        # Count total evaluations (approximately num_simulations per env)
-        total_evals += self.config.num_simulations * num_envs
+        # Count total evaluations as measured, not as configured.
+        self.last_batch_search_stats = [
+            SearchStats(root_evals=1, sim_evals=sims) for sims in self._env_sim_evals
+        ]
+        self.last_search_stats = SearchStats(
+            root_evals=num_envs, sim_evals=sum(self._env_sim_evals)
+        )
+        total_evals += self.last_search_stats.sim_evals
 
         # Step 4: Construct one-hot policies
         results: list[tuple[np.ndarray, float]] = []
@@ -345,47 +369,56 @@ class BatchGumbelMCTS:
         """
         num_envs = len(envs)
 
-        # Initialize per-env state for sequential halving
+        # Per-env state. Each environment follows its OWN schedule from
+        # gumbel_ops: the round count used to be derived from the largest
+        # candidate set in the batch, so the same position spent a different
+        # budget depending on what it was searched beside.
         active_actions_list: list[list[int]] = []
         scores_list: list[dict[int, float]] = []
+        schedules: list[tuple[HalvingRound, ...]] = []
 
         for i in range(num_envs):
-            actions = list(candidate_actions_list[i])
-            scores = dict(zip(candidate_actions_list[i], gumbel_scores_list[i], strict=False))
+            actions = [int(a) for a in candidate_actions_list[i]]
+            scores = {
+                int(a): float(g)
+                for a, g in zip(candidate_actions_list[i], gumbel_scores_list[i], strict=False)
+            }
             active_actions_list.append(actions)
             scores_list.append(scores)
+            schedules.append(
+                halving_schedule(
+                    self.config.num_sampled_actions,
+                    self.config.num_simulations,
+                    len(roots[i].children),
+                    min_survivors=self.config.min_actions_after_halving,
+                )
+                if actions
+                else ()
+            )
 
-        # Calculate number of halving rounds (maximum across all envs)
-        max_actions = max(len(actions) for actions in active_actions_list)
-        if max_actions == 0:
+        if not any(active_actions_list):
             return [0] * num_envs
 
-        num_rounds = max(1, int(np.ceil(np.log2(max_actions))))
-        sims_per_round = max(1, self.config.num_simulations // num_rounds)
+        num_rounds = max(len(schedule) for schedule in schedules)
 
-        # Run halving rounds
-        for _round_idx in range(num_rounds):
-            # Collect all pending evaluations for this round
+        # Run halving rounds; round r of every env is evaluated in one batch.
+        for round_idx in range(num_rounds):
             pending_evals: list[_PendingEvaluation] = []
+            in_round: list[int] = []
 
-            # Allocate simulations for each env
             for env_idx in range(num_envs):
-                actions = active_actions_list[env_idx]
-                if len(actions) <= self.config.min_actions_after_halving:
+                if round_idx >= len(schedules[env_idx]):
                     continue
-
-                sims_per_action = max(1, sims_per_round // max(len(actions), 1))
-
-                # Run simulations for each action
-                for action in actions:
-                    for _ in range(sims_per_action):
-                        pending = self._run_simulation_for_env(
-                            env_idx, envs[env_idx], roots[env_idx], np.array([action])
-                        )
-
-                        # Collect pending evaluations
-                        if pending is not None:
-                            pending_evals.append(pending)
+                halving_round = schedules[env_idx][round_idx]
+                in_round.append(env_idx)
+                survivors = active_actions_list[env_idx][: halving_round.survivors]
+                active_actions_list[env_idx] = survivors
+                for rank in halving_round.order():
+                    pending = self._run_simulation_for_env(
+                        env_idx, envs[env_idx], roots[env_idx], np.array([survivors[rank]])
+                    )
+                    if pending is not None:
+                        pending_evals.append(pending)
 
             # Batch evaluate all pending leaves from this round
             if pending_evals:
@@ -399,21 +432,20 @@ class BatchGumbelMCTS:
 
                 # Expand and backpropagate
                 for pending, (policy, value) in zip(pending_evals, results, strict=True):
+                    self._env_sim_evals[pending.env_idx] += 1
                     pending.node.expand(policy, pending.action_mask)
                     self._backpropagate(pending.search_path, value)
 
-            # After round, compute completed Q-values and halve actions
-            for env_idx in range(num_envs):
+            # After the round, rank each participating env's survivors by
+            # completed Q plus Gumbel score; the next round takes the top ones.
+            for env_idx in in_round:
                 actions = active_actions_list[env_idx]
-                if len(actions) <= self.config.min_actions_after_halving:
-                    continue
-
                 root = roots[env_idx]
                 scores = scores_list[env_idx]
 
-                # Compute completed Q-values
                 max_visits = max(
-                    root.children[a].visit_count for a in actions if a in root.children
+                    (root.children[a].visit_count for a in actions if a in root.children),
+                    default=0,
                 )
 
                 completed_qs = {}
@@ -426,11 +458,8 @@ class BatchGumbelMCTS:
                         q, child.visit_count, max_visits, root_values[env_idx]
                     )
 
-                # Combine with Gumbel scores and halve
                 combined = {a: completed_qs.get(a, 0.0) + scores.get(a, 0.0) for a in actions}
-                actions = sorted(actions, key=lambda a: -combined[a])
-                actions = actions[: max(len(actions) // 2, self.config.min_actions_after_halving)]
-                active_actions_list[env_idx] = actions
+                active_actions_list[env_idx] = sorted(actions, key=lambda a: -combined[a])
 
         # Return best action for each env
         best_actions = []
@@ -485,6 +514,7 @@ class BatchGumbelMCTS:
 
                 # Expand and backpropagate
                 for pending, (policy, value) in zip(pending_evals, results, strict=True):
+                    self._env_sim_evals[pending.env_idx] += 1
                     pending.node.expand(policy, pending.action_mask)
                     self._backpropagate(pending.search_path, value)
 
@@ -575,7 +605,7 @@ class BatchGumbelMCTS:
                     action_mask=action_mask,
                 )
 
-        # Terminal state - backpropagate terminal value
+        # Terminal state - the game's outcome is this simulation's leaf evaluation.
         info = sim_env.get_info()
         winner = info.get("winner")
         if winner is None:
@@ -585,6 +615,7 @@ class BatchGumbelMCTS:
         else:
             value = -1.0
 
+        self._env_sim_evals[env_idx] += 1
         self._backpropagate(search_path, value)
         return None
 

@@ -7,9 +7,160 @@ depend on the Gumbel variant.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Iterator
+from dataclasses import dataclass
+
 import numpy as np
 
 from alpha_zero.core.mcts_constants import EPSILON
+
+#: Sequential halving never narrows below two survivors: the last round is a
+#: comparison, and a single survivor has nothing to be compared with. Matches
+#: ``mctx``'s ``max(2, num_considered // 2)``.
+MIN_HALVING_SURVIVORS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class SearchStats:
+    """What one ``search()`` call actually spent, measured by the search itself.
+
+    Every Gumbel search exposes the stats of its most recent call as
+    ``last_search_stats``; the return types of ``search`` are unchanged.
+
+    Attributes:
+        root_evals: Network evaluations of the root position (1 per search).
+        sim_evals: Simulations that ended in a leaf evaluation -- a network
+            evaluation of a newly reached leaf, or the game's own outcome when
+            the simulation reached a terminal state. This is the realised
+            simulation budget, and for a sequential-halving search it must
+            equal :func:`planned_halving_sims`.
+    """
+
+    root_evals: int
+    sim_evals: int
+
+
+@dataclass(frozen=True, slots=True)
+class HalvingRound:
+    """One round of sequential halving.
+
+    Attributes:
+        survivors: How many of the top-ranked candidates this round visits.
+        simulations: Simulations spent in this round. They are dealt pass-major
+            over the survivors in rank order -- survivor 0, 1, ..., m-1, then
+            again -- so when ``simulations`` is not a multiple of ``survivors``
+            the higher-ranked survivors receive the extra visit.
+    """
+
+    survivors: int
+    simulations: int
+
+    def visits(self) -> list[int]:
+        """Visits each survivor receives this round, in rank order."""
+        base, extra = divmod(self.simulations, self.survivors)
+        return [base + (1 if rank < extra else 0) for rank in range(self.survivors)]
+
+    def order(self) -> Iterator[int]:
+        """Survivor ranks in execution order (pass-major)."""
+        for sim in range(self.simulations):
+            yield sim % self.survivors
+
+
+def halving_schedule(
+    k: int,
+    n: int,
+    num_legal: int,
+    *,
+    min_survivors: int = MIN_HALVING_SURVIVORS,
+) -> tuple[HalvingRound, ...]:
+    """The sequential-halving schedule every Gumbel search follows.
+
+    This is the single definition of the schedule. ``GumbelMCTS``,
+    ``BatchGumbelMCTS`` and ``MuZeroMCTS`` each iterate it rather than computing
+    their own per-round allocation, so their realised budgets are identical by
+    construction (and :class:`SearchStats` checks that they are).
+
+    The rule (Danihelka et al., 2022, as implemented by ``mctx``'s
+    ``get_sequence_of_considered_visits``):
+
+    * ``k_eff = min(k, num_legal)`` candidates enter. With ``k_eff <= 1`` the
+      move is forced (or there is none) and the schedule is empty: **no
+      simulations are spent**. This is the one deliberate deviation from
+      ``mctx``, which spends the whole budget on a lone action; searching a
+      forced move cannot change the move or its policy target.
+    * There are ``R = ceil(log2(k_eff))`` halving rounds. Round ``r`` visits
+      ``m_r`` survivors, ``m_0 = k_eff`` and
+      ``m_{r+1} = max(floor, m_r // 2)`` with ``floor = min(k_eff,
+      max(2, min_survivors))``.
+    * Each survivor gets ``max(1, n // (R * m_r))`` visits in round ``r``.
+    * **Truncation.** The budget is a hard ceiling: a round that would overrun
+      ``n`` is cut to what remains (dealt pass-major, so top-ranked survivors
+      are visited first) and any later round is dropped.
+    * **Leftover.** If the ``R`` rounds spend less than ``n``, the remainder is
+      added to the final round, i.e. spent on the final survivors -- exactly
+      what ``mctx`` does by continuing to cycle over its last two candidates.
+
+    Consequently the realised total is exactly ``n`` whenever ``k_eff >= 2``,
+    and 0 otherwise; ``min_survivors`` changes the shape of the schedule but
+    never its total.
+
+    Args:
+        k: Configured number of Gumbel-sampled candidates.
+        n: Configured simulation budget.
+        num_legal: Legal actions at the root.
+        min_survivors: Lower bound on survivors per round (values below 2 act
+            as 2). Searches pass their ``min_actions_after_halving`` here.
+
+    Returns:
+        The rounds, in order. Empty when no simulation is to be spent.
+
+    Raises:
+        ValueError: If ``k < 1``, ``n < 0`` or ``num_legal < 0``.
+    """
+    if k < 1:
+        raise ValueError(f"k must be >= 1; got {k}")
+    if n < 0:
+        raise ValueError(f"n must be >= 0; got {n}")
+    if num_legal < 0:
+        raise ValueError(f"num_legal must be >= 0; got {num_legal}")
+
+    k_eff = min(k, num_legal)
+    if k_eff <= 1 or n == 0:
+        return ()
+
+    num_rounds = math.ceil(math.log2(k_eff))
+    floor = min(k_eff, max(MIN_HALVING_SURVIVORS, min_survivors))
+    remaining = n
+    survivors = k_eff
+    sims: list[int] = []
+    sizes: list[int] = []
+    for _ in range(num_rounds):
+        if remaining == 0:
+            break
+        per_survivor = max(1, n // (num_rounds * survivors))
+        spent = min(remaining, per_survivor * survivors)
+        sizes.append(survivors)
+        sims.append(spent)
+        remaining -= spent
+        survivors = max(floor, survivors // 2)
+    if remaining:
+        sims[-1] += remaining
+    return tuple(HalvingRound(m, s) for m, s in zip(sizes, sims, strict=True))
+
+
+def planned_halving_sims(k: int, n: int, num_legal: int) -> int:
+    """Simulations a sequential-halving search spends for ``(k, n, num_legal)``.
+
+    The total of :func:`halving_schedule`: ``n`` when ``min(k, num_legal) >= 2``,
+    else 0. It does not depend on a search's ``min_actions_after_halving``,
+    which only reshapes the rounds. Every search's
+    ``last_search_stats.sim_evals`` must equal this.
+
+    Raises:
+        ValueError: As :func:`halving_schedule`.
+    """
+    return sum(r.simulations for r in halving_schedule(k, n, num_legal))
 
 
 def gumbel_sample_actions(

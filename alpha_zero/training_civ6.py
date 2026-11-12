@@ -34,6 +34,8 @@ from alpha_zero.core.civ6_mcts import (
     SimpleMCTS,
 )
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
+from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
+from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.scoring import score_interval, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
@@ -44,6 +46,7 @@ from alpha_zero.multiplayer.scoring import (
     compute_rankings,
 )
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.constants import MCTS
 from alpha_zero.utils.data_root import (
     assert_safe_data_root,
     default_checkpoint_dir,
@@ -106,12 +109,16 @@ class TrainingConfig:
     temperature: float = 1.0
     temperature_threshold: int = 30
 
-    # Gumbel MuZero MCTS (alternative to standard MCTS)
+    # Gumbel MuZero MCTS (alternative to standard MCTS). Every field below
+    # reaches BOTH the self-play and the evaluation search (gumbel_search_config).
     use_gumbel_mcts: bool = False
     gumbel_num_simulations: int = 16
     gumbel_num_sampled_actions: int = 16
     gumbel_c_visit: float = 50.0
+    gumbel_c_scale: float = MCTS.GUMBEL_C_SCALE
     gumbel_use_sequential_halving: bool = True
+    gumbel_policy_target: str = POLICY_TARGET_COMPLETED_Q
+    gumbel_greedy_threshold: float = GREEDY_THRESHOLD
 
     # Training
     batch_size: int = 128
@@ -576,6 +583,40 @@ def _mcts_network(network: torch.nn.Module, config: TrainingConfig) -> torch.nn.
     return network
 
 
+def gumbel_search_config(
+    config: TrainingConfig,
+    *,
+    num_simulations: int,
+    seed: int | None,
+    **extra: Any,
+) -> GumbelMCTSConfig:
+    """The :class:`GumbelMCTSConfig` a run's self-play and evaluation searches use.
+
+    One builder for both, so a ``gumbel_*`` field cannot reach one search and
+    silently miss the other. ``max_considered_actions`` is raised to ``k`` when
+    ``k`` exceeds its default, since the config rejects ``k`` above it.
+
+    Args:
+        config: The run's training configuration.
+        num_simulations: Simulation budget for this search.
+        seed: Seed for this search's own RNG.
+        **extra: Further :class:`GumbelMCTSConfig` fields (e.g. temperature).
+    """
+    k = config.gumbel_num_sampled_actions
+    return GumbelMCTSConfig(
+        num_simulations=num_simulations,
+        num_sampled_actions=k,
+        max_considered_actions=max(MCTS.GUMBEL_MAX_CONSIDERED_ACTIONS, k),
+        c_visit=config.gumbel_c_visit,
+        c_scale=config.gumbel_c_scale,
+        use_sequential_halving=config.gumbel_use_sequential_halving,
+        policy_target=config.gumbel_policy_target,
+        greedy_threshold=config.gumbel_greedy_threshold,
+        seed=seed,
+        **extra,
+    )
+
+
 def self_play_game(
     env: MicroCivEnv,
     mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS,
@@ -723,14 +764,12 @@ def run_self_play(
     elif config.use_gumbel_mcts:
         # Use Gumbel MuZero MCTS for efficient search with few simulations.
         # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
-        gumbel_config = GumbelMCTSConfig(
+        gumbel_config = gumbel_search_config(
+            config,
             num_simulations=config.gumbel_num_simulations,
-            num_sampled_actions=config.gumbel_num_sampled_actions,
-            c_visit=config.gumbel_c_visit,
-            use_sequential_halving=config.gumbel_use_sequential_halving,
+            seed=search_seed,
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
-            seed=search_seed,
         )
         mcts = GumbelMCTS(_mcts_network(network, config), gumbel_config, device=config.device)  # type: ignore[arg-type]
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
@@ -922,11 +961,9 @@ def evaluate_against_random(
     # unchanged.
     mcts: Civ6MCTS | GumbelMCTS
     if config.use_gumbel_mcts:
-        gumbel_config = GumbelMCTSConfig(
+        gumbel_config = gumbel_search_config(
+            config,
             num_simulations=max(1, config.gumbel_num_simulations // 2),
-            num_sampled_actions=config.gumbel_num_sampled_actions,
-            c_visit=config.gumbel_c_visit,
-            use_sequential_halving=config.gumbel_use_sequential_halving,
             seed=search_seed,
         )
         mcts = GumbelMCTS(
@@ -1266,6 +1303,27 @@ def resolve_checkpoint_dir(explicit: str | None, run_id: str | None, seed: int |
     return str(default_checkpoint_dir(root, run_id or default_run_id(seed)))
 
 
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1; got {value}")
+    return value
+
+
+def _non_negative_float(text: str) -> float:
+    value = float(text)
+    if not value >= 0.0:
+        raise argparse.ArgumentTypeError(f"must be >= 0; got {value}")
+    return value
+
+
+def _unit_interval(text: str) -> float:
+    value = float(text)
+    if not 0.0 < value <= 1.0:
+        raise argparse.ArgumentTypeError(f"must be in (0, 1]; got {value}")
+    return value
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The trainer's CLI parser. Also used by the run-card driver to price an argv."""
     parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
@@ -1304,7 +1362,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="How terminal outcomes become per-player training values "
         "(winner-derivable methods only; 'proportional' needs per-player scores).",
     )
-    parser.add_argument("--num_simulations", type=int, default=50)
+    parser.add_argument(
+        "--num_simulations",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Search budget per move (default 50 for PUCT). With --mcts gumbel it is "
+            "also the Gumbel budget unless --gumbel_sims is given."
+        ),
+    )
     parser.add_argument("--num_games", type=int, default=100)
     parser.add_argument("--num_iterations", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=128)
@@ -1362,8 +1428,46 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Search used for self-play AND evaluation: 'civ6' (PUCT, the default, "
             "byte-identical to runs made before this flag existed) or 'gumbel' "
-            "(sets use_gumbel_mcts; budget from --num_simulations is ignored in "
-            "favour of the gumbel_* config fields)."
+            "(sets use_gumbel_mcts). The Gumbel budget is --gumbel_sims, else "
+            "--num_simulations, else 16; evaluation searches at half of it."
+        ),
+    )
+    parser.add_argument(
+        "--gumbel_sims",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Gumbel simulation budget per move. Spent exactly whenever two or more "
+            "candidates are legal (gumbel_ops.halving_schedule). Overrides "
+            "--num_simulations for the Gumbel search."
+        ),
+    )
+    parser.add_argument(
+        "--gumbel_k",
+        type=_positive_int,
+        default=None,
+        help="Gumbel-Top-k candidates sampled at the root (default 16).",
+    )
+    parser.add_argument(
+        "--c_scale",
+        type=_non_negative_float,
+        default=None,
+        help=f"Gumbel sigma scale c_scale (default {MCTS.GUMBEL_C_SCALE}).",
+    )
+    parser.add_argument(
+        "--policy_target",
+        type=str,
+        default=None,
+        choices=sorted(VALID_POLICY_TARGETS),
+        help=f"Gumbel policy training target (default {POLICY_TARGET_COMPLETED_Q}).",
+    )
+    parser.add_argument(
+        "--greedy_threshold",
+        type=_unit_interval,
+        default=None,
+        help=(
+            "Gumbel select_action plays greedily once one action holds at least this "
+            f"probability mass, in (0, 1] (default {GREEDY_THRESHOLD})."
         ),
     )
     parser.add_argument(
@@ -1381,12 +1485,30 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingConfig:
-    """The :class:`TrainingConfig` that :func:`main` trains with for parsed ``args``."""
+    """The :class:`TrainingConfig` that :func:`main` trains with for parsed ``args``.
+
+    Search flags left unset keep the :class:`TrainingConfig` defaults, so a run
+    that passes none of them is unchanged. The one deliberate exception is the
+    LF-A7 fix: ``--mcts gumbel`` used to ignore ``--num_simulations``; it is now
+    the Gumbel budget too, unless ``--gumbel_sims`` names one explicitly.
+    """
+    search: dict[str, Any] = {}
+    if args.num_simulations is not None:
+        search["num_simulations"] = args.num_simulations
+    gumbel_sims = args.gumbel_sims if args.gumbel_sims is not None else args.num_simulations
+    if gumbel_sims is not None:
+        search["gumbel_num_simulations"] = gumbel_sims
+    optional = {
+        "gumbel_num_sampled_actions": args.gumbel_k,
+        "gumbel_c_scale": args.c_scale,
+        "gumbel_policy_target": args.policy_target,
+        "gumbel_greedy_threshold": args.greedy_threshold,
+    }
+    search.update({field: value for field, value in optional.items() if value is not None})
     return TrainingConfig(
         board_size=args.board_size,
         num_players=args.num_players,
         scoring_method=args.scoring_method,
-        num_simulations=args.num_simulations,
         num_games_per_iteration=args.num_games,
         num_iterations=args.num_iterations,
         batch_size=args.batch_size,
@@ -1402,6 +1524,7 @@ def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingC
         device=args.device or "auto",
         seed=args.seed,
         use_gumbel_mcts=args.mcts == "gumbel",
+        **search,
     )
 
 

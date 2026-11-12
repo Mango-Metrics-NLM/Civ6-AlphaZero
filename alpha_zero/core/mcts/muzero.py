@@ -10,7 +10,12 @@ import torch
 import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.mcts.backup import backpropagate_path, log_backup_diagnostics
-from alpha_zero.core.mcts.gumbel_ops import compute_completed_q, gumbel_sample_actions
+from alpha_zero.core.mcts.gumbel_ops import (
+    SearchStats,
+    compute_completed_q,
+    gumbel_sample_actions,
+    halving_schedule,
+)
 from alpha_zero.core.mcts.mcts_protocols import MuZeroNetworkProtocol
 from alpha_zero.core.mcts_constants import (
     DEFAULT_ROLLOUT_DEPTH,
@@ -240,6 +245,10 @@ class MuZeroMCTS:
         # different search on every run -- the defect that made a "seeded"
         # self-play run only half determined.
         self._rng = np.random.default_rng(self.config.seed)
+        # What the most recent `search` actually spent. Measured, never copied
+        # from the plan, so a test can hold it against `planned_halving_sims`.
+        self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._sim_evals = 0
 
     @classmethod
     def from_network(
@@ -378,6 +387,7 @@ class MuZeroMCTS:
         mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
         # Initial inference: observation -> hidden_state, policy, value
+        self._sim_evals = 0
         self.network.eval()
         with torch.no_grad():
             output = self.network.initial_inference(
@@ -385,6 +395,7 @@ class MuZeroMCTS:
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
             )
+        self.last_search_stats = SearchStats(root_evals=1, sim_evals=0)
 
         # Create root node
         root = MuZeroNode(
@@ -448,6 +459,7 @@ class MuZeroMCTS:
                 # Expansion and evaluation of leaf
                 if node.hidden_state is not None:
                     value = self._get_value(node, action_mask)
+                    self._sim_evals += 1
 
                     # Expand leaf node for future simulations
                     if not node.is_expanded():
@@ -463,6 +475,7 @@ class MuZeroMCTS:
             # Get action probabilities from visit counts
             action_probs = self._get_action_probs(root, len(action_mask))
 
+        self.last_search_stats = SearchStats(root_evals=1, sim_evals=self._sim_evals)
         return action_probs, root.value
 
     def _gumbel_search(
@@ -504,7 +517,7 @@ class MuZeroMCTS:
 
         if self.config.use_sequential_halving:
             return self._sequential_halving_muzero(
-                root, sampled_actions, scores, action_mask, root_value
+                root, sampled_actions, scores, action_mask, root_value, len(valid_actions)
             )
         else:
             return self._simple_muzero_search(root, sampled_actions, action_mask)
@@ -516,6 +529,7 @@ class MuZeroMCTS:
         gumbel_scores: dict[int, float],
         action_mask: np.ndarray,
         root_value: float,
+        num_legal: int,
     ) -> int:
         """Sequential halving with MuZero dynamics.
 
@@ -525,33 +539,31 @@ class MuZeroMCTS:
             gumbel_scores: Gumbel scores for candidates.
             action_mask: Valid action mask.
             root_value: Initial value estimate.
+            num_legal: Legal actions at the root.
 
         Returns:
             Best action index.
         """
-        actions = list(candidate_actions)
+        actions = [int(a) for a in candidate_actions]  # rank order: best Gumbel score first
 
-        # Calculate number of halving rounds
-        num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
-        sims_per_round = max(1, self.config.num_simulations // num_rounds)
-
-        for _round_idx in range(num_rounds):
-            if len(actions) <= 1:
-                break
-
-            # Allocate simulations evenly
-            sims_per_action = max(1, sims_per_round // len(actions))
-
-            # Run simulations for each action
-            for action in actions:
-                for _ in range(sims_per_action):
-                    self._run_muzero_simulation(root, action, action_mask)
+        # The schedule is defined once, in gumbel_ops, for every Gumbel search.
+        # MuZero has no min_actions_after_halving field, so the default floor
+        # of two survivors applies.
+        for halving_round in halving_schedule(
+            self.config.num_sampled_actions, self.config.num_simulations, num_legal
+        ):
+            survivors = actions[: halving_round.survivors]
+            for rank in halving_round.order():
+                self._run_muzero_simulation(root, survivors[rank], action_mask)
 
             # Compute completed Q-values
-            max_visits = max(root.children[a].visit_count for a in actions if a in root.children)
+            max_visits = max(
+                (root.children[a].visit_count for a in survivors if a in root.children),
+                default=0,
+            )
 
             completed_qs = {}
-            for action in actions:
+            for action in survivors:
                 if action not in root.children:
                     continue
                 child = root.children[action]
@@ -560,10 +572,9 @@ class MuZeroMCTS:
                     q, child.visit_count, max_visits, root_value
                 )
 
-            # Combine with Gumbel scores and halve
-            combined = {a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0) for a in actions}
-            actions = sorted(actions, key=lambda a: -combined[a])
-            actions = actions[: max(len(actions) // 2, 1)]
+            # Combine with Gumbel scores; the next round takes the top survivors.
+            combined = {a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0) for a in survivors}
+            actions = sorted(survivors, key=lambda a: -combined[a])
 
         return int(actions[0])
 
@@ -653,6 +664,7 @@ class MuZeroMCTS:
         # Get value from leaf
         if node.hidden_state is not None:
             value = self._get_value(node, action_mask)
+            self._sim_evals += 1
         else:
             value = 0.0
 
