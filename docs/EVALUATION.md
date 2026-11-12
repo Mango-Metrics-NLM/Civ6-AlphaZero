@@ -579,8 +579,9 @@ last. `tests/regression/test_a1_registration_digest_regression.py` fails unless
 the last row's digest is the digest of the text as it stands, so an edit to the
 region, deliberate or a formatter's, needs a new row here in the same change.
 When T0b fills in the "pending T0b" slots it adds a row ("T0b slot fill-in:
-measured reference, branch N, card sha"), and the A1 artifact records that
-row's digest.
+measured reference, branch N"), and the A1 artifact records that row's digest.
+The cards' `sha` is the rc, which already carries this section, so it is recorded
+in `run.json` and the release bundle, not here.
 
 | Date | sha256 of section 7.1 | Change |
 |---|---|---|

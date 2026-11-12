@@ -10,9 +10,16 @@
 #   2. T0b has filled in section 7.1's measured positive-control reference and the
 #      branch in force (40 or 60 games); for "60", swap in section 7.1's two
 #      branch commands;
-#   3. no MCTS_* variable is set in the environment (section 7.1: VOID otherwise);
+#   3. no MCTS_* variable is set in the environment (section 7.1: VOID otherwise;
+#      run_card refuses to start);
 #   4. the data root is E:\civ6az-data (--data_root or CIV6AZ_DATA_ROOT), so that
 #      run.json lands in <D> beside the run's outputs.
+#
+# Set `sha` to the rc LOCALLY and do not commit that edit on the release line:
+# after an rc only docs/evidence/** may change before the final tag.
+# A re-run after a VOID needs a new card_id AND every <D> path below rewritten to
+# E:\civ6az-data\runs\<new card_id> (13 paths); keep the VOID attempt for the bundle
+# (docs/runbooks/branching-and-release.md section 4, 'Before every card').
 #
 # Every argv below is a section 7.1 command with <D> = E:\civ6az-data\runs\a1r-20261112
 # and every --seed 20261111 replaced by --seed 20261112.

@@ -202,7 +202,7 @@
 2. Create `qa` and `main` at `c214daa`, asserting it equals `v2.0.0^{commit}`. dev's tip carries the unreleased NGC change.
 3. Rename the default branch to `dev`.
 4. **Immediately** POST the dev, qa, main, qa-main-merge, release-tags and legacy-name rulesets, without Branch Direction and without Release Evidence.
-5. Merge T6 (R2) into dev, then PATCH Branch Direction into dev, qa and main. Release Evidence waits for T14 (action 9a).
+5. Merge T6 (R2) into dev, then PATCH Branch Direction into dev, qa and main. Release Evidence waits for T14 (action 9a). *(As delivered, R1 and R2 landed in one PR (#135), so this step is a precondition check, not a merge; runbook §5 is authoritative.)*
 6. PATCH the repo settings.
 7. Close #95 (codecov-action is unused) and #120 (the pytorch image was replaced by NGC). Comment `@dependabot rebase` on the other Dependabot PRs. Run `gh pr update-branch <n>` on #106, #69, #49 and #32.
 8. Verify:
@@ -232,7 +232,7 @@
   - Sets `CLOUDSDK_CONFIG=<run_dir>/gcloud-empty`, `NO_GCE_CHECK=True`, `CIV6AZ_STORAGE_BACKEND=local` and `CIV6AZ_LOCAL_RUN=1`.
   - Builds `GCPConfig(bucket=<run_id>, project_id="local")`.
 - **`GCSBackend.__init__` and its lazy `client` property** (`cloud/gcp/storage.py:267,276-283`) raise `LocalModeViolation(BaseException)` under local mode. That covers `get_backend()` and all 8 direct sites. It is a `BaseException` because the loop's state calls catch `Exception` (`orchestrator_state.py:178-180,229-231`; `vertex_orchestrator.py:1202-1204`).
-- **Children** get an allowlisted environment: no `*_TOKEN`, `*_KEY`, `SSLKEYLOGFILE` or `CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`, and no `.env`.
+- **Children** get the environment minus a deny list: no `*_TOKEN`, `*_KEY`, `SSLKEYLOGFILE` or `CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`, and no `.env`. (As delivered this is a deny list, not an allowlist; other variables pass through. Final review M-7.)
 - **Tests:** an autouse conftest fixture strips these variables.
 
 ### 4.3 Pinned source and env (LF-E6, T1, T1b)
@@ -431,7 +431,7 @@
   - No diff since that SHA on the paths in `scripts/release_play_path.txt`: `core/mcts/**`, `mcts_constants`, `mcts_factory`, `core/batch_mcts.py`, `civ6_actions`, `civ6_network`, the encoders, `hexcrystal/**`, `envs/**`, `evaluation/**`, `utils/seeding.py`, `utils/constants.py`, `cloud/gcp/arena.py`, `training_civ6.py`.
   - No `MCTS_*` overrides.
 - **Learning:** `learning_recorded` is required (schema-valid, protocol hash matches, verdict recomputed, README row present). `learning_claimed` (a PASS) is the only thing that permits "learns" wording. **A negative A1 therefore ships v2.1, with the claim withheld.**
-- **CI job "Release Evidence":** always runs. It exits 0 as "n/a" when the base is not main or the head is `hotfix/*`.
+- **CI job "Release Evidence":** always runs. It exits 0 as "n/a" when the base is not main or the head is `hotfix/*`. *(Superseded: it is a pull-request-only workflow, `.github/workflows/release-evidence.yml`; runbook §1 and §3.)*
 
 ## 7. Role subagents (LF-G13): `.claude/agents/sdlc-*.md`, 8 roles
 | Agent | model | tools | Accountable for | Reviews | KB role |
@@ -483,7 +483,7 @@
 | Sprint | Code | Overnight card |
 |---|---|---|
 | 0 (3–4 d) | T0a Windows baseline and harness smoke (no ETA claim); T1; T2; T3a†; T4 (R1); maintainer actions 1–6; cut-over with T6 (R2) | `s0-timing` harness card only |
-| 1 | T1b run-card driver; T5; T7 (B1); T8 (CF); T9; T10 (A3 CF); T3 (R3); T15 role agents | **T0b** calibration at 8/60, k=8, n=24, CPU and GPU1, after T7–T10 merge. Also the positive-control reference, heuristic vs random, seeds 1001–1003 × 200 games |
+| 1 | T1b run-card driver; T5; T7 (B1); T8 (CF); T9; T10 (A3 CF); T3 (R3); T15 role agents | **T0b** calibration at 8/60, k=8, n=24, CPU (GPU1 is exploratory and runs outside run_card: the pinned venv has CPU-only torch), after T7–T10 merge. Also the positive-control reference, heuristic vs random, seeds 1001–1003 × 200 games |
 | 2 | T11; T12 → **your A5 decision**; T13 section 7.1 + docs + OpenSpec archives; T16; T18 | only after T11 and T13 merge: exploratory seeds 1001, then 1002 |
 | 3 | T14 (+ Release Evidence in `main.json`); release prep as the last dev PR; promote rc.1 | **A1 → A1-R** → evidence PR → v2.1.0 |
 | 4–6 | v2.2 (own plan) | nightly smokes; 3-night soak |
@@ -751,7 +751,8 @@ Each task is one PR from `feature/<task>` into dev. The cycle is: failing test �
 7. Bootstrap tracking (§8.3).
 8. Before each overnight card: pause Windows Update, and stop llama-server and WSL.
 9. Decide LF-A5/A12 after T12.
-   - 9a. After T14 merges: PATCH Release Evidence into the `main` ruleset, and confirm a draft PR into main shows it as Expected.
+   - 9a. After the first release carrying T14 merges into main (runbook §5 9a is authoritative; "after T14 merges" was too early): PATCH Release Evidence into the `main` ruleset, and confirm a draft PR into main shows it as Expected.
+   - 9b. Optionally, once R2 has merged, record its merge SHA as `CIV6AZ_R2_MERGE_SHA` (or pass `tag_release --r2-merge SHA`) so `tag_release` also checks lineage by ancestry; content-based lineage covers it without (OpenSpec `branching-and-release` 2.7).
 10. Approve confirm-first items as they come up: A3, A11 (T8), L0–L4, E2, B3–B6, C3, the D1 default, D4 (coordinator), E3, F4, G7, G8, and the MLflow major version.
 11. Approve any run over 1,000 games (D1 continuations).
 12. Do G4 and G9. Prune branches only after G1. Update the A9 Hub card.

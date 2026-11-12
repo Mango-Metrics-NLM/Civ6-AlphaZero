@@ -4,6 +4,11 @@ This script mimics the behavior of the Vertex AI orchestrator but runs everythin
 locally as subprocesses. Useful for debugging and validation when cloud
 access is restricted.
 
+**Superseded** for local training by run cards (``scripts/run_card.py``), which are
+GCP-isolated. Despite its name this launcher reads and writes models through GCS
+(``GCSModelStorage``) whenever Application Default Credentials are present, so it
+refuses to start unless ``--allow-gcs`` says that is intended (final review M-6).
+
 Usage:
     python scripts/local_muzero_launcher.py \
         --algorithm=muzero \
@@ -59,6 +64,12 @@ def main() -> None:
     parser.add_argument("--mcts_simulations", type=int, default=50)
     parser.add_argument("--project", type=str, default="civ6-alphazero")
     parser.add_argument("--bucket", type=str, default="civ6-alphazero-training")
+    parser.add_argument(
+        "--allow-gcs",
+        action="store_true",
+        help="Required: this launcher reads and writes models through GCS (superseded locally "
+        "by scripts/run_card.py, which is GCP-isolated).",
+    )
     add_budget_arguments(parser)
     args = parser.parse_args()
     enforce_cli(
@@ -70,6 +81,14 @@ def main() -> None:
         },
         args,
     )
+    if not args.allow_gcs:
+        print(
+            "REFUSED: local_muzero_launcher writes through GCS (bucket "
+            f"{args.bucket!r}) whenever credentials are present. Use scripts/run_card.py for "
+            "local runs, or pass --allow-gcs if GCS is intended.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     # Base python command
     python_cmd = sys.executable

@@ -6,8 +6,10 @@ Left alone, it could silently write to production GCS. This module makes GCS
 construction *impossible* under local mode rather than merely unlikely:
 
 * :func:`enter_local_mode` scrubs the cloud-reachable variables, points the
-  gcloud config at an empty directory, and returns an allowlisted child
-  environment.
+  gcloud config at an empty directory, and returns the child environment:
+  the current one minus a deny list (``*_KEY``, ``*_TOKEN``, ...). It is not
+  an allowlist; ``*_SECRET``, ``*_PASSWORD``, ``*_CREDENTIALS`` and ``*_PAT``
+  pass through to the pinned child (final review M-7).
 * :func:`guard_gcs` is called by ``GCSBackend.__init__`` and its lazy
   ``client`` property and raises :class:`LocalModeViolation`.
 
@@ -86,7 +88,8 @@ def enter_local_mode(run_id: str, run_dir: str | Path) -> dict[str, str]:
     the local flags set, so in-process code is fenced. ``*_KEY``, ``*_TOKEN``,
     ``SSLKEYLOGFILE`` and ``CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`` stay in the current
     process and are removed from the returned child environment only. The
-    returned dict is the allowlisted environment for subprocesses. ``run_id`` is recorded as
+    returned dict is the environment for subprocesses: a deny list, not an allowlist, so
+    any other variable passes through. ``run_id`` is recorded as
     ``CIV6AZ_RUN_ID``.
     """
     run_path = Path(run_dir)

@@ -48,7 +48,8 @@ FAILED). The one exception is an invocation whose own argv carries
 that invocation is bounded by its approval, not by this driver.
 
 Public surface: :func:`load_card`, :func:`price_card`, :func:`prepare_data_root`,
-:func:`refuse_placeholder_sha`, :func:`refuse_unresolvable_sha`, :func:`run_card`, :func:`main`, :data:`RUNNERS`.
+:func:`refuse_placeholder_sha`, :func:`refuse_mcts_overrides`,
+:func:`refuse_unresolvable_sha`, :func:`run_card`, :func:`main`, :data:`RUNNERS`.
 """
 
 from __future__ import annotations
@@ -415,6 +416,23 @@ def refuse_placeholder_sha(card: RunCard) -> None:
         )
 
 
+def refuse_mcts_overrides(environ: Mapping[str, str] | None = None) -> None:
+    """Refuse to start while any ``MCTS_*`` variable is set, before anything is created.
+
+    ``core/mcts_constants.py`` reads ``MCTS_*`` overrides, so one would change the
+    search a registered card runs, and section 7.1 makes such a run VOID -- but only
+    once it has finished. No card needs one, so the driver refuses up front
+    (final review M-3). Unset the variable to proceed.
+    """
+    env = os.environ if environ is None else environ
+    names = sorted(n for n in env if n.upper().startswith("MCTS_"))
+    if names:
+        raise RunCardError(
+            f"MCTS_* override(s) {names} are set; a card run under them is VOID "
+            "(docs/EVALUATION.md section 7.1). Unset them before running a card."
+        )
+
+
 def refuse_unresolvable_sha(
     card: RunCard, *, repo_root: Path, runner: Runner | None = None
 ) -> None:
@@ -605,6 +623,7 @@ def run_card(
     card = load_card(card_path)
     priced = price_card(card)  # refuses before anything exists
     refuse_placeholder_sha(card)  # likewise: a placeholder must not claim the run dir
+    refuse_mcts_overrides()  # an MCTS_* override would VOID the run only after it ran
     refuse_unresolvable_sha(card, repo_root=repo, runner=pinned_runner)  # nor a typo
 
     root_arg = data_root if data_root is not None else resolve_data_root(required=True)

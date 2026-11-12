@@ -687,6 +687,34 @@ class TestScriptRunnersRefuse:
         storage.assert_not_called()
 
 
+class TestLocalMuzeroLauncherGcs:
+    """A script named "local" that writes through GCS must say so (final review M-6)."""
+
+    def test_refused_without_allow_gcs_before_touching_storage(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script = _import_script("local_muzero_launcher")
+        storage = mock.MagicMock()
+        monkeypatch.setattr(script, "GCSModelStorage", storage)
+        monkeypatch.setattr(sys, "argv", ["local_muzero_launcher", "--iterations", "1"])
+        with pytest.raises(SystemExit) as excinfo:
+            script.main()
+        assert excinfo.value.code == EXIT_CODE_REFUSED
+        assert "--allow-gcs" in capsys.readouterr().err
+        storage.assert_not_called()
+
+    def test_allow_gcs_reaches_storage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        script = _import_script("local_muzero_launcher")
+        storage = mock.MagicMock(side_effect=RuntimeError("stop here"))
+        monkeypatch.setattr(script, "GCSModelStorage", storage)
+        monkeypatch.setattr(
+            sys, "argv", ["local_muzero_launcher", "--iterations", "1", "--allow-gcs"]
+        )
+        with mock.patch.dict(os.environ), pytest.raises(RuntimeError, match="stop here"):
+            script.main()
+        storage.assert_called_once()
+
+
 class TestCalibrateThroughput:
     """``--games`` reached ``run_self_play`` unchecked before it was priced."""
 

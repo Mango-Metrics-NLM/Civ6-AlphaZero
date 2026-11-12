@@ -458,6 +458,21 @@ def test_placeholder_sha_refused_before_anything_is_created(
     assert pinned.calls == []
 
 
+def test_mcts_override_refused_before_anything_is_created(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An MCTS_* variable VOIDs a registered run only after it finishes (final review M-3).
+
+    No card needs one, so the driver refuses up front instead of spending the night.
+    """
+    monkeypatch.setenv("MCTS_NUM_SIMULATIONS", "64")
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+    with pytest.raises(rc.RunCardError, match="MCTS_NUM_SIMULATIONS"):
+        _run(card, tmp_path, pinned)
+    assert not (tmp_path / "root").exists()
+    assert pinned.calls == []
+
+
 class UnresolvableShaRunner(FakeRunner):
     """``git rev-parse`` fails: a well-formed sha that names no commit in the repo."""
 

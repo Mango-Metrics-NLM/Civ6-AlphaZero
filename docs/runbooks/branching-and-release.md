@@ -154,7 +154,7 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
 
 ### Before every card
 
-- No `MCTS_*` variable is set (section 7.1 VOIDs the run).
+- No `MCTS_*` variable is set (section 7.1 VOIDs the run; `run_card` refuses to start).
 - The data root is `E:\civ6az-data` (`--data_root` or `CIV6AZ_DATA_ROOT`): the registered
   commands spell `<D>` as `E:\civ6az-data\runs\<card_id>`.
 - The machine is quiet: Windows Update paused, llama-server and WSL stopped (plan section 10,
@@ -203,7 +203,9 @@ the steps. Nothing here is run by an agent.
 4. Immediately POST the `dev`, `qa`, `main`, `qa-main-merge`, `release-tags` and
    `legacy-name` rulesets, without Branch Direction and without Release Evidence (`rulesets`).
 5. Merge the release-gates change into `dev`, then add Branch Direction to `dev`, `qa`
-   and `main` (`add-branch-direction`).
+   and `main` (`add-branch-direction`). When the release gates arrived in the same PR as
+   the guard (#135, merged whole before the cut-over), step 5 is the precondition check that
+   `dev` already carries them, not a merge.
 6. Patch repository settings (`settings`), then housekeeping on open Dependabot PRs
    (`housekeeping`).
 7. Verify (`verify`): every PR base is `dev`; a `chore/x` -> `qa` PR fails Branch Direction; a
@@ -221,6 +223,11 @@ the steps. Nothing here is run by an agent.
     `main` release PR (its merge ref carries it), and `wait-for-ci` requires a green Release
     Evidence for every non-hotfix final. Steps 4 and 5 deliberately leave it out, so applying
     them again never adds it early.
+
+Optional, any time after the R2 merge: record its merge SHA as `CIV6AZ_R2_MERGE_SHA` (or pass
+`python -m scripts.maintainer.tag_release vX.Y.Z --r2-merge SHA`), and `tag_release` also
+requires the tagged commit to descend from it. Without it, `tag_release` checks R2 lineage
+on content (the tagged commit's `release.yml` gates publishing on `wait-for-ci`).
 
 Rollback: `rollback` deletes the rulesets, renames `dev` back, deletes the `qa` and `main`
 refs and restores the settings snapshot.

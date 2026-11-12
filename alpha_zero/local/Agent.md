@@ -14,7 +14,7 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 
 - **Pinned source**: `git archive <sha>` extracted read-only to `<run_dir>/src`, so a run executes the code at a named commit rather than whatever checkout is installed globally.
 - **Pinned environment**: a venv at `<data_root>/envs/<sha12>` built from a non-editable wheel of that commit and reused for the same commit.
-- **GCP isolation**: `enter_local_mode` scrubs cloud variables and returns an allowlisted child environment; `GCSBackend` (constructor and lazy `client`) raises `LocalModeViolation` (a `BaseException`) under `CIV6AZ_LOCAL_RUN=1`.
+- **GCP isolation**: `enter_local_mode` scrubs cloud variables and returns the child environment minus a deny list (`*_KEY`, `*_TOKEN`, ...; not an allowlist); `GCSBackend` (constructor and lazy `client`) raises `LocalModeViolation` (a `BaseException`) under `CIV6AZ_LOCAL_RUN=1`.
 - **Preflight**: `assert_running_pinned` proves `alpha_zero.__file__` lies inside the pinned source or venv and that its version equals `pyproject.toml`.
 - **Run cards**: `run_card` prices every invocation of a `configs/run_cards/*.yaml` card with the runner's own parser and refuses a total over `max_games` without `approval_ref`, hardens only a data root it creates, enters local mode, pins the SHA, preflights a real pinned child, then runs the invocations sequentially and records `<root>/runs/<card_id>/run.json` (env var names only; VOID on interrupt or resume, FAILED on a non-zero child).
 
