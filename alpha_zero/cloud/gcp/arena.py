@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 import torch
@@ -89,6 +89,9 @@ class ArenaResult:
     losses: int
     draws: int
     total_games: int
+    #: ``{"pair", "seat", "result"}`` per game, from model_a's side, in play order.
+    #: Additive: :meth:`to_dict` does not carry it, so persisted artifacts are unchanged.
+    games: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def win_rate(self) -> float:
@@ -160,6 +163,7 @@ def run_arena(
     player_a_factory: PlayerFactory | None = None,
     player_b_factory: PlayerFactory | None = None,
     env_seeds: Sequence[int | None] | None = None,
+    game_indices: Sequence[int] | None = None,
 ) -> ArenaResult:
     """Play model_a vs. model_b in an arena.
 
@@ -203,6 +207,9 @@ def run_arena(
             ``seed + p`` rule; must hold at least ``ceil(num_games / 2)``
             entries. The benchmark protocol uses this to name its maps via
             ``derive_seed`` rather than arithmetic.
+        game_indices: Play only these games of the ``num_games`` run (default:
+            all). Game ``g`` keeps its map (pair ``g // 2``), seat and seeds, so
+            a subset replays exactly those games of the full run (benchmark shards).
 
     Returns:
         ArenaResult with wins/losses/draws from model_a's perspective.
@@ -230,6 +237,9 @@ def run_arena(
     if model_b is None and player_b_factory is None:
         raise ValueError("run_arena needs model_b or player_b_factory")
     num_pairs = (num_games + 1) // 2
+    indices = range(num_games) if game_indices is None else list(game_indices)
+    if any(not 0 <= g < num_games for g in indices):
+        raise ValueError(f"game_indices must lie in [0, {num_games}), got {list(indices)}")
     if env_seeds is not None and len(env_seeds) < num_pairs:
         raise ValueError(
             f"env_seeds holds {len(env_seeds)} entries but {num_games} games need {num_pairs}"
@@ -267,8 +277,9 @@ def run_arena(
     wins = 0
     losses = 0
     draws = 0
+    games: list[dict[str, Any]] = []
 
-    for game_idx in range(num_games):
+    for game_idx in indices:
         game_start_time = time.time()
 
         # Alternate which player model_a controls; the pair index selects the map.
@@ -319,6 +330,7 @@ def run_arena(
         else:
             losses += 1
             result = "loss"
+        games.append({"pair": pair, "seat": 0 if a_is_player_0 else 1, "result": result})
 
         elapsed = time.time() - game_start_time
         player_str = "P0" if a_is_player_0 else "P1"
@@ -334,10 +346,7 @@ def run_arena(
         )
 
     arena_result = ArenaResult(
-        wins=wins,
-        losses=losses,
-        draws=draws,
-        total_games=num_games,
+        wins=wins, losses=losses, draws=draws, total_games=len(games), games=games
     )
 
     # Metrics route to MLflow through WandbCompatAdapter despite the historical
@@ -350,14 +359,14 @@ def run_arena(
 
         log_metrics(
             {
-                "arena/total_games": num_games,
+                "arena/total_games": arena_result.total_games,
                 "arena/wins": wins,
                 "arena/losses": losses,
                 "arena/draws": draws,
                 "arena/win_rate": arena_result.win_rate,
                 "arena/score_rate": arena_result.score_rate,
                 "arena/draw_rate": arena_result.draw_rate,
-                "arena/games_per_minute": num_games / max(total_elapsed / 60, 0.001),
+                "arena/games_per_minute": arena_result.total_games / max(total_elapsed / 60, 0.001),
             }
         )
     except ImportError:
