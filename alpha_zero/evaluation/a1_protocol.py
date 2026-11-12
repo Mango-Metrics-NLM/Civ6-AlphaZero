@@ -17,7 +17,9 @@ be computable by code rather than by hand:
   I2: the hull, not the iid ``ci_low``). :func:`positive_control_void_probability`
   is the registered method: a seeded **pair bootstrap** over T0b's measured
   seat-swapped pairs, so the calibration inherits the real map clustering the
-  hull exists for (T13 review I1). :func:`iid_positive_control_void_probability`
+  hull exists for (T13 review I1); the 40/60 branch reads the upper bound of
+  :func:`positive_control_void_probability_interval`, a bootstrap over the
+  reference itself (T13 rereview N3). :func:`iid_positive_control_void_probability`
   draws games independently; it ignores clustering, so it is reported only as an
   informational lower bound. Both read the hull from the benchmark's own
   :func:`~alpha_zero.evaluation.benchmark_evidence.interval_summary`.
@@ -43,6 +45,7 @@ __all__ = [
     "iid_positive_control_void_probability",
     "pairs_from_games",
     "positive_control_void_probability",
+    "positive_control_void_probability_interval",
     "protocol_sha256",
     "read_registered_protocol",
     "registered_protocol",
@@ -176,6 +179,54 @@ def positive_control_void_probability(
     rng = np.random.default_rng(seed)
     picks = rng.integers(0, len(pairs), size=(reps, n_games // 2))
     return _hull_low_share([[pairs[int(i)] for i in row] for row in picks], confidence)
+
+
+def positive_control_void_probability_interval(
+    pairs: Sequence[tuple[str, str]],
+    n_games: int,
+    *,
+    outer: int = 200,
+    inner: int = 2_000,
+    seed: int = 1111,
+    level: float = 0.95,
+    confidence: float = 0.95,
+) -> tuple[float, float]:
+    """Percentile bootstrap interval for :func:`positive_control_void_probability`.
+
+    The point estimate reads one finite reference (about 300 pairs from T0b), so
+    it is itself noisy (T13 rereview N3: 0.8%-8.8% across references from one
+    model). Each of ``outer`` replicates resamples ``len(pairs)`` pairs from
+    ``pairs`` with replacement -- a plausible alternative reference -- and
+    computes the VOID probability on it by the same pair bootstrap with
+    ``inner`` replicates. The interval is the central ``level`` range of those
+    ``outer`` values. Seeded throughout: the outer draw and each inner seed
+    come from one generator seeded with ``seed``.
+
+    Raises:
+        ValueError: as :func:`positive_control_void_probability`, or for
+            non-positive ``outer`` / ``inner`` or ``level`` outside (0, 1).
+    """
+    _check_size(n_games, inner)
+    if outer <= 0:
+        raise ValueError(f"outer must be positive, got {outer}")
+    if not 0.0 < level < 1.0:
+        raise ValueError(f"level must be in (0, 1), got {level}")
+    if len(pairs) < 2:
+        raise ValueError(f"need at least 2 measured pairs, got {len(pairs)}")
+    rng = np.random.default_rng(seed)
+    values = []
+    for _ in range(outer):
+        picks = rng.integers(0, len(pairs), size=len(pairs))
+        reference = [pairs[int(i)] for i in picks]
+        inner_seed = int(rng.integers(0, 2**31 - 1))
+        values.append(
+            positive_control_void_probability(
+                reference, n_games, reps=inner, seed=inner_seed, confidence=confidence
+            )
+        )
+    tail = (1.0 - level) / 2.0
+    low, high = np.quantile(np.asarray(values), [tail, 1.0 - tail])
+    return float(low), float(high)
 
 
 def iid_positive_control_void_probability(

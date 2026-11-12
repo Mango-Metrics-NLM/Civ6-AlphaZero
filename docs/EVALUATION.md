@@ -177,11 +177,16 @@ The A1 artifact records the sha256 of this text, and a run is judged only
 under the registration whose hash its artifact records. Every registered
 digest is logged after this section ("Registration log").
 
-**Amendments.** Before any A1-family run starts, this section may be
+**Amendments.** An **A1-family run** is any execution of a command
+registered below (the training command or an arena arm) at a registered seed
+(1001, 1002, 1003, 20261111 or 20261112); an exploratory run is an A1-family
+run at 1001–1003. T0b's wall-clock calibration and its positive-control
+reference runs are **not** A1-family runs, although they use seeds 1001–1003,
+so they lock nothing. Before any A1-family run starts, this section may be
 re-registered, with a new log row. **Once any exploratory run has started**,
 the only amendments allowed are the slots marked "pending T0b": the measured
-positive-control reference and its P values, the 40/60 branch in force, and
-the cards' `sha`. Any other change (an arm, a threshold, a verdict row, the
+positive-control reference with its P values and P(40) interval, the 40/60
+branch in force, and the cards' `sha`. Any other change (an arm, a threshold, a verdict row, the
 search settings, the card form) is a **new registration with a new
 confirmatory seed pair**; 20261111 and 20261112 are then retired unrun.
 
@@ -445,6 +450,12 @@ variable.
   draws n / 2 whole pairs with replacement and reads L from the benchmark's own
   `interval_summary`. Resampling pairs keeps the map clustering the hull exists
   for.
+- **Its uncertainty** (T13 rereview N3): one reference of about 300 pairs makes
+  the point estimate noisy, so T0b also records a 95% percentile interval for
+  P(40), `a1_protocol.positive_control_void_probability_interval(pairs, 40)`
+  with its defaults (200 outer replicates, 2,000 inner, seed 1111, level 0.95,
+  confidence 95%). Each outer replicate resamples `len(pairs)` pairs with
+  replacement and runs the pair bootstrap on that resampled reference.
 - `iid_positive_control_void_probability(p_win, p_draw, 40)` at T0b's pooled
   proportions is reported beside it as an **informational lower bound**: it
   draws games independently, so it cannot see clustering. The branch rule never
@@ -454,10 +465,13 @@ variable.
   figure of 0.725.
   - **Measured reference: pending T0b.** T0b records here, before any
     exploratory or confirmatory run: W/D/L, the score and its hull, the number
-    of pooled pairs, P(40) and P(60) by pair bootstrap, and the iid P(40).
+    of pooled pairs, P(40) with its 95% interval and P(60) by pair bootstrap,
+    and the iid P(40).
   - Pre-B1 reference, superseded by T0b: 0.7375, CI [0.711, 0.761].
-- **Branch:** if P(40) > 0.05, the positive control takes 60 games and
-  "final vs random" drops to 20, keeping the card at 980. If P(60) also
+- **Branch:** if the **upper bound of P(40)'s 95% interval** exceeds 0.05,
+  the positive control takes 60 games and "final vs random" drops to 20,
+  keeping the card at 980. (Erring to 60 costs only 20 reported, unjudged
+  "final vs random" games; erring to 40 risks a VOID 980-game run.) If P(60) also
   exceeds 0.05, the branch is still 60 (the most the 980-game card allows), and
   T0b records P(60) as the VOID risk the run accepts.
 - **Either branch is plausible.** At μ = 0.7375 the iid lower bound crosses
@@ -551,6 +565,7 @@ row's digest.
 | Date | sha256 of section 7.1 | Change |
 |---|---|---|
 | 2026-11-11 | `990989eea43b90e777a67a40da5bc319f62c2e49c82174b74530d4d1d6f2e377` | Initial registration (T13), with fix round 1: pair-bootstrap calibration, amendment limits, code binding, arena search, one-card form only, `text` fence |
+| 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
 
 ## 8. The LLM advisor gate is not an evaluation
 

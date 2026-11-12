@@ -28,6 +28,7 @@ from alpha_zero.evaluation.a1_protocol import (
     iid_positive_control_void_probability,
     pairs_from_games,
     positive_control_void_probability,
+    positive_control_void_probability_interval,
     protocol_sha256,
     read_registered_protocol,
     registered_protocol,
@@ -342,6 +343,46 @@ def test_iid_fallback_reproduces_the_t11_figures_and_the_crossover() -> None:
     below = iid_positive_control_void_probability(0.7375 - 0.10, 0.20, 40, reps=8000)
     above = iid_positive_control_void_probability(0.7375 - 0.13, 0.26, 40, reps=8000)
     assert below > 0.05 > above, (below, above)
+
+
+#: A strong control on a finite reference: few VOIDs at the point estimate, but
+#: a reference this size cannot rule out more (T13 rereview N3).
+STRONG = (
+    [("win", "win")] * 80
+    + [("win", "draw"), ("draw", "win")] * 20
+    + [("draw", "draw")] * 15
+    + [("loss", "loss")] * 10
+    + [("win", "loss"), ("loss", "win")] * 10
+)
+
+
+def test_interval_rule_takes_60_where_the_point_estimate_would_take_40() -> None:
+    """Measured: point 0.03, interval about [0.003, 0.10] -- the registered rule reads the upper bound."""
+    point = positive_control_void_probability(STRONG, 40, reps=2000)
+    low, high = positive_control_void_probability_interval(STRONG, 40, outer=60, inner=300, seed=3)
+    assert point < 0.05 < high, (point, low, high)
+    assert low <= point <= high
+
+
+def test_interval_of_a_dominant_control_is_zero() -> None:
+    assert positive_control_void_probability_interval(
+        [("win", "win")] * 5, 40, outer=5, inner=50
+    ) == (0.0, 0.0)
+
+
+def test_interval_is_seeded() -> None:
+    a = positive_control_void_probability_interval(STRONG, 40, outer=10, inner=100, seed=9)
+    assert a == positive_control_void_probability_interval(STRONG, 40, outer=10, inner=100, seed=9)
+
+
+@pytest.mark.parametrize(
+    ("outer", "inner", "level"), [(0, 10, 0.95), (10, 0, 0.95), (10, 10, 1.0), (10, 10, 0.0)]
+)
+def test_interval_rejects_bad_arguments(outer: int, inner: int, level: float) -> None:
+    with pytest.raises(ValueError):
+        positive_control_void_probability_interval(
+            STRONG, 40, outer=outer, inner=inner, level=level
+        )
 
 
 def test_calibration_is_seeded() -> None:
