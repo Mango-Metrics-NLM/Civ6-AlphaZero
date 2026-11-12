@@ -102,7 +102,7 @@ below marked *before* was measured on **pre-fix** code.
 | [`evidence/hexcrystal_ab/ab_report.md`](evidence/hexcrystal_ab/ab_report.md) | Encoder A/B arena (800 games); superseded as a strength comparison — it shows the harness runs. | before |
 | [`evidence/hexcrystal_ab/summary_table.md`](evidence/hexcrystal_ab/summary_table.md) | The A/B counts and Wilson interval, as a table. | before |
 | [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
-| [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget, current settings vs Danihelka et al. (2022); 0 games. | after |
+| [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget: current settings vs Danihelka et al. (2022) under two normalisation readings and `mctx`'s defaults; 0 games. | after |
 
 ### Architecture decision records
 

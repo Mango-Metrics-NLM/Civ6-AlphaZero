@@ -322,9 +322,11 @@ def compute_completed_q(
       visited actions in proportion to how far they sit below the best-visited
       one. At equal visit counts (sequential halving's survivors) the two
       agree; elsewhere they do not.
-    * **No Q normalisation.** The paper's ``sigma`` is applied to Q values
-      min-max normalised over the tree (their Appendix); here raw Q in
-      ``[-1, 1]`` is used, so ``c_scale`` acts on a different scale.
+    * **No Q normalisation.** The paper applies ``sigma`` to Q values
+      "normalized to be from the [0, 1] interval" (Appendix F) without saying
+      how for Go/chess; it shows a min-max form only for Atari (section 7),
+      and ``mctx`` rescales min-max per node. Here raw Q in ``[-1, 1]`` is
+      used, so ``c_scale`` acts on a different scale.
 
     Args:
         q_value: Current Q-value estimate for the action.
@@ -377,15 +379,19 @@ def build_completed_q_policy(
     is deliberately unchanged; each is a separate, measurable decision):
 
     * ``c_scale`` defaults to **1.0** (``utils/constants.py:GUMBEL_C_SCALE``)
-      with ``c_visit = 50``, which **matches** the paper's Go and chess
+      with ``c_visit = 50``: the same *constants* as the paper's Go and chess
       setting (Appendix F). The paper's Atari runs, and ``mctx``'s default
       ``value_scale``, use 0.1. (Corrected 2026-11-11; this note previously
       said the paper uses 0.1. See ``kb/specs/20261111-completed-q-alignment-memo.md``.)
-    * **No min-max Q normalisation** before ``sigma`` (see
-      :func:`compute_completed_q`). The paper's ``sigma`` acts on Q rescaled
-      to [0, 1]; here it acts on raw Q in [-1, 1], so the target's sharpness
-      depends on the *absolute* spread of the searched values rather than on
-      their relative order.
+      The *effective* scale differs: see the next item.
+    * **No Q normalisation** before ``sigma`` (see :func:`compute_completed_q`).
+      The paper's ``sigma`` acts on Q in [0, 1]; here it acts on raw Q in
+      [-1, 1]. If the paper's map is the fixed ``(q + 1) / 2``, the
+      coefficient per unit of raw Q here is **twice** the paper's
+      (``c_visit + max N`` against half that); if it is ``mctx``'s per-node
+      min-max, the paper's target depends only on the relative order of the
+      searched values. Either way, this target's sharpness depends on the
+      *absolute* spread of the searched values.
     * **No ``sigma`` in sequential halving.** The searches rank survivors by
       ``g + log pi + completedQ`` with a coefficient of 1 on Q, where the
       paper ranks by ``g + logits + sigma(q)`` (LF-A12; decision pending).
