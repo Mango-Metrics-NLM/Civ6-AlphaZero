@@ -21,7 +21,15 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-_SCRIPT = REPO_ROOT / "scripts" / "validate_claude_agents.py"
+# CIV6AZ_TEST_VALIDATOR repoints the tests at a stand-in script: the N-5 negative control runs
+# them against a copy that uses .strip() and has no ASCII check, and they must then fail.
+import os  # noqa: E402
+
+_SCRIPT = Path(
+    os.environ.get(
+        "CIV6AZ_TEST_VALIDATOR", str(REPO_ROOT / "scripts" / "validate_claude_agents.py")
+    )
+)
 _spec = importlib.util.spec_from_file_location("validate_claude_agents", _SCRIPT)
 assert _spec is not None and _spec.loader is not None
 vca = importlib.util.module_from_spec(_spec)
@@ -719,3 +727,129 @@ def test_n1_plain_whitelist_still_accepts_what_the_real_files_use(
     _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\nmaxTurns: 12\n")
     rc, err = _run(capsys)
     assert rc == 0, err
+
+
+# --- N-5: characters Python strips but the YAML loader keeps ---------------------------------
+
+NBSP, VT, FF, NEL, IDEO = "\u00a0", "\x0b", "\x0c", "\x85", "\u3000"
+
+
+@pytest.mark.parametrize(
+    ("label", "old", "new"),
+    [
+        ("nbsp-before-tools", "\ntools: ", f"\n{NBSP}tools: "),
+        ("nbsp-before-hooks", "\nhooks:", f"\n{NBSP}hooks:"),
+        ("vt-before-tools", "\ntools: ", f"\n{VT}tools: "),
+        ("ff-before-tools", "\ntools: ", f"\n{FF}tools: "),
+        ("nel-before-tools", "\ntools: ", f"\n{NEL}tools: "),
+        ("ideographic-space-before-tools", "\ntools: ", f"\n{IDEO}tools: "),
+        ("nul-in-description", "Use when", "Use\x00when"),
+    ],
+)
+def test_n5_whitespace_and_control_characters_are_refused(
+    tree: Path, capsys: pytest.CaptureFixture[str], label: str, old: str, new: str
+) -> None:
+    _edit(_agent(tree, "architect"), old, new)
+    err = _expect(capsys, "C1")
+    assert "frontmatter" in err, label
+
+
+def test_n5_crlf_is_normalised_not_refused(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A Windows checkout with autocrlf has CRLF files; the loader tolerates it, so must we."""
+    for path in (tree / ".claude" / "agents").glob("sdlc-*.md"):
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_n5_a_lone_carriage_return_is_refused() -> None:
+    """File reads translate CR/CRLF, so this only matters for text handed to the parser."""
+    text = "---" + chr(10) + "name: x" + chr(13) + "model: y" + chr(10) + "---" + chr(10) + "body"
+    with pytest.raises(ValueError, match="000D"):
+        vca.parse_frontmatter(text)
+
+
+def test_n5_non_ascii_in_the_body_is_still_fine(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "architect"), "## Role\n", "## Role\n\nCaf\u00e9 \u2014 body text is free.\n"
+    )
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+# --- optional: the validator accepts => the real loader sees the same tools and hooks ----
+
+_BUN = shutil.which("bun")
+# A small replica of Claude Code's frontmatter path: the lazy `---` regex, then Bun.YAML. It
+# omits Claude Code's quoting retry on purpose: anything that only parses after a retry is
+# something this validator must not have accepted in the first place.
+_LOADER_JS = r"""
+const t = require("fs").readFileSync(0, "utf8");
+const m = /^---\s*\n([\s\S]*?)---\s*\n?/.exec(t);
+let out = {ok: false};
+try {
+  const fm = Bun.YAML.parse(m[1]);
+  out = {ok: true, tools: fm.tools ?? null, hooks: fm.hooks ?? null};
+} catch (e) {}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def _loader(text: str, script: Path) -> dict[str, object]:
+    import json
+    import subprocess
+
+    proc = subprocess.run(
+        [str(_BUN), str(script)],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    loaded: dict[str, object] = json.loads(proc.stdout)
+    return loaded
+
+
+# An empty parameter set makes pytest skip the test when bun is absent (CI has none), without an
+# explicit skip site: the debt ratchet counts those, and a missing optional tool is not debt.
+@pytest.mark.parametrize("bun", [_BUN] if _BUN else [])
+def test_validator_acceptance_implies_the_loader_sees_the_same_tools_and_hooks(
+    tree: Path, bun: str
+) -> None:
+    import json
+
+    script = tree / "cc_load.js"
+    script.write_text(_LOADER_JS, encoding="utf-8")
+    mutants: list[tuple[str, str, str]] = [("none", "model: opus\n", "model: opus\n")]
+    for label, old, new in [
+        ("nbsp", "\ntools: ", f"\n{NBSP}tools: "),
+        ("vt", "\ntools: ", f"\n{VT}tools: "),
+        ("nul", "Use when", "Use\x00when"),
+        ("comment", "model: opus\n", "model: opus\n# note\n"),
+        ("dash-desc", 'description: "', "description: - "),
+    ]:
+        mutants.append((label, old, new))
+    for path in sorted((tree / ".claude" / "agents").glob("sdlc-*.md")):
+        original = path.read_text(encoding="utf-8")
+        for label, old, new in mutants:
+            if old not in original:
+                continue
+            text = original.replace(old, new, 1)
+            try:
+                front, _ = vca.parse_frontmatter(text)
+            except ValueError:
+                continue  # refused: nothing to compare
+            loaded = _loader(text, script)
+            assert loaded["ok"], (
+                f"{path.name} [{label}] accepted by the validator but unparsable by Bun.YAML"
+            )
+            assert json.dumps(loaded["tools"], sort_keys=True) == json.dumps(
+                front.get("tools"), sort_keys=True
+            ), f"{path.name} [{label}]: tools differ"
+            assert json.dumps(loaded["hooks"], sort_keys=True) == json.dumps(
+                front.get("hooks"), sort_keys=True
+            ), f"{path.name} [{label}]: hooks differ"

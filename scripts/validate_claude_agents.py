@@ -245,7 +245,7 @@ def _scalar(raw: str) -> str | list[str]:
     unambiguous under both: balanced quotes, no flow mapping, no comment, and no plain scalar
     carrying a character the loader treats specially.
     """
-    s = raw.strip()
+    s = raw.strip(" ")
     if s.startswith('"'):
         if len(s) < 2 or not s.endswith('"'):
             raise ValueError(f"unbalanced double quote in value {raw!r}")
@@ -274,8 +274,8 @@ def _scalar(raw: str) -> str | list[str]:
     if s.startswith("["):
         if not s.endswith("]"):
             raise ValueError(f"unbalanced flow sequence {raw!r}")
-        inner = s[1:-1].strip()
-        items = [p.strip() for p in inner.split(",")] if inner else []
+        inner = s[1:-1].strip(" ")
+        items = [p.strip(" ") for p in inner.split(",")] if inner else []
         for item in items:
             if not item or not _PLAIN_OK.match(item):
                 raise ValueError(f"flow sequence item {item!r} is not a plain word")
@@ -295,7 +295,7 @@ def _parse_node(items: list[tuple[int, str]], pos: int, indent: int) -> tuple[ob
         out_list: list[object] = []
         while pos < len(items) and items[pos][0] == indent and items[pos][1].startswith("-"):
             text = items[pos][1]
-            rest = text[1:].strip()
+            rest = text[1:].strip(" ")
             if not rest:
                 if pos + 1 >= len(items) or items[pos + 1][0] <= indent:
                     raise ValueError("empty list item")
@@ -316,11 +316,11 @@ def _parse_node(items: list[tuple[int, str]], pos: int, indent: int) -> tuple[ob
         if match is None:
             raise ValueError(f"cannot parse line {items[pos][1]!r}")
         key, rest = match.group(1), match.group(2)
-        if key == "description" and not (rest or "").strip().startswith('"'):
+        if key == "description" and not (rest or "").strip(" ").startswith('"'):
             raise ValueError("description must be a double-quoted string (quote it)")
         if key in out:
             raise ValueError(f"duplicate key {key!r}")
-        if rest is None or rest.strip() == "":
+        if rest is None or rest.strip(" ") == "":
             nxt = pos + 1
             if nxt < len(items) and (
                 items[nxt][0] > indent
@@ -345,7 +345,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
     comment lines, which the YAML loader and the fallback treat differently.
     """
     lines = text.replace("\r\n", "\n").split("\n")
-    if not lines or lines[0].strip() != "---":
+    if not lines or lines[0].strip(" ") != "---":
         raise ValueError("file does not start with a '---' frontmatter fence")
     rest = "\n".join(lines[1:])
     idx = rest.find("---")
@@ -353,23 +353,31 @@ def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
         raise ValueError("frontmatter is never closed with '---'")
     line_end = rest.find("\n", idx)
     closing = rest[idx : line_end if line_end >= 0 else None]
-    if (idx != 0 and rest[idx - 1] != "\n") or closing.strip() != "---":
+    if (idx != 0 and rest[idx - 1] != "\n") or closing.strip(" ") != "---":
         raise ValueError(
             "'---' appears inside the frontmatter; Claude Code ends the block at the first '---' anywhere"
         )
     block = rest[:idx]
     if "\t" in block:
         raise ValueError("a TAB in the frontmatter (YAML and Claude Code read it differently)")
+    # Printable ASCII and newlines only. Python's str.strip() removes NBSP, VT, FF, NEL and U+3000,
+    # but Bun.YAML keeps them as part of the key (the role then loads with every tool and no guard),
+    # and a NUL makes the loader reject the whole block. CRLF was normalised above, so a remaining
+    # CR is a stray one. Nothing legitimate is lost: every role file's frontmatter is pure ASCII.
+    for ch in block:
+        if ch != "\n" and not 0x20 <= ord(ch) <= 0x7E:
+            raise ValueError(
+                f"character U+{ord(ch):04X} in the frontmatter; only printable ASCII is allowed "
+                "(the YAML loader treats it differently from this reader)"
+            )
     body = rest[line_end + 1 :] if line_end >= 0 else ""
     items: list[tuple[int, str]] = []
     for raw in block.split("\n"):
-        if not raw.strip():
+        if not raw.strip(" "):
             continue
-        if raw.lstrip().startswith("#"):
-            raise ValueError(f"comment line {raw.strip()!r} is not allowed in frontmatter")
-        if "\t" in raw[: len(raw) - len(raw.lstrip())]:
-            raise ValueError("tab indentation in frontmatter")
-        items.append((len(raw) - len(raw.lstrip(" ")), raw.strip()))
+        if raw.lstrip(" ").startswith("#"):
+            raise ValueError(f"comment line {raw.strip(' ')!r} is not allowed in frontmatter")
+        items.append((len(raw) - len(raw.lstrip(" ")), raw.strip(" ")))
     if not items:
         raise ValueError("frontmatter is empty")
     value, pos = _parse_node(items, 0, items[0][0])
