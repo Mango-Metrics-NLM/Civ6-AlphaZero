@@ -190,3 +190,115 @@ def test_isolation_module_is_stdlib_only() -> None:
         if isinstance(n, ast.Import | ast.ImportFrom)
     }
     assert not roots & {"torch", "numpy", "alpha_zero"}
+
+
+# --- A backend built BEFORE local mode must not keep an open path to GCS ----
+
+
+class _FakeBlob:
+    def __init__(self, store: dict[str, bytes], name: str) -> None:
+        self._store, self.name = store, name
+
+    def upload_from_string(self, data: bytes, **_: object) -> None:
+        self._store[self.name] = data
+
+    def download_as_bytes(self, **_: object) -> bytes:
+        return self._store[self.name]
+
+    def exists(self) -> bool:
+        return self.name in self._store
+
+    def delete(self) -> None:
+        self._store.pop(self.name, None)
+
+
+class _FakeBucket:
+    def __init__(self, store: dict[str, bytes]) -> None:
+        self._store = store
+
+    def blob(self, name: str) -> _FakeBlob:
+        return _FakeBlob(self._store, name)
+
+
+class _FakeClient:
+    def __init__(self, **_: object) -> None:
+        self.store: dict[str, bytes] = {}
+
+    def bucket(self, _name: str) -> _FakeBucket:
+        return _FakeBucket(self.store)
+
+    def list_blobs(self, _bucket: str, **_kw: object) -> list[_FakeBlob]:
+        return [_FakeBlob(self.store, n) for n in self.store]
+
+    def close(self) -> None:
+        pass
+
+
+@pytest.fixture
+def prebuilt_gcs_backend(monkeypatch: pytest.MonkeyPatch):
+    """A GCSStorageBackend constructed with local mode OFF, using a fake client."""
+    from types import SimpleNamespace
+
+    from alpha_zero.storage import gcs_backend as mod
+    from alpha_zero.storage.config import StorageConfig
+
+    monkeypatch.setattr(mod, "HAS_GCS", True)
+    monkeypatch.setattr(mod, "gcs", SimpleNamespace(Client=_FakeClient))
+    monkeypatch.setattr(mod, "gcs_retry", SimpleNamespace(Retry=lambda **_: None), raising=False)
+    backend = mod.GCSStorageBackend(StorageConfig.for_gcs("bucket"))
+    # Sanity: it works while local mode is off (so the raises below are the guard).
+    backend.save_config({"a": 1}, 1)
+    assert backend.load_config(1) == {"a": 1}
+    return backend
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda b: b.save_model({}, 1),
+        lambda b: b.load_model(1),
+        lambda b: b.list_files("models"),
+        lambda b: b.exists("models/x"),
+        lambda b: b.delete("models/x"),
+        lambda b: b.save_config({"a": 1}, 2),
+        lambda b: b.load_config(1),
+        lambda b: b.list_checkpoints(),
+        lambda b: b.close(),
+    ],
+    ids=[
+        "save_model",
+        "load_model",
+        "list_files",
+        "exists",
+        "delete",
+        "save_config",
+        "load_config",
+        "list_checkpoints",
+        "close",
+    ],
+)
+def test_prebuilt_gcs_storage_backend_io_raises_after_local_mode(
+    prebuilt_gcs_backend, monkeypatch: pytest.MonkeyPatch, call
+) -> None:
+    monkeypatch.setenv("CIV6AZ_LOCAL_RUN", "1")
+    with pytest.raises(LocalModeViolation):
+        call(prebuilt_gcs_backend)
+
+
+def test_cloud_gcp_backend_cached_client_is_guarded(
+    cloud_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cloud/gcp/storage.py: a client cached before local mode is not reusable."""
+    backend = GCSBackend("prod")
+    backend._client = _FakeClient()  # type: ignore[assignment]
+    assert backend.upload_blob("b", "p", b"x").startswith("gs://")
+    monkeypatch.setenv("CIV6AZ_LOCAL_RUN", "1")
+    for op in (
+        lambda: backend.upload_blob("b", "p", b"x"),
+        lambda: backend.download_blob("b", "p"),
+        lambda: backend.blob_exists("b", "p"),
+        lambda: backend.list_blobs("b", "p"),
+        lambda: backend.delete_blob("b", "p"),
+    ):
+        with pytest.raises(LocalModeViolation):
+            op()
