@@ -46,7 +46,7 @@ already matches ``mctx`` (``gumbel_ops.halving_schedule``).
 
 Usage::
 
-    python scripts/probe_target_sharpness.py --seed 42 \\
+    python scripts/probe_target_sharpness.py --seeds 42 \\
         --out_dir docs/evidence/target_sharpness_probe
 """
 
@@ -416,9 +416,6 @@ def run_probe(
     base = search_config(board_size, max_turns, k, n, device, seed)
     network = build_network(board_size, max_turns, seed, device)
 
-    per_cell: dict[str, dict[str, list[float]]] = {
-        name: {"entropy": [], "max_p": [], "support": []} for name, _, _ in CELLS
-    }
     prior_stats: dict[str, list[float]] = {"entropy": [], "max_p": []}
     # Spread of visited root-child Q under the current search. The current
     # target's sharpness scales with this absolute spread (raw Q, no
@@ -479,44 +476,102 @@ def run_probe(
                 if target.sum() <= 0.0 and mcts.last_choice >= 0:
                     target[mcts.last_choice] = 1.0  # GumbelMCTS's own fallback
                 h, mp = entropy(target), float(target.max())
-                per_cell[name]["entropy"].append(h)
-                per_cell[name]["max_p"].append(mp)
-                per_cell[name]["support"].append(float((target > 0).sum()))
-                row[name] = {"entropy": round(h, 6), "max_p": round(mp, 6)}
+                row[name] = {
+                    "entropy": round(h, 6),
+                    "max_p": round(mp, 6),
+                    "support": int((target > 0).sum()),
+                }
             rows.append(row)
 
     threshold = float(base.greedy_threshold)
-    early = [r["turn"] < base.temperature_threshold for r in rows]
+    return {
+        "seed": seed,
+        "positions_forced": forced,
+        "temperature_phase_positions": sum(r["turn"] < base.temperature_threshold for r in rows),
+        "prior": {
+            "entropy_nats": _summary(prior_stats["entropy"]),
+            "max_p": _summary(prior_stats["max_p"]),
+        },
+        "legal_actions": _summary([float(r["legal"]) for r in rows]),
+        "current_visited_q_spread": _summary(q_spreads or [0.0]),
+        "abs_root_network_value": _summary(root_values or [0.0]),
+        "chosen_move_agreement_with_current": {
+            key: round(count / positions, 6) for key, count in agree.items()
+        },
+        "cells": cell_summaries(rows, threshold, base.temperature_threshold),
+        "positions": rows,
+    }
+
+
+def cell_summaries(
+    rows: list[dict[str, Any]], threshold: float, temperature_threshold: int
+) -> dict[str, Any]:
+    """Per-variant statistics over ``rows`` (one seed's positions, or several pooled)."""
+    early = [r["turn"] < temperature_threshold for r in rows]
     cells: dict[str, Any] = {}
     for name, search_key, target_key in CELLS:
-        stats = per_cell[name]
-        above = [mp > threshold for mp in stats["max_p"]]
+        max_p = [float(r[name]["max_p"]) for r in rows]
+        above = [mp > threshold for mp in max_p]
         early_above = [a for a, e in zip(above, early, strict=True) if e]
         cells[name] = {
             "search": search_key,
             "target": target_key,
-            "entropy_nats": _summary(stats["entropy"]),
-            "max_p": _summary(stats["max_p"]),
-            "support": _summary(stats["support"]),
+            "entropy_nats": _summary([float(r[name]["entropy"]) for r in rows]),
+            "max_p": _summary(max_p),
+            "support": _summary([float(r[name]["support"]) for r in rows]),
             "share_max_p_above_greedy_threshold": round(sum(above) / len(above), 6),
             "share_above_threshold_in_temperature_phase": (
                 round(sum(early_above) / len(early_above), 6) if early_above else None
             ),
-            "share_max_p_above_0_5": round(
-                sum(mp > 0.5 for mp in stats["max_p"]) / len(stats["max_p"]), 6
-            ),
+            "share_max_p_above_0_5": round(sum(mp > 0.5 for mp in max_p) / len(max_p), 6),
         }
+    return cells
 
+
+def run_probes(
+    *,
+    seeds: list[int],
+    positions: int,
+    board_size: int,
+    max_turns: int,
+    k: int,
+    n: int,
+    device: str = "cpu",
+) -> dict[str, Any]:
+    """:func:`run_probe` for each seed, plus statistics pooled over every seed.
+
+    Each seed is a different random-init network *and* a different set of
+    positions. Several are needed: the untrained value head differs a great deal
+    between initialisations, and the targets with it.
+    """
+    if not seeds:
+        raise ValueError("at least one seed is required")
+    if len(set(seeds)) != len(seeds):
+        raise ValueError(f"seeds must be distinct; got {seeds}")
+    base = search_config(board_size, max_turns, k, n, device, seeds[0])
+    per_seed = [
+        run_probe(
+            positions=positions,
+            board_size=board_size,
+            max_turns=max_turns,
+            k=k,
+            n=n,
+            seed=seed,
+            device=device,
+        )
+        for seed in seeds
+    ]
+    pooled_rows = [row for run in per_seed for row in run["positions"]]
     return {
         "probe": RUNNER,
         "probe_schema_version": SCHEMA_VERSION,
         "settings": {
-            "positions": positions,
+            "seeds": list(seeds),
+            "positions_per_seed": positions,
             "board_size": board_size,
             "max_turns": max_turns,
             "gumbel_k": k,
             "gumbel_sims": n,
-            "seed": seed,
             "device": device,
             "network": "MicroCivNetwork, random init (torch.manual_seed(seed)), 0 games trained",
             "position_source": "seeded uniform-random play to a uniform target turn",
@@ -541,20 +596,15 @@ def run_probe(
             },
         },
         "games_played": 0,
-        "positions_forced": forced,
-        "temperature_phase_positions": int(sum(early)),
-        "prior": {
-            "entropy_nats": _summary(prior_stats["entropy"]),
-            "max_p": _summary(prior_stats["max_p"]),
+        "pooled": {
+            "positions": len(pooled_rows),
+            "temperature_phase_positions": sum(r["temperature_phase_positions"] for r in per_seed),
+            "positions_forced": sum(r["positions_forced"] for r in per_seed),
+            "cells": cell_summaries(
+                pooled_rows, float(base.greedy_threshold), base.temperature_threshold
+            ),
         },
-        "legal_actions": _summary([float(r["legal"]) for r in rows]),
-        "current_visited_q_spread": _summary(q_spreads or [0.0]),
-        "abs_root_network_value": _summary(root_values or [0.0]),
-        "chosen_move_agreement_with_current": {
-            key: round(count / positions, 6) for key, count in agree.items()
-        },
-        "cells": cells,
-        "positions": rows,
+        "per_seed": per_seed,
     }
 
 
@@ -574,7 +624,8 @@ def evidence_block(result: dict[str, Any], argv: list[str]) -> dict[str, Any]:
         "git_sha": sha,
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "search_epoch": SEARCH_EPOCH,
-        "seed": settings["seed"],
+        "seed": settings["seeds"][0],
+        "seeds": settings["seeds"],
         "command": shlex.join(["python", "scripts/probe_target_sharpness.py", *argv]),
         "hardware": {
             "cpu_model": platform.processor() or None,
@@ -587,16 +638,18 @@ def evidence_block(result: dict[str, Any], argv: list[str]) -> dict[str, Any]:
         "numpy": np.__version__,
         "games_total": 0,
         "claims": [
-            f"sharpness (entropy, max-p, share above greedy_threshold) of the Gumbel policy "
+            "sharpness (entropy, max-p, share above greedy_threshold) of the Gumbel policy "
             f"target at k={settings['gumbel_k']}, n={settings['gumbel_sims']} on "
-            f"{settings['positions']} random-play positions, for an untrained network, "
-            "under the current settings and the paper's",
+            f"{settings['positions_per_seed']} random-play positions per seed, for "
+            f"{len(settings['seeds'])} untrained networks (one per seed), under the current "
+            "settings and the paper's",
         ],
         "non_claims": [
             "not evidence of playing strength or of learning",
-            "untrained network only; a trained network's targets may be sharper or flatter",
+            "untrained networks only; a trained network's targets may be sharper or flatter",
             "positions come from random play, not from self-play",
             "interior (non-root) selection is this repository's PUCT in every variant",
+            "the seed field is the first of several; every seed is listed under seeds",
         ],
     }
     if sha is None:
@@ -604,60 +657,79 @@ def evidence_block(result: dict[str, Any], argv: list[str]) -> dict[str, Any]:
     return block
 
 
+def _cell_row(name: str, cell: dict[str, Any]) -> str:
+    tphase = cell["share_above_threshold_in_temperature_phase"]
+    return (
+        f"| `{name}` | {cell['search']} | {cell['target']} | "
+        f"{cell['entropy_nats']['mean']:.3f} / {cell['entropy_nats']['median']:.3f} | "
+        f"{cell['max_p']['mean']:.3f} / {cell['max_p']['median']:.3f} | "
+        f"{cell['share_max_p_above_greedy_threshold']:.3f} | "
+        f"{'n/a' if tphase is None else f'{tphase:.3f}'} | "
+        f"{cell['support']['median']:.0f} |"
+    )
+
+
 def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
     """A markdown report that a reader can follow without the JSON."""
     s = result["settings"]
     cur = s["current"]
+    pooled = result["pooled"]
+    names = [name for name, _, _ in CELLS]
+    header = (
+        "| Variant | Search (halving score) | Target | Entropy mean / median (nats) "
+        "| max-p mean / median | Share max-p > threshold | Same in temperature phase "
+        "| Support (median) |\n|---|---|---|---|---|---|---|---|"
+    )
     lines = [
         "# Gumbel policy-target sharpness probe (LF-A5 / LF-A12)",
         "",
         f"**Date:** {evidence['generated_utc'][:10]} · **Search epoch:** {SEARCH_EPOCH} · "
         f"**Games played:** 0 · **Raw data:** [`{JSON_NAME}`]({JSON_NAME})",
         "",
-        f"{s['positions']} positions from seeded uniform-random play at board "
-        f"{s['board_size']} / max_turns {s['max_turns']}; a randomly initialised "
-        f"`MicroCivNetwork` (seed {s['seed']}, 0 games of training) searches each with "
-        f"k={s['gumbel_k']}, n={s['gumbel_sims']}. `greedy_threshold` = "
-        f"{cur['greedy_threshold']}: above it `select_action` ignores temperature.",
+        f"For each of {len(s['seeds'])} seeds ({', '.join(str(x) for x in s['seeds'])}), a "
+        f"randomly initialised `MicroCivNetwork` (`torch.manual_seed(seed)`, 0 games of "
+        f"training) searches {s['positions_per_seed']} positions from seeded uniform-random "
+        f"play at board {s['board_size']} / max_turns {s['max_turns']}, with k={s['gumbel_k']}, "
+        f"n={s['gumbel_sims']} (A1's budget). `greedy_threshold` = {cur['greedy_threshold']}: "
+        "above it `select_action` ignores temperature, so on that move the self-play "
+        f"temperature schedule (temperature {cur['temperature']} before turn "
+        f"{cur['temperature_threshold']}) is inert.",
         "",
         "```",
         evidence["command"],
         "```",
         "",
-        "| Variant | Search (halving score) | Target | Entropy mean / median (nats) "
-        "| max-p mean / median | Share max-p > threshold | Same in temperature phase "
-        "| Support (median) |",
-        "|---|---|---|---|---|---|---|---|",
+        f"## Pooled over every seed ({pooled['positions']} positions, "
+        f"{pooled['temperature_phase_positions']} in the temperature phase, "
+        f"{pooled['positions_forced']} forced)",
+        "",
+        header,
+        *[_cell_row(name, cell) for name, cell in pooled["cells"].items()],
+        "",
+        "## Per seed: share of positions with max-p above the threshold (mean max-p)",
+        "",
+        "| Seed | abs root value, median | Visited-Q spread, median | "
+        + " | ".join(f"`{n}`" for n in names)
+        + " | Move agrees with `current` (sigma_halving / paper) |",
+        "|---|---|---|" + "---|" * len(names) + "---|",
     ]
-    for name, cell in result["cells"].items():
-        tphase = cell["share_above_threshold_in_temperature_phase"]
-        lines.append(
-            f"| `{name}` | {cell['search']} | {cell['target']} | "
-            f"{cell['entropy_nats']['mean']:.3f} / {cell['entropy_nats']['median']:.3f} | "
-            f"{cell['max_p']['mean']:.3f} / {cell['max_p']['median']:.3f} | "
-            f"{cell['share_max_p_above_greedy_threshold']:.3f} | "
-            f"{'n/a' if tphase is None else f'{tphase:.3f}'} | "
-            f"{cell['support']['median']:.0f} |"
+    for run in result["per_seed"]:
+        agree = run["chosen_move_agreement_with_current"]
+        cells = " | ".join(
+            f"{run['cells'][n]['share_max_p_above_greedy_threshold']:.3f} "
+            f"({run['cells'][n]['max_p']['mean']:.3f})"
+            for n in names
         )
-    prior = result["prior"]
-    agree = result["chosen_move_agreement_with_current"]
+        lines.append(
+            f"| {run['seed']} | {run['abs_root_network_value']['median']:.3f} | "
+            f"{run['current_visited_q_spread']['median']:.3f} | {cells} | "
+            f"{agree['sigma_halving']:.2f} / {agree['paper']:.2f} |"
+        )
     lines += [
         "",
-        f"Network prior over legal actions (reference): entropy mean "
-        f"{prior['entropy_nats']['mean']:.3f} nats, max-p mean {prior['max_p']['mean']:.3f}. "
-        f"Legal actions per position: median {result['legal_actions']['median']:.0f}. "
-        f"Forced positions: {result['positions_forced']}. Positions in the temperature phase "
-        f"(turn < {cur['temperature_threshold']}): {result['temperature_phase_positions']}.",
-        "",
-        "Visited root-child Q spread (max - min) under `current`: median "
-        f"{result['current_visited_q_spread']['median']:.4f}, p90 "
-        f"{result['current_visited_q_spread']['p90']:.4f}; |root network value| median "
-        f"{result['abs_root_network_value']['median']:.4f}. The current target's sharpness "
-        "scales with this absolute spread; the paper's (min-max normalised) does not.",
-        "",
-        "Chosen move agrees with `current`: "
-        + ", ".join(f"`{k}` {v:.3f}" for k, v in agree.items())
-        + ".",
+        "The current target's sharpness scales with the *absolute* spread of the visited "
+        "root-child Q values (raw Q, no normalisation); the paper's is min-max normalised, "
+        "so any spread at all is stretched to the full `(c_visit + max N) * c_scale` range.",
         "",
         "## Variants",
         "",
@@ -689,12 +761,18 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=(__doc__ or "").split("\n\n")[0])
-    p.add_argument("--positions", type=int, default=200)
+    p.add_argument("--positions", type=int, default=200, help="positions per seed")
     p.add_argument("--board_size", type=int, default=8)
     p.add_argument("--max_turns", type=int, default=60)
     p.add_argument("--k", type=int, default=8, help="Gumbel sampled actions (A1: 8)")
     p.add_argument("--n", type=int, default=24, help="Gumbel simulations (A1: 24)")
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument(
+        "--seeds",
+        type=int,
+        nargs="+",
+        default=[42],
+        help="one random-init network and position set per seed",
+    )
     p.add_argument("--device", default="cpu")
     p.add_argument("--out_dir", type=Path, default=None, help="write JSON + report.md here")
     add_budget_arguments(p)
@@ -706,15 +784,15 @@ def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     args = _parse_args(raw)
     # Priced like every runner, though the price is 0: it plays no games.
-    enforce_cli(RUNNER, {"positions": args.positions}, args)
+    enforce_cli(RUNNER, {"positions": args.positions * len(args.seeds)}, args)
     started = time.perf_counter()
-    result = run_probe(
+    result = run_probes(
+        seeds=list(args.seeds),
         positions=args.positions,
         board_size=args.board_size,
         max_turns=args.max_turns,
         k=args.k,
         n=args.n,
-        seed=args.seed,
         device=args.device,
     )
     logger.info("probe finished in %.1f s", time.perf_counter() - started)
@@ -726,13 +804,13 @@ def main(argv: list[str] | None = None) -> int:
         (args.out_dir / JSON_NAME).write_text(text + "\n", encoding="utf-8")
         (args.out_dir / REPORT_NAME).write_text(render_report(result, evidence), encoding="utf-8")
         logger.info("wrote %s", args.out_dir)
-    for name, cell in result["cells"].items():
+    for name, cell in result["pooled"]["cells"].items():
         print(
             f"{name:30s} H={cell['entropy_nats']['mean']:.3f} "
             f"maxp={cell['max_p']['mean']:.3f} "
             f">thr={cell['share_max_p_above_greedy_threshold']:.3f}"
         )
-    if not math.isfinite(sum(c["max_p"]["mean"] for c in result["cells"].values())):
+    if not math.isfinite(sum(c["max_p"]["mean"] for c in result["pooled"]["cells"].values())):
         return 1
     return 0
 

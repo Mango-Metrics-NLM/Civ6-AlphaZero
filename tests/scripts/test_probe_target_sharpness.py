@@ -43,31 +43,40 @@ def mod() -> Any:
 
 @pytest.fixture(scope="module")
 def result(mod: Any) -> dict[str, Any]:
-    return mod.run_probe(seed=7, **TINY)
+    return mod.run_probes(seeds=[7, 11], **TINY)
 
 
 def test_schema(mod: Any, result: dict[str, Any]) -> None:
     assert result["probe"] == "probe_target_sharpness"
     assert result["games_played"] == 0
-    assert set(result["cells"]) == {name for name, _, _ in mod.CELLS}
-    for cell in result["cells"].values():
-        assert set(cell) == CELL_KEYS
-        assert 0.0 <= cell["share_max_p_above_greedy_threshold"] <= 1.0
-        assert 0.0 < cell["max_p"]["mean"] <= 1.0
-        assert cell["entropy_nats"]["mean"] >= 0.0
-    assert len(result["positions"]) == TINY["positions"]
-    assert result["current_visited_q_spread"]["mean"] >= 0.0
+    assert [run["seed"] for run in result["per_seed"]] == [7, 11]
+    assert result["pooled"]["positions"] == 2 * TINY["positions"]
+    for cells in [result["pooled"]["cells"], *(run["cells"] for run in result["per_seed"])]:
+        assert set(cells) == {name for name, _, _ in mod.CELLS}
+        for cell in cells.values():
+            assert set(cell) == CELL_KEYS
+            assert 0.0 <= cell["share_max_p_above_greedy_threshold"] <= 1.0
+            assert 0.0 < cell["max_p"]["mean"] <= 1.0
+            assert cell["entropy_nats"]["mean"] >= 0.0
+    for run in result["per_seed"]:
+        assert len(run["positions"]) == TINY["positions"]
+        assert run["current_visited_q_spread"]["mean"] >= 0.0
     assert result["settings"]["current"]["greedy_threshold"] == pytest.approx(0.99)
 
 
 def test_same_seed_is_identical(mod: Any, result: dict[str, Any]) -> None:
-    again = mod.run_probe(seed=7, **TINY)
+    again = mod.run_probes(seeds=[7, 11], **TINY)
     assert json.dumps(again, sort_keys=True) == json.dumps(result, sort_keys=True)
 
 
 def test_different_seed_differs(mod: Any, result: dict[str, Any]) -> None:
     other = mod.run_probe(seed=8, **TINY)
-    assert json.dumps(other["positions"]) != json.dumps(result["positions"])
+    assert json.dumps(other["positions"]) != json.dumps(result["per_seed"][0]["positions"])
+
+
+def test_duplicate_seeds_are_refused(mod: Any) -> None:
+    with pytest.raises(ValueError, match="distinct"):
+        mod.run_probes(seeds=[7, 7], **TINY)
 
 
 def test_paper_target_spans_every_legal_action(mod: Any) -> None:
@@ -107,8 +116,9 @@ def test_cli_writes_json_and_report(mod: Any, tmp_path: Path) -> None:
         "4",
         "--n",
         "8",
-        "--seed",
+        "--seeds",
         "3",
+        "4",
         "--out_dir",
         str(tmp_path),
     ]
@@ -117,6 +127,7 @@ def test_cli_writes_json_and_report(mod: Any, tmp_path: Path) -> None:
     evidence = data["evidence"]
     assert evidence["search_epoch"] == "post-2026-09-04"
     assert evidence["games_total"] == 0 and evidence["seed"] == 3
+    assert evidence["seeds"] == [3, 4]
     assert evidence["claims"] and evidence["non_claims"]
     report = (tmp_path / mod.REPORT_NAME).read_text(encoding="utf-8")
     assert "current_search_paper_target" in report
