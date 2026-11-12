@@ -48,7 +48,7 @@ FAILED). The one exception is an invocation whose own argv carries
 that invocation is bounded by its approval, not by this driver.
 
 Public surface: :func:`load_card`, :func:`price_card`, :func:`prepare_data_root`,
-:func:`refuse_placeholder_sha`, :func:`run_card`, :func:`main`, :data:`RUNNERS`.
+:func:`refuse_placeholder_sha`, :func:`refuse_unresolvable_sha`, :func:`run_card`, :func:`main`, :data:`RUNNERS`.
 """
 
 from __future__ import annotations
@@ -79,6 +79,7 @@ from alpha_zero.local.pinned_env import (
     _pyproject_version,
     child_env,
     prepare_pinned_run,
+    resolve_commit,
 )
 from alpha_zero.utils import game_budget
 from alpha_zero.utils.checkpoint import GIT_SHA_ENV
@@ -398,6 +399,25 @@ def refuse_placeholder_sha(card: RunCard) -> None:
         )
 
 
+def refuse_unresolvable_sha(
+    card: RunCard, *, repo_root: Path, runner: Runner | None = None
+) -> None:
+    """Refuse a well-formed ``sha`` that names no commit, before anything is created.
+
+    Pinning resolves the sha again later; resolving it here first means a typo,
+    an ambiguous abbreviation or an unfetched merge commit is refused before the
+    single-use run directory is claimed (T13 rereview N1). ``--price_only`` never
+    calls this.
+    """
+    try:
+        resolve_commit(card.sha, runner=runner, repo_root=repo_root)
+    except PinnedEnvError as exc:
+        raise RunCardError(
+            f"run card {card.card_id}: sha {card.sha!r} does not name a commit in "
+            f"{repo_root} ({exc}); fetch it or fix the card"
+        ) from None
+
+
 # ---------------------------------------------------------------------------
 # Data root, run record, subprocesses
 # ---------------------------------------------------------------------------
@@ -569,6 +589,7 @@ def run_card(
     card = load_card(card_path)
     priced = price_card(card)  # refuses before anything exists
     refuse_placeholder_sha(card)  # likewise: a placeholder must not claim the run dir
+    refuse_unresolvable_sha(card, repo_root=repo, runner=pinned_runner)  # nor a typo
 
     root_arg = data_root if data_root is not None else resolve_data_root(required=True)
     if root_arg is None:  # unreachable: required=True raises

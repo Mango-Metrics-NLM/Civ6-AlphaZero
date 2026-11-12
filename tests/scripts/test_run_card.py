@@ -458,6 +458,50 @@ def test_placeholder_sha_refused_before_anything_is_created(
     assert pinned.calls == []
 
 
+class UnresolvableShaRunner(FakeRunner):
+    """``git rev-parse`` fails: a well-formed sha that names no commit in the repo."""
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        if str(cmd[0]) == "git":
+            self.calls.append([str(c) for c in cmd])
+            raise pe.PinnedEnvError("command failed (128): git rev-parse --verify")
+        return super().__call__(cmd, cwd=cwd, env=env)
+
+
+def test_unresolvable_sha_refused_before_anything_is_created(tmp_path: Path) -> None:
+    """A typo or unfetched sha must not burn the run directory either (T13 rereview N1)."""
+    runner = UnresolvableShaRunner()
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="deadbeef" * 5)
+    with pytest.raises(rc.RunCardError, match="does not name a commit"):
+        _run(card, tmp_path, runner)
+    assert not (tmp_path / "root").exists()
+    assert [c[:2] for c in runner.calls] == [["git", "-C"]], "only the resolution ran"
+
+
+def test_cli_refuses_an_unresolvable_sha_with_exit_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="deadbeef" * 5)
+    assert rc.main([str(card), "--data_root", str(tmp_path / "root")]) == 2
+    assert "does not name a commit" in capsys.readouterr().err
+    assert not (tmp_path / "root").exists()
+
+
+def test_price_only_needs_no_git_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def no_git(*_: Any, **__: Any) -> str:
+        raise AssertionError("--price_only must not resolve the sha")
+
+    monkeypatch.setattr(pe, "resolve_commit", no_git)
+    monkeypatch.setattr(rc, "resolve_commit", no_git)
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="deadbeef" * 5)
+    assert rc.main([str(card), "--price_only"]) == 0
+    assert "8" in capsys.readouterr().out
+
+
 def test_placeholder_sha_still_prices(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="0" * 40)
     assert rc.main([str(card), "--price_only", "--data_root", str(tmp_path / "root")]) == 0

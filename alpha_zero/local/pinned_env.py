@@ -167,6 +167,20 @@ def _build_venv(venv: Path, src: Path, wheel_dir: Path, full_sha: str, runner: R
     return wheel_hash
 
 
+def resolve_commit(sha: str, *, runner: Runner | None = None, repo_root: Path | None = None) -> str:
+    """The full commit ``sha`` names in ``repo_root``, via ``git rev-parse --verify <sha>^{commit}``.
+
+    Raises :class:`PinnedEnvError` if ``sha`` is malformed or names no commit
+    there (a typo, an ambiguous abbreviation, a commit not yet fetched).
+    """
+    if not _SHA_RE.match(sha):
+        raise PinnedEnvError(f"not a git SHA: {sha!r}")
+    run = runner or _default_runner
+    repo = repo_root or _default_repo_root()
+    full = run(["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^{{commit}}"], cwd=repo)
+    return full.strip() or sha
+
+
 def prepare_pinned_run(
     sha: str,
     run_dir: Path,
@@ -195,8 +209,7 @@ def prepare_pinned_run(
             raise PinnedEnvError("CIV6AZ_DATA_ROOT is not set")
         envs_root = root / "envs"
 
-    full_sha = run(["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^{{commit}}"], cwd=repo)
-    full_sha = full_sha.strip() or sha
+    full_sha = resolve_commit(sha, runner=run, repo_root=repo)
     venv = Path(envs_root) / full_sha[:12]
     src = run_dir / "src"
     if src.exists():
