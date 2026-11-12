@@ -603,7 +603,11 @@ def _chosen_and_visited(variant: str, seed: int, leaf_value: float) -> tuple[int
         muzero = MuZeroMCTS(
             _AdversarialMuZeroNet(leaf_value),
             MuZeroMCTSConfig(
-                num_simulations=n, num_sampled_actions=k, use_categorical_reward=False, seed=seed
+                num_simulations=n,
+                num_sampled_actions=k,
+                use_categorical_reward=False,
+                seed=seed,
+                policy_target="one_hot",
             ),
         )
         original_m = muzero._run_muzero_simulation
@@ -804,9 +808,14 @@ def _returned_and_final_ranking(
                 ),
             ).search(env)
         elif variant == "batch":
+            # one_hot: this test reads the halving winner off the returned
+            # policy. Batch honours `policy_target` since T18; before that it
+            # returned a one-hot whatever the config said.
             probs, _ = BatchGumbelMCTS(
                 _ActionValueNet(behaviour),
-                BatchMCTSConfig(num_simulations=10, num_sampled_actions=3, seed=seed),
+                BatchMCTSConfig(
+                    num_simulations=10, num_sampled_actions=3, seed=seed, policy_target="one_hot"
+                ),
             ).search(env)
         else:
             probs, _ = MuZeroMCTS(
@@ -816,6 +825,7 @@ def _returned_and_final_ranking(
                     num_sampled_actions=3,
                     use_categorical_reward=False,
                     seed=seed,
+                    policy_target="one_hot",
                 ),
             ).search(env.get_observation(), env.get_valid_actions())
     assert rankings, "the search never chose among its survivors"

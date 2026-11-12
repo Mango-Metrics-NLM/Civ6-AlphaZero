@@ -46,10 +46,13 @@ from alpha_zero.core.mcts.backup import (
     backpropagate_path,
     env_current_player,
     log_backup_diagnostics,
+    perspective_sign,
     should_track_to_play,
 )
 from alpha_zero.core.mcts.gumbel import (
     POLICY_TARGET_COMPLETED_Q,
+    VALID_POLICY_TARGETS,
+    build_root_policy_target,
 )
 from alpha_zero.core.mcts.gumbel_ops import (
     HalvingRound,
@@ -97,6 +100,10 @@ class BatchMCTSConfig:
             reshapes the rounds but never changes the total budget.
         temperature: Temperature for final action selection.
         temperature_threshold: Turn after which to use temperature=0.
+        policy_target: How ``batch_search`` reports each tree's improved policy;
+            same modes and builder as :class:`GumbelMCTSConfig`.
+        greedy_threshold: ``select_action`` ignores temperature once a single
+            action holds at least this much probability mass.
     """
 
     num_simulations: int = 16
@@ -127,6 +134,13 @@ class BatchMCTSConfig:
             raise ValueError(f"max_batch_size must be >= 1, got {self.max_batch_size}")
         if self.num_simulations < 1:
             raise ValueError(f"num_simulations must be >= 1, got {self.num_simulations}")
+        if self.policy_target not in VALID_POLICY_TARGETS:
+            raise ValueError(
+                f"policy_target must be one of {sorted(VALID_POLICY_TARGETS)}; "
+                f"got {self.policy_target!r}"
+            )
+        if not 0.0 < self.greedy_threshold <= 1.0:
+            raise ValueError(f"greedy_threshold must be in (0, 1]; got {self.greedy_threshold}")
 
 
 class _PendingEvaluation(NamedTuple):
@@ -333,12 +347,28 @@ class BatchGumbelMCTS:
         )
         total_evals += self.last_search_stats.sim_evals
 
-        # Step 4: Construct one-hot policies
+        # Step 4: Build each tree's policy target with GumbelMCTS's own builder.
+        # This path used to return a one-hot on the halving winner and ignore
+        # `policy_target`, so batch self-play shards trained on a different
+        # target than sequential ones. The one-hot was also wrong on its own
+        # terms: survivors are ranked with a coefficient of 1 on completed Q
+        # (gumbel_ops, LF-A12), so a large enough Gumbel draw outranks a forced
+        # win, while the completed-Q target scales Q by `c_visit + max N` (T18
+        # forced-win oracle: 8 of 24 single-env positions answered wrongly).
         results: list[tuple[np.ndarray, float]] = []
         for env, root, best_action in zip(envs, roots, best_actions, strict=True):
-            action_probs = np.zeros(env.action_space.n, dtype=np.float32)
-            if best_action >= 0 and best_action < env.action_space.n:
-                action_probs[best_action] = 1.0
+            action_space_size = env.action_space.n
+            if 0 <= best_action < action_space_size:
+                action_probs = build_root_policy_target(
+                    root,
+                    best_action,
+                    action_space_size,
+                    policy_target=self.config.policy_target,
+                    c_visit=self.config.c_visit,
+                    c_scale=self.config.c_scale,
+                )
+            else:
+                action_probs = np.zeros(action_space_size, dtype=np.float32)
             results.append((action_probs, root.value))
 
         # Log metrics periodically
@@ -411,29 +441,27 @@ class BatchGumbelMCTS:
 
         num_rounds = max(len(schedule) for schedule in schedules)
 
-        # Run halving rounds. Round r of every env is evaluated in two batches:
-        # the full passes, then -- after re-ranking on their evidence -- the odd
-        # visits (mctx re-scores before every simulation).
+        # Run halving rounds. Each round runs the full passes, then -- after
+        # re-ranking on their evidence -- the odd visits (mctx re-scores before
+        # every simulation). Both phases advance every tree in lockstep, one
+        # simulation per tree per batch (see `_run_lockstep`).
         for round_idx in range(num_rounds):
             in_round = [
                 env_idx for env_idx in range(num_envs) if round_idx < len(schedules[env_idx])
             ]
 
-            pending_evals: list[_PendingEvaluation] = []
+            queues: dict[int, list[int]] = {}
             for env_idx in in_round:
                 halving_round = schedules[env_idx][round_idx]
                 survivors = active_actions_list[env_idx][: halving_round.survivors]
                 active_actions_list[env_idx] = survivors
-                for _ in range(halving_round.full_passes):
-                    for action in survivors:
-                        pending = self._run_simulation_for_env(
-                            env_idx, envs[env_idx], roots[env_idx], np.array([action])
-                        )
-                        if pending is not None:
-                            pending_evals.append(pending)
-            self._evaluate_pending(pending_evals)
+                # Pass by pass, action by action: GumbelMCTS's order.
+                queues[env_idx] = [
+                    action for _ in range(halving_round.full_passes) for action in survivors
+                ]
+            self._run_lockstep(envs, roots, queues)
 
-            pending_evals = []
+            queues = {}
             for env_idx in in_round:
                 halving_round = schedules[env_idx][round_idx]
                 if not halving_round.remainder:
@@ -445,13 +473,8 @@ class BatchGumbelMCTS:
                     root_values[env_idx],
                 )
                 active_actions_list[env_idx] = survivors
-                for action in survivors[: halving_round.remainder]:
-                    pending = self._run_simulation_for_env(
-                        env_idx, envs[env_idx], roots[env_idx], np.array([action])
-                    )
-                    if pending is not None:
-                        pending_evals.append(pending)
-            self._evaluate_pending(pending_evals)
+                queues[env_idx] = survivors[: halving_round.remainder]
+            self._run_lockstep(envs, roots, queues)
 
             # After the round, rank each participating env's survivors by
             # completed Q plus Gumbel score; the next round takes the top ones.
@@ -483,6 +506,44 @@ class BatchGumbelMCTS:
 
         return best_actions
 
+    def _run_lockstep(
+        self,
+        envs: list[MCTSEnvironment],
+        roots: list[GumbelMCTSNode],
+        queues: dict[int, list[int]],
+    ) -> None:
+        """Run each tree's queued root actions, one simulation per tree per batch.
+
+        The batch is formed ACROSS environments, never within one tree. This
+        path used to queue every simulation of a round before evaluating any of
+        them, so all of a tree's simulations for one root action descended to
+        the same unexpanded leaf: a round of 21 passes evaluated one leaf 21
+        times and grew the tree by a single ply. Measured by the T18 forced-win
+        oracle, a 128-simulation search never reached a terminal three plies
+        deep, where ``GumbelMCTS`` with the same budget does. Stepping in
+        lockstep gives each tree exactly the sequence of simulations
+        ``GumbelMCTS`` would run on it, each one seeing its predecessors'
+        expansions and backups.
+
+        Args:
+            envs: Game environments, indexed like ``roots``.
+            roots: Root nodes, one per environment.
+            queues: Root actions to simulate, in order, keyed by environment
+                index. Environments absent from the mapping are skipped.
+        """
+        steps = max((len(queue) for queue in queues.values()), default=0)
+        for step in range(steps):
+            pending_evals: list[_PendingEvaluation] = []
+            for env_idx, queue in queues.items():
+                if step >= len(queue):
+                    continue
+                pending = self._run_simulation_for_env(
+                    env_idx, envs[env_idx], roots[env_idx], np.array([queue[step]])
+                )
+                if pending is not None:
+                    pending_evals.append(pending)
+            self._evaluate_pending(pending_evals)
+
     def _evaluate_pending(self, pending_evals: list[_PendingEvaluation]) -> None:
         """Evaluate queued leaves in one batched forward pass, expand and back up."""
         if not pending_evals:
@@ -505,8 +566,10 @@ class BatchGumbelMCTS:
     ) -> list[int]:
         """Order ``actions`` best-first by completed Q plus Gumbel score.
 
-        Keeps this path's historical unconditional ``-child.value`` (CLAUDE.md
-        §5.3; the sign rule is task T18).
+        A child's value is stored from ITS mover's perspective, so it is negated
+        only across a change of acting player -- the rule ``GumbelMCTS`` and the
+        shared backup use. This path used to negate unconditionally, which on a
+        same-player edge ranks the winning move last (T18 forced-win oracle).
         """
         max_visits = max(
             (root.children[a].visit_count for a in actions if a in root.children), default=0
@@ -516,7 +579,8 @@ class BatchGumbelMCTS:
             completed = 0.0
             child = root.children.get(action)
             if child is not None:
-                q = -child.value if child.visit_count > 0 else 0.0
+                q_sign = perspective_sign(root.to_play, child.to_play)
+                q = q_sign * child.value if child.visit_count > 0 else 0.0
                 completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
             combined[action] = completed + scores.get(action, 0.0)
         return sorted(actions, key=lambda a: -combined[a])
@@ -758,7 +822,7 @@ class BatchGumbelMCTS:
             # Renormalize after masking
             action_probs = action_probs / action_probs.sum()
 
-        if temperature == 0 or action_probs.max() > _GREEDY_THRESHOLD:
+        if temperature == 0 or action_probs.max() > self.config.greedy_threshold:
             # Greedy selection (usual case for Gumbel MCTS)
             return int(np.argmax(action_probs))
 

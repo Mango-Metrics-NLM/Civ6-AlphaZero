@@ -11,14 +11,18 @@ import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.core.mcts.backup import backpropagate_path, log_backup_diagnostics
 from alpha_zero.core.mcts.gumbel_ops import (
+    POLICY_TARGET_COMPLETED_Q,
+    VALID_POLICY_TARGETS,
     SearchStats,
     choose_among_most_visited,
     compute_completed_q,
     gumbel_sample_actions,
     halving_schedule,
+    policy_target_from_root_stats,
 )
 from alpha_zero.core.mcts.mcts_protocols import MuZeroNetworkProtocol
 from alpha_zero.core.mcts_constants import (
+    DEFAULT_C_VISIT,
     DEFAULT_ROLLOUT_DEPTH,
     EPSILON,
     GREEDY_THRESHOLD,
@@ -48,6 +52,12 @@ class MuZeroMCTSConfig:
         use_categorical_reward: If True, network outputs categorical reward distribution.
             If False, network outputs scalar reward. Must match network configuration.
         reward_support_size: Size of categorical support (only used if use_categorical_reward=True).
+        policy_target: How the Gumbel path (``use_gumbel=True``) reports its
+            improved policy; the modes and builder of ``GumbelMCTSConfig``.
+            ``one_hot`` reproduces runs from before T18. The PUCT path always
+            returns normalised visit counts.
+        c_visit: Visit constant of the completed-Q policy target.
+        c_scale: Scale constant of the completed-Q policy target.
     """
 
     num_simulations: int = MCTS.MUZERO_NUM_SIMULATIONS
@@ -68,6 +78,9 @@ class MuZeroMCTSConfig:
     # adding it here makes `create_mcts(..., seed=42)` work with no factory
     # change.
     seed: int | None = None
+    policy_target: str = POLICY_TARGET_COMPLETED_Q
+    c_visit: float = DEFAULT_C_VISIT
+    c_scale: float = MCTS.GUMBEL_C_SCALE
 
     def __post_init__(self) -> None:
         if not MCTS.MIN_SIMULATIONS <= self.num_simulations <= MCTS.MAX_SIMULATIONS:
@@ -97,6 +110,11 @@ class MuZeroMCTSConfig:
             )
         if not 0.0 < self.discount <= 1.0:
             raise ValueError(f"discount must be in (0, 1]; got {self.discount}")
+        if self.policy_target not in VALID_POLICY_TARGETS:
+            raise ValueError(
+                f"policy_target must be one of {sorted(VALID_POLICY_TARGETS)}; "
+                f"got {self.policy_target!r}"
+            )
         if self.use_categorical_reward and self.reward_support_size <= 0:
             raise ValueError(
                 f"reward_support_size must be > 0 when use_categorical_reward=True; "
@@ -288,6 +306,10 @@ class MuZeroMCTS:
                 temperature=base_config.temperature,
                 temperature_threshold=base_config.temperature_threshold,
                 discount=base_config.discount,
+                seed=base_config.seed,
+                policy_target=base_config.policy_target,
+                c_visit=base_config.c_visit,
+                c_scale=base_config.c_scale,
                 # Sync with network config
                 use_categorical_reward=getattr(net_config, "use_categorical_reward", True),
                 reward_support_size=getattr(
@@ -433,8 +455,7 @@ class MuZeroMCTS:
         if self.config.use_gumbel:
             # Gumbel-based simulation allocation
             best_action = self._gumbel_search(root, valid_actions, policy, action_mask, root_value)
-            action_probs = np.zeros(len(action_mask), dtype=np.float32)
-            action_probs[best_action] = 1.0
+            action_probs = self._gumbel_policy_target(root, best_action, len(action_mask))
         else:
             # Standard PUCT simulations
             for _ in range(self.config.num_simulations):
@@ -576,8 +597,53 @@ class MuZeroMCTS:
             [root.children[a].visit_count if a in root.children else 0 for a in actions],
         )
 
-    @staticmethod
+    def _gumbel_policy_target(
+        self, root: MuZeroNode, best_action: int, action_space_size: int
+    ) -> np.ndarray:
+        """The Gumbel path's policy target, from the builder ``GumbelMCTS`` uses.
+
+        This path returned a one-hot on the halving winner. Survivors are ranked
+        with a coefficient of 1 on completed Q (LF-A12), so a large enough
+        Gumbel draw outranks a forced win and the one-hot reported the losing
+        move (T18 forced-win oracle: 4 of 12 positions). The completed-Q target
+        scales Q by ``c_visit + max N``. ``policy_target="one_hot"`` restores it.
+        """
+        priors = np.zeros(action_space_size, dtype=np.float32)
+        visits = np.zeros(action_space_size, dtype=np.float32)
+        qs = np.zeros(action_space_size, dtype=np.float32)
+        for action, child in root.children.items():
+            if 0 <= action < action_space_size:
+                priors[action] = child.prior
+                visits[action] = child.visit_count
+                qs[action] = self._root_q(child)
+        return policy_target_from_root_stats(
+            policy_target=self.config.policy_target,
+            best_action=best_action,
+            priors=priors,
+            visit_counts=visits,
+            q_values=qs,
+            root_value=root.value,
+            c_visit=self.config.c_visit,
+            c_scale=self.config.c_scale,
+        )
+
+    def _root_q(self, child: MuZeroNode) -> float:
+        """Q of a root action: the transition's reward plus the discounted value after it.
+
+        ``_backpropagate_with_rewards`` stores in each node the return *from*
+        that node onward, so a child's ``value`` excludes the reward on the
+        edge into it. Ranking by ``child.value`` alone therefore dropped the
+        immediate reward -- and when a game ends on that edge, the reward is the
+        whole outcome: the T18 forced-win oracle at depth 1 saw every action
+        valued 0 and chose by Gumbel noise. MuZero's reference ``ucb_score``
+        uses ``reward + discount * value`` for the same reason.
+        """
+        if child.visit_count == 0:
+            return 0.0
+        return child.reward + self.config.discount * child.value
+
     def _rank_by_completed_q(
+        self,
         root: MuZeroNode,
         actions: list[int],
         gumbel_scores: dict[int, float],
@@ -592,7 +658,7 @@ class MuZeroMCTS:
             completed = 0.0
             child = root.children.get(action)
             if child is not None:
-                q = child.value if child.visit_count > 0 else 0.0
+                q = self._root_q(child)
                 completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
             combined[action] = completed + gumbel_scores.get(action, 0.0)
         return sorted(actions, key=lambda a: -combined[a])

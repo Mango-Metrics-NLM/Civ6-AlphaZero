@@ -7,6 +7,7 @@ depend on the Gumbel variant.
 
 from __future__ import annotations
 
+import logging
 import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
@@ -14,6 +15,30 @@ from dataclasses import dataclass
 import numpy as np
 
 from alpha_zero.core.mcts_constants import EPSILON
+
+logger = logging.getLogger(__name__)
+
+#: Policy-target modes for every Gumbel search (``GumbelMCTS``,
+#: ``BatchGumbelMCTS``, ``MuZeroMCTS``).
+#:
+#: ``COMPLETED_Q`` is Danihelka's ``softmax(logits + sigma(completedQ))``
+#: (:func:`build_completed_q_policy`). ``VISIT_COUNTS`` returns the normalised
+#: root visit distribution -- the AlphaZero policy-improvement target, which is
+#: near-uniform under sequential halving. ``ONE_HOT`` reproduces the pre-2026-09
+#: behaviour, which returned a delta on the selected action; that discarded the
+#: search's own improvement signal and trained the policy head by cloning a
+#: single argmax, and it also kept the temperature schedule permanently inert
+#: because a delta always trips the greedy short-circuit. Retained so an
+#: existing run can be reproduced exactly.
+#:
+#: Defined here rather than in ``gumbel`` so ``muzero`` can use them without
+#: depending on the Gumbel variant; ``gumbel`` re-exports them.
+POLICY_TARGET_COMPLETED_Q = "completed_q"
+POLICY_TARGET_VISIT_COUNTS = "visit_counts"
+POLICY_TARGET_ONE_HOT = "one_hot"
+VALID_POLICY_TARGETS = frozenset(
+    {POLICY_TARGET_COMPLETED_Q, POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT}
+)
 
 #: Sequential halving never narrows below two survivors: the last round is a
 #: comparison, and a single survivor has nothing to be compared with. Matches
@@ -450,3 +475,70 @@ def build_completed_q_policy(
         return np.zeros_like(priors, dtype=np.float32)
     normalised: np.ndarray = (exp / total).astype(np.float32)
     return normalised
+
+
+def policy_target_from_root_stats(
+    *,
+    policy_target: str,
+    best_action: int,
+    priors: np.ndarray,
+    visit_counts: np.ndarray,
+    q_values: np.ndarray,
+    root_value: float,
+    c_visit: float,
+    c_scale: float,
+) -> np.ndarray:
+    """The policy target every Gumbel search reports, from its root statistics.
+
+    One definition for ``GumbelMCTS``, ``BatchGumbelMCTS`` and ``MuZeroMCTS``:
+    a trainer reading a rolling replay window cannot tell which search produced
+    a shard, so they must not emit different targets for the same evidence.
+    Each caller supplies only what differs between them -- how a root child's
+    Q is read (a perspective sign for the environment searches, reward plus
+    discounted value for MuZero).
+
+    Args:
+        policy_target: One of :data:`VALID_POLICY_TARGETS`.
+        best_action: The halving winner; the whole answer for ``one_hot``, and
+            the fallback when the search visited nothing.
+        priors: Root child priors over the action space.
+        visit_counts: Root child visit counts, aligned with ``priors``.
+        q_values: Root child Q values from the root mover's perspective.
+        root_value: The root's own value estimate.
+        c_visit: Visit constant of the completed-Q transform.
+        c_scale: Scale constant of the completed-Q transform.
+
+    Returns:
+        A probability vector over the action space, summing to 1.
+    """
+    if policy_target == POLICY_TARGET_COMPLETED_Q:
+        target = build_completed_q_policy(
+            priors=priors,
+            visit_counts=visit_counts,
+            q_values=q_values,
+            root_value=root_value,
+            c_visit=c_visit,
+            c_scale=c_scale,
+        )
+    elif policy_target == POLICY_TARGET_VISIT_COUNTS:
+        total = float(visit_counts.sum())
+        target = (visit_counts / total if total > 0.0 else visit_counts * 0.0).astype(np.float32)
+    else:
+        target = np.zeros_like(priors, dtype=np.float32)
+
+    if target.sum() <= 0.0:
+        # One-hot by request, or the search considered nothing (e.g. a
+        # one-simulation budget): the selected action is all there is.
+        target = np.zeros_like(priors, dtype=np.float32)
+        target[best_action] = 1.0
+        return target
+    logger.debug(
+        "%s policy target: %d non-zero of %d, max=%.4f, argmax=%d, chosen=%d",
+        policy_target,
+        int((target > 0).sum()),
+        target.size,
+        float(target.max()),
+        int(target.argmax()),
+        best_action,
+    )
+    return target

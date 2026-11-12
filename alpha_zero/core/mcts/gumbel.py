@@ -20,12 +20,16 @@ from alpha_zero.core.mcts.backup import (
     should_track_to_play,
 )
 from alpha_zero.core.mcts.gumbel_ops import (
+    POLICY_TARGET_COMPLETED_Q,
+    POLICY_TARGET_ONE_HOT,
+    POLICY_TARGET_VISIT_COUNTS,
+    VALID_POLICY_TARGETS,
     SearchStats,
-    build_completed_q_policy,
     choose_among_most_visited,
     compute_completed_q,
     gumbel_sample_actions,
     halving_schedule,
+    policy_target_from_root_stats,
 )
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment, MCTSNetwork
 from alpha_zero.core.mcts_constants import (
@@ -39,21 +43,18 @@ from alpha_zero.utils.device import place_network
 
 logger = logging.getLogger(__name__)
 
-#: Policy-target modes for :class:`GumbelMCTS`.
-#:
-#: ``VISIT_COUNTS`` returns the normalised root visit distribution -- the
-#: AlphaZero policy-improvement target. ``ONE_HOT`` reproduces the pre-2026-09
-#: behaviour, which returned a delta on the selected action; that discarded the
-#: search's own improvement signal and trained the policy head by cloning a
-#: single argmax, and it also kept the temperature schedule permanently inert
-#: because a delta always trips the greedy short-circuit. Retained so an
-#: existing run can be reproduced exactly.
-POLICY_TARGET_COMPLETED_Q = "completed_q"
-POLICY_TARGET_VISIT_COUNTS = "visit_counts"
-POLICY_TARGET_ONE_HOT = "one_hot"
-VALID_POLICY_TARGETS = frozenset(
-    {POLICY_TARGET_COMPLETED_Q, POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT}
-)
+# The policy-target modes live in gumbel_ops (MuZero uses them too) and are
+# re-exported here, their historical import path.
+__all__ = [
+    "POLICY_TARGET_COMPLETED_Q",
+    "POLICY_TARGET_ONE_HOT",
+    "POLICY_TARGET_VISIT_COUNTS",
+    "VALID_POLICY_TARGETS",
+    "GumbelMCTS",
+    "GumbelMCTSConfig",
+    "GumbelMCTSNode",
+    "build_root_policy_target",
+]
 
 
 @dataclass(slots=True)
@@ -250,6 +251,65 @@ class GumbelMCTSNode:
         backpropagate_path(leaf_to_root, value, reference=self.to_play)
 
 
+def build_root_policy_target(
+    root: GumbelMCTSNode,
+    best_action: int,
+    action_space_size: int,
+    *,
+    policy_target: str,
+    c_visit: float,
+    c_scale: float,
+) -> np.ndarray:
+    """Build the policy target a Gumbel search reports as its improvement.
+
+    Shared by :class:`GumbelMCTS` and
+    :class:`~alpha_zero.core.batch_mcts.BatchGumbelMCTS`: a trainer reading a
+    rolling replay window cannot tell which worker produced a shard, so the two
+    must not emit different targets for the same search.
+
+    The visit distribution over the root's children is AlphaZero's
+    policy-improvement operator: it carries how the search apportioned its
+    budget, which is the signal the policy head is meant to learn. The
+    legacy one-hot discarded it.
+
+    Falls back to a one-hot when no child was visited (for example a
+    one-simulation budget), so the return is always a valid distribution.
+
+    Args:
+        root: Expanded root node.
+        best_action: Action the search selected.
+        action_space_size: Width of the returned vector.
+        policy_target: One of :data:`VALID_POLICY_TARGETS`.
+        c_visit: Visit constant of the completed-Q transform.
+        c_scale: Scale constant of the completed-Q transform.
+
+    Returns:
+        A probability vector over the action space, summing to 1.
+    """
+    priors = np.zeros(action_space_size, dtype=np.float32)
+    visits = np.zeros(action_space_size, dtype=np.float32)
+    qs = np.zeros(action_space_size, dtype=np.float32)
+    for action, child in root.children.items():
+        if not 0 <= action < action_space_size:
+            continue
+        priors[action] = child.prior
+        visits[action] = child.visit_count
+        # Same perspective rule the selector uses: a child's stored value is
+        # from ITS mover's point of view.
+        sign = perspective_sign(root.to_play, child.to_play)
+        qs[action] = sign * child.value if child.visit_count > 0 else 0.0
+    return policy_target_from_root_stats(
+        policy_target=policy_target,
+        best_action=best_action,
+        priors=priors,
+        visit_counts=visits,
+        q_values=qs,
+        root_value=root.value,
+        c_visit=c_visit,
+        c_scale=c_scale,
+    )
+
+
 class GumbelMCTS:
     """Gumbel MuZero MCTS - efficient search with very few simulations.
 
@@ -369,84 +429,15 @@ class GumbelMCTS:
         best_action: int,
         action_space_size: int,
     ) -> np.ndarray:
-        """Build the policy target this search reports as its improvement.
-
-        The visit distribution over the root's children is AlphaZero's
-        policy-improvement operator: it carries how the search apportioned its
-        budget, which is the signal the policy head is meant to learn. The
-        legacy one-hot discarded it.
-
-        Falls back to a one-hot when no child was visited (for example a
-        one-simulation budget), so the return is always a valid distribution.
-
-        Args:
-            root: Expanded root node.
-            best_action: Action the search selected.
-            action_space_size: Width of the returned vector.
-
-        Returns:
-            A probability vector over the action space, summing to 1.
-        """
-        action_probs = np.zeros(action_space_size, dtype=np.float32)
-
-        if self.config.policy_target == POLICY_TARGET_ONE_HOT:
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        if self.config.policy_target == POLICY_TARGET_COMPLETED_Q:
-            priors = np.zeros(action_space_size, dtype=np.float32)
-            visits = np.zeros(action_space_size, dtype=np.float32)
-            qs = np.zeros(action_space_size, dtype=np.float32)
-            for action, child in root.children.items():
-                if not 0 <= action < action_space_size:
-                    continue
-                priors[action] = child.prior
-                visits[action] = child.visit_count
-                # Same perspective rule the selector uses: a child's stored value
-                # is from ITS mover's point of view.
-                sign = perspective_sign(root.to_play, child.to_play)
-                qs[action] = sign * child.value if child.visit_count > 0 else 0.0
-            improved = build_completed_q_policy(
-                priors=priors,
-                visit_counts=visits,
-                q_values=qs,
-                root_value=root.value,
-                c_visit=self.config.c_visit,
-                c_scale=self.config.c_scale,
-            )
-            if improved.sum() > 0.0:
-                logger.debug(
-                    "completed-Q policy target: %d non-zero, max=%.4f, argmax=%d, chosen=%d",
-                    int((improved > 0).sum()),
-                    float(improved.max()),
-                    int(improved.argmax()),
-                    best_action,
-                )
-                return improved
-            # The search considered nothing (e.g. a one-simulation budget); the
-            # selected action is all the information there is.
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        for action, child in root.children.items():
-            if 0 <= action < action_space_size:
-                action_probs[action] = float(child.visit_count)
-
-        total = action_probs.sum()
-        if total <= 0.0:
-            # No child was visited; the selected action is all the information
-            # the search produced.
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        action_probs /= total
-        logger.debug(
-            "policy target: %d non-zero of %d, max=%.4f",
-            int((action_probs > 0).sum()),
+        """Build this search's policy target; see :func:`build_root_policy_target`."""
+        return build_root_policy_target(
+            root,
+            best_action,
             action_space_size,
-            float(action_probs.max()),
+            policy_target=self.config.policy_target,
+            c_visit=self.config.c_visit,
+            c_scale=self.config.c_scale,
         )
-        return action_probs
 
     def _sequential_halving(
         self,
