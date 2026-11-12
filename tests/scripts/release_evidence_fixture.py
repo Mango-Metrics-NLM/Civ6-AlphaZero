@@ -1,14 +1,16 @@
 """Build release evidence bundles for ``tests/scripts/test_verify_release_evidence.py``.
 
-Not a test module (no ``test_`` prefix). Every bundle here is generated: the
-per-arm ``result.json`` rows come from the benchmark's own ``_result_record``
-(so they are exactly what ``benchmark_suite.py`` writes), the stored verdict from
-``a1_protocol.compute_verdict``, and every sha256 from the files as written. A
-test then breaks one thing and asserts the verifier notices.
+Not a test module (no ``test_`` prefix). Every bundle here is generated: each
+run's invocations are section 7.1's registered commands
+(``a1_registration.registered_invocations``), the per-arm ``result.json`` rows come
+from the benchmark's own ``_result_record`` (exactly what ``benchmark_suite.py``
+writes), the stored verdict from ``a1_protocol.compute_verdict``, and every
+sha256 from the files as written. A test then breaks one thing and asserts the
+verifier notices.
 
 The repository is a throwaway git repo (:class:`tests.scripts.git_fixture.GitRepo`)
-holding a copy of the real ``docs/EVALUATION.md``, so the protocol hash a bundle
-records is the registered one.
+holding a copy of the real ``docs/EVALUATION.md`` with its "Branch in force"
+slot filled (as T0b will fill it), so the commands are the registered ones.
 """
 
 from __future__ import annotations
@@ -21,7 +23,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from alpha_zero.evaluation.a1_protocol import compute_verdict, protocol_sha256
+from alpha_zero.evaluation.a1_protocol import compute_verdict, protocol_sha256, registered_protocol
+from alpha_zero.evaluation.a1_registration import (
+    A1R_SEED,
+    flag_value,
+    registered_invocations,
+)
 from alpha_zero.evaluation.benchmark import (
     BENCHMARK_SCHEMA_VERSION,
     SEARCH_EPOCH,
@@ -34,13 +41,24 @@ from scripts.check_branch_direction import ApiError
 from tests.scripts.git_fixture import GitRepo
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-EVALUATION_TEXT = (REPO_ROOT / "docs" / "EVALUATION.md").read_text(encoding="utf-8")
-REGISTERED_SHA = protocol_sha256(EVALUATION_TEXT)
+REAL_EVALUATION = (REPO_ROOT / "docs" / "EVALUATION.md").read_text(encoding="utf-8")
+PENDING = "**Branch in force: pending T0b.**"
 REPO = "acme/widget"
 RELEASE = "2.1.0"
 RC_TAG = "v2.1.0-rc.1"
 BUNDLE_DIR = Path("docs/evidence/release_v2_1_0")
 GENERATED = "2026-12-01T00:00:00+00:00"
+SEEDS = {"A1": 20261111, "A1-R": A1R_SEED}
+
+
+def evaluation_text(branch: str = "40") -> str:
+    """The real ``docs/EVALUATION.md`` with T0b's branch slot filled."""
+    assert REAL_EVALUATION.count(PENDING) == 1
+    return REAL_EVALUATION.replace(PENDING, f"**Branch in force: {branch}.**")
+
+
+EVALUATION_TEXT = evaluation_text()
+REGISTERED_SHA = protocol_sha256(EVALUATION_TEXT)
 
 Pair = tuple[str, str]
 
@@ -65,13 +83,14 @@ LOPSIDED: list[Pair] = [("win", "win")]
 PRIMARY = {"PASS": WIN, "FAIL": LOSS, "INCONCLUSIVE": EVEN}
 
 
-def ckpt(n: int, run_id: str) -> str:
-    return "checkpoint:" + hashlib.sha256(f"{run_id}/{n}".encode()).hexdigest()
+def ckpt(path: str) -> str:
+    """A checkpoint's ``checkpoint:<sha256>`` id, stable per path."""
+    return "checkpoint:" + hashlib.sha256(path.encode()).hexdigest()
 
 
 @dataclass
 class RunSpec:
-    """One component run. Defaults are a clean, registered A1 card at 980 games."""
+    """One attempt. Defaults are a clean, registered A1 card at 980 games."""
 
     run_id: str = "a1-20261111"
     role: str = "A1"
@@ -81,17 +100,15 @@ class RunSpec:
     env_var_names: list[str] = field(default_factory=lambda: ["CIV6AZ_DATA_ROOT", "PATH"])
     approval_ref: str | None = None
     train_games: int = 480
-    positive_control_games: int = 40
     resumed: bool = False
+    #: Run at the rc commit instead of the run commit (a re-run after a fix).
+    at_rc: bool = False
+    #: Registered invocations to edit before writing: name -> function(argv) -> argv.
+    edit_argv: dict[str, Callable[[list[str]], list[str]]] = field(default_factory=dict)
 
     @property
     def seed(self) -> int:
-        return vre.ROLE_SEEDS[self.role]
-
-
-def arm_argv(name: str, seed: int, candidate: str) -> list[str]:
-    """A stand-in for the arm's registered arguments: enough to tell arms apart."""
-    return ["--seed", str(seed), "--candidate", candidate, "--out", f"arena/{name}"]
+        return SEEDS[self.role]
 
 
 def _envelope(
@@ -101,7 +118,7 @@ def _envelope(
     *,
     seed: int,
     sha: str,
-    argv: list[str],
+    launched: list[str],
 ) -> dict[str, Any]:
     protocol = BenchmarkProtocol(
         board_size=8, max_turns=60, num_simulations=24, gumbel_k=8, n_games=len(records)
@@ -121,17 +138,8 @@ def _envelope(
             "search_epoch": SEARCH_EPOCH,
             "search_semantics": SEARCH_SEMANTICS,
             "seed": seed,
-            # As run_card launches it: the card's argv plus --max_games <priced>.
-            "command": shlex.join(
-                [
-                    "python",
-                    "-m",
-                    "alpha_zero.evaluation.benchmark",
-                    *argv,
-                    "--max_games",
-                    str(len(records)),
-                ]
-            ),
+            # What cli_command writes for a run_card child: the launched argv.
+            "command": shlex.join(["python", "-m", "alpha_zero.evaluation.benchmark", *launched]),
             "device": "cpu",
             "search": {
                 "mcts_type": "gumbel",
@@ -156,18 +164,25 @@ def _envelope(
     }
 
 
-def _arms(spec: RunSpec) -> dict[str, tuple[str, str, list[dict[str, Any]]]]:
-    c0, c20 = ckpt(0, spec.run_id), ckpt(20, spec.run_id)
-    pc = spec.positive_control_games
-    arms = {
-        "primary": (c20, c0, games(PRIMARY[spec.primary], 200)),
-        "symmetry": (c0, c0, games(spec.symmetry, 40)),
-        "positive_control": ("heuristic", "random", games(WIN, pc)),
-        "final_vs_random": (c20, "random", games(WIN, vre.BRANCH_FINAL_GAMES[pc])),
-    }
-    for n in (5, 10, 15):
-        arms[f"secondary_{n}"] = (ckpt(n, spec.run_id), c0, games(EVEN, 60))
-    return arms
+def _sides(argv: list[str]) -> tuple[str, str]:
+    """The candidate and opponent ids an arm's arguments name."""
+    path = flag_value(argv, "--checkpoint")
+    candidate = ckpt(path) if path else str(flag_value(argv, "--candidate"))
+    opp_path = flag_value(argv, "--opponent-checkpoint")
+    if opp_path:
+        return candidate, ckpt(opp_path)
+    named = [a.split("=", 1)[1] for a in argv if a.startswith("--opponents=")]
+    return candidate, [n for n in named if n][-1]
+
+
+def _results(name: str, n: int, spec: RunSpec) -> list[dict[str, Any]]:
+    if name == "primary":
+        return games(PRIMARY[spec.primary], n)
+    if name == "symmetry":
+        return games(spec.symmetry, n)
+    if name.startswith("secondary"):
+        return games(EVEN, n)
+    return games(WIN, n)
 
 
 def _write(path: Path, text: str) -> dict[str, str]:
@@ -176,22 +191,32 @@ def _write(path: Path, text: str) -> dict[str, str]:
     return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def write_run(bundle_dir: Path, spec: RunSpec, sha: str) -> dict[str, Any]:
-    """Write one run's components under ``bundle_dir/<run_id>/``; return its bundle entry."""
+def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[str, Any]:
+    """Write one attempt's components under ``bundle_dir/<run_id>/``; return its entry."""
     base = Path(spec.run_id)
-    arms = _arms(spec)
-    invocations = [{"name": "train", "priced_games": spec.train_games, "exit_code": 0}]
-    for name, (cand, _o, rec) in arms.items():
-        argv = arm_argv(name, spec.seed, cand)
+    registered = registered_invocations(section, card_id=spec.run_id, seed=spec.seed)
+    invocations = []
+    arm_records: dict[str, tuple[str, str, list[dict[str, Any]], list[str]]] = {}
+    for name, argv in registered.items():
+        argv = spec.edit_argv.get(name, lambda a: a)(list(argv))
+        if name == "train":
+            priced = spec.train_games
+        else:
+            priced = int(flag_value(argv, "--n-games") or 0)
+        launched = [*argv, "--max_games", str(priced)]
         invocations.append(
             {
-                "name": name.replace("_", "-"),
-                "priced_games": len(rec),
+                "name": name,
+                "runner": "training_civ6" if name == "train" else "benchmark",
+                "priced_games": priced,
                 "exit_code": 0,
                 "argv": argv,
-                "launched_argv": [*argv, "--max_games", str(len(rec))],
+                "launched_argv": launched,
             }
         )
+        if name != "train":
+            cand, opp = _sides(argv)
+            arm_records[vre.arm_name(name)] = (cand, opp, _results(name, priced, spec), launched)
     total = sum(i["priced_games"] for i in invocations)
     run_json = {
         "schema_version": 1,
@@ -223,15 +248,13 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str) -> dict[str, Any]:
                 "resumed_from": "ckpt/checkpoint_10.pt" if spec.resumed and i > 10 else None,
             }
         )
-        for i in range(1, vre.TRAINING_ITERATIONS + 1)
+        for i in range(1, 21)
     ]
     rel = (base / "iterations.jsonl").as_posix()
     entry["iterations"] = {"path": rel, **_write(bundle_dir / rel, "\n".join(lines) + "\n")}
     entry["arms"] = {}
-    for name, (cand, opp, rec) in arms.items():
-        envelope = _envelope(
-            cand, opp, rec, seed=spec.seed, sha=sha, argv=arm_argv(name, spec.seed, cand)
-        )
+    for name, (cand, opp, rec, launched) in arm_records.items():
+        envelope = _envelope(cand, opp, rec, seed=spec.seed, sha=sha, launched=launched)
         rel = (base / "arena" / name / "result.json").as_posix()
         written = _write(bundle_dir / rel, json.dumps(envelope, indent=2))
         summary = vre.arm_summary(envelope["results"][0], vre.ARM_CONFIDENCE.get(name, 0.95))
@@ -244,9 +267,11 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str) -> dict[str, Any]:
     if any(n.startswith("MCTS_") for n in spec.env_var_names):
         interruptions.append("MCTS_")
     entry["verdict"] = compute_verdict(
-        arms["primary"][2], arms["symmetry"][2], arms["positive_control"][2],
+        arm_records["primary"][2],
+        arm_records["symmetry"][2],
+        arm_records["positive_control"][2],
         interruptions=interruptions,
-    ).to_dict()  # fmt: skip
+    ).to_dict()
     return entry
 
 
@@ -256,18 +281,21 @@ def write_bundle(
     *,
     sha: str,
     rc_sha: str,
+    rc_tag: str = RC_TAG,
+    document: str,
     report: str | None = None,
 ) -> dict[str, Any]:
-    runs = [write_run(bundle_dir, s, sha) for s in specs]
-    verdicts = {r["role"]: r["verdict"]["verdict"] for r in runs}
-    claimed = all(verdicts.get(role) == "PASS" for role in vre.CLAIM_ROLES)
+    section = registered_protocol(document)
+    runs = [write_run(bundle_dir, s, rc_sha if s.at_rc else sha, section) for s in specs]
+    judged = {r["role"]: r["verdict"]["verdict"] for r in runs if r["verdict"]["verdict"] != "VOID"}
+    claimed = all(judged.get(role) == "PASS" for role in vre.CLAIM_ROLES)
     total = sum(r["games"] for r in runs)
     bundle = {
         "bundle_schema_version": vre.BUNDLE_SCHEMA_VERSION,
         "release": RELEASE,
-        "rc_tag": RC_TAG,
+        "rc_tag": rc_tag,
         "rc_sha": rc_sha,
-        "protocol_sha256": REGISTERED_SHA,
+        "protocol_sha256": protocol_sha256(document),
         "runs": runs,
         "games_total": total,
         "learning_recorded": True,
@@ -316,7 +344,6 @@ def rehash(bundle_dir: Path, entry: dict[str, Any]) -> None:
 PYPROJECT = f'[project]\nname = "x"\nversion = "{RELEASE}"\n'
 CODE = {
     "pyproject.toml": PYPROJECT,
-    "docs/EVALUATION.md": EVALUATION_TEXT,
     "alpha_zero/core/mcts/base.py": "BASE = 1\n",
     "alpha_zero/unrelated.py": "X = 1\n",
 }
@@ -346,21 +373,35 @@ def make_release(
     specs: Sequence[RunSpec] = (RunSpec(),),
     *,
     code: dict[str, str] | None = None,
+    evaluation: str | None = None,
     after_run: dict[str, str] | None = None,
+    later_rc: dict[str, str] | None = None,
+    after_rc: dict[str, str] | None = None,
     index: str = INDEX,
     report: str | None = None,
+    extra: dict[str, str] | None = None,
 ) -> Release:
-    """``code`` at the run commit; ``after_run`` (if any) committed before the rc tag.
+    """A repository whose rc carries the evidence on top, as ``evidence/<rc>`` would.
 
-    The evidence commit (the bundle and the index row) goes on top of the rc,
-    as an ``evidence/<rc>`` branch merged into qa would put it.
+    * ``code`` (and ``evaluation``, the whole ``docs/EVALUATION.md``) at the run commit;
+    * ``after_run`` committed before ``v2.1.0-rc.1`` (so it is in rc.1);
+    * ``later_rc`` committed and tagged ``v2.1.0-rc.2`` (the bundle still names rc.1);
+    * ``after_rc`` committed after the rc(s), untagged (it reaches the release head);
+    * the evidence commit (bundle, index, ``extra`` files) on top.
     """
+    text = evaluation if evaluation is not None else EVALUATION_TEXT
     repo = GitRepo(root)
-    run_sha = repo.commit("code", {**CODE, **(code or {})})
+    run_sha = repo.commit("code", {**CODE, "docs/EVALUATION.md": text, **(code or {})})
     rc_sha = repo.commit("after the run", after_run) if after_run else run_sha
     repo.tag(RC_TAG, rc_sha)
-    bundle = write_bundle(repo.path / BUNDLE_DIR, specs, sha=run_sha, rc_sha=rc_sha, report=report)
-    repo.commit("evidence", {"docs/evidence/README.md": index})
+    if later_rc:
+        repo.tag("v2.1.0-rc.2", repo.commit("rcfix", later_rc))
+    if after_rc:
+        repo.commit("after the rc", after_rc)
+    bundle = write_bundle(
+        repo.path / BUNDLE_DIR, specs, sha=run_sha, rc_sha=rc_sha, document=text, report=report
+    )
+    repo.commit("evidence", {"docs/evidence/README.md": index, **(extra or {})})
     repo.git("add", "-A")
     repo.git("commit", "-q", "-m", "bundle")
     return Release(repo, run_sha, rc_sha, bundle)
