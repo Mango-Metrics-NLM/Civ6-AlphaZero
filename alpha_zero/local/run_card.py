@@ -48,7 +48,7 @@ FAILED). The one exception is an invocation whose own argv carries
 that invocation is bounded by its approval, not by this driver.
 
 Public surface: :func:`load_card`, :func:`price_card`, :func:`prepare_data_root`,
-:func:`run_card`, :func:`main`, :data:`RUNNERS`.
+:func:`refuse_placeholder_sha`, :func:`run_card`, :func:`main`, :data:`RUNNERS`.
 """
 
 from __future__ import annotations
@@ -378,6 +378,26 @@ def price_card(card: RunCard) -> PricedCard:
     return priced
 
 
+def is_placeholder_sha(sha: str) -> bool:
+    """``True`` for an all-zero sha: a card that prices but is not yet pinned to a commit."""
+    return bool(sha) and set(sha) == {"0"}
+
+
+def refuse_placeholder_sha(card: RunCard) -> None:
+    """Refuse a card whose ``sha`` is a placeholder, before anything is created.
+
+    A registered card (``configs/run_cards/a1.yaml``) ships with an all-zero
+    ``sha`` until its registration commit is merged. Pricing it is useful; running
+    it would claim the card's single-use run directory and write a FAILED record
+    for a run that never happened (T13 review I2).
+    """
+    if is_placeholder_sha(card.sha):
+        raise RunCardError(
+            f"run card {card.card_id}: placeholder sha {card.sha!r}; pin the merged commit "
+            "that carries its registration before running it (--price_only still works)"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Data root, run record, subprocesses
 # ---------------------------------------------------------------------------
@@ -548,6 +568,7 @@ def run_card(
     repo = Path(repo_root) if repo_root is not None else _default_repo_root()
     card = load_card(card_path)
     priced = price_card(card)  # refuses before anything exists
+    refuse_placeholder_sha(card)  # likewise: a placeholder must not claim the run dir
 
     root_arg = data_root if data_root is not None else resolve_data_root(required=True)
     if root_arg is None:  # unreachable: required=True raises

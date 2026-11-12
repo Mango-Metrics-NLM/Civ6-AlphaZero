@@ -446,6 +446,34 @@ def test_cli_price_only_prints_total_and_touches_nothing(
     assert not (tmp_path / "root").exists()
 
 
+@pytest.mark.parametrize("sha", ["0000000", "0" * 40])
+def test_placeholder_sha_refused_before_anything_is_created(
+    tmp_path: Path, pinned: FakeRunner, sha: str
+) -> None:
+    """A placeholder sha must not burn the single-use run directory (T13 review I2)."""
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha=sha)
+    with pytest.raises(rc.RunCardError, match="placeholder sha"):
+        _run(card, tmp_path, pinned)
+    assert not (tmp_path / "root").exists()
+    assert pinned.calls == []
+
+
+def test_placeholder_sha_still_prices(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="0" * 40)
+    assert rc.main([str(card), "--price_only", "--data_root", str(tmp_path / "root")]) == 0
+    assert "8" in capsys.readouterr().out
+    assert not (tmp_path / "root").exists()
+
+
+def test_cli_refuses_a_placeholder_sha_with_exit_2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")], sha="0" * 40)
+    assert rc.main([str(card), "--data_root", str(tmp_path / "root")]) == 2
+    assert "placeholder sha" in capsys.readouterr().err
+    assert not (tmp_path / "root").exists()
+
+
 def test_cli_refusal_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     leg = ("--num_games", "52", "--num_iterations", "10", "--save_interval", "1000")
     card = _card(tmp_path, [_train("a", *leg), _train("b", *leg)])
