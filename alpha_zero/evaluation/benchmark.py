@@ -587,8 +587,10 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
     with no provenance only warns).
     """
     from alpha_zero.core.checkpoint_utils import safe_torch_load
-    from alpha_zero.core.civ6_network import MicroCivNetwork
-    from alpha_zero.utils.checkpoint import check_provenance
+    from alpha_zero.utils.checkpoint import (
+        build_micro_network_from_checkpoint,
+        check_provenance,
+    )
 
     checkpoint = safe_torch_load(path, map_location=device)
     check_provenance(
@@ -596,17 +598,8 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
         expected_max_turns=expected_max_turns,
         source=path,
     )
-    network_config = dict(checkpoint.get("network_config", {}))
-    board_size = network_config.pop("board_size", 8)
-    action_size = network_config.pop("action_size", None) or network_config.pop(
-        "action_space_size", None
-    )
-    if action_size is None:
-        from alpha_zero.envs.microciv import MicroCivEnv
-
-        action_size = MicroCivEnv(board_size=board_size).action_space.n
-    network = MicroCivNetwork(
-        board_size=board_size, action_space_size=action_size, **network_config
+    network = build_micro_network_from_checkpoint(
+        checkpoint, default_board_size=8, default_action_size=None
     )
     state = checkpoint.get("state_dict") or checkpoint.get("model_state_dict") or checkpoint
     network.load_state_dict(state)

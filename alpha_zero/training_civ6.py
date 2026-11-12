@@ -1213,6 +1213,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # network's weights under the random-init name).
     if not config.resume_from and start_iteration == 0:
         zero_path = os.path.join(config.checkpoint_dir, "checkpoint_0.pt")
+        if os.path.exists(zero_path):
+            logger.warning(
+                "Overwriting existing %s: a fresh run replaces the pinned random-init, "
+                "and any checkpoint_N.pt from the earlier run stays beside the new one. "
+                "Use a new --checkpoint_dir/--run_id to keep both.",
+                zero_path,
+            )
         network.save(zero_path, metadata=provenance)
         logger.info(f"Saved pre-training checkpoint: {zero_path}")
 

@@ -331,3 +331,82 @@ class TestCheckpointZero:
         config = _tiny_config(tmp_path, num_iterations=3, start_iteration=2)
         training_civ6.train(config)
         assert not (Path(config.checkpoint_dir) / "checkpoint_0.pt").exists()
+
+
+def _trainer_checkpoint(path: Path, *, board: int, max_turns: int, blocks: int = 2) -> None:
+    """A file exactly as ``train`` writes it: ``config`` + ``state_dict`` + ``metadata``."""
+    net = MicroCivNetwork(
+        board_size=board,
+        action_space_size=ACTIONS,
+        num_res_blocks=blocks,
+        num_filters=8,
+        spatial_channels=CHANNELS,
+    )
+    meta = build_provenance(TrainingConfig(board_size=board, max_turns=max_turns), git_sha=None)
+    net.save(str(path), metadata=meta)
+
+
+class TestLoadersReadTrainerConfig:
+    def test_benchmark_loader_honours_board_and_architecture(self, tmp_path: Path) -> None:
+        from alpha_zero.evaluation.benchmark import _load_network
+
+        path = tmp_path / "c.pt"
+        _trainer_checkpoint(path, board=16, max_turns=30, blocks=3)
+        net = _load_network(path, "cpu", expected_max_turns=30)
+        assert net.config.spatial_size == 16
+        assert net.config.num_res_blocks == 3
+
+    def test_baselines_loader_honours_board_and_architecture(self, tmp_path: Path) -> None:
+        from alpha_zero.evaluation.baselines import NeuralNetworkPlayer
+
+        path = tmp_path / "c.pt"
+        _trainer_checkpoint(path, board=16, max_turns=30, blocks=3)
+        player = NeuralNetworkPlayer.from_checkpoint(path, use_mcts=False, expected_max_turns=30)
+        assert player.network.config.spatial_size == 16
+        assert player.network.config.num_res_blocks == 3
+
+    def test_baselines_loader_refuses_a_horizon_mismatch(self, tmp_path: Path) -> None:
+        from alpha_zero.evaluation.baselines import NeuralNetworkPlayer
+
+        path = tmp_path / "c.pt"
+        _trainer_checkpoint(path, board=8, max_turns=30)
+        with pytest.raises(HorizonMismatch):
+            NeuralNetworkPlayer.from_checkpoint(path, use_mcts=False, expected_max_turns=60)
+
+
+class TestEnvVersionAndMessages:
+    def test_env_version_mismatch_warns_but_loads(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        path = tmp_path / "c.pt"
+        meta = _provenance()
+        meta["env_version"] = 1
+        _network().save(str(path), metadata=meta)
+        with caplog.at_level(logging.WARNING):
+            assert load_network(path, device="cpu") is not None
+        assert any("env_version" in r.getMessage() for r in caplog.records)
+
+    def test_mismatch_message_names_no_cli_flag(self) -> None:
+        with pytest.raises(HorizonMismatch) as info:
+            check_provenance({"max_turns": 30}, expected_max_turns=60, source="x.pt")
+        assert "--" not in str(info.value)
+
+    def test_error_class_has_the_error_suffix_and_alias(self) -> None:
+        from alpha_zero.utils.checkpoint import HorizonMismatchError
+
+        assert HorizonMismatch is HorizonMismatchError
+
+
+class TestCheckpointZeroOverwriteWarning:
+    def test_fresh_run_over_existing_checkpoint_zero_warns(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(training_civ6, "run_self_play", lambda *a, **k: [])
+        config = _tiny_config(tmp_path)
+        training_civ6.train(config)
+        with caplog.at_level(logging.WARNING):
+            training_civ6.train(config)
+        assert any("checkpoint_0.pt" in r.getMessage() for r in caplog.records)

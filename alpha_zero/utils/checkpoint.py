@@ -18,7 +18,7 @@ import warnings
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 
@@ -28,6 +28,9 @@ from alpha_zero.utils.safe_load import (
     safe_torch_load,
     unsafe_checkpoint_loading_allowed,
 )
+
+if TYPE_CHECKING:
+    from alpha_zero.core.civ6_network import MicroCivNetwork
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -280,7 +283,7 @@ def save_checkpoint(
     logger.info(f"Saved checkpoint to {path}")
 
 
-class HorizonMismatch(ValueError):  # noqa: N818 - name fixed by the plan (LF-A16)
+class HorizonMismatchError(ValueError):
     """A checkpoint was trained at a different ``max_turns`` than it is read at.
 
     The file loads and plays; the numbers it produces just do not mean what the
@@ -288,6 +291,10 @@ class HorizonMismatch(ValueError):  # noqa: N818 - name fixed by the plan (LF-A1
     the resume path keep working.
     """
 
+
+#: The name the plan and callers use (LF-A16); the class is spelled with the
+#: ``Error`` suffix to satisfy ``N818`` without a waiver (same as game_budget).
+HorizonMismatch = HorizonMismatchError
 
 #: Metadata values must survive ``torch.load(weights_only=True)``.
 _PRIMITIVE_TYPES = (str, int, float, bool, type(None))
@@ -376,6 +383,69 @@ def build_provenance(config: Any, *, git_sha: str | None) -> dict[str, Any]:
     return validate_primitive_metadata(metadata)
 
 
+def _warn_on_env_version(metadata: dict[str, Any] | None, source: str | Path) -> None:
+    """Warn (never raise) when a checkpoint was trained under other game rules."""
+    if not metadata or "env_version" not in metadata:
+        return
+    from alpha_zero.envs.microciv import ENV_VERSION
+
+    if metadata["env_version"] != ENV_VERSION:
+        logger.warning(
+            "Checkpoint %s was trained under env_version=%s but this code is env_version=%s; "
+            "game rules differ, so results are not comparable with fresh runs.",
+            source,
+            metadata["env_version"],
+            ENV_VERSION,
+        )
+
+
+def build_micro_network_from_checkpoint(
+    checkpoint: Any,
+    *,
+    default_board_size: int,
+    default_action_size: int | None,
+    expected_max_turns: int | None = None,
+    source: str | Path = "checkpoint",
+) -> MicroCivNetwork:
+    """Build an unpopulated ``MicroCivNetwork`` matching a checkpoint's architecture.
+
+    Reads the trainer's ``config`` entry first (``Civ6Network.save``), then the
+    older ``network_config`` shape. A recorded ``metadata["board_size"]`` wins
+    for the board. ``default_action_size=None`` derives it from the environment.
+    ``expected_max_turns`` runs :func:`check_provenance` first.
+    """
+    from alpha_zero.core.civ6_network import MicroCivNetwork, NetworkConfig
+
+    data = checkpoint if isinstance(checkpoint, dict) else {}
+    metadata: dict[str, Any] = data.get("metadata") or {}
+    check_provenance(metadata or None, expected_max_turns=expected_max_turns, source=source)
+    raw = data.get("config")
+    if isinstance(raw, dict) and _looks_like_network_config(raw):
+        known = {f.name for f in fields(NetworkConfig)}
+        values = {k: v for k, v in raw.items() if k in known}
+        if metadata.get("board_size") is not None:
+            values["spatial_size"] = int(metadata["board_size"])
+        return MicroCivNetwork(config=NetworkConfig(**values))
+
+    legacy = dict(data.get("network_config") or {})
+    board_size: int = (
+        metadata.get("board_size") or legacy.pop("board_size", None) or default_board_size
+    )
+    legacy.pop("board_size", None)
+    action_size = (
+        legacy.pop("action_size", None)
+        or legacy.pop("action_space_size", None)
+        or default_action_size
+    )
+    if action_size is None:
+        from alpha_zero.envs.microciv import MicroCivEnv
+
+        action_size = cast(int, MicroCivEnv(board_size=board_size).action_space.n)
+    legacy.pop("action_size", None)
+    legacy.pop("action_space_size", None)
+    return MicroCivNetwork(board_size=board_size, action_space_size=int(action_size), **legacy)
+
+
 def check_provenance(
     metadata: dict[str, Any] | None,
     *,
@@ -398,6 +468,7 @@ def check_provenance(
     mismatch is deliberately not handled here: ``load_state_dict`` already fails
     on it with a shape error.
     """
+    _warn_on_env_version(metadata, source)
     if expected_max_turns is None:
         return
     if not metadata:
@@ -410,10 +481,10 @@ def check_provenance(
         return
     trained = metadata.get("max_turns")
     if trained is not None and trained != expected_max_turns:
-        raise HorizonMismatch(
+        raise HorizonMismatchError(
             f"{source} was trained at max_turns={trained} but is being read at "
             f"max_turns={expected_max_turns}. Results at a different horizon are not "
-            "comparable; train or evaluate at a matching --max_turns."
+            "comparable; train or evaluate at a matching max_turns."
         )
 
 
