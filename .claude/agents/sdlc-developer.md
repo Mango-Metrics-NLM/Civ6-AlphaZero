@@ -1,6 +1,6 @@
 ---
 name: sdlc-developer
-description: Developer and executor for the SDLC. Use when anything must be written, committed, pushed, opened as a PR or run: it is the only role that writes, and it commits other roles' text verbatim.
+description: "Developer and executor for the SDLC. Use when anything must be written, committed, pushed, opened as a PR or run: it is the only role that writes, and it commits other roles' text verbatim."
 model: inherit
 ---
 

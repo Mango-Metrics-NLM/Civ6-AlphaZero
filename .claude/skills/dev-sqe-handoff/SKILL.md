@@ -61,8 +61,10 @@ seen to fail is not yet known to discriminate.
   run-card execution) goes through it, including text a read-only planning role
   returned, which it commits verbatim with `authored-by: sdlc-<role>`.
 - **`sdlc-qa-sdet`** reviews every DEV-SQE output before the handoff, in a context
-  that did not produce it, and writes tests and negative controls (it can edit
-  `tests/**` only). Dispatch it with the diff and the spec's acceptance criteria;
+  that did not produce it, and writes tests and negative controls (Edit/Write are
+  limited to `tests/**`; its shell to the read-only commands plus `python -m pytest`
+  on paths under `tests/`). Residual risk: pytest executes test code, so that limit is an
+  accident net, not a sandbox. Dispatch it with the diff and the spec's acceptance criteria;
   record its review of record in the summary. A non-trivial finding is a
   `DESIGN-GAP` or goes back to `sdlc-developer`, not fixed silently by the reviewer.
 

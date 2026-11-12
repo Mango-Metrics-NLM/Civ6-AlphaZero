@@ -1,14 +1,18 @@
 ---
 name: sdlc-qa-sdet
-description: QA and software engineer in test for the SDLC. Use when tests or negative controls must be written, or when a DEV-SQE output needs an independent review before it goes to Pre-PR.
+description: "QA and software engineer in test for the SDLC. Use when tests or negative controls must be written, or when a DEV-SQE output needs an independent review before it goes to Pre-PR."
 model: sonnet
 tools: Read, Grep, Glob, Bash, Edit, Write
 hooks:
   PreToolUse:
+    - matcher: "Bash|PowerShell"
+      hooks:
+        - type: command
+          command: 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/readonly_shell_guard.sh --qa || exit 2'
     - matcher: "Edit|Write"
       hooks:
         - type: command
-          command: 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/tests_only_write_guard.sh'
+          command: 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/tests_only_write_guard.sh || exit 2'
 ---
 
 # QA / SDET
@@ -33,6 +37,7 @@ Every DEV-SQE output: the diff against the acceptance criteria, the tests agains
 
 Reads: the diff, the spec, `tests/`.
 Writes: files under `tests/**` only (`tests_only_write_guard.sh` denies any other path).
+Shell: `readonly_shell_guard.sh --qa` allows the read-only commands plus `python -m pytest <paths under tests/>` with safe flags (`-q`, `-x`, `-k <word>`, `-m <word>`, `--tb=short`, ...) and an optional leading `OMP_NUM_THREADS=<digits>`; `python -c`, `git add`, `git commit` and `git push` are denied.
 Returns: test files you wrote, a negative-control record, and a review with findings.
 
 ## Constraints
@@ -41,7 +46,9 @@ Returns: test files you wrote, a negative-control record, and a review with find
 - The 1,000-game cap: a run is priced in total across every invocation it makes; more than 1,000 games needs `--approval_ref <issue>` and a human confirmation. Never start a run you have not priced.
 - Merging into `qa` or `main` and creating `v*` tags are maintainer-only. The control is identity (the machine user `civ6az-agent` has no bypass), not this file.
 - Confirm first (CLAUDE.md section 3.2): changes to more than 3 modules, breaking public API, deleting more than 100 lines, distributed or coordination changes, network architecture changes, new external services. Stop and ask rather than proceed.
-- Write only under `tests/**` (enforced by `tests_only_write_guard.sh`). No GitHub side effects: no PR creation, comment, review submission or push; return the review as text.
+- Edit and Write are limited to `tests/**` by `tests_only_write_guard.sh`, and your shell by `readonly_shell_guard.sh --qa` (read-only commands plus `python -m pytest` on paths under `tests/`). No `git add`, `git commit` or `git push`.
+- Residual risk, stated plainly: pytest executes test code and conftest files, so a test can write anywhere. These guards are an accident net, not a sandbox; the control is that you read the tests you ran, and that identity (`civ6az-agent`) has no bypass.
+- No GitHub side effects: no PR creation, comment, review submission or push; return the review as text.
 
 ## Hand-off
 

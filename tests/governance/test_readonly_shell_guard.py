@@ -269,9 +269,9 @@ def test_unparsable_payload_fails_closed(payload: str) -> None:
 
 
 @pytest.mark.parametrize("payload", ["[]", '{"tool_input": 3}'])
-def test_payload_without_a_command_runs_nothing(payload: str) -> None:
+def test_payload_without_a_string_command_is_denied(payload: str) -> None:
     decision, _ = _run(READONLY_GUARD, payload)
-    assert decision is None
+    assert decision == "deny"
 
 
 def test_denies_when_no_parser_is_available(tmp_path: Path) -> None:

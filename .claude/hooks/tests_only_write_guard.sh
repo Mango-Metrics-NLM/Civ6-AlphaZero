@@ -97,6 +97,18 @@ case "/$p/" in
   */../*) deny "'$fp' contains a '..' segment." ;;
 esac
 
+# Win32 strips trailing dots and spaces from a path segment, so `.. `, `...` and
+# `..<TAB>` can mean `..`. Any segment made only of dots, spaces and tabs, other than
+# a bare `.`, is denied.
+dot_re=$'^[. \t]+$'
+IFS='/' read -r -a segs <<<"$p"
+for seg in "${segs[@]}"; do
+  [ "$seg" = "." ] && continue
+  if [[ $seg =~ $dot_re ]]; then
+    deny "'$fp' contains a dot/space-only segment ('$seg')."
+  fi
+done
+
 root="${CLAUDE_PROJECT_DIR:-}"
 root="${root//"$bsl"//}"
 root="${root%/}"

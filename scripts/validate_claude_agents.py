@@ -82,12 +82,24 @@ _FULL_MODEL_RE = re.compile(r"^claude-[a-z0-9][a-z0-9.\-]*$")
 ALLOWED_KEYS = frozenset({"name", "description", "tools", "model", "hooks", "skills", "maxTurns"})
 FORBIDDEN_KEYS = frozenset({"permissionMode", "mcpServers"})
 
-READONLY_GUARD_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/readonly_shell_guard.sh'
-TESTS_GUARD_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/tests_only_write_guard.sh'
+# Every hook command ends in `|| exit 2`: if the script cannot start (a path that does not
+# resolve, a rename), bash exits 127, which Claude Code treats as a NON-blocking error and
+# the command would run unguarded. Exit 2 blocks. A guard that starts and denies exits 0
+# with a decision, so the suffix never changes a normal decision.
+EXIT_SUFFIX = " || exit 2"
+READONLY_GUARD_CMD = (
+    'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/readonly_shell_guard.sh' + EXIT_SUFFIX
+)
+QA_SHELL_GUARD_CMD = (
+    'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/readonly_shell_guard.sh --qa' + EXIT_SUFFIX
+)
+TESTS_GUARD_CMD = 'bash "$CLAUDE_PROJECT_DIR"/.claude/hooks/tests_only_write_guard.sh' + EXIT_SUFFIX
 # (event, matcher, command) triples a role file may declare.
 READONLY_HOOK = ("PreToolUse", "Bash|PowerShell", READONLY_GUARD_CMD)
+QA_SHELL_HOOK = ("PreToolUse", "Bash|PowerShell", QA_SHELL_GUARD_CMD)
 TESTS_HOOK = ("PreToolUse", "Edit|Write", TESTS_GUARD_CMD)
-APPROVED_HOOKS = frozenset({READONLY_HOOK, TESTS_HOOK})
+APPROVED_HOOKS = frozenset({READONLY_HOOK, QA_SHELL_HOOK, TESTS_HOOK})
+MIN_HOOK_TIMEOUT = 10  # a hook timeout is non-blocking, so a short one fails open
 _HOOK_ENTRY_KEYS = frozenset({"type", "command", "timeout", "statusMessage"})
 
 
@@ -97,7 +109,7 @@ class Role:
     model: str
     tools: tuple[str, ...] | None  # None = inherit all tools (key omitted)
     kb_role: str
-    hook: tuple[str, str, str] | None
+    hooks: tuple[tuple[str, str, str], ...]
     dispatched_by: tuple[str, ...]
     owner_note: bool = True  # read-only roles must name `authored-by: <name>`
 
@@ -110,13 +122,13 @@ _RO = ("Read", "Grep", "Glob")
 ROLES: dict[str, Role] = {
     r.name: r
     for r in (
-        Role("sdlc-product-owner", "sonnet", _RO, "Planning", None, ("planning-handoff",)),
+        Role("sdlc-product-owner", "sonnet", _RO, "Planning", (), ("planning-handoff",)),
         Role(
             "sdlc-scrum-master",
             "sonnet",
             (*_RO, "Bash"),
             "Planning",
-            READONLY_HOOK,
+            (READONLY_HOOK,),
             ("planning-handoff",),
         ),
         Role(
@@ -124,7 +136,7 @@ ROLES: dict[str, Role] = {
             "opus",
             (*_RO, "Bash"),
             "Planning",
-            READONLY_HOOK,
+            (READONLY_HOOK,),
             ("planning-handoff",),
         ),
         Role(
@@ -132,7 +144,7 @@ ROLES: dict[str, Role] = {
             "opus",
             (*_RO, "Bash"),
             "Planning",
-            READONLY_HOOK,
+            (READONLY_HOOK,),
             ("planning-handoff",),
         ),
         Role(
@@ -140,7 +152,7 @@ ROLES: dict[str, Role] = {
             "opus",
             (*_RO, "Bash"),
             "Planning",
-            READONLY_HOOK,
+            (READONLY_HOOK,),
             ("planning-handoff",),
         ),
         Role(
@@ -148,7 +160,7 @@ ROLES: dict[str, Role] = {
             "inherit",
             None,
             "DEV-SQE",
-            None,
+            (),
             ("dev-sqe-handoff",),
             owner_note=False,
         ),
@@ -157,7 +169,7 @@ ROLES: dict[str, Role] = {
             "sonnet",
             (*_RO, "Bash", "Edit", "Write"),
             "DEV-SQE + Pre-PR",
-            TESTS_HOOK,
+            (QA_SHELL_HOOK, TESTS_HOOK),
             ("dev-sqe-handoff", "pre-pr-handoff"),
             owner_note=False,
         ),
@@ -166,7 +178,7 @@ ROLES: dict[str, Role] = {
             "sonnet",
             (*_RO, "Bash"),
             "Pre-PR",
-            READONLY_HOOK,
+            (READONLY_HOOK,),
             ("pre-pr-handoff",),
         ),
     )
@@ -216,17 +228,61 @@ class Issue:
 # --- a small YAML-subset reader (stdlib only; the governance job has no PyYAML) -----
 
 
+_PLAIN_FORBIDDEN = re.compile(r"[{}\[\]*&#!|>%@`]|: |:$| #")
+
+
 def _scalar(raw: str) -> str | list[str]:
+    """Read one scalar STRICTLY: anything Claude Code's loader could read differently raises.
+
+    Claude Code parses frontmatter with a YAML loader and, if that fails, retries once after
+    quoting values that contain one of ``{}[]*&#!|>%@`` or a backtick or ``: ``. If the retry
+    fails too, the file loads with every field but the name silently dropped -- no ``tools``
+    (so every tool is inherited) and no ``hooks``. So this reader accepts only values that are
+    unambiguous under both: balanced quotes, no flow mapping, no comment, and no plain scalar
+    carrying a character the loader treats specially.
+    """
     s = raw.strip()
-    if len(s) >= 2 and s[0] == s[-1] == '"':
-        return s[1:-1].replace('\\"', '"').replace("\\\\", "\\")
-    if len(s) >= 2 and s[0] == s[-1] == "'":
-        return s[1:-1].replace("''", "'")
-    if s.startswith("[") and s.endswith("]"):
+    if s.startswith('"'):
+        if len(s) < 2 or not s.endswith('"'):
+            raise ValueError(f"unbalanced double quote in value {raw!r}")
+        out: list[str] = []
+        k = 1
+        while k < len(s) - 1:
+            ch = s[k]
+            if ch == "\\":
+                if k + 1 >= len(s) - 1 or s[k + 1] not in '"\\':
+                    raise ValueError(f"unsupported escape in value {raw!r}")
+                out.append(s[k + 1])
+                k += 2
+                continue
+            if ch == '"':
+                raise ValueError(f"unescaped double quote inside value {raw!r}")
+            out.append(ch)
+            k += 1
+        return "".join(out)
+    if s.startswith("'"):
+        if len(s) < 2 or not s.endswith("'"):
+            raise ValueError(f"unbalanced single quote in value {raw!r}")
+        inner = s[1:-1]
+        if "'" in inner.replace("''", ""):
+            raise ValueError(f"unescaped single quote inside value {raw!r}")
+        return inner.replace("''", "'")
+    if s.startswith("["):
+        if not s.endswith("]"):
+            raise ValueError(f"unbalanced flow sequence {raw!r}")
         inner = s[1:-1].strip()
-        return [str(_scalar(p)) for p in inner.split(",")] if inner else []
-    if " #" in s:
-        s = s.split(" #", 1)[0].rstrip()
+        items = [p.strip() for p in inner.split(",")] if inner else []
+        for item in items:
+            if not item or _PLAIN_FORBIDDEN.search(item) or item[0] in "\"'":
+                raise ValueError(f"flow sequence item {item!r} is not a plain word")
+        return items
+    if not s:
+        return s
+    if s[0] in "\"'{}]*&!|>%@`#?" or _PLAIN_FORBIDDEN.search(s):
+        raise ValueError(
+            f"plain value {raw!r} starts with or contains a character YAML or Claude Code's "
+            "frontmatter fallback reads specially ({}[]*&#!|>%@ backtick, ': ', ' #'); quote it"
+        )
     return s
 
 
@@ -275,17 +331,34 @@ def _parse_node(items: list[tuple[int, str]], pos: int, indent: int) -> tuple[ob
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
-    """Return ``(frontmatter, body)``; raise ``ValueError`` when malformed."""
+    """Return ``(frontmatter, body)``; raise ``ValueError`` when malformed or ambiguous.
+
+    Strict on purpose. Claude Code ends the block at the FIRST ``---`` anywhere after the opening
+    fence (a lazy regex, roughly dashes-newline then anything up to the first three dashes), so a ``---`` inside a description or a comment
+    truncates it; this reader refuses any ``---`` other than the closing line. It also refuses
+    comment lines, which the YAML loader and the fallback treat differently.
+    """
     lines = text.replace("\r\n", "\n").split("\n")
     if not lines or lines[0].strip() != "---":
         raise ValueError("file does not start with a '---' frontmatter fence")
-    end = next((i for i in range(1, len(lines)) if lines[i].strip() == "---"), None)
-    if end is None:
+    rest = "\n".join(lines[1:])
+    idx = rest.find("---")
+    if idx == -1:
         raise ValueError("frontmatter is never closed with '---'")
+    line_end = rest.find("\n", idx)
+    closing = rest[idx : line_end if line_end >= 0 else None]
+    if (idx != 0 and rest[idx - 1] != "\n") or closing.strip() != "---":
+        raise ValueError(
+            "'---' appears inside the frontmatter; Claude Code ends the block at the first '---' anywhere"
+        )
+    block = rest[:idx]
+    body = rest[line_end + 1 :] if line_end >= 0 else ""
     items: list[tuple[int, str]] = []
-    for raw in lines[1:end]:
-        if not raw.strip() or raw.lstrip().startswith("#"):
+    for raw in block.split("\n"):
+        if not raw.strip():
             continue
+        if raw.lstrip().startswith("#"):
+            raise ValueError(f"comment line {raw.strip()!r} is not allowed in frontmatter")
         if "\t" in raw[: len(raw) - len(raw.lstrip())]:
             raise ValueError("tab indentation in frontmatter")
         items.append((len(raw) - len(raw.lstrip(" ")), raw.strip()))
@@ -294,7 +367,7 @@ def parse_frontmatter(text: str) -> tuple[dict[str, object], str]:
     value, pos = _parse_node(items, 0, items[0][0])
     if pos != len(items) or not isinstance(value, dict):
         raise ValueError("frontmatter is not a single mapping")
-    return value, "\n".join(lines[end + 1 :])
+    return value, body
 
 
 # --- helpers -------------------------------------------------------------------
@@ -360,6 +433,15 @@ def _declared_hooks(front: dict[str, object]) -> tuple[set[tuple[str, str, str]]
                 ):
                     problems.append(f"hooks.{event} contains a non-'command' or malformed hook")
                     continue
+                timeout = hook.get("timeout")
+                if timeout is not None and not (
+                    isinstance(timeout, str)
+                    and timeout.isdigit()
+                    and int(timeout) >= MIN_HOOK_TIMEOUT
+                ):
+                    problems.append(
+                        f"hook timeout {timeout!r} must be >= {MIN_HOOK_TIMEOUT} seconds (a hook timeout is non-blocking)"
+                    )
                 found.add((event, matcher, str(hook["command"]).strip()))
     return found, problems
 
@@ -457,10 +539,16 @@ def _check_tools_and_hooks(c: _Ctx) -> None:
         if hook not in APPROVED_HOOKS:
             add(
                 "C3",
-                f"unapproved hook {hook!r}; approved: the read-only shell guard and the tests-only write guard",
+                (
+                    f"hook command {hook[2]!r} must end with '{EXIT_SUFFIX.strip()}' so a guard that cannot start blocks"
+                    if any(
+                        hook[2] + EXIT_SUFFIX == a[2] and hook[:2] == a[:2] for a in APPROVED_HOOKS
+                    )
+                    else f"unapproved hook {hook!r}; approved: the read-only shell guard (plain or --qa) and the tests-only write guard"
+                ),
             )
     if role is not None:
-        wanted = {role.hook} if role.hook else set()
+        wanted = set(role.hooks)
         if not problems and declared != wanted:
             missing = sorted(wanted - declared)
             extra = sorted(declared - wanted)
@@ -516,6 +604,13 @@ def _check_body(c: _Ctx) -> None:
             )
         if name != "sdlc-developer" and not re.search(r"no github side effects", constraints, re.I):
             add("C5", "Constraints must say 'No GitHub side effects' for a non-developer role")
+    if name == "sdlc-qa-sdet" and not (
+        "not a sandbox" in body and "pytest executes test code" in body
+    ):
+        add(
+            "C5",
+            "sdlc-qa-sdet must state the residual risk: pytest executes test code, so its guard is not a sandbox",
+        )
     if role is not None and role.owner_note and f"authored-by: {role.name}" not in body:
         add("C5", f"a read-only role must name its commit trailer 'authored-by: {role.name}'")
     if name == "sdlc-developer" and "authored-by: sdlc-" not in body:

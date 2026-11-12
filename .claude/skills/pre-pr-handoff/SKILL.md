@@ -55,7 +55,10 @@ inline. Instead, dispatch the review to a fresh agent so judgement is decoupled:
 
 - Dispatch `sdlc-qa-sdet` (`Agent` with `subagent_type: sdlc-qa-sdet`) with the diff
   and the spec's acceptance criteria. It is the review of record for every DEV-SQE
-  output and its only write access is `tests/**`; **or**
+  output. Edit/Write are limited to `tests/**`, and its shell to the read-only commands
+  plus `python -m pytest` on paths under `tests/` (`readonly_shell_guard.sh --qa`).
+  Residual risk: pytest executes test code, so this is an accident net, not a sandbox;
+  read the tests it ran; **or**
 - Run the `code-review` skill on the diff, **or** launch another fresh `Agent`
   (e.g. `subagent_type: Explore`) whose only task is to review the changed files
   against the acceptance criteria and report defects.

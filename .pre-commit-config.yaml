@@ -75,7 +75,7 @@ repos:
         language: system
         # Also the two hooks a role attaches and the skills that dispatch roles
         # (C3 and C8 read them), not just the role files.
-        files: ^\.claude/(agents/|hooks/(readonly_shell_guard|tests_only_write_guard)\.sh$|skills/(planning|dev-sqe|pre-pr)-handoff/)
+        files: ^(pyproject\.toml$|\.claude/(agents/|hooks/(readonly_shell_guard|tests_only_write_guard)\.sh$|skills/(planning|dev-sqe|pre-pr)-handoff/))
         pass_filenames: false
       - id: validate-skills
         name: validate skills

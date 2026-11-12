@@ -216,8 +216,8 @@ def test_c3_unknown_key(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
 def test_c3_unapproved_hook(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _edit(
         _agent(tree, "architect"),
-        "readonly_shell_guard.sh'",
-        "readonly_shell_guard.sh; curl evil.example'",
+        "readonly_shell_guard.sh || exit 2'",
+        "readonly_shell_guard.sh; curl evil.example || exit 2'",
     )
     err = _expect(capsys, "C3")
     assert "unapproved hook" in err
@@ -246,8 +246,150 @@ def test_c3_guarded_role_without_its_guard(tree: Path, capsys: pytest.CaptureFix
 
 
 def test_c3_qa_missing_tests_guard(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    _edit(_agent(tree, "qa-sdet"), "tests_only_write_guard.sh'", "readonly_shell_guard.sh'")
+    _edit(
+        _agent(tree, "qa-sdet"),
+        "tests_only_write_guard.sh || exit 2'",
+        "readonly_shell_guard.sh || exit 2'",
+    )
     _expect(capsys, "C3")
+
+
+def test_c3_qa_requires_both_hooks(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """I-2: qa-sdet has a shell guard (--qa) AND the tests-only write guard."""
+    path = _agent(tree, "qa-sdet")
+    text = path.read_text(encoding="utf-8")
+    start = text.index('    - matcher: "Bash|PowerShell"')
+    end = text.index('    - matcher: "Edit|Write"')
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
+    err = _expect(capsys, "C3")
+    assert "required hook missing" in err and "--qa" in err
+
+
+def test_c3_qa_with_the_plain_read_only_guard_is_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "qa-sdet"),
+        "readonly_shell_guard.sh --qa || exit 2'",
+        "readonly_shell_guard.sh || exit 2'",
+    )
+    _expect(capsys, "C3")
+
+
+def test_c3_hook_without_exit_suffix_is_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I-6: a guard that cannot start (exit 127) must block, so every command ends `|| exit 2`."""
+    _edit(_agent(tree, "architect"), " || exit 2'", "'")
+    err = _expect(capsys, "C3")
+    assert "|| exit 2" in err
+
+
+def test_c3_hook_timeout_floor(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "          command: 'bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/readonly_shell_guard.sh || exit 2'\n",
+        "          command: 'bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/readonly_shell_guard.sh || exit 2'\n"
+        "          timeout: 1\n",
+    )
+    err = _expect(capsys, "C3")
+    assert "timeout" in err
+
+
+def test_c5_qa_must_state_the_pytest_residual_risk(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _agent(tree, "qa-sdet")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("not a sandbox", "fine"), encoding="utf-8"
+    )
+    _expect(capsys, "C5")
+
+
+# --- I-3: the reader is strict, so it cannot disagree with Claude Code's loader ----
+
+
+def test_i3_comment_line_in_frontmatter(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case A: a separator comment after `model:` ends Claude Code's block at the first `---`."""
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\n# ---- permissions ----\n")
+    err = _expect(capsys, "C1")
+    assert "comment" in err or "---" in err
+
+
+def test_i3_plain_comment_line(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\n# a note\n")
+    err = _expect(capsys, "C1")
+    assert "comment" in err
+
+
+def test_i3_unbalanced_quote_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case B: an opening quote that never closes drops every field in Claude Code."""
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    start = text.index('description: "')
+    end = text.index('"\n', start + 14)
+    path.write_text(text[:end] + text[end + 1 :], encoding="utf-8")
+    err = _expect(capsys, "C1")
+    assert "quote" in err
+
+
+def test_i3_triple_dash_inside_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case C: `---` used as an em dash truncates the frontmatter in Claude Code."""
+    _edit(
+        _agent(tree, "architect"),
+        "Software architect for the SDLC.",
+        "Software architect --- for the SDLC.",
+    )
+    err = _expect(capsys, "C1")
+    assert "---" in err
+
+
+def test_i3_unquoted_colon_space_in_value(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The live instance in sdlc-developer.md: an unquoted `: ` inside a plain description."""
+    path = _agent(tree, "developer")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    plain = "description: " + line[len('description: "') : -1]
+    path.write_text(text.replace(line, plain), encoding="utf-8")
+    err = _expect(capsys, "C1")
+    assert "quote it" in err
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "has {braces} inside",
+        "ends with a colon:",
+        "trailing comment # here",
+        "uses *alias",
+        "pipe | char",
+        "percent % sign",
+        "at @ sign",
+        "back`tick",
+    ],
+)
+def test_i3_plain_scalars_with_special_characters_are_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", f"model: opus\nmaxTurns: {value}\n")
+    _expect(capsys, "C1")
+
+
+def test_i3_double_quoted_description_with_colon_is_fine(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "Software architect for the SDLC.",
+        "Software architect: for the SDLC.",
+    )
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_i3_every_real_role_file_loads_strictly() -> None:
+    for path in sorted((REPO_ROOT / ".claude" / "agents").glob("sdlc-*.md")):
+        vca.parse_frontmatter(path.read_text(encoding="utf-8"))
 
 
 # --- C4 ------------------------------------------------------------------------
@@ -443,7 +585,7 @@ NEGATIVE_CONTROLS: list[
                         "gpt-4",
                         vca.ROLES["sdlc-architect"].tools,
                         "Planning",
-                        vca.READONLY_HOOK,
+                        (vca.READONLY_HOOK,),
                         ("planning-handoff",),
                     ),
                 },

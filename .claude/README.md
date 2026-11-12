@@ -37,7 +37,9 @@ as gated documentation (CLAUDE.md §5.2, row dated 2026-09-02).
 Eight persisted subagents carry the SDLC roles; the three handoff skills dispatch
 them. Read-only roles return text (a memo, script, doc, PR body or manifest) and
 `sdlc-developer` commits it verbatim with `authored-by: sdlc-<role>`, after which the
-authoring role reviews the PR. `sdlc-qa-sdet` may edit `tests/**` only.
+authoring role reviews the PR. `sdlc-qa-sdet` is limited to `tests/**` for Edit/Write and to the
+read-only shell plus `python -m pytest <paths under tests/>`; pytest executes test code, so that is an
+accident net, not a sandbox.
 
 | Role | Model | Tools | Shell guard |
 |------|-------|-------|-------------|
@@ -47,18 +49,44 @@ authoring role reviews the PR. `sdlc-qa-sdet` may edit `tests/**` only.
 | `sdlc-ml-scientist` | opus | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
 | `sdlc-ai-engineer` | opus | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
 | `sdlc-developer` | inherit | all | none (the executor) |
-| `sdlc-qa-sdet` | sonnet | Read, Grep, Glob, Bash, Edit, Write | `tests_only_write_guard.sh` on Edit/Write |
+| `sdlc-qa-sdet` | sonnet | Read, Grep, Glob, Bash, Edit, Write | `readonly_shell_guard.sh --qa` on Bash, `tests_only_write_guard.sh` on Edit/Write |
 | `sdlc-release-manager` | sonnet | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
 
 The guards are attached through each role's own frontmatter `hooks:` (they run only while
 that subagent is active) -- never through `settings.json`. `readonly_shell_guard.sh` allows
 exactly one plain command: `git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file`,
-`git tag -l`, `gh pr view|list|checks`, `gh api` (GET only: a path plus `--jq`/`-q`,
-`--paginate`, `-H X-GitHub-Api-Version:...`) and `python scripts/{validate_,check_,verify_release_evidence}*.py`.
+`git tag -l`, `gh pr view|list|checks`, `gh api` (GET only: ONE relative API path -- never a URL,
+scheme or host -- plus `--jq`/`-q` with a plain field path that is not `env`, `--paginate`,
+`-H X-GitHub-Api-Version:...`) and one of ten vetted `python scripts/*.py` checkers, matched by exact
+case-sensitive name and exact options (argparse accepts abbreviations, so `--wr` is `--write`).
+A payload whose `command` is missing or not a string is denied.
 It rejects every metacharacter (`; & | < > ( ) { } $` backtick, quotes, backslash, `, @ # %`),
 every glob character, every flag not on the per-command allowlist, and anything it cannot parse.
 Quote-free by design: use `--pretty=oneline`, not `--format="%h %s"`. It is an accident
-net: identity is the control. Check the files with `python scripts/validate_claude_agents.py`.
+net: identity is the control. `git status`/`git diff` refresh `.git/index` and can briefly hold
+`index.lock`; if a developer in the same worktree sees `index.lock exists`, run the read-only role with
+`GIT_OPTIONAL_LOCKS=0`. Every hook command ends `|| exit 2` so a guard that cannot start blocks.
+Check the files with `python scripts/validate_claude_agents.py`.
+
+`sdlc-qa-sdet` also gets `readonly_shell_guard.sh --qa`: the list above plus
+`python -m pytest <paths under tests/>` with `-q -x -v -s --tb=short -k <word> -m <word>
+-p no:cacheprovider --maxfail=N -c <config under tests/>`, optionally after
+`OMP_NUM_THREADS=<digits>`. **Residual risk:** pytest executes test code and conftest, so a test can
+write anywhere and this is an accident net, not a sandbox; the review reads the tests it ran.
+
+### Live verification (maintainer, once per checkout and after any guard or agent edit)
+
+The guards are tested by driving the scripts; nothing here proves Claude Code attaches a
+frontmatter hook to a live subagent. Prove it:
+
+1. Start Claude Code in this checkout and dispatch one read-only role, e.g. "use sdlc-architect to run
+   `git push --dry-run origin HEAD`".
+2. Expect a denial that begins `read-only role shell guard:` (the role then reports it could not run
+   it). A successful dry-run output means the hook is NOT attached: stop and check the frontmatter
+   `hooks:` block and `$CLAUDE_PROJECT_DIR`.
+3. Dispatch `sdlc-qa-sdet` with "write `alpha_zero/_probe.py`" and expect `tests-only write guard`, then
+   with "run `python -c print(1)`" and expect `read-only role shell guard`.
+4. Record the three denials in the handoff note. Until this is done the guards are unverified live.
 
 ## What the permission allowlist allows
 

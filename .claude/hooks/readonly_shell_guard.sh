@@ -16,8 +16,18 @@
 #   git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file
 #   git tag -l|--list [listing options]
 #   gh pr view|list|checks
-#   gh api            (path + --jq/-q, --paginate, -H X-GitHub-Api-Version:* only)
-#   python scripts/{validate_,check_,verify_release_evidence}*.py
+#   gh api            (a RELATIVE api path + --jq/-q, --paginate, -H X-GitHub-Api-Version:*
+#                      only; never a URL, host or scheme)
+#   python scripts/<one of ten vetted validate_/check_/verify_ scripts>.py
+#
+# Two modes, chosen by the first argument the hook command passes:
+#   (none)  the read-only roles
+#   --qa    sdlc-qa-sdet: everything above PLUS `python -m pytest <paths under tests/>`
+#           with a short list of safe flags and an optional leading
+#           `OMP_NUM_THREADS=<digits>`. RESIDUAL RISK, stated plainly: pytest executes test
+#           code and conftest, so a test can write anywhere. This is an accident net, not a
+#           sandbox; the independent review reads the tests it ran, and identity is the control.
+#           `python -c`, `git add|commit|push` and the rest stay denied.
 #
 # Everything else is denied, which includes every wrapper (`bash -c`, `pwsh -c`,
 # `cmd /c`, `env`, `sudo`...), every chain and pipe, every redirection, every
@@ -38,7 +48,7 @@
 # `gh api -X 'POST'` would keep their quotes in the token and slip past every
 # flag test. With none present, the token the guard sees is the word the shell
 # runs. A legitimate `git log | head` or `--format="%h %s"` is therefore denied
-# too; a read-only role reads the whole output / uses --format=%h instead.
+# too; a read-only role reads the whole output / uses --pretty=oneline instead.
 #
 # Options are an ALLOWLIST, not a denylist: every dashed argument to a git read
 # subcommand and to `gh pr` must be on that subcommand's short list of safe
@@ -46,10 +56,21 @@
 # -H/--header X-GitHub-Api-Version:*. Anything else (--output, --ext-diff,
 # --textconv, --filters, -X, -f, --input, --web, ...) is denied by default. The
 # request method of `gh api` cannot be changed, so it is gh's default, GET.
-# Three scripts matching the python glob are excluded because they reach GCP or
-# train: check_build.py, validate_gcp_credentials.py, validate_convergence.py;
-# and an argument that is any prefix (argparse accepts abbreviations) of
-# --out/--output/--write/--fix/--update/--apply/--execute is denied.
+# Scripts are an EXACT, case-sensitive allowlist of ten filenames, not a glob. The
+# three scripts a glob used to admit are deliberately absent -- check_build.py (Cloud
+# Build API with ADC), validate_gcp_credentials.py (GCS/Vertex/Logging) and
+# validate_convergence.py (an uncapped training loop) -- and a casefold match to one
+# of them is denied by name as well, because NTFS and default APFS open
+# `check_BUILD.py` as the real file. check_branch_direction.py and
+# verify_release_evidence.py write GITHUB_STEP_SUMMARY/GITHUB_OUTPUT when those
+# variables are set; the guard cannot set them, so that is unreachable locally.
+# A script option is denied if it contains out/write/fix/update/apply/exec/baseline/
+# save/dump/create/delete/force/overwrite (argparse also accepts abbreviations), and
+# every short option except -h.
+#
+# `git status`/`git diff` refresh the index stat cache and so can briefly hold
+# .git/index.lock; run read-only roles with GIT_OPTIONAL_LOCKS=0 if a developer in
+# the same worktree ever sees `index.lock exists`.
 #
 # Fails CLOSED: a payload no parser can read, or any unexpected script failure,
 # is a DENY with exit 0 (a non-zero exit is a non-blocking error to Claude Code,
@@ -115,20 +136,33 @@ if [ -n "${CIV6AZ_GUARD_SELFTEST_FAIL:-}" ]; then
   false
 fi
 
+# Mode: the only accepted argument is --qa.
+qa=0
+case "${1:-}" in
+  "") ;;
+  --qa) qa=1 ;;
+  *) printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"read-only role shell guard: unknown mode argument; denying."}}'; decided=1; exit 0 ;;
+esac
+
 input="$(cat)"
 
 # jq, else python3, else python; a parser must EXIT 0 to count (see
 # pretooluse_guard.sh for the failure this prevents). No parser -> deny.
+# A payload whose tool_input is not an object, or whose command is missing or not a
+# string, is NOT "nothing to run": the extractor exits non-zero, which counts as a
+# parse failure and ends in a deny.
 PY_EXTRACT='import json,sys
 d=json.load(sys.stdin)
 t=d.get("tool_input") if isinstance(d,dict) else None
 c=t.get("command") if isinstance(t,dict) else None
-sys.stdout.buffer.write((c if isinstance(c,str) else "").encode("utf-8"))'
+if not isinstance(c,str):
+    sys.exit(3)
+sys.stdout.buffer.write(c.encode("utf-8"))'
 
 cmd=""
 parsed=0
 if command -v jq >/dev/null 2>&1 \
-   && cmd="$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null)"; then
+   && cmd="$(printf '%s' "$input" | jq -r 'if (.tool_input|type)=="object" and (.tool_input.command|type)=="string" then .tool_input.command else error("no string command") end' 2>/dev/null)"; then
   parsed=1
 fi
 if [ "$parsed" -eq 0 ]; then
@@ -172,6 +206,15 @@ read -r -a tok <<<"$cmd"
 n=${#tok[@]}
 [ "$n" -eq 0 ] && exit 0
 
+# --qa only: one optional leading OMP_NUM_THREADS=<digits> (the torch spin-wait
+# workaround, CLAUDE.md section 5.3). Dropped here so the command is judged without it;
+# a second one, or any other VAR=value, is then an unknown program and is denied.
+if [ "$qa" -eq 1 ] && [[ ${tok[0]} =~ ^OMP_NUM_THREADS=[0-9]+$ ]]; then
+  tok=("${tok[@]:1}")
+  n=${#tok[@]}
+  [ "$n" -eq 0 ] && deny "an environment prefix with no command."
+fi
+
 prog="${tok[0]}"
 sub="${tok[1]:-}"
 t=""
@@ -187,14 +230,19 @@ subl="$(lower "$sub")"
 # not only dashed ones: PowerShell splits `x,--output=/tmp/f` into two arguments,
 # `@list` splats, `--%` stops parsing, and a glob (`*`, `?`, `[`) can expand to a
 # file named like a flag. None of those characters is in the set below, so none
-# can reach a command. The one exception is the value of `gh api --jq/-q`, which
-# must be a plain dotted field path (`.name`, `.a.b`).
+# can reach a command. The one exception is a `gh` jq filter (`--jq`/`-q` value), which
+# must be a plain dotted field path (`.name`, `.a.b`) and must not name jq's `env`:
+# gh's jq can print environment variables, which would put a token in the transcript.
 shape_re='^[A-Za-z0-9._/~^:+=-]+$'
 jq_re='^[A-Za-z0-9._-]+$'
+jq_env_re='(^|\.)env(\.|$)'
+jq_ok() { [[ $1 =~ $jq_re ]] && ! [[ $1 =~ $jq_env_re ]]; }
 for ((i = 0; i < n; i++)); do
   t="${tok[$i]}"
-  if [ "$i" -ge 1 ] && [ "$progl" = gh ] && [ "$subl" = api ]      && { [ "${tok[$((i - 1))]}" = -q ] || [ "${tok[$((i - 1))]}" = --jq ]; }; then
-    [[ $t =~ $jq_re ]] || deny "the --jq filter '$t' is not a plain field path."
+  if [ "$progl" = gh ] && [ "$i" -ge 1 ] && { [ "${tok[$((i - 1))]}" = -q ] || [ "${tok[$((i - 1))]}" = --jq ]; }; then
+    jq_ok "$t" || deny "the jq filter '$t' is not a plain field path (and may not name env)."
+  elif [ "$progl" = gh ] && [[ $t == --jq=* ]]; then
+    jq_ok "${t#--jq=}" || deny "the jq filter '$t' is not a plain field path (and may not name env)."
   else
     [[ $t =~ $shape_re ]] || deny "the argument '$t' contains a character outside the plain-word set (letters, digits and . _ / ~ ^ : + = -)."
   fi
@@ -306,6 +354,94 @@ ok_gh_pr() {
   return 1
 }
 
+# The ten vetted checkers, EXACT and case-sensitive. A casefold match to an excluded
+# script is denied by name so the reason is clear, but the allowlist is what decides.
+script_check() {
+  local sl k tk name w
+  sl="$(lower "$sub")"
+  case "$sl" in
+    scripts/check_build.py | scripts/validate_gcp_credentials.py | scripts/validate_convergence.py)
+      deny "'$sub' reaches GCP or trains; it is not a read-only check."
+      ;;
+  esac
+  case "$sub" in
+    scripts/validate_agents.py | scripts/validate_claude_agents.py | scripts/validate_kb.py | \
+      scripts/validate_openspec.py | scripts/validate_skills.py | scripts/check_doc_sync.py | \
+      scripts/check_coverage_floors.py | scripts/check_branch_direction.py | \
+      scripts/check_learning_trend.py | scripts/verify_release_evidence.py) ;;
+    *) deny "'${sub:-<none>}' is not one of the vetted read-only scripts." ;;
+  esac
+  # Layer 1: an EXACT allowlist of long options per script, read from each script's
+  # argparse definitions. argparse accepts any unambiguous abbreviation (`--wr` is
+  # `--write`), so a name match on the denied option is not enough -- only exact
+  # members pass. The writing options (`check_learning_trend.py --out`) are absent.
+  local opts
+  case "$sub" in
+    scripts/validate_agents.py) opts=" --path --quiet --json --verbose --max-warnings " ;;
+    scripts/validate_claude_agents.py) opts=" --path --quiet --verbose " ;;
+    scripts/validate_kb.py) opts=" --git --no-git --path --quiet --json " ;;
+    scripts/validate_openspec.py) opts=" --change --path --quiet --json " ;;
+    scripts/validate_skills.py) opts=" --path --quiet --json " ;;
+    scripts/check_doc_sync.py) opts=" --root --quiet --json " ;;
+    scripts/check_coverage_floors.py) opts=" --report --floors --package --allow-empty --verbose -v " ;;
+    scripts/check_branch_direction.py) opts=" " ;;
+    scripts/check_learning_trend.py) opts=" --run-dir --iterations --eval --benchmark --print-protocol-sha --evaluation-md " ;;
+    scripts/verify_release_evidence.py) opts=" --repo-root --repo --head --scope " ;;
+    *) opts=" " ;;
+  esac
+  for ((k = 2; k < n; k++)); do
+    tk="${tok[$k]}"
+    case "$tk" in
+      -*)
+        name="${tk%%=*}"
+        if [ "$name" != -h ] && [ "$name" != --help ] && [[ $opts != *" $name "* ]]; then
+          deny "option '$tk' is not an exact, vetted option of $sub."
+        fi
+        # Layer 2: even an exact member must not look like a writer.
+        for w in out write fix update apply exec baseline save dump create delete force overwrite; do
+          if [[ $name == *"$w"* ]]; then deny "'$tk' could make a checker write."; fi
+        done
+        ;;
+    esac
+  done
+  return 0
+}
+
+# qa mode: `python -m pytest <paths under tests/>` with safe flags only.
+tests_path_re='^tests(/[A-Za-z0-9._-]+)*(::[A-Za-z0-9_:.-]+)?$'
+tests_path_ok() { [[ $1 =~ $tests_path_re ]] && [[ $1 != *..* ]]; }
+pytest_check() {
+  local k=3 tk havepath=0
+  while [ "$k" -lt "$n" ]; do
+    tk="${tok[$k]}"
+    case "$tk" in
+      -q | -qq | -x | -v | -vv | -s | --lf | --ff | --co | --collect-only | --no-header | -ra | \
+        --tb=short | --tb=line | --tb=no | --tb=long | --tb=auto | --tb=native | --strict-markers) ;;
+      --maxfail=*) [[ $tk =~ ^--maxfail=[0-9]+$ ]] || deny "'$tk' is not a number." ;;
+      --confcutdir=*) tests_path_ok "${tk#--confcutdir=}" || deny "'$tk' is not a path under tests/." ;;
+      -k | -m)
+        k=$((k + 1))
+        [[ ${tok[$k]:-} =~ ^[A-Za-z0-9_]+$ ]] || deny "'$tk' takes one plain word."
+        ;;
+      -p)
+        k=$((k + 1))
+        [ "${tok[$k]:-}" = "no:cacheprovider" ] || deny "'-p' is allowed only as '-p no:cacheprovider'."
+        ;;
+      -c)
+        k=$((k + 1))
+        tests_path_ok "${tok[$k]:-}" || deny "'-c' must name a config under tests/."
+        ;;
+      -*) deny "pytest option '$tk' is not on the allowlist." ;;
+      *)
+        tests_path_ok "$tk" || deny "pytest may run paths under tests/ only; '$tk' is not one."
+        havepath=1
+        ;;
+    esac
+    k=$((k + 1))
+  done
+  [ "$havepath" -eq 1 ] || deny "pytest needs at least one path under tests/."
+}
+
 case "$progl" in
   git | git.exe)
     case "$subl" in
@@ -345,6 +481,8 @@ case "$progl" in
         # No method flag exists in this list, so the request is gh's default, GET;
         # no body field or --input, so it never becomes a POST.
         expect=""
+        npath=0
+        api_path_re='^/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*$'
         for ((i = 2; i < n; i++)); do
           t="${tok[$i]}"
           if [ -n "$expect" ]; then
@@ -361,9 +499,18 @@ case "$progl" in
             -H | --header) expect=header ;;
             --header=X-GitHub-Api-Version:*) ;;
             -*) deny "'gh api $t' is not on the allowlist (path, --jq/-q, --paginate, -H X-GitHub-Api-Version only)." ;;
-            graphql | */graphql) deny "'gh api graphql' is a POST." ;;
+            *)
+              # The endpoint: a RELATIVE api path only. A scheme (`https:`), a port
+              # or any `:` fails the charset; `//host/x` has an empty segment and
+              # fails the segment pattern; `gh api` would otherwise fetch a URL from
+              # any host (an egress and SSRF channel).
+              [[ $t =~ $api_path_re ]] || deny "'gh api $t' is not a relative GitHub API path (no scheme, host or double slash)."
+              if [[ $t == *graphql* ]]; then deny "'gh api graphql' is a POST."; fi
+              npath=$((npath + 1))
+              ;;
           esac
         done
+        [ "$npath" -eq 1 ] || deny "'gh api' takes exactly one api path."
         [ -z "$expect" ] || deny "'gh api' ends with a flag that is missing its value."
         ;;
       *)
@@ -372,31 +519,11 @@ case "$progl" in
     esac
     ;;
   python | python3 | py | python.exe | python3.exe | py.exe)
-    script="$sub"
-    # Exactly scripts/<name>.py with a plain name: no ./, no .., no extra dirs.
-    if ! [[ $script =~ ^scripts/(validate_|check_|verify_release_evidence)[A-Za-z0-9_]*\.py$ ]]; then
-      deny "only python scripts/{validate_,check_,verify_release_evidence}*.py may run."
+    if [ "$qa" -eq 1 ] && [ "$sub" = -m ] && [ "${tok[2]:-}" = pytest ]; then
+      pytest_check
+    else
+      script_check
     fi
-    case "$script" in
-      scripts/check_build.py | scripts/validate_gcp_credentials.py | scripts/validate_convergence.py)
-        deny "'$script' reaches GCP or trains; it is not a read-only check."
-        ;;
-    esac
-    # argparse accepts any unambiguous prefix of a long option, so a denylist
-    # of exact spellings is not enough: deny every prefix of a writing option.
-    for ((i = 2; i < n; i++)); do
-      t="${tok[$i]}"
-      case "$t" in
-        --?*)
-          name="${t%%=*}"
-          for w in --out --output --write --fix --update --apply --execute; do
-            if [[ $w == "$name"* ]]; then
-              deny "'$t' could make a checker write."
-            fi
-          done
-          ;;
-      esac
-    done
     ;;
   *)
     deny "'${prog}' is not on the read-only list."
