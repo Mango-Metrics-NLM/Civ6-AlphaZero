@@ -77,22 +77,33 @@ a tag and MUST refuse a commit whose release workflow lacks ``wait-for-ci``.
 
 ### Requirement: A release PR into main carries verified evidence
 
-A ``Release Evidence`` job in ``ci.yml`` SHALL run on every pull request, with no
-path filter, no job-level ``if:`` and no ``continue-on-error``, and SHALL be a
-required check of the ``main`` ruleset. It MUST report n/a (exit 0) unless the
-base is ``main`` and the head is not ``hotfix/*``, reading the refs from ``env``,
-never from an expression inside ``run:``. Otherwise
+A ``Release Evidence`` job SHALL run on every open pull request (``opened``,
+``synchronize``, ``reopened``, ``edited``), with no path filter and no
+``continue-on-error``, in a workflow with no ``push`` trigger, and SHALL be a
+required check of the ``main`` ruleset once ``main`` carries it. No
+push-triggered workflow MAY define a job of that name. It MUST report n/a (exit
+0) unless the base is ``main`` and the head is not ``hotfix/*``, reading the refs
+from ``env``, never from an expression inside ``run:``. Otherwise
 ``scripts/verify_release_evidence.py`` MUST verify
 ``docs/evidence/release_vX_Y_Z/bundle.json`` (pyproject's version) and exit 0
-(pass), 1 (fail) or 2 (missing): every component re-hashed; each arm's counts,
+(pass), 1 (fail) or 2 (missing): each attempt's ``run.json`` invocations equal
+to section 7.1's registered commands at the attempt's commit; every component
+re-hashed; each arm's counts,
 ``scoring.summarize`` and both intervals recomputed from its per-game records;
 the verdict recomputed by ``a1_protocol.compute_verdict`` in section 7.1 order;
 the rc commit's check runs read as ``wait-for-ci`` reads them; each component
-run at most 1,000 games or carrying its own ``approval_ref``; every component's
-``git_sha`` an ancestor of ``rc_sha`` with no change since it on
-``scripts/release_play_path.txt`` and no ``MCTS_*`` variable; the protocol hash
-equal to section 7.1's; ``learning_recorded`` true and ``learning_claimed`` true
-only when A1 and A1-R both PASS.
+run at most 1,000 games or carrying its own ``approval_ref``; ``rc_tag`` the
+highest rc of the release; every attempt's ``git_sha`` an ancestor of
+``rc_sha``, and for the judged attempt no change on
+``scripts/release_play_path.txt`` from it to ``rc_sha`` or to the release head;
+the protocol hash equal to section 7.1's; exactly one non-VOID attempt per role,
+which is judged; ``learning_recorded`` true and ``learning_claimed`` true only
+when the judged A1 and A1-R both PASS.
+
+#### Scenario: A VOID records no learning result
+
+- **WHEN** the bundle's only A1 attempt recomputes to VOID, recorded honestly
+- **THEN** the verifier exits 1, and passes once a non-VOID re-run under a new ``card_id`` is listed beside it
 
 #### Scenario: A negative A1 ships with the claim withheld
 
@@ -106,5 +117,5 @@ only when A1 and A1-R both PASS.
 
 #### Scenario: The play path changed after the run
 
-- **WHEN** ``git diff <run git_sha> <rc_sha>`` touches ``alpha_zero/core/mcts/``
+- **WHEN** ``git diff <run git_sha> <rc_sha>`` touches ``alpha_zero/core/mcts/``, or a later rc does while the bundle names the earlier one
 - **THEN** the verifier exits 1

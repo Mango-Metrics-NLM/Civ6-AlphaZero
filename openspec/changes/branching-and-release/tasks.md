@@ -32,7 +32,8 @@
 ## 5. T14 -- Release Evidence (LF-D8)
 - [x] 5.1 `a1_protocol.compute_verdict` / `verdict_from_bounds`: the one section 7.1 verdict implementation (`tests/unit/test_a1_verdict.py`)
 - [x] 5.2 `scripts/verify_release_evidence.py` + `scripts/release_play_path.txt`; bundle schema in `docs/evidence/SCHEMA.md`
-- [x] 5.3 `ci.yml` job `Release Evidence` (always runs; n/a off main and on `hotfix/*`); `main.json` requires it
+- [x] 5.3 `release-evidence.yml` (pull requests only, `edited` included) job `Release Evidence` (n/a off main and on `hotfix/*`); `main.json` requires it
 - [x] 5.4 `branch_cutover.sh`: steps 4 and 5 withhold Release Evidence; new step `add-release-evidence` (9a)
 - [x] 5.5 Gates: `tests/scripts/test_verify_release_evidence.py`; negative controls (symmetry VOID ignored, freshness diff dropped) recorded in its module
-- [ ] 5.6 Maintainer action 9a: after T14 merges into dev, PUT Release Evidence into the main ruleset (`branch_cutover.sh add-release-evidence`); confirm a draft PR into main shows it as Expected
+- [x] 5.5a Review fix round 1: VOID fails (`learning_recorded` needs a measured verdict; VOID attempts listed beside the re-run; section 7.1 "After a VOID"); PR-only workflow; highest rc and a play-path diff to the release head; 9a gated on `origin/main`; stdlib-only `--scope`; `run.json` bound to section 7.1's commands at the run's commit (`a1_registration`)
+- [ ] 5.6 Maintainer action 9a: after the first release carrying T14 has merged into main, PUT Release Evidence into the main ruleset (`branch_cutover.sh add-release-evidence`, which refuses until `origin/main` carries T14); confirm a draft PR into main shows it as Expected
