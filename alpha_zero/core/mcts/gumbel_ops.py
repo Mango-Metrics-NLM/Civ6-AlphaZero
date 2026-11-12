@@ -133,11 +133,6 @@ def halving_schedule(
       passes (see :class:`HalvingRound`). The refreshed ranking can change
       *which* survivors get the odd visits, never how many simulations there are.
 
-    * **Dealing.** A round is ``full_passes`` passes over its survivors, then
-      ``remainder`` odd visits to the top of a ranking refreshed after those
-      passes (see :class:`HalvingRound`). The refreshed ranking can change
-      *which* survivors get the odd visits, never how many simulations there are.
-
     Consequently the realised total is exactly ``n`` whenever ``num_legal >= 2``,
     and 0 for a forced move; ``min_survivors`` changes the shape of the schedule
     but never its total.
