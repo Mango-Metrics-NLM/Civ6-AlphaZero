@@ -853,3 +853,31 @@ def test_validator_acceptance_implies_the_loader_sees_the_same_tools_and_hooks(
             assert json.dumps(loaded["hooks"], sort_keys=True) == json.dumps(
                 front.get("hooks"), sort_keys=True
             ), f"{path.name} [{label}]: hooks differ"
+
+
+# ---------------------------------------------------------------------------
+# I-5 (final review): identity is the control only once it is provisioned
+# ---------------------------------------------------------------------------
+
+_REAL_AGENTS = sorted((REPO_ROOT / ".claude" / "agents").glob("sdlc-*.md"))
+
+
+@pytest.mark.parametrize("path", _REAL_AGENTS, ids=lambda p: p.stem)
+def test_identity_claim_carries_the_provisioning_qualifier(path: Path) -> None:
+    """Every role file that names identity as the control says it is not provisioned yet.
+
+    The rest of the docs (CLAUDE.md section 3.2, the charter, ``.claude/README.md``) carry
+    the qualifier; a role file without it tells an agent the server will reject a qa/main
+    merge or tag, which is false before the maintainer provisions ``civ6az-agent``.
+    """
+    text = path.read_text(encoding="utf-8")
+    assert "civ6az-agent" in text
+    assert "once the maintainer provisions it" in text, path.name
+    assert "until then maintainer-only is a convention" in text, path.name
+
+
+def test_developer_does_not_claim_to_act_as_the_machine_user_today() -> None:
+    text = (REPO_ROOT / ".claude" / "agents" / "sdlc-developer.md").read_text(encoding="utf-8")
+    assert "You act as the machine user" not in text
+    assert "against `dev`, as `civ6az-agent`" not in text
+    assert "the current default branch" in text
