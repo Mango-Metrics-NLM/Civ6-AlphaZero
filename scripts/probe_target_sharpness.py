@@ -480,6 +480,8 @@ def run_probe(
                     "entropy": round(h, 6),
                     "max_p": round(mp, 6),
                     "support": int((target > 0).sum()),
+                    # The move the arena (temperature 0) and late self-play play.
+                    "argmax": int(target.argmax()),
                 }
             rows.append(row)
 
@@ -524,6 +526,11 @@ def cell_summaries(
                 round(sum(early_above) / len(early_above), 6) if early_above else None
             ),
             "share_max_p_above_0_5": round(sum(mp > 0.5 for mp in max_p) / len(max_p), 6),
+            # The target's argmax is the move played at temperature 0 (the arena,
+            # and self-play after the temperature threshold).
+            "argmax_agrees_with_current": round(
+                sum(r[name]["argmax"] == r["current"]["argmax"] for r in rows) / len(rows), 6
+            ),
         }
     return cells
 
@@ -665,7 +672,7 @@ def _cell_row(name: str, cell: dict[str, Any]) -> str:
         f"{cell['max_p']['mean']:.3f} / {cell['max_p']['median']:.3f} | "
         f"{cell['share_max_p_above_greedy_threshold']:.3f} | "
         f"{'n/a' if tphase is None else f'{tphase:.3f}'} | "
-        f"{cell['support']['median']:.0f} |"
+        f"{cell['support']['median']:.0f} | {cell['argmax_agrees_with_current']:.3f} |"
     )
 
 
@@ -678,7 +685,7 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
     header = (
         "| Variant | Search (halving score) | Target | Entropy mean / median (nats) "
         "| max-p mean / median | Share max-p > threshold | Same in temperature phase "
-        "| Support (median) |\n|---|---|---|---|---|---|---|---|"
+        "| Support (median) | Argmax = `current` argmax |\n|---|---|---|---|---|---|---|---|---|"
     )
     lines = [
         "# Gumbel policy-target sharpness probe (LF-A5 / LF-A12)",
@@ -710,7 +717,7 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
         "",
         "| Seed | abs root value, median | Visited-Q spread, median | "
         + " | ".join(f"`{n}`" for n in names)
-        + " | Move agrees with `current` (sigma_halving / paper) |",
+        + " | Halving winner agrees with `current` (sigma_halving / paper) |",
         "|---|---|---|" + "---|" * len(names) + "---|",
     ]
     for run in result["per_seed"]:

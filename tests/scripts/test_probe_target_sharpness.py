@@ -25,6 +25,7 @@ CELL_KEYS = {
     "share_max_p_above_greedy_threshold",
     "share_above_threshold_in_temperature_phase",
     "share_max_p_above_0_5",
+    "argmax_agrees_with_current",
 }
 
 
@@ -58,6 +59,7 @@ def test_schema(mod: Any, result: dict[str, Any]) -> None:
             assert 0.0 <= cell["share_max_p_above_greedy_threshold"] <= 1.0
             assert 0.0 < cell["max_p"]["mean"] <= 1.0
             assert cell["entropy_nats"]["mean"] >= 0.0
+    assert result["pooled"]["cells"]["current"]["argmax_agrees_with_current"] == 1.0
     for run in result["per_seed"]:
         assert len(run["positions"]) == TINY["positions"]
         assert run["current_visited_q_spread"]["mean"] >= 0.0
