@@ -748,3 +748,134 @@ class TestRunCiv6Ai:
             )
             <= DEFAULT_MAX_GAMES
         )
+
+
+class TestProductionLauncher:
+    """``launch_50iter_production_monitored`` built a production orchestrator unpriced (I-2)."""
+
+    @staticmethod
+    def _main(monkeypatch: pytest.MonkeyPatch, argv: list[str]) -> tuple[int, mock.MagicMock]:
+        from alpha_zero.orchestrator import orchestrator as orch_module
+
+        script = _import_script("launch_50iter_production_monitored")
+        orchestrator = mock.MagicMock()
+        orchestrator.initialize.return_value = True
+        cls = mock.MagicMock(return_value=orchestrator)
+        monkeypatch.setattr(orch_module, "TrainingOrchestrator", cls)
+        # The launcher writes its overrides straight into os.environ; keep them out
+        # of every later test.
+        with mock.patch.dict(os.environ):
+            for key in [k for k in os.environ if k.startswith("CIV6AZ_TRAINING_")]:
+                del os.environ[key]
+            return script.main(argv), cls
+
+    def test_defaults_are_refused_before_building_the_orchestrator(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._main(monkeypatch, [])
+        err = _assert_refused(excinfo, capsys)
+        # 50 iterations x 200 games + 50 games x (1 evaluation + 2 x 1 full evaluation).
+        assert "10,150" in err
+
+    def test_defaults_price_through_the_orchestrator_model(self) -> None:
+        resolved = {
+            "dry_run": False,
+            "num_iterations": 50,
+            "games_per_iteration": 200,
+            "evaluation_interval": 2500,
+            "evaluation_games": 50,
+            "full_eval_interval": 5,
+        }
+        assert worst_case_games("orchestrator", resolved) == 10_150
+
+    def test_refusal_builds_nothing(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        from alpha_zero.orchestrator import orchestrator as orch_module
+
+        cls = mock.MagicMock()
+        monkeypatch.setattr(orch_module, "TrainingOrchestrator", cls)
+        script = _import_script("launch_50iter_production_monitored")
+        with mock.patch.dict(os.environ), pytest.raises(SystemExit) as excinfo:
+            script.main([])
+        _assert_refused(excinfo, capsys)
+        cls.assert_not_called()
+
+    def test_dry_run_is_allowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        code, cls = self._main(monkeypatch, ["--dry-run"])
+        assert code == 0
+        cls.assert_not_called()
+
+    def test_approval_ref_passes_and_logs(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING, logger=game_budget.logger.name):
+            code, cls = self._main(monkeypatch, ["--approval_ref", "#301"])
+        assert code == 0
+        cls.return_value.run.assert_called_once()
+        assert "#301" in caplog.text
+
+    def test_max_games_flag_alone_never_raises_the_cap(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            self._main(monkeypatch, ["--max_games", "20000"])
+        # Not argparse's own exit 2 for an unknown flag: the refusal message.
+        _assert_refused(excinfo, capsys)
+
+
+class TestEnhancedEnvSmokeTest:
+    """``--num-selfplay-games`` reached self-play unchecked (I-2)."""
+
+    @staticmethod
+    def _script_and_spy(monkeypatch: pytest.MonkeyPatch) -> tuple[Any, mock.MagicMock]:
+        script = _import_script("enhanced_env_smoke_test")
+        selfplay = mock.MagicMock(
+            return_value=script.SmokeResult("local_selfplay", True, 0.0, "stub")
+        )
+        monkeypatch.setattr(script, "test_local_selfplay", selfplay)
+        for name in (
+            "test_env_creation",
+            "test_observation_shapes",
+            "test_enhanced_systems",
+            "test_vectorized_env",
+            "test_gcs_path_isolation",
+        ):
+            monkeypatch.setattr(
+                script,
+                name,
+                mock.MagicMock(return_value=script.SmokeResult(name, True, 0.0, "stub")),
+            )
+        return script, selfplay
+
+    def test_model_prices_one_game_per_selfplay_game(self) -> None:
+        assert worst_case_games("enhanced_env_smoke_test", {"num_selfplay_games": 2}) == 2
+        assert worst_case_games("enhanced_env_smoke_test", {"num_selfplay_games": 1001}) == 1001
+
+    def test_default_is_allowed(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, selfplay = self._script_and_spy(monkeypatch)
+        assert script.main(["--skip-container"]) == 0
+        selfplay.assert_called_once()
+        capsys.readouterr()
+
+    def test_over_the_cap_is_refused_before_anything_runs(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, selfplay = self._script_and_spy(monkeypatch)
+        with pytest.raises(SystemExit) as excinfo:
+            script.main(["--skip-container", "--num-selfplay-games", "1001"])
+        err = _assert_refused(excinfo, capsys)
+        assert "1,001" in err
+        selfplay.assert_not_called()
+
+    def test_approval_ref_raises_the_cap(
+        self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        script, selfplay = self._script_and_spy(monkeypatch)
+        argv = ["--skip-container", "--num-selfplay-games", "1001", "--approval_ref", "#302"]
+        assert script.main(argv) == 0
+        selfplay.assert_called_once()
+        capsys.readouterr()

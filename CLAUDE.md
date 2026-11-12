@@ -172,7 +172,11 @@ PROHIBITED (do not attempt):
 - External API calls with side effects (except LLM)
 - Deleting checkpoint files
 - Running a job whose worst case is over 1,000 games without --approval_ref <issue>.
-  Every runner prices itself (alpha_zero/utils/game_budget.py) and refuses;
+  Every runner except the distributed coordinator prices itself
+  (alpha_zero/utils/game_budget.py) and refuses; the coordinator's own
+  --max_games is unpriced (distributed coordination is CONFIRM-FIRST; the guard
+  asks on it), and the frozen Vertex path (alpha_zero/cloud/gcp/*,
+  scripts/launch_ab_run.py) is unpriced and dormant (cloud spend is confirm-first).
   --max_games can only LOWER the cap; --approval_ref is recorded, not verified,
   and the PreToolUse guard asks before any command that carries it
 ```
@@ -289,7 +293,7 @@ When making changes, update the relevant sections below:
 | `make hooks-install` | Install pre-commit (self-installing) + git pre-commit/pre-push hooks |
 | `python scripts/check_doc_sync.py` | Documentation-drift gate (version/counts/links/extras) |
 | `python scripts/validate_openspec.py` | Validate the `openspec/` change directory |
-| `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test (prices at 8 games). **Game cap:** every runner refuses a worst case over 1,000 games; a bare `training_civ6` prices at 10,200 and is refused. Check a price first with `scripts/run_card.py CARD --price_only` |
+| `python -m alpha_zero.training_civ6 --dry_run` | Training smoke test (prices at 8 games). **Game cap:** every runner except the distributed coordinator (guard asks) refuses a worst case over 1,000 games; a bare `training_civ6` prices at 10,200 and is refused. Check a price first with `scripts/run_card.py CARD --price_only` |
 | `python -m alpha_zero.training_civ6 --seed 42 --num_games 20 --num_iterations 10 --save_interval 5` | Reproducible training run — two runs at one seed are identical. Prices at 240 games; a bare `--seed 42` prices at 10,200 and is **refused** by the game cap |
 | `python -m alpha_zero.training_civ6 --resume_from checkpoints/civ6/checkpoint_7.pt --num_iterations 20 --num_games 20 --save_interval 5` | Resume an interrupted run at iteration 8. Restores **weights only**; `--num_iterations` is the END of the run, not a count of extra iterations. `--start_iteration` overrides what the file name implies. Prices at 320 games (the same command at the default `--num_games 100` prices at 1,340 and is refused) |
 | `python -m alpha_zero.training_civ6 --save_interval 5 --eval_interval 2 --eval_games 10` | In-loop evaluation on its own cadence (LF-A14): `--eval_interval` defaults to `--save_interval`, `--eval_games 0` turns it off (also under `--dry_run`). Each evaluation writes `eval_<iter>.json` beside the checkpoints; every iteration appends prequential diagnostics to `iterations.jsonl` |
@@ -317,7 +321,7 @@ When making changes, update the relevant sections below:
 | `python scripts/run_llm_eval.py --online` | Run the eval gate against a real LLM provider (needs API keys) |
 | `eval-harness list-plugins` | List harness scorers/datasets/targets/sinks/judges |
 | `python scripts/launch_50iter_production_monitored.py --dry-run` | MLflow-monitored 50-iter production dry run |
-| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow. **Not priced by the game cap** (it drives `TrainingOrchestrator` directly, not the `orchestrator` CLI), and the production config is far over 1,000 games, so it needs a maintainer-approved issue first; an agent must not run it |
+| `python scripts/launch_50iter_production_monitored.py` | Launch full 50-iter production run with MLflow. Priced through the `orchestrator` cost model: the defaults price to 10,150 games and are **refused** without `--approval_ref <issue>`, which needs a maintainer-approved issue first; an agent must not run it |
 | `mlflow ui --backend-store-uri ./mlruns --port 5000` | Inspect MLflow runs in the browser |
 | `python -m alpha_zero.civ6_local --mode civ6 --dry-run` | Validate Civ6 bridge config (no game needed) |
 | `python -m alpha_zero.civ6_local --mode civ6 --mcts` | Start Civ6 bridge with GumbelMCTS policy |
@@ -1487,7 +1491,7 @@ creation and tag pushes, `gh pr merge`, `gh release`, `gh ruleset`, `gh repo edi
 write-capable `gh api`, and a command with an **explicit** game-count flag above 1,000 without
 `--approval_ref` (it cannot price a run: a bare `training_civ6` passes the guard and is refused
 by the runner); it **asks** on `--approval_ref`, `--preset production`, `--config` on a game
-runner, and unknown runners. The worst-case refusal is done by each runner, which prices itself through `alpha_zero/utils/game_budget.py`
+runner, and unknown runners. The worst-case refusal is done by each runner except the distributed coordinator (on which the guard asks), which prices itself through `alpha_zero/utils/game_budget.py`
 (see the Known Issues and decision tables). Details and bypasses: `.claude/README.md`.
 
 **Agent identity (maintainer action, not yet provisioned).** Maintainer-only actions (merging

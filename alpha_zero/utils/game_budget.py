@@ -281,6 +281,11 @@ def _probe_target_sharpness(r: Mapping[str, Any]) -> int:
     return 0
 
 
+def _enhanced_env_smoke_test(r: Mapping[str, Any]) -> int:
+    """``num_selfplay_games`` complete games; the vectorised check takes one step only."""
+    return _nonneg(r["num_selfplay_games"])
+
+
 def _local_muzero_launcher(r: Mapping[str, Any]) -> int:
     return (
         _nonneg(r["iterations"])
@@ -306,6 +311,7 @@ _MODELS: dict[str, Callable[[Mapping[str, Any]], int]] = {
     "local_muzero_launcher": _local_muzero_launcher,
     "calibrate_throughput": _calibrate_throughput,
     "probe_target_sharpness": _probe_target_sharpness,
+    "enhanced_env_smoke_test": _enhanced_env_smoke_test,
 }
 
 

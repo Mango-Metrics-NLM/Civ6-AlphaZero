@@ -155,8 +155,9 @@ scope; they may never relax an invariant.)*
    `release-tags` let only the maintainer merge into `qa`/`main` or create `v*` tags.
    **Transition clause:** until the maintainer provisions that identity and those rulesets,
    the PreToolUse guard (`.claude/hooks/pretooluse_guard.sh`) is the only barrier and it is
-   an accident net, not a control. Game cap: enforced by each runner (`--max_games` may
-   only lower the 1,000 cap). `--approval_ref <issue>` is only **recorded** by the runner,
+   an accident net, not a control. Game cap: enforced by every runner except the
+   distributed coordinator, on which the guard asks (`--max_games` may only lower the
+   1,000 cap). `--approval_ref <issue>` is only **recorded** by the runner,
    not verified: the maintainer's approval is a process rule, not a machine check. As a
    backstop, the PreToolUse guard asks (does not deny) on commands carrying
    `--approval_ref`; that is guard behaviour introduced by the branching change.

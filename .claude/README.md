@@ -155,7 +155,7 @@ For an agent that means:
   vX.Y.Z[-rc.N]`; an agent never runs `git tag` or pushes a tag, and `--execute` refuses
   inside a Claude Code session. The same goes for `scripts/maintainer/branch_cutover.sh` and
   `merge_backmerge.sh`.
-- **Game cap:** every runner prices its own worst case
+- **Game cap:** every runner except the distributed coordinator (guard asks) prices its own worst case
   (`alpha_zero/utils/game_budget.py`) and refuses above 1,000 games. `--max_games` can only
   lower the cap; `--approval_ref <issue>` raises it and is **recorded, not verified**, which
   is why the guard asks before running any command that carries it. A run card
