@@ -420,6 +420,11 @@ def run_probe(
         name: {"entropy": [], "max_p": [], "support": []} for name, _, _ in CELLS
     }
     prior_stats: dict[str, list[float]] = {"entropy": [], "max_p": []}
+    # Spread of visited root-child Q under the current search. The current
+    # target's sharpness scales with this absolute spread (raw Q, no
+    # normalisation); the paper's does not (min-max normalised).
+    q_spreads: list[float] = []
+    root_values: list[float] = []
     agree: dict[str, int] = {key: 0 for key in _SEARCHES if key != "current"}
     rows: list[dict[str, Any]] = []
     forced = 0
@@ -448,6 +453,14 @@ def run_probe(
                 priors = np.array([c.prior for c in current.last_root.children.values()])
                 prior_stats["entropy"].append(entropy(priors))
                 prior_stats["max_p"].append(float(priors.max()))
+                visited_q = [
+                    _root_child_q(current.last_root, c)
+                    for c in current.last_root.children.values()
+                    if c.visit_count > 0
+                ]
+                if visited_q:
+                    q_spreads.append(max(visited_q) - min(visited_q))
+                root_values.append(abs(current.last_raw_value))
             for name, search_key, target_key in CELLS:
                 mcts = roots[search_key]
                 root = mcts.last_root
@@ -535,6 +548,8 @@ def run_probe(
             "max_p": _summary(prior_stats["max_p"]),
         },
         "legal_actions": _summary([float(r["legal"]) for r in rows]),
+        "current_visited_q_spread": _summary(q_spreads or [0.0]),
+        "abs_root_network_value": _summary(root_values or [0.0]),
         "chosen_move_agreement_with_current": {
             key: round(count / positions, 6) for key, count in agree.items()
         },
@@ -633,6 +648,12 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
         f"Legal actions per position: median {result['legal_actions']['median']:.0f}. "
         f"Forced positions: {result['positions_forced']}. Positions in the temperature phase "
         f"(turn < {cur['temperature_threshold']}): {result['temperature_phase_positions']}.",
+        "",
+        "Visited root-child Q spread (max - min) under `current`: median "
+        f"{result['current_visited_q_spread']['median']:.4f}, p90 "
+        f"{result['current_visited_q_spread']['p90']:.4f}; |root network value| median "
+        f"{result['abs_root_network_value']['median']:.4f}. The current target's sharpness "
+        "scales with this absolute spread; the paper's (min-max normalised) does not.",
         "",
         "Chosen move agrees with `current`: "
         + ", ".join(f"`{k}` {v:.3f}" for k, v in agree.items())

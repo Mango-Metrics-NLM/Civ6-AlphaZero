@@ -56,6 +56,7 @@ def test_schema(mod: Any, result: dict[str, Any]) -> None:
         assert 0.0 < cell["max_p"]["mean"] <= 1.0
         assert cell["entropy_nats"]["mean"] >= 0.0
     assert len(result["positions"]) == TINY["positions"]
+    assert result["current_visited_q_spread"]["mean"] >= 0.0
     assert result["settings"]["current"]["greedy_threshold"] == pytest.approx(0.99)
 
 
