@@ -280,6 +280,143 @@ def save_checkpoint(
     logger.info(f"Saved checkpoint to {path}")
 
 
+class HorizonMismatch(ValueError):  # noqa: N818 - name fixed by the plan (LF-A16)
+    """A checkpoint was trained at a different ``max_turns`` than it is read at.
+
+    The file loads and plays; the numbers it produces just do not mean what the
+    reader thinks. A ``ValueError`` so existing ``except ValueError`` handlers on
+    the resume path keep working.
+    """
+
+
+#: Metadata values must survive ``torch.load(weights_only=True)``.
+_PRIMITIVE_TYPES = (str, int, float, bool, type(None))
+
+
+def validate_primitive_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    """Return ``metadata`` unchanged, or raise ``TypeError`` for a non-primitive value."""
+    for key, value in metadata.items():
+        if not isinstance(key, str) or not isinstance(value, _PRIMITIVE_TYPES):
+            raise TypeError(
+                f"checkpoint metadata must be primitive (str/int/float/bool/None); "
+                f"{key!r} is {type(value).__name__}. A richer value would force every "
+                "later load onto the unsafe weights_only=False path."
+            )
+    return metadata
+
+
+def read_git_sha(start: Path | None = None) -> str | None:
+    """Commit at ``HEAD`` by reading ``.git`` directly -- no subprocess.
+
+    Walks up from ``start`` (default: the working directory) to the nearest
+    ``.git``; follows a symbolic ``HEAD`` through loose and packed refs. Returns
+    ``None`` outside a repository or when the ref cannot be resolved, rather
+    than guessing.
+    """
+    here = (start or Path.cwd()).resolve()
+    for candidate in (here, *here.parents):
+        git_dir = candidate / ".git"
+        if git_dir.is_file():  # worktree: "gitdir: <path>"
+            try:
+                pointer = git_dir.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+            git_dir = Path(pointer.removeprefix("gitdir:").strip())
+        if not git_dir.is_dir():
+            continue
+        try:
+            head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
+        except OSError:
+            return None
+        if not head.startswith("ref:"):
+            return head or None
+        ref = head.removeprefix("ref:").strip()
+        loose = git_dir / ref
+        if loose.is_file():
+            try:
+                return loose.read_text(encoding="utf-8").strip() or None
+            except OSError:
+                return None
+        packed = git_dir / "packed-refs"
+        if packed.is_file():
+            try:
+                for line in packed.read_text(encoding="utf-8").splitlines():
+                    parts = line.split()
+                    if len(parts) == 2 and parts[1] == ref:
+                        return parts[0]
+            except OSError:
+                return None
+        return None
+    return None
+
+
+def build_provenance(config: Any, *, git_sha: str | None) -> dict[str, Any]:
+    """Primitive-only provenance for a checkpoint, read from a *resolved* training config.
+
+    ``config`` is a ``TrainingConfig`` (duck-typed: this module cannot import
+    ``training_civ6``). Values are what the run actually used, so a Gumbel flag
+    left at its default is recorded as the default, not as ``None``.
+    """
+    from alpha_zero.envs.microciv import ENV_VERSION
+
+    metadata: dict[str, Any] = {
+        "board_size": int(config.board_size),
+        "max_turns": int(config.max_turns),
+        "num_players": int(config.num_players),
+        "mcts": "gumbel" if config.use_gumbel_mcts else "civ6",
+        "gumbel_k": int(config.gumbel_num_sampled_actions),
+        "gumbel_sims": int(config.gumbel_num_simulations),
+        "c_scale": float(config.gumbel_c_scale),
+        "policy_target": str(config.gumbel_policy_target),
+        "bootstrap": str(config.bootstrap),
+        "seed": None if config.seed is None else int(config.seed),
+        "git_sha": git_sha,
+        "env_version": int(ENV_VERSION),
+    }
+    return validate_primitive_metadata(metadata)
+
+
+def check_provenance(
+    metadata: dict[str, Any] | None,
+    *,
+    expected_max_turns: int | None,
+    source: str | Path,
+) -> None:
+    """Refuse a checkpoint whose training horizon differs from the one it is read at.
+
+    Args:
+        metadata: The checkpoint's ``metadata`` entry, or ``None`` for a file
+            written before provenance existed.
+        expected_max_turns: The horizon the reader will play at. ``None`` means
+            the caller does not care, and nothing is checked.
+        source: Path named in messages.
+
+    Raises:
+        HorizonMismatch: ``max_turns`` is recorded and differs.
+
+    A legacy file (no metadata) is logged at WARNING and passes. A board-size
+    mismatch is deliberately not handled here: ``load_state_dict`` already fails
+    on it with a shape error.
+    """
+    if expected_max_turns is None:
+        return
+    if not metadata:
+        logger.warning(
+            "Checkpoint %s has no provenance metadata (written before LF-A16); "
+            "cannot verify it was trained at max_turns=%d.",
+            source,
+            expected_max_turns,
+        )
+        return
+    trained = metadata.get("max_turns")
+    if trained is not None and trained != expected_max_turns:
+        raise HorizonMismatch(
+            f"{source} was trained at max_turns={trained} but is being read at "
+            f"max_turns={expected_max_turns}. Results at a different horizon are not "
+            "comparable; train or evaluate at a matching --max_turns."
+        )
+
+
 def _looks_like_network_config(config: dict[str, Any]) -> bool:
     """True when ``config`` is a core ``NetworkConfig``, not an orchestrator one.
 
@@ -300,6 +437,7 @@ def load_network(
     device: str | None = None,
     network_cls: type[torch.nn.Module] | None = None,
     expected_board_size: int | None = None,
+    expected_max_turns: int | None = None,
     **arch_overrides: Any,
 ) -> torch.nn.Module:
     """Load a checkpoint into a ready-to-use network.
@@ -321,10 +459,14 @@ def load_network(
         expected_board_size: When given, the checkpoint's ``spatial_size`` must
             match. Catches "trained at 16, played at 8" as a clear error rather
             than a shape mismatch mid-game.
+        expected_max_turns: When given, the checkpoint's recorded ``max_turns``
+            must match (:class:`HorizonMismatch`); a file with no provenance
+            metadata only warns.
         **arch_overrides: Constructor arguments used when the checkpoint has no
             embedded config.
 
     Raises:
+        HorizonMismatch: ``expected_max_turns`` disagrees with the checkpoint.
         ValueError: If the checkpoint carries no config and none was supplied,
             or if the board size disagrees with ``expected_board_size``.
     """
@@ -337,6 +479,8 @@ def load_network(
     result = safe_load_checkpoint(path, map_location=resolved)
     state_dict = extract_state_dict(result.data)
     raw_config = result.data.get("config") if isinstance(result.data, dict) else None
+    metadata = result.data.get("metadata") if isinstance(result.data, dict) else None
+    check_provenance(metadata, expected_max_turns=expected_max_turns, source=path)
 
     if network_cls is None:
         # Imported lazily: core.civ6_network imports this module at module

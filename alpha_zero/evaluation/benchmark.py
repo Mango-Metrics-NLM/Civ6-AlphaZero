@@ -243,48 +243,14 @@ def hardware_summary() -> dict[str, Any]:
 
 
 def _git_sha(start: Path | None = None) -> str | None:
-    """Commit at ``HEAD`` by reading ``.git`` directly -- no subprocess.
+    """Commit at ``HEAD`` without a subprocess; ``None`` when it cannot be resolved.
 
-    Walks up from ``start`` (default: the working directory) to the nearest
-    ``.git``; follows a symbolic ``HEAD`` through loose and packed refs. Returns
-    ``None`` outside a repository or when the ref cannot be resolved, which
-    the envelope records as ``git_sha: null`` rather than guessing.
+    The implementation lives in ``utils.checkpoint.read_git_sha`` so checkpoint
+    provenance and the benchmark envelope record the same value.
     """
-    here = (start or Path.cwd()).resolve()
-    for candidate in (here, *here.parents):
-        git_dir = candidate / ".git"
-        if git_dir.is_file():  # worktree: "gitdir: <path>"
-            try:
-                pointer = git_dir.read_text(encoding="utf-8").strip()
-            except OSError:
-                return None
-            git_dir = Path(pointer.removeprefix("gitdir:").strip())
-        if not git_dir.is_dir():
-            continue
-        try:
-            head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
-        if not head.startswith("ref:"):
-            return head or None
-        ref = head.removeprefix("ref:").strip()
-        loose = git_dir / ref
-        if loose.is_file():
-            try:
-                return loose.read_text(encoding="utf-8").strip() or None
-            except OSError:
-                return None
-        packed = git_dir / "packed-refs"
-        if packed.is_file():
-            try:
-                for line in packed.read_text(encoding="utf-8").splitlines():
-                    parts = line.split()
-                    if len(parts) == 2 and parts[1] == ref:
-                        return parts[0]
-            except OSError:
-                return None
-        return None
-    return None
+    from alpha_zero.utils.checkpoint import read_git_sha
+
+    return read_git_sha(start)
 
 
 def _version_of(module_name: str) -> str | None:
@@ -613,12 +579,23 @@ def render_report(envelope: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def _load_network(path: Path, device: str) -> Any:
-    """Load a ``MicroCivNetwork`` from a training checkpoint for the CLI."""
+def _load_network(path: Path, device: str, expected_max_turns: int | None = None) -> Any:
+    """Load a ``MicroCivNetwork`` from a training checkpoint for the CLI.
+
+    ``expected_max_turns`` is the horizon the benchmark will play at; a
+    checkpoint recorded at another one raises ``HorizonMismatch`` (a legacy file
+    with no provenance only warns).
+    """
     from alpha_zero.core.checkpoint_utils import safe_torch_load
     from alpha_zero.core.civ6_network import MicroCivNetwork
+    from alpha_zero.utils.checkpoint import check_provenance
 
     checkpoint = safe_torch_load(path, map_location=device)
+    check_provenance(
+        checkpoint.get("metadata") if isinstance(checkpoint, dict) else None,
+        expected_max_turns=expected_max_turns,
+        source=path,
+    )
     network_config = dict(checkpoint.get("network_config", {}))
     board_size = network_config.pop("board_size", 8)
     action_size = network_config.pop("action_size", None) or network_config.pop(
@@ -703,7 +680,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     import torch
 
     if args.checkpoint is not None:
-        candidate = _load_network(args.checkpoint, args.device)
+        candidate = _load_network(args.checkpoint, args.device, protocol.max_turns)
     else:
         from alpha_zero.core.civ6_network import MicroCivNetwork
         from alpha_zero.envs.microciv import MicroCivEnv
@@ -720,7 +697,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     opponent_models: dict[str, Any] = {}
     for path in args.opponent_checkpoint:
         opponent_id = checkpoint_opponent_id(path)
-        opponent_models[opponent_id] = _load_network(path, args.device)
+        opponent_models[opponent_id] = _load_network(path, args.device, protocol.max_turns)
         opponents.append(opponent_id)
 
     envelope = run_benchmark(

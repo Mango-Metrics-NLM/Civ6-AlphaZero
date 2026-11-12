@@ -46,7 +46,12 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
-from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.checkpoint import (
+    build_provenance,
+    check_provenance,
+    read_git_sha,
+    safe_load_checkpoint,
+)
 from alpha_zero.utils.constants import MCTS
 from alpha_zero.utils.data_root import (
     assert_safe_data_root,
@@ -144,6 +149,12 @@ class TrainingConfig:
     resume_from: str | None = None
     start_iteration: int = 0
 
+    # Iteration-0 data source. "simple_mcts" (the historical behaviour) plays
+    # iteration 0 with random-rollout SimpleMCTS because the network is untrained;
+    # "none" plays it with the configured search on the freshly initialised
+    # network, so the first training set already comes from the search under study.
+    bootstrap: str = "simple_mcts"
+
     # Device. "auto" is resolved to a concrete device in __post_init__ rather
     # than probed at import time, so constructing a TrainingConfig on a GPU box
     # inside a test no longer silently selects cuda.
@@ -182,6 +193,8 @@ def resume_network_weights(
     resume_path: str,
     *,
     device: str = "cpu",
+    max_turns: int | None = None,
+    board_size: int | None = None,
 ) -> None:
     """Load weights from a checkpoint into an already-constructed network.
 
@@ -199,8 +212,15 @@ def resume_network_weights(
         network: The network to load into, already on ``device``.
         resume_path: Path to a checkpoint written by this script.
         device: Device to map the checkpoint onto.
+        max_turns: The horizon this run plays at. When given, a checkpoint
+            recorded at a different ``max_turns`` raises ``HorizonMismatch``; a
+            legacy file with no provenance only warns.
+        board_size: The board edge this run plays at. A recorded mismatch is
+            reported by name; without provenance ``load_state_dict`` still
+            refuses the shape.
 
     Raises:
+        HorizonMismatch: ``max_turns`` disagrees with the checkpoint's.
         ValueError: If the checkpoint has no ``state_dict``, or its parameter
             shapes do not match ``network``.
         FileNotFoundError: If ``resume_path`` does not exist. I/O failures are
@@ -217,6 +237,17 @@ def resume_network_weights(
         raise ValueError(
             f"{resume_path} is not a checkpoint written by this trainer: "
             "expected a dict with a 'state_dict' key."
+        )
+    metadata = checkpoint.get("metadata")
+    check_provenance(metadata, expected_max_turns=max_turns, source=resume_path)
+    if (
+        board_size is not None
+        and isinstance(metadata, dict)
+        and metadata.get("board_size") not in (None, board_size)
+    ):
+        raise ValueError(
+            f"{resume_path} was trained at board_size={metadata['board_size']}, "
+            f"but this run uses {board_size}."
         )
     try:
         network.load_state_dict(checkpoint["state_dict"])
@@ -1140,7 +1171,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         # bootstrap, neither of which fails loudly on its own.
         raise ValueError(f"--start_iteration must be >= 0, got {start_iteration}.")
     if config.resume_from:
-        resume_network_weights(network, config.resume_from, device=config.device)
+        resume_network_weights(
+            network,
+            config.resume_from,
+            device=config.device,
+            max_turns=config.max_turns,
+            board_size=config.board_size,
+        )
         if start_iteration == 0:
             inferred = infer_start_iteration(config.resume_from)
             if inferred is None:
@@ -1163,6 +1200,21 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             "replay buffer are not restored, so the first resumed iteration "
             "trains on freshly generated games alone.",
         )
+
+    # Provenance is resolved once per run (no subprocess, no per-save lookup) from
+    # the RESOLVED config -- after the dry-run profile -- so it records what the
+    # run used, not what the caller typed.
+    provenance = build_provenance(config, git_sha=read_git_sha())
+
+    # checkpoint_0 is the pinned random-init the A1 protocol compares against, so
+    # it is written before any training. Not when resuming: `checkpoint_<N>.pt`
+    # resumes at index N, so `checkpoint_0.pt` means "from the top", and writing
+    # here would overwrite the very file a resume just read (or a trained
+    # network's weights under the random-init name).
+    if not config.resume_from and start_iteration == 0:
+        zero_path = os.path.join(config.checkpoint_dir, "checkpoint_0.pt")
+        network.save(zero_path, metadata=provenance)
+        logger.info(f"Saved pre-training checkpoint: {zero_path}")
 
     # Initialize optimizer
     optimizer = optim.Adam(
@@ -1202,8 +1254,9 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         logger.info("Running self-play...")
         start_time = time.time()
 
-        # Use simple MCTS for first iteration (no trained network)
-        use_simple = iteration == 0
+        # Use simple MCTS for first iteration (no trained network) unless the
+        # run asked for the configured search from the start (--bootstrap none).
+        use_simple = iteration == 0 and config.bootstrap == "simple_mcts"
         examples = run_self_play(
             network, config, num_games, use_simple_mcts=use_simple, iteration=iteration
         )
@@ -1271,12 +1324,12 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 config.checkpoint_dir,
                 f"checkpoint_{iteration + 1}.pt",
             )
-            network.save(checkpoint_path)
+            network.save(checkpoint_path, metadata=provenance)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
     # Save final model
     final_path = os.path.join(config.checkpoint_dir, "latest.pt")
-    network.save(final_path)
+    network.save(final_path, metadata=provenance)
     logger.info(f"Training complete. Final model: {final_path}")
 
 
@@ -1480,6 +1533,17 @@ def build_parser() -> argparse.ArgumentParser:
             "of additional iterations."
         ),
     )
+    parser.add_argument(
+        "--bootstrap",
+        type=str,
+        default="simple_mcts",
+        choices=["simple_mcts", "none"],
+        help=(
+            "Iteration-0 data source: 'simple_mcts' (default, unchanged) plays "
+            "iteration 0 with random-rollout SimpleMCTS; 'none' plays it with the "
+            "configured --mcts search on the freshly initialised network."
+        ),
+    )
     parser.add_argument("--dry_run", action="store_true", help="Quick test run")
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
@@ -1581,6 +1645,7 @@ def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingC
         checkpoint_dir=checkpoint_dir,
         resume_from=args.resume_from,
         start_iteration=args.start_iteration,
+        bootstrap=args.bootstrap,
         max_turns=args.max_turns,
         save_interval=args.save_interval,
         device=args.device or "auto",

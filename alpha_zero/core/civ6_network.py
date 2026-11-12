@@ -17,7 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.checkpoint import safe_load_checkpoint, validate_primitive_metadata
 from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
 # Module logger
@@ -472,11 +472,14 @@ class Civ6Network(nn.Module):
 
         return policy_probs.squeeze(0), value.item()
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, *, metadata: dict[str, Any] | None = None) -> None:
         """Save model checkpoint.
 
         Args:
             path: Path to save checkpoint.
+            metadata: Optional provenance (see ``utils.checkpoint.build_provenance``).
+                Primitive values only, so the file still loads under
+                ``weights_only=True``; anything else raises ``TypeError``.
         """
         # Convert to dictionary with primitive Python types
         config_dict = asdict(self.config)
@@ -485,13 +488,13 @@ class Civ6Network(nn.Module):
             if hasattr(v, "item"):  # Handle numpy scalars
                 config_dict[k] = v.item()
 
-        torch.save(
-            {
-                "config": config_dict,
-                "state_dict": self.state_dict(),
-            },
-            path,
-        )
+        payload: dict[str, Any] = {
+            "config": config_dict,
+            "state_dict": self.state_dict(),
+        }
+        if metadata is not None:
+            payload["metadata"] = validate_primitive_metadata(dict(metadata))
+        torch.save(payload, path)
 
     @classmethod
     def load(cls, path: str, device: str = "cpu") -> Civ6Network:
