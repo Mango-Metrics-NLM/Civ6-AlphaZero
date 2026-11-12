@@ -15,4 +15,4 @@ produced. Contract: [`SCHEMA.md`](SCHEMA.md).
 | [`tech_debt_baseline/`](tech_debt_baseline/baseline.json) | rolling | n/a | n/a | code-metric ratchet (`tests/regression/test_debt_ratchet.py`) | current |
 
 No committed artifact measuring playing strength was generated on post-2026-09-04 code (`windows_baseline_20261111/` records a machine snapshot and a harness smoke only; `target_sharpness_probe/` measures search targets of untrained networks and plays no games). The first one is
-tracked under milestone v2.1 (`docs/EVALUATION.md` → "First post-fix run").
+the A1 learning run of milestone v2.1, pre-registered in `docs/EVALUATION.md` section 7.1.
