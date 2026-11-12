@@ -251,6 +251,9 @@ class BatchGumbelMCTS:
 
         Returns:
             List of (action_probs, root_value) tuples, one per environment.
+            ``action_probs`` is the policy target ``config.policy_target``
+            selects -- completed-Q by default, built exactly as GumbelMCTS
+            builds it -- not a one-hot unless ``"one_hot"`` is configured.
 
         Raises:
             ValueError: If ``envs`` is empty.
@@ -796,8 +799,10 @@ class BatchGumbelMCTS:
     ) -> int:
         """Select action from probabilities.
 
-        For Gumbel MCTS, action_probs is typically one-hot from search(),
-        so this usually just returns the argmax.
+        ``action_probs`` is the policy target ``search()`` returned: by
+        default the completed-Q distribution, so temperature applies unless one
+        action holds more than ``config.greedy_threshold`` of the mass (a
+        ``policy_target="one_hot"`` target always does, and is played greedily).
 
         Args:
             action_probs: Action probability distribution.

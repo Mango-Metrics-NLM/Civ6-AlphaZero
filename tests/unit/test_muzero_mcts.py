@@ -9,6 +9,7 @@ from alpha_zero.core.civ6_mcts import (
     MuZeroMCTSConfig,
     MuZeroNode,
 )
+from alpha_zero.core.mcts.gumbel_ops import build_completed_q_policy
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 
 
@@ -192,11 +193,48 @@ class TestMuZeroMCTS:
         It used to return a one-hot on the halving winner; the one-hot is now
         opt-in via ``policy_target="one_hot"`` (see the next test).
         """
-        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
+        captured = {}
+        original = mcts._gumbel_policy_target
 
-        assert abs(action_probs.sum() - 1.0) < 1e-5
+        def spy(root, best_action, action_space_size):
+            captured["root"], captured["best"] = root, best_action
+            return original(root, best_action, action_space_size)
+
+        mcts._gumbel_policy_target = spy
+        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
+        root = captured["root"]
+
+        # Normalised, with mass only on legal actions the search actually visited.
+        assert action_probs.dtype == np.float32
+        assert abs(float(action_probs.sum()) - 1.0) < 1e-5
+        visited = {a for a, child in root.children.items() if child.visit_count > 0}
+        support = set(np.flatnonzero(action_probs).tolist())
+        assert len(visited) >= 2, "the fixture must search more than one action"
+        assert support and support <= visited
         assert np.all(action_probs[sample_action_mask == 0] == 0.0)
-        assert (action_probs > 0).sum() >= 1
+        assert captured["best"] in visited
+
+        # Exactly Danihelka's completed-Q target on the root's own statistics,
+        # recomputed here independently of the search's builder. Root Q is the
+        # edge reward plus the discounted value after it.
+        size = len(sample_action_mask)
+        priors = np.zeros(size, dtype=np.float32)
+        visits = np.zeros(size, dtype=np.float32)
+        qs = np.zeros(size, dtype=np.float32)
+        for action, child in root.children.items():
+            priors[action] = child.prior
+            visits[action] = child.visit_count
+            if child.visit_count > 0:
+                qs[action] = child.reward + mcts.config.discount * child.value
+        expected = build_completed_q_policy(
+            priors=priors,
+            visit_counts=visits,
+            q_values=qs,
+            root_value=root.value,
+            c_visit=mcts.config.c_visit,
+            c_scale=mcts.config.c_scale,
+        )
+        np.testing.assert_array_equal(action_probs, expected)
 
     def test_search_returns_one_hot_when_configured(
         self, network, sample_observation, sample_action_mask

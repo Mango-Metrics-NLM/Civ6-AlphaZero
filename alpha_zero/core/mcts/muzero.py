@@ -403,7 +403,8 @@ class MuZeroMCTS:
             add_noise: Whether to add Dirichlet noise at root.
 
         Returns:
-            Tuple of (action_probs, root_value).
+            ``(action_probs, root_value)``. ``action_probs`` is ``config.policy_target``
+            (completed-Q by default) on the Gumbel path, visit counts on PUCT.
         """
         # Convert observation to tensors
         spatial = torch.from_numpy(observation["spatial"]).float().to(self.device)

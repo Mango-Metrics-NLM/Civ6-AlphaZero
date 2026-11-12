@@ -28,19 +28,25 @@ files cannot drift apart: a change to what "forced win" means changes both.
 Both searches are also run on :class:`AlternatingTurnEnv`, where every edge is a
 player-change edge. ``batch_gumbel`` must pass it at every depth. ``muzero``
 passes it only at odd depth and is ``xfail(strict=True)`` at even depth: its
-latent search has no mover to sign a reward by (see ``_MUZERO_MOVER_REASON``).
+backup does not sign rewards by mover, a known defect (see
+``_MUZERO_MOVER_REASON`` and CLAUDE.md section 5.3).
 
 Negative control
 ----------------
 Making ``perspective_sign`` in ``core/mcts/backup.py`` always return ``-1.0``
 (plain negamax) fails ``batch_gumbel`` here and ``gumbel`` in the original
-oracle. Recorded in the T18 report.
+oracle. MuZero does not use ``backup.py``'s sign rule, so that control cannot
+reach it; its oracle is non-vacuous because it failed on the pre-T18 code.
+Reverting only batch's halving-ranking sign passes the oracle (the completed-Q
+target re-signs Q) but fails the batch-equals-``GumbelMCTS`` gates below.
+Recorded in the T18 report.
 """
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, ClassVar
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -220,6 +226,124 @@ def test_batch_gumbel_single_env_is_gumbel(
     assert batch_value == pytest.approx(gumbel_value)
 
 
+# --- batch == GumbelMCTS on real MicroCiv positions -------------------------
+#
+# The toy equivalence above has three actions and a value of 0 at every
+# non-terminal leaf, so it never exercises a real halving schedule or a leaf
+# value that moves the ranking. These cases do: a real (tiny) MicroCivNetwork
+# with sharpened weights, the A1 search shape (k=8, n=24) and seeded positions
+# from opening to midgame.
+
+_MICROCIV_BOARD = 8
+_MICROCIV_MAX_TURNS = 60
+_MICROCIV_K, _MICROCIV_N = 8, 24
+_MICROCIV_PLIES = (0, 7, 31, 90)  # random plies played before the search
+_MICROCIV_NET_SEED = 1234
+_MICROCIV_WEIGHT_SCALE = 4.0  # sharp priors, values well away from 0
+
+
+def _microciv_position(plies: int) -> Any:
+    from alpha_zero.envs.microciv import MicroCivEnv
+
+    env = MicroCivEnv(board_size=_MICROCIV_BOARD, max_turns=_MICROCIV_MAX_TURNS, seed=plies)
+    env.reset(seed=plies)
+    rng = np.random.default_rng(plies)
+    for _ in range(plies):
+        legal = np.flatnonzero(env.get_valid_actions())
+        _obs, _r, terminated, truncated, _info = env.step(int(rng.choice(legal)))
+        if terminated or truncated:
+            break
+    assert not env.done, "fixture position must not be terminal"
+    return env
+
+
+def _microciv_network(action_space_size: int) -> torch.nn.Module:
+    from alpha_zero.core.civ6_network import MicroCivNetwork
+
+    torch.manual_seed(_MICROCIV_NET_SEED)
+    net = MicroCivNetwork(
+        board_size=_MICROCIV_BOARD,
+        action_space_size=action_space_size,
+        num_res_blocks=1,
+        num_filters=8,
+    )
+    with torch.no_grad():
+        for param in net.parameters():
+            param.mul_(_MICROCIV_WEIGHT_SCALE)
+    return net
+
+
+@pytest.mark.parametrize("policy_target", sorted(VALID_POLICY_TARGETS))
+@pytest.mark.parametrize("plies", _MICROCIV_PLIES)
+def test_batch_gumbel_single_env_is_gumbel_on_microciv(policy_target: str, plies: int) -> None:
+    """Policy bytes, root value and halving winner are identical on MicroCiv."""
+    import alpha_zero.core.batch_mcts as batch_module
+    import alpha_zero.core.mcts.gumbel as gumbel_module
+
+    env = _microciv_position(plies)
+    net = _microciv_network(env.action_space.n)
+    winners: dict[str, list[int]] = {"gumbel": [], "batch": []}
+
+    def spy(module: Any, name: str) -> Any:
+        original = module.build_root_policy_target
+
+        def record(root: Any, best_action: int, *args: Any, **kwargs: Any) -> np.ndarray:
+            winners[name].append(int(best_action))
+            return original(root, best_action, *args, **kwargs)
+
+        return patch.object(module, "build_root_policy_target", record)
+
+    with spy(gumbel_module, "gumbel"):
+        gumbel_policy, gumbel_value = GumbelMCTS(
+            net,
+            GumbelMCTSConfig(
+                num_simulations=_MICROCIV_N,
+                num_sampled_actions=_MICROCIV_K,
+                seed=SEARCH_SEED,
+                policy_target=policy_target,
+            ),
+            device="cpu",
+        ).search(env)
+    with spy(batch_module, "batch"):
+        batch_policy, batch_value = BatchGumbelMCTS(
+            net,
+            BatchMCTSConfig(
+                num_simulations=_MICROCIV_N,
+                num_sampled_actions=_MICROCIV_K,
+                seed=SEARCH_SEED,
+                policy_target=policy_target,
+            ),
+            device="cpu",
+        ).search(env)
+
+    # Non-vacuity: the search actually chose among several searched actions.
+    assert len(winners["gumbel"]) == 1 and len(winners["batch"]) == 1
+    assert int((np.asarray(gumbel_policy) > 0).sum()) >= 1
+    assert winners["batch"] == winners["gumbel"], "halving winners differ"
+    assert np.asarray(batch_policy).dtype == np.asarray(gumbel_policy).dtype
+    assert np.asarray(batch_policy).tobytes() == np.asarray(gumbel_policy).tobytes()
+    assert batch_value == gumbel_value
+
+
+def test_microciv_fixture_is_not_degenerate() -> None:
+    """The MicroCiv cases must exercise non-zero leaf values and several candidates."""
+    env = _microciv_position(_MICROCIV_PLIES[1])
+    net = _microciv_network(env.action_space.n)
+    policy, value = GumbelMCTS(
+        net,
+        GumbelMCTSConfig(
+            num_simulations=_MICROCIV_N,
+            num_sampled_actions=_MICROCIV_K,
+            seed=SEARCH_SEED,
+            policy_target="completed_q",
+        ),
+        device="cpu",
+    ).search(env)
+    assert value != 0.0
+    assert int((np.asarray(policy) > 0).sum()) >= 2
+    assert int(env.get_valid_actions().sum()) > _MICROCIV_K
+
+
 def test_batch_gumbel_records_to_play_on_every_node() -> None:
     """Every node the batch search creates carries its own environment's mover.
 
@@ -365,17 +489,21 @@ def test_muzero_prefers_the_winning_action(depth: int, winning_action: int) -> N
     )
 
 
-#: Why MuZero's alternating case fails at even depth. Its Gumbel path backs up
-#: single-agent discounted returns (``_backpropagate_with_rewards``, the
-#: convention ``MuZeroTrainer`` learns) with no sign flip anywhere, because a
-#: latent model has no ``to_play`` to flip on. A reward emitted from the
-#: *mover's* perspective therefore reaches the root with the right sign only
-#: when the final mover is the root player -- odd depth here. At even depth the
-#: opponent made the last move, so a win for the root arrives as ``-1``. That is
-#: a limitation of searching a latent model without a predicted mover, not a
-#: defect this oracle can be fixed to accept; ``strict=True`` turns the xfail
-#: into a failure the day a mover-aware MuZero makes it pass.
-_MUZERO_MOVER_REASON = "latent model cannot observe the mover"
+#: Why MuZero's alternating case fails at even depth: a KNOWN DEFECT, not a
+#: limitation of latent search. Its Gumbel path backs up discounted returns
+#: (``_backpropagate_with_rewards``) with no sign flip anywhere, as if the game
+#: had one player. MuZero is self-played here on two-player MicroCiv, whose
+#: rewards are mover-relative, so a reward reaches the root with the right sign
+#: only when the root player made that move -- odd depth here. At even depth
+#: the opponent moved last, so a win for the root arrives as ``-1``.
+#:
+#: The mover IS trackable: in MicroCiv ``current_player`` changes only on the
+#: END_TURN action, and the search knows every action on its path. The fix --
+#: carry ``to_play`` down the latent path and sign backup, root Q and child
+#: selection with ``perspective_sign``, with training targets in one frame --
+#: is CONFIRM-FIRST and tracked in CLAUDE.md section 5.3. ``strict=True`` turns
+#: the xfail into a failure (XPASS) the day that fix lands.
+_MUZERO_MOVER_REASON = "MuZero backup does not sign rewards by mover (known defect, CLAUDE.md §5.3)"
 
 
 @pytest.mark.parametrize(

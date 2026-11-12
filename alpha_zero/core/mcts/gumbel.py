@@ -79,8 +79,9 @@ class GumbelMCTSConfig:
         temperature: Temperature for final action selection (usually 0 for greedy).
         temperature_threshold: Turn after which to use temperature=0.
         policy_target: How ``search`` reports the improved policy. One of
-            :data:`POLICY_TARGET_VISIT_COUNTS` (default) or
-            :data:`POLICY_TARGET_ONE_HOT` (legacy).
+            :data:`POLICY_TARGET_COMPLETED_Q` (default),
+            :data:`POLICY_TARGET_VISIT_COUNTS` or :data:`POLICY_TARGET_ONE_HOT`
+            (legacy).
         greedy_threshold: ``select_action`` ignores temperature once a single
             action holds at least this much probability mass. Configurable
             rather than a fixed module constant because the old one-hot target
@@ -267,10 +268,10 @@ def build_root_policy_target(
     rolling replay window cannot tell which worker produced a shard, so the two
     must not emit different targets for the same search.
 
-    The visit distribution over the root's children is AlphaZero's
-    policy-improvement operator: it carries how the search apportioned its
-    budget, which is the signal the policy head is meant to learn. The
-    legacy one-hot discarded it.
+    The default, ``completed_q``, is Danihelka's ``softmax(logits +
+    sigma(completedQ))`` over the searched children; ``visit_counts`` is the
+    normalised root visit distribution; ``one_hot`` is the legacy delta on
+    ``best_action``, which discards the search's evidence.
 
     Falls back to a one-hot when no child was visited (for example a
     one-simulation budget), so the return is always a valid distribution.
@@ -360,9 +361,10 @@ class GumbelMCTS:
     ) -> tuple[np.ndarray, float]:
         """Run Gumbel MCTS search from current state.
 
-        Unlike standard MCTS which returns visit-count-based probabilities,
-        Gumbel MCTS returns a one-hot policy for the selected action (when
-        using sequential halving) or softmax over completed Q-values.
+        Returns the policy target selected by ``config.policy_target``
+        (:func:`build_root_policy_target`): by default the completed-Q
+        distribution over the searched root children, not a one-hot on the
+        halving winner (``policy_target="one_hot"`` restores that).
 
         Args:
             env: Game environment (must support clone()).
@@ -700,8 +702,10 @@ class GumbelMCTS:
     ) -> int:
         """Select action from probabilities.
 
-        For Gumbel MCTS, action_probs is typically one-hot from search(),
-        so this usually just returns the argmax.
+        ``action_probs`` is the policy target ``search()`` returned: by
+        default the completed-Q distribution, so temperature applies unless one
+        action holds more than ``config.greedy_threshold`` of the mass (a
+        ``policy_target="one_hot"`` target always does, and is played greedily).
 
         Args:
             action_probs: Action probability distribution.
