@@ -313,8 +313,9 @@ def pr_check_problems(api: Api, repo: str, pr: dict[str, Any], tag: ReleaseTag) 
         if name == RELEASE_EVIDENCE and state == "missing":
             problems.append(
                 f"{RELEASE_EVIDENCE} never ran on PR #{number} (head {head[:12]}) before it "
-                "merged. That job arrives with T14; until it exists and the maintainer adds it "
-                "to main.json (action 9a), a non-hotfix final cannot publish."
+                "merged. The ci.yml job (T14) must be on the PR's branch and required by the "
+                "main ruleset (maintainer action 9a); until then a non-hotfix final cannot "
+                "publish."
             )
         else:
             problems.append(

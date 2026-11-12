@@ -16,14 +16,18 @@
 #   snapshot              1. save repo settings + rulesets to $OUT_DIR/before*.json
 #   create-branches       2. create qa and main at c214daa (== v2.0.0^{commit})
 #   rename                3. rename the default branch to dev
-#   rulesets              4. POST all six rulesets WITHOUT Branch Direction
+#   rulesets              4. POST all six rulesets WITHOUT Branch Direction or Release Evidence
 #   add-branch-direction  5. after T6 is merged into dev: PUT Branch Direction into dev/qa/main
+#                            (main still without Release Evidence)
 #                            (an accident net, not a control: a same-repo PR can rewrite
 #                            its own workflow; maintainer-only merge into qa/main is the control)
 #   settings              6. delete_branch_on_merge, allow_update_branch, allow_auto_merge on; rebase off
 #   housekeeping          7. close #95 and #120, @dependabot rebase, update-branch #106 #69 #49 #32
 #   verify                8. automated checks + the manual checklist
 #   local                 9. retarget this clone (branch -m, -u, set-head, fetch --prune)
+#   add-release-evidence  9a. after T14 is merged into dev: PUT the full main ruleset
+#                            (adds Release Evidence); then confirm a draft PR into main
+#                            shows it as Expected
 #   phase1 = snapshot create-branches rename rulesets
 #   phase2 = add-branch-direction settings housekeeping verify
 #   rollback              delete the rulesets, rename dev back, delete qa/main, restore settings
@@ -50,6 +54,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RENDER="$HERE/rulesets.py"
 RULESETS=(dev qa main qa-main-merge release-tags legacy-name)
 BRANCH_DIRECTION_RULESETS=(dev qa main)
+RELEASE_EVIDENCE="Release Evidence"
 CLOSE_PRS=(95 120)
 UPDATE_BRANCH_PRS=(106 69 49 32)
 EXECUTE=0
@@ -142,14 +147,14 @@ step_rulesets() {
   mkdir -p "$OUT_DIR"
   for name in "${RULESETS[@]}"; do
     body="$OUT_DIR/ruleset-$name.json"
-    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id" --without-check "Branch Direction" >"$body"
+    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id"       --without-check "Branch Direction" --without-check "$RELEASE_EVIDENCE" >"$body"
     mutate "$GH" api -X POST "repos/$REPO/rulesets" --input "$body"
   done
 }
 
 # --- 5 ---------------------------------------------------------------------
 step_add_branch_direction() {
-  say "5. PUT Branch Direction into dev, qa and main"
+  say "5. PUT Branch Direction into dev, qa and main (main still without Release Evidence)"
   "$GIT" fetch --quiet origin dev
   # `git ls-tree`, not `git cat-file -e origin/dev:<path>`: Git Bash's MSYS
   # layer rewrites a "<rev>:<path>" argument as a path list on Windows.
@@ -166,9 +171,36 @@ step_add_branch_direction() {
   for name in "${BRANCH_DIRECTION_RULESETS[@]}"; do
     rid="$("$PYTHON" "$RENDER" id-of "$name" <"$listing")"
     body="$OUT_DIR/ruleset-$name-full.json"
-    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id" >"$body"
+    # Release Evidence waits for 9a: until T14's job is on the branch a PR runs
+    # from, the check never reports and main would be unmergeable.
+    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id"       --without-check "$RELEASE_EVIDENCE" >"$body"
     mutate "$GH" api -X PUT "repos/$REPO/rulesets/$rid" --input "$body"
   done
+}
+
+# --- 9a --------------------------------------------------------------------
+step_add_release_evidence() {
+  say "9a. PUT Release Evidence into main"
+  "$GIT" fetch --quiet origin dev
+  local required
+  for required in scripts/verify_release_evidence.py scripts/release_play_path.txt; do
+    [[ -n $("$GIT" ls-tree --name-only origin/dev -- "$required") ]] ||
+      die "T14 is not merged into dev yet: origin/dev has no $required"
+  done
+  local id listing rid body
+  id="$(maintainer_id)"
+  listing="$OUT_DIR/rulesets-listing.json"
+  mkdir -p "$OUT_DIR"
+  "$GH" api "repos/$REPO/rulesets" >"$listing"
+  rid="$("$PYTHON" "$RENDER" id-of main <"$listing")"
+  body="$OUT_DIR/ruleset-main-release-evidence.json"
+  "$PYTHON" "$RENDER" render main --maintainer-id "$id" >"$body"
+  mutate "$GH" api -X PUT "repos/$REPO/rulesets/$rid" --input "$body"
+  cat <<'EOF'
+Manual check: open a draft PR into main and confirm "Release Evidence" is listed
+as Expected. A hotfix/* PR into main cannot report it until main carries the job
+(the first release after T14); see docs/runbooks/branching-and-release.md.
+EOF
 }
 
 # --- 6 ---------------------------------------------------------------------
@@ -274,6 +306,7 @@ run_step() {
     rename) step_rename ;;
     rulesets) step_rulesets ;;
     add-branch-direction) step_add_branch_direction ;;
+    add-release-evidence) step_add_release_evidence ;;
     settings) step_settings ;;
     housekeeping) step_housekeeping ;;
     verify) step_verify ;;

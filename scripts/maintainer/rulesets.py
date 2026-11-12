@@ -14,7 +14,9 @@ things are filled in or removed at apply time:
   integer, so a raw file POSTed by hand is rejected by GitHub rather than
   applied with a wrong actor;
 * ``Branch Direction``, which cut-over step 4 omits (the check does not exist
-  until T6 is merged into ``dev``) and step 5 adds back with a ``PUT``.
+  until T6 is merged into ``dev``) and step 5 adds back with a ``PUT``;
+* ``Release Evidence`` (``main`` only), which steps 4 and 5 omit and step 9a
+  (``add-release-evidence``, after T14 is merged into ``dev``) adds back.
 
 Every required status check carries ``integration_id`` 15368, the GitHub
 Actions app (confirmed from this repository's own check runs:

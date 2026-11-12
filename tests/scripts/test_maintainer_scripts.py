@@ -241,6 +241,7 @@ class TestCutover:
         for name in rulesets.CUTOVER_ORDER:
             body = (out / f"ruleset-{name}.json").read_text(encoding="utf-8")
             assert "Branch Direction" not in body
+            assert "Release Evidence" not in body  # 9a, after T14 merges
             assert rulesets.SENTINEL not in body
 
     def test_execute_rulesets_posts_all_six_in_order(self, gh: FakeGh, tmp_path: Path) -> None:
@@ -352,7 +353,58 @@ class TestCutover:
         assert [c[3] for c in puts] == [f"repos/{REPO}/rulesets/{i}" for i in (10, 11, 12)]
         for call in puts:
             assert call[2] == "PUT"
-            assert "Branch Direction" in Path(call[-1]).read_text(encoding="utf-8")
+            body = Path(call[-1]).read_text(encoding="utf-8")
+            assert "Branch Direction" in body
+            assert "Release Evidence" not in body  # 9a, after T14 merges
+
+    def _dev_with_t14(self, tmp_path: Path, merged: bool) -> GitRepo:
+        repo, _bare = GitRepo.with_bare_remote(tmp_path / "git")
+        files = {"README.md": "x\n"}
+        if merged:
+            files |= {
+                "scripts/verify_release_evidence.py": "#\n",
+                "scripts/release_play_path.txt": "x\n",
+            }
+        repo.commit("dev tip", files)
+        repo.push("main:dev")
+        return repo
+
+    def test_add_release_evidence_waits_for_t14_on_dev(self, gh: FakeGh, tmp_path: Path) -> None:
+        repo = self._dev_with_t14(tmp_path, merged=False)
+        proc = _run(CUTOVER, ["--execute", "add-release-evidence"], gh.env(), repo.path)
+        assert proc.returncode == 2
+        assert "T14 is not merged into dev" in proc.stderr
+        assert gh.writes() == []
+
+    def test_add_release_evidence_puts_the_full_main_ruleset(
+        self, gh: FakeGh, tmp_path: Path
+    ) -> None:
+        repo = self._dev_with_t14(tmp_path, merged=True)
+        listing = [
+            {"id": 10 + i, "name": n, "source_type": "Repository"}
+            for i, n in enumerate(rulesets.CUTOVER_ORDER)
+        ]
+        gh.answer(["api", f"repos/{REPO}/rulesets"], json.dumps(listing))
+        out = tmp_path / "out"
+        proc = _run(
+            CUTOVER,
+            ["--execute", "add-release-evidence"],
+            gh.env(CIV6AZ_CUTOVER_DIR=out.as_posix()),
+            repo.path,
+        )
+        assert proc.returncode == 0, proc.stderr
+        (put,) = gh.writes()
+        assert put[:4] == ["api", "-X", "PUT", f"repos/{REPO}/rulesets/12"]
+        body = json.loads(Path(put[-1]).read_text(encoding="utf-8"))
+        assert body["name"] == "main"
+        contexts = [
+            c["context"]
+            for r in body["rules"]
+            if r["type"] == "required_status_checks"
+            for c in r["parameters"]["required_status_checks"]
+        ]
+        assert "Release Evidence" in contexts and "Branch Direction" in contexts
+        assert "Expected" in proc.stdout
 
     def test_settings(self, gh: FakeGh, tmp_path: Path) -> None:
         proc = _run(CUTOVER, ["--execute", "settings"], gh.env(), tmp_path)

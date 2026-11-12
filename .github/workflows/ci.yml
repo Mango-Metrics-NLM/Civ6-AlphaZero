@@ -463,3 +463,65 @@ jobs:
             --cov-report=term-missing \
             --cov-fail-under=85 \
             -m "not slow and not requires_env"
+
+  # Plan section 6 (LF-D8): a release PR into main must carry a verified evidence
+  # bundle, docs/evidence/release_vX_Y_Z/bundle.json for pyproject.toml's version.
+  # A required check on main (.github/rulesets/main.json), so the job has no
+  # `if:` and no path filter -- a skipped required check is a merge nobody can
+  # make. It reports n/a (exit 0, later steps skipped) unless this is a pull
+  # request into main from anything but hotfix/*. wait-for-ci in release.yml
+  # requires it on the PR that produced a non-hotfix final.
+  release-evidence:
+    name: Release Evidence
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      checks: read # the rc commit's check runs, read as wait-for-ci reads them
+      pull-requests: read # GET /commits/{rc}/pulls: the PR that produced the rc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Ancestry (every run's git_sha -> rc_sha -> HEAD), the play-path diff
+          # since each run's commit, and the rc tag itself.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Refs reach the script through env, never interpolated into `run:`: a
+      # branch name is attacker-controlled text.
+      - name: Decide whether this PR needs release evidence
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python scripts/verify_release_evidence.py --scope
+
+      - name: Cache pip dependencies
+        if: steps.scope.outputs.applies == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-evidence-torch-${{ env.TORCH_FLAVOR }}-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-evidence-torch-${{ env.TORCH_FLAVOR }}-
+
+      - name: Install dependencies
+        if: steps.scope.outputs.applies == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first; see env.TORCH_INDEX_URL
+          pip install -e .
+
+      # Exit 0 pass, 1 fail, 2 missing (no bundle, a missing component, or a git
+      # object or API answer it cannot do without). Anything but 0 fails the job.
+      - name: Verify the release evidence bundle
+        if: steps.scope.outputs.applies == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/verify_release_evidence.py
