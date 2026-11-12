@@ -18,7 +18,7 @@ Environment Variables:
     CIV6AZ_ACTION_SPACE_SIZE: Action space size (default: 376).
         Also accepts CIV6AZ_ACTION_SPACE for backwards compatibility.
     CIV6AZ_DEVICE: PyTorch device (default: "cuda" if available).
-    INFERENCE_PORT: Server port (default: 8080).
+    INFERENCE_PORT / INFERENCE_HOST: Server port (8080) / bind address (127.0.0.1).
 
 Endpoints:
     GET  /health     - Liveness/readiness probe
@@ -359,13 +359,12 @@ async def compute_move(request: MoveRequest) -> MoveResponse:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    from alpha_zero.utils.network import resolve_bind_host
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     uvicorn.run(
         "alpha_zero.serving.inference_server:app",
-        host="0.0.0.0",  # noqa: S104
+        host=resolve_bind_host("INFERENCE_HOST", logger, "Inference server"),
         port=PORT,
         workers=1,  # Single worker: model is loaded per-process
         log_level="info",

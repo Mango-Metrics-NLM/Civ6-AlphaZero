@@ -24,6 +24,7 @@ import yaml
 
 from alpha_zero.human_interface.config import BoardTheme, HumanInterfaceConfig
 from alpha_zero.utils.device import resolve_device_str
+from alpha_zero.utils.network import LOOPBACK_HOST, loopback_origins, warn_if_non_loopback
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ logger = logging.getLogger(__name__)
 VALID_OPPONENT_TYPES = ("random", "heuristic", "neural")
 
 # Valid log levels
+DEFAULT_PORT = 8080
 VALID_LOG_LEVELS = ("debug", "info", "warning", "error", "critical")
 
 
@@ -66,8 +68,8 @@ class WebConfig:
     """
 
     # Server settings
-    host: str = "0.0.0.0"  # noqa: S104
-    port: int = 8080
+    host: str = LOOPBACK_HOST
+    port: int = DEFAULT_PORT
     debug: bool = False
     log_level: str = "info"
     workers: int = 1
@@ -99,11 +101,15 @@ class WebConfig:
     save_dir: str = "saves/web_games"
 
     # Security
-    cors_origins: list[str] = field(default_factory=lambda: ["*"])
+    cors_origins: list[str] = field(default_factory=lambda: loopback_origins(DEFAULT_PORT))
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
+        # Default CORS origins follow the port; an explicit list is left alone.
+        if self.cors_origins == loopback_origins(DEFAULT_PORT):
+            self.cors_origins = loopback_origins(self.port)
         self._validate()
+        warn_if_non_loopback(self.host, logger, "Web interface")
 
     def _validate(self) -> None:
         """Validate configuration values."""
@@ -219,9 +225,7 @@ class WebConfig:
         # Build from defaults if no base
         if not config_dict:
             try:
-                config_dict = cls(
-                    host="0.0.0.0",  # noqa: S104
-                ).to_dict()
+                config_dict = cls().to_dict()
             except Exception:
                 config_dict = {}
 
