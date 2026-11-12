@@ -1,7 +1,7 @@
 {
   "coverage_omit_patterns": 39,
   "coverage_omitted_files": 131,
-  "coverage_omitted_lines": 66827,
+  "coverage_omitted_lines": 66843,
   "dead_module_lines": 24481,
   "dead_modules": 53,
   "dead_modules_inside_coverage": 27,
@@ -12,10 +12,10 @@
   "noqa_comments": 75,
   "package_files": 332,
   "package_lines": 149197,
-  "pytest_skip_sites": 147,
+  "pytest_skip_sites": 148,
   "ruff_per_file_ignores": 26,
   "runtime_asserts": 60,
   "test_files_over_1000_lines": 27,
-  "type_ignore_comments": 147,
+  "type_ignore_comments": 148,
   "unsafe_torch_load_calls": 8
 }
