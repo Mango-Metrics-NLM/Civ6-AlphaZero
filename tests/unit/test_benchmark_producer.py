@@ -153,6 +153,42 @@ class TestEvidenceContract:
         assert row["mde_alpha025_80pct"] > row["mde_80pct"]
         assert row["hull_ratio"] >= 1.0
 
+    def test_device_and_search_config_are_recorded(
+        self, heuristic_run: tuple[list[str], dict[str, Any]]
+    ) -> None:
+        _, envelope = heuristic_run
+        block = envelope["evidence"]
+        assert block["device"] == "cpu"
+        assert block["search"] == {
+            "mcts_type": "gumbel",
+            "num_simulations": 2,
+            "gumbel_k": 2,
+            "search_semantics": bench.SEARCH_SEMANTICS,
+        }
+        assert block["torch"] and block["numpy"]
+
+    def test_command_names_the_wrapper_when_the_wrapper_ran(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        argv = ["--candidate", "random", "--opponents=random", "--n-games", "2", *_TINY_ARGS]
+        out = tmp_path / "w"
+        monkeypatch.setattr("sys.argv", ["scripts/benchmark_suite.py", *argv, "--out", str(out)])
+        assert bench.main() == 0
+        envelope = json.loads((out / "result.json").read_text(encoding="utf-8"))
+        command = shlex.split(envelope["evidence"]["command"])
+        assert command[:2] == ["python", "scripts/benchmark_suite.py"]
+        assert command[2:] == [*argv, "--out", str(out)]
+
+    def test_an_existing_result_is_never_overwritten(self, tmp_path: Path) -> None:
+        argv = ["--candidate", "random", "--opponents=random", "--n-games", "2", *_TINY_ARGS]
+        first = _main(argv, tmp_path)
+        before = (tmp_path / "result.json").read_bytes()
+        with pytest.raises(SystemExit) as excinfo:
+            bench.main([*argv, "--seed", "6", "--out", str(tmp_path)])
+        assert excinfo.value.code != 0
+        assert (tmp_path / "result.json").read_bytes() == before
+        assert first["evidence"]["seed"] == 5
+
     def test_random_candidate_runs(self, tmp_path: Path) -> None:
         argv = ["--candidate", "random", "--opponents=random", "--n-games", "2", *_TINY_ARGS]
         envelope = _main(argv, tmp_path)
@@ -186,13 +222,30 @@ class TestIntervalsFromGames:
         pair = pair_score_interval([1.0] * 6 + [0.0] * 4, 0.95)
         assert block["iid"] == pytest.approx(list(score_interval(12, 0, 8, 0.95)))
         assert block["pair"] == pytest.approx(list(pair))
-        assert block["hull"] == pytest.approx([0.311604066, 0.832889374], abs=1e-8)
-        # Fixture B: each side of the hull from a different interval.
+        assert block["hull"] == pytest.approx([0.279939, 0.920061], abs=1e-6)
+        # Fixture B at 99%: the low from the iid interval, the high from the pair one.
         games_b = _games(
             [("win", "loss")] * 5 + [("win", "win")] * 2 + [("loss", "draw")],
         )
-        block_b = bench.interval_summary(games_b, 0.95)
-        assert block_b["hull"] == pytest.approx([0.362292291, 0.787391560], abs=1e-8)
+        block_b = bench.interval_summary(games_b, 0.99)
+        assert block_b["hull"] == pytest.approx([0.304054, 0.835234], abs=1e-6)
+
+    def test_hull_ratio_uses_the_half_width_facing_one_half(self) -> None:
+        """Fixture A: score 0.6, so the 0.5-facing side is the low one.
+
+        iid low 0.386030, hull low 0.279939: (0.6 - 0.279939) / (0.6 - 0.386030).
+        """
+        games_a = _games([("win", "win")] * 6 + [("loss", "loss")] * 4)
+        row = bench._result_record("random", games_a, "t")
+        assert row["hull_ratio"] == pytest.approx((0.6 - 0.279939) / (0.6 - 0.386030), abs=1e-5)
+        assert row["mde_alpha025_80pct_hull"] == pytest.approx(
+            row["mde_alpha025_80pct"] * row["hull_ratio"]
+        )
+        # Below one half the facing side is the high one.
+        games_low = _games([("loss", "loss")] * 6 + [("win", "win")] * 4)
+        low = bench._result_record("random", games_low, "t")
+        hi_iid, hi_hull = low["intervals"]["0.95"]["iid"][1], low["intervals"]["0.95"]["hull"][1]
+        assert low["hull_ratio"] == pytest.approx((hi_hull - 0.4) / (hi_iid - 0.4))
 
 
 # ---------------------------------------------------------------------------
@@ -212,6 +265,14 @@ class TestShards:
     def test_bad_shard_spec_is_refused(self, spec: str) -> None:
         with pytest.raises(ValueError):
             bench.parse_shard(spec)
+
+    def test_more_shards_than_pairs_is_a_parser_error(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        with pytest.raises(SystemExit) as excinfo:
+            bench._parse_args(["--n-games", "4", "--shard", "3/3"])
+        assert excinfo.value.code == 2
+        assert "--shard" in capsys.readouterr().err
 
     def test_shards_partition_the_pairs(self) -> None:
         for num_pairs in (1, 3, 7, 100):
@@ -260,6 +321,15 @@ class TestShards:
             bench.merge_shards([one, one], command="x")
         with pytest.raises(ValueError, match="seed"):
             bench.merge_shards([one, other_seed], command="x")
+        for key, value in (("device", "cuda"), ("torch", "0.0"), ("numpy", "0.0")):
+            odd = copy.deepcopy(two)
+            odd["evidence"][key] = value
+            with pytest.raises(ValueError, match=key):
+                bench.merge_shards([one, odd], command="x")
+        odd = copy.deepcopy(two)
+        odd["evidence"]["search"]["search_semantics"] = "other"
+        with pytest.raises(ValueError, match="search"):
+            bench.merge_shards([one, odd], command="x")
         bench.merge_shards([two, one], command="x")  # order does not matter
 
     def test_network_candidate_shards_and_merges_through_the_cli(self, tmp_path: Path) -> None:

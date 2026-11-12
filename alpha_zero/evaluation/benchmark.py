@@ -56,7 +56,6 @@ import argparse
 import hashlib
 import json
 import logging
-import shlex
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -66,8 +65,11 @@ from typing import Any
 from alpha_zero.evaluation.benchmark_evidence import (
     EVIDENCE_SCHEMA_VERSION,
     SEARCH_EPOCH,
+    SEARCH_SEMANTICS,
     benchmark_claims,
+    cli_command,
     collect_evidence,
+    facing_hull_ratio,
     hardware_summary,
     interval_summary,
     pair_scores,
@@ -82,7 +84,11 @@ from alpha_zero.evaluation.scoring import (
 )
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.storage.models import EvaluationResult
-from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
+from alpha_zero.utils.game_budget import (
+    EXIT_CODE_REFUSED,
+    add_budget_arguments,
+    enforce_cli,
+)
 from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 logger = logging.getLogger(__name__)
@@ -99,6 +105,7 @@ __all__ = [
     "benchmark_budget_inputs",
     "checkpoint_opponent_id",
     "collect_evidence",
+    "facing_hull_ratio",
     "hardware_summary",
     "interval_summary",
     "main",
@@ -334,9 +341,9 @@ def _result_record(
     )
     elo_low, elo_high = elo_interval(wins, draws, losses, BENCHMARK_CONFIDENCE)
     intervals = {str(c): interval_summary(games, c) for c in REPORTED_CONFIDENCE_LEVELS}
-    iid95, hull95 = intervals["0.95"]["iid"], intervals["0.95"]["hull"]
-    iid_width = iid95[1] - iid95[0]
-    hull_ratio = (hull95[1] - hull95[0]) / iid_width if iid_width > 0 else 1.0
+    hull_ratio = facing_hull_ratio(
+        summary.score_rate, intervals["0.95"]["iid"], intervals["0.95"]["hull"]
+    )
     mde_025 = minimum_detectable_effect(n, summary.draw_rate, alpha=0.025)
     row = record.to_dict()
     row.update(
@@ -355,7 +362,8 @@ def _result_record(
             "pairs": len(pair_scores(games)),
             "intervals": intervals,
             # The A1 INCONCLUSIVE report: one-sided 2.5% MDE at the observed draw
-            # rate, and the same widened by how much the hull exceeds the iid width.
+            # rate, and the same widened by how far the 95% hull reaches past the
+            # iid interval on the side facing 0.5 (see facing_hull_ratio).
             "mde_alpha025_80pct": mde_025,
             "hull_ratio": hull_ratio,
             "mde_alpha025_80pct_hull": mde_025 * hull_ratio,
@@ -427,7 +435,18 @@ def run_benchmark(
         candidate_id = "network" if candidate_factory is None else "factory"
     claims, non_claims = benchmark_claims(candidate_id, opponents, n_played, shard_block)
     evidence = collect_evidence(
-        seed, n_played * len(opponents), command, claims=claims, non_claims=non_claims
+        seed,
+        n_played * len(opponents),
+        command,
+        claims=claims,
+        non_claims=non_claims,
+        device=str(device) if device is not None else "cpu",
+        search={
+            "mcts_type": protocol.mcts_type,
+            "num_simulations": protocol.num_simulations,
+            "gumbel_k": protocol.gumbel_k,
+            "search_semantics": SEARCH_SEMANTICS,
+        },
     )
     env_seeds = protocol.env_seeds(seed)
     results: list[dict[str, Any]] = []
@@ -590,6 +609,10 @@ def merge_shards(
         "seed": lambda e: e["evidence"]["seed"],
         "git_sha": lambda e: e["evidence"]["git_sha"],
         "opponents": lambda e: [r["opponent_id"] for r in e["results"]],
+        "device": lambda e: e["evidence"].get("device"),
+        "torch": lambda e: e["evidence"].get("torch"),
+        "numpy": lambda e: e["evidence"].get("numpy"),
+        "search": lambda e: e["evidence"].get("search"),
     }
     for name, get in checks.items():
         if any(get(e) != get(first) for e in shards[1:]):
@@ -607,8 +630,9 @@ def merge_shards(
         claims=claims,
         non_claims=non_claims,
     )
-    # The games were played by the shards' commit, not by whoever merges them.
-    evidence["git_sha"] = first["evidence"]["git_sha"]
+    # The games were played by the shards' commit and stack, not by whoever merges them.
+    for key in ("git_sha", "device", "search", "torch", "numpy"):
+        evidence[key] = first["evidence"][key]
     evidence.pop("git_sha_null_reason", None)
     if evidence["git_sha"] is None:
         evidence["git_sha_null_reason"] = first["evidence"].get("git_sha_null_reason")
@@ -765,9 +789,6 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
     return network
 
 
-_MODULE = "alpha_zero.evaluation.benchmark"
-
-
 def _shard_arg(spec: str) -> tuple[int, int]:
     try:
         return parse_shard(spec)
@@ -842,6 +863,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         parser.error(f"--candidate {args.candidate} plays a baseline; drop --checkpoint")
     if args.merge is not None and args.shard is not None:
         parser.error("--merge combines shards; it does not take --shard")
+    if args.shard is not None and args.merge is None:
+        try:
+            shard_pairs(args.n_games // 2, *args.shard)
+        except ValueError as exc:
+            parser.error(f"--shard with --n-games {args.n_games}: {exc}")
     return args
 
 
@@ -904,7 +930,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_args(argv)
     # Refuse before loading any network: games = n_games per opponent.
     enforce_cli("benchmark", benchmark_budget_inputs(args), args)
-    command = shlex.join(["python", "-m", _MODULE, *(sys.argv[1:] if argv is None else argv)])
+    # Never overwrite a result: each run (arm, shard, merge) needs its own --out.
+    target = args.out / "result.json"
+    if target.exists():
+        print(
+            f"REFUSED: {target} already exists; give this run its own --out "
+            "(results are never overwritten).",
+            file=sys.stderr,
+        )
+        raise SystemExit(EXIT_CODE_REFUSED)
+    command = cli_command(argv)
 
     if args.merge is not None:
         envelope = merge_shards([_read_envelope(p) for p in args.merge], command=command)
@@ -940,7 +975,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_id=candidate_id,
         )
     args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / "result.json").write_text(json.dumps(envelope, indent=2), encoding="utf-8")
+    with open(target, "x", encoding="utf-8") as fh:  # "x": refuse a file created meanwhile
+        fh.write(json.dumps(envelope, indent=2))
     (args.out / "report.md").write_text(render_report(envelope), encoding="utf-8")
     logger.info("Wrote %s and %s", args.out / "result.json", args.out / "report.md")
     return 0

@@ -30,3 +30,8 @@
 - [x] 3.1 CLAUDE.md §5.1 rows and §5.2 decision row
 - [x] 3.2 `docs/EVALUATION.md` §4: the envelope, shards and intervals
 - [x] 3.3 `docs/MODULE_REFERENCE.md`: evaluation file count
+
+## 4. Review fix round 1
+- [x] 4.1 C1: plain pentanomial `pair_score_interval` (no pseudo-counts; `P < 2` gives (0, 1); zero variance gives zero width); reviewer fixtures; seeded OC tests; negative control (the pseudo-count estimator fails detection and positive control)
+- [x] 4.2 I1: refuse to overwrite `<out>/result.json`
+- [x] 4.3 Minors: `--shard` parser error; `device`/`search` in evidence, merge agreement on device/torch/numpy/search; real entry point in `command`; `hull_ratio` on the side facing 0.5

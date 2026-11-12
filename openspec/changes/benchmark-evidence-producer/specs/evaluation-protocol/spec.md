@@ -6,20 +6,36 @@
 
 Each benchmark result row SHALL keep one `{pair, seat, result}` record per game.
 At 95% and 99%, it SHALL report the iid ternary score interval, the
-pair-clustered interval (`scoring.pair_score_interval`, with the seat-swapped
-pair as the unit) and their hull, `[min(lows), max(highs)]`. It SHALL also
+pair-clustered interval (`scoring.pair_score_interval`: the plain pentanomial
+interval, with the seat-swapped pair as the unit and no pseudo-counts) and their
+hull, `[min(lows), max(highs)]`. It SHALL also
 report the one-sided 2.5% minimum detectable effect. Every count and interval
 MUST be recomputable from the per-game records.
 
 #### Scenario: Correlated pairs widen the hull
 
 - **WHEN** six pairs are won from both seats and four are lost from both seats
-- **THEN** the 95% hull equals the pair-clustered interval, [0.3116, 0.8329], which is wider than the iid interval on both sides
+- **THEN** the 95% hull equals the pair-clustered interval, [0.2799, 0.9201], which is wider than the iid interval on both sides
 
 #### Scenario: Each side of the hull may come from a different interval
 
-- **WHEN** five pairs split W/L, two are won twice, and one is lost and drawn
-- **THEN** the hull's low comes from the pair interval and its high from the iid interval
+- **WHEN** five pairs split W/L, two are won twice, and one is lost and drawn, at 99%
+- **THEN** the hull's low comes from the iid interval and its high from the pair interval
+
+#### Scenario: The symmetry control keeps its power
+
+- **WHEN** 20-pair arms at 99% are simulated with a 0.20 score asymmetry (mu 0.70, d 0.47)
+- **THEN** the hull excludes 0.5 in at least 80% of them, and in at most 0.8% of fair (mu 0.5) arms
+
+### Requirement: A benchmark result is never overwritten
+
+The CLI SHALL refuse, before playing any game, to write into an output
+directory that already holds `result.json`.
+
+#### Scenario: Two arms share an output directory
+
+- **WHEN** a second run is pointed at an `--out` that already holds `result.json`
+- **THEN** it exits non-zero and the existing file is unchanged
 
 ### Requirement: Benchmark runs can be sharded and merged exactly
 

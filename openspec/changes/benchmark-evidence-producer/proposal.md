@@ -19,8 +19,10 @@ This is LF-D6 of the local-first plan (task T11).
 ## What Changes
 
 - **Statistics (`evaluation/scoring.py`).**
-  - `pair_score_interval(pair_scores, confidence)`: the ternary-variance
-    estimator of `score_interval`, with the seat-swapped pair as the unit.
+  - `pair_score_interval(pair_scores, confidence)`: the plain pentanomial
+    interval, with the seat-swapped pair as the unit and no pseudo-counts.
+    Fix round 1 (review C1) removed per-pair pseudo-counts that halved the
+    symmetry control's power.
   - `interval_hull(*intervals)`.
   - `minimum_detectable_effect` accepts `alpha=0.025`.
 - **Per-game records (`cloud/gcp/arena.py`, additive).**
@@ -40,6 +42,11 @@ This is LF-D6 of the local-first plan (task T11).
     `--max_games` and `--approval_ref` already existed and are unchanged.
   - Pricing: a shard prices its own games and `--merge` prices 0, so the A1
     card prices at 480 (training) + 500 (arena arms) = 980.
+  - An existing `<out>/result.json` is never overwritten (review I1).
+  - Evidence records `device` and the `search` config, and `--merge` refuses
+    shards that disagree on them or on torch/numpy. `command` names the entry
+    point that ran.
+  - An impossible `--shard` is a parser error.
 - `scripts/benchmark_suite.py` puts its own checkout first on `sys.path`, as
   `scripts/run_card.py` does.
 

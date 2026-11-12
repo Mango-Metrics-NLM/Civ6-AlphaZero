@@ -24,7 +24,9 @@ __all__ = [
     "SEARCH_EPOCH",
     "SEARCH_SEMANTICS",
     "benchmark_claims",
+    "cli_command",
     "collect_evidence",
+    "facing_hull_ratio",
     "hardware_summary",
     "interval_summary",
     "pair_scores",
@@ -101,9 +103,24 @@ def _version_of(module_name: str) -> str | None:
     return str(version) if version is not None else None
 
 
-def _default_command() -> str:
-    """The running CLI as a ``shlex``-joined, re-runnable command line."""
-    return shlex.join(["python", "-m", "alpha_zero.evaluation.benchmark", *sys.argv[1:]])
+#: File name of the operator-facing wrapper over the benchmark CLI.
+WRAPPER_SCRIPT = "benchmark_suite.py"
+
+
+def cli_command(argv: Sequence[str] | None = None) -> str:
+    """The command that ran, ``shlex``-joined: entry point plus arguments.
+
+    The entry point is the one actually used -- ``python scripts/benchmark_suite.py``
+    (as typed) when the wrapper ran, ``python -m alpha_zero.evaluation.benchmark``
+    otherwise (including ``run_card`` children and in-process calls). The two
+    take the same arguments.
+    """
+    argv0 = sys.argv[0] if sys.argv else ""
+    if Path(argv0).name == WRAPPER_SCRIPT:
+        entry = ["python", Path(argv0).as_posix()]
+    else:
+        entry = ["python", "-m", "alpha_zero.evaluation.benchmark"]
+    return shlex.join([*entry, *(sys.argv[1:] if argv is None else argv)])
 
 
 def collect_evidence(
@@ -113,8 +130,15 @@ def collect_evidence(
     *,
     claims: Sequence[str] = (),
     non_claims: Sequence[str] = (),
+    device: str | None = None,
+    search: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """The ``docs/evidence/SCHEMA.md`` block: enough to reproduce or dismiss ``results``."""
+    """The ``docs/evidence/SCHEMA.md`` block: enough to reproduce or dismiss ``results``.
+
+    Beyond the contract it records ``search_semantics``, the torch ``device`` the
+    searches ran on (confirmatory runs are CPU-only) and the ``search`` config, so
+    shards that differ in any of them cannot be merged.
+    """
     block: dict[str, Any] = {
         "schema_version": EVIDENCE_SCHEMA_VERSION,
         "git_sha": _git_sha(),
@@ -122,7 +146,9 @@ def collect_evidence(
         "search_epoch": SEARCH_EPOCH,
         "search_semantics": SEARCH_SEMANTICS,
         "seed": seed,
-        "command": command if command is not None else _default_command(),
+        "command": command if command is not None else cli_command(),
+        "device": device,
+        "search": dict(search) if search is not None else None,
         "hardware": hardware_summary(),
         "python": platform.python_version(),
         "torch": _version_of("torch"),
@@ -200,6 +226,30 @@ def interval_summary(
     )
     pair = pair_score_interval(pair_scores(games), confidence)
     return {"iid": list(iid), "pair": list(pair), "hull": list(interval_hull(iid, pair))}
+
+
+def facing_hull_ratio(score: float, iid: Sequence[float], hull: Sequence[float]) -> float:
+    """How much further the hull reaches toward 0.5 than the iid interval does.
+
+    ``(score - hull_low) / (score - iid_low)`` when ``score > 0.5`` (the low side
+    faces 0.5), ``(hull_high - score) / (iid_high - score)`` when ``score < 0.5``,
+    and the larger of the two at exactly 0.5. Distances are from the point
+    estimate (the score rate). The verdict and the MDE concern the bound that
+    faces 0.5, so a hull wider only on the far side does not widen the MDE.
+    Always ``>= 1`` because the hull contains the iid interval; a degenerate
+    denominator gives 1.
+    """
+
+    def ratio(reach_hull: float, reach_iid: float) -> float:
+        return reach_hull / reach_iid if reach_iid > 0 else 1.0
+
+    low = ratio(score - hull[0], score - iid[0])
+    high = ratio(hull[1] - score, iid[1] - score)
+    if score > 0.5:
+        return low
+    if score < 0.5:
+        return high
+    return max(low, high)
 
 
 def parse_shard(spec: str) -> tuple[int, int]:

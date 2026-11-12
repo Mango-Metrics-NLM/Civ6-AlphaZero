@@ -234,40 +234,45 @@ def pair_score_interval(
     pair share a map, so they are not independent: :func:`score_interval`, which
     treats games as iid, is too narrow when a map decides both games the same
     way and too wide when the seat decides them. Taking the *pair* as the sample
-    unit (the pentanomial or pair-clustered view) uses the observed spread of
-    pair scores instead. Each pair score is the mean of its two game scores, so
-    it lies in ``{0, 0.25, 0.5, 0.75, 1}``.
+    unit (the pentanomial, or pair-clustered, interval) uses the observed spread
+    of pair scores instead. Each pair score is the mean of its two game scores,
+    so it lies in ``{0, 0.25, 0.5, 0.75, 1}``.
 
-    Formula -- the estimator of :func:`score_interval` with the pair as the unit.
-    With ``P`` pair scores ``s_1 .. s_P``, ``z`` the two-sided normal quantile
-    for ``confidence``, and ``k = z^2 / 2`` pseudo-pairs added at score 1 and
-    ``k`` at score 0 (the same Agresti-Coull style adjustment, so a record where
-    every pair has one score still has positive width)::
+    Formula -- the plain pentanomial interval. With ``P`` pair scores
+    ``s_1 .. s_P`` and ``z`` the two-sided normal quantile for ``confidence``::
 
-        n' = P + 2k
-        m  = (sum_p s_p + k) / n'
-        v  = (sum_p s_p^2 + k) / n' - m^2
-        CI = [m - z * sqrt(v / n'), m + z * sqrt(v / n')]   clipped to [0, 1]
+        m  = (1 / P) * sum_p s_p
+        v  = (1 / (P - 1)) * sum_p (s_p - m)^2        (sample variance, ddof 1)
+        CI = [m - z * sqrt(v / P), m + z * sqrt(v / P)]   clipped to [0, 1]
 
-    When every unit is a single game (scores in ``{0, 0.5, 1}``) this is exactly
-    :func:`score_interval`'s ternary-variance interval, which the tests pin.
-    Returns ``(0.0, 1.0)`` for no pairs.
+    There are **no pseudo-counts**. An earlier version added ``z^2 / 2``
+    pseudo-pairs at 0 and 1 (``score_interval``'s adjustment applied per pair,
+    so twice its weight per game); it widened the interval where no clustering
+    existed and, through the hull, cut the symmetry control's detection of a 0.20
+    asymmetry from about 84% to 40% (T11 review C1).
+
+    Degenerate cases, both deliberate:
+
+    * ``P < 2``: the sample variance is undefined, so the interval is ``(0.0, 1.0)``.
+    * Zero variance (every pair scored the same): the interval has zero width at
+      the mean. That is not false certainty in a verdict, because the A1 rule
+      reads the hull with :func:`score_interval`, whose pseudo-counts always
+      give it positive width.
     """
     if confidence not in _Z_TWO_SIDED:
         raise ValueError(f"confidence must be one of {sorted(_Z_TWO_SIDED)}, got {confidence}")
     for s in pair_scores:
         if not 0.0 <= s <= 1.0:  # also rejects NaN
             raise ValueError(f"pair score must be in [0, 1], got {s}")
-    if not pair_scores:
+    n = len(pair_scores)
+    if n < 2:
         return (0.0, 1.0)
 
     z = _Z_TWO_SIDED[confidence]
-    pseudo = z * z / 2.0
-    adj_total = len(pair_scores) + 2.0 * pseudo
-    center = (math.fsum(pair_scores) + pseudo) / adj_total
-    variance = (math.fsum(s * s for s in pair_scores) + pseudo) / adj_total - center * center
-    half = z * math.sqrt(max(variance, 0.0) / adj_total)
-    return (max(0.0, center - half), min(1.0, center + half))
+    mean = math.fsum(pair_scores) / n
+    variance = math.fsum((s - mean) ** 2 for s in pair_scores) / (n - 1)
+    half = z * math.sqrt(variance / n)
+    return (max(0.0, mean - half), min(1.0, mean + half))
 
 
 def interval_hull(*intervals: tuple[float, float]) -> tuple[float, float]:

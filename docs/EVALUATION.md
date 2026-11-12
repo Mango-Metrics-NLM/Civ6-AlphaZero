@@ -100,9 +100,12 @@ so the benchmark and production cannot disagree:
   versioned `EvaluationResult` plus `draw_rate`, `decisive_win_rate`, the MDE at
   that `n`, the per-game records `{pair, seat, result}`, and an `intervals` block:
   at 95% and 99%, the iid ternary interval, the pair-clustered interval
-  (`scoring.pair_score_interval`, the seat-swapped pair as the unit) and their
-  hull `[min(lows), max(highs)]`, beside `mde_alpha025_80pct` and the same
-  widened by the hull ratio;
+  (`scoring.pair_score_interval`: the plain pentanomial interval, the
+  seat-swapped pair as the unit, no pseudo-counts) and their hull
+  `[min(lows), max(highs)]`, beside `mde_alpha025_80pct` and the same widened by
+  `hull_ratio` (how far the hull reaches toward 0.5 past the iid bound);
+- an existing `<out>/result.json` is never overwritten, so every arm needs its
+  own `--out`;
 - `--candidate heuristic|random` benchmarks a baseline as the candidate (a
   positive control); `--shard i/N` plays the `i`-th block of whole pairs with
   the unsharded run's seeds, and `--merge` recombines shards and recomputes every
