@@ -357,29 +357,30 @@ class TestCutover:
             assert "Branch Direction" in body
             assert "Release Evidence" not in body  # 9a, after T14 merges
 
-    def _dev_with_t14(self, tmp_path: Path, merged: bool) -> GitRepo:
+    def _main_with_t14(self, tmp_path: Path, merged: bool) -> GitRepo:
+        """T14 on dev is not enough for 9a: main itself must carry it (T14 review I-4)."""
         repo, _bare = GitRepo.with_bare_remote(tmp_path / "git")
-        files = {"README.md": "x\n"}
-        if merged:
-            files |= {
-                "scripts/verify_release_evidence.py": "#\n",
-                "scripts/release_play_path.txt": "x\n",
-            }
-        repo.commit("dev tip", files)
+        t14 = {
+            "scripts/verify_release_evidence.py": "#\n",
+            ".github/workflows/release-evidence.yml": "x\n",
+        }
+        repo.commit("main tip", {"README.md": "x\n", **(t14 if merged else {})})
+        repo.push("main")
+        repo.commit("dev tip", {**t14, "DEV.md": "dev\n"})
         repo.push("main:dev")
         return repo
 
-    def test_add_release_evidence_waits_for_t14_on_dev(self, gh: FakeGh, tmp_path: Path) -> None:
-        repo = self._dev_with_t14(tmp_path, merged=False)
+    def test_add_release_evidence_waits_for_t14_on_main(self, gh: FakeGh, tmp_path: Path) -> None:
+        repo = self._main_with_t14(tmp_path, merged=False)  # T14 is on dev only
         proc = _run(CUTOVER, ["--execute", "add-release-evidence"], gh.env(), repo.path)
         assert proc.returncode == 2
-        assert "T14 is not merged into dev" in proc.stderr
+        assert "main does not carry T14" in proc.stderr
         assert gh.writes() == []
 
     def test_add_release_evidence_puts_the_full_main_ruleset(
         self, gh: FakeGh, tmp_path: Path
     ) -> None:
-        repo = self._dev_with_t14(tmp_path, merged=True)
+        repo = self._main_with_t14(tmp_path, merged=True)
         listing = [
             {"id": 10 + i, "name": n, "source_type": "Repository"}
             for i, n in enumerate(rulesets.CUTOVER_ORDER)

@@ -25,7 +25,7 @@
 #   housekeeping          7. close #95 and #120, @dependabot rebase, update-branch #106 #69 #49 #32
 #   verify                8. automated checks + the manual checklist
 #   local                 9. retarget this clone (branch -m, -u, set-head, fetch --prune)
-#   add-release-evidence  9a. after T14 is merged into dev: PUT the full main ruleset
+#   add-release-evidence  9a. once main carries T14 (the first release after it): PUT the full main ruleset
 #                            (adds Release Evidence); then confirm a draft PR into main
 #                            shows it as Expected
 #   phase1 = snapshot create-branches rename rulesets
@@ -147,7 +147,8 @@ step_rulesets() {
   mkdir -p "$OUT_DIR"
   for name in "${RULESETS[@]}"; do
     body="$OUT_DIR/ruleset-$name.json"
-    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id"       --without-check "Branch Direction" --without-check "$RELEASE_EVIDENCE" >"$body"
+    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id" \
+      --without-check "Branch Direction" --without-check "$RELEASE_EVIDENCE" >"$body"
     mutate "$GH" api -X POST "repos/$REPO/rulesets" --input "$body"
   done
 }
@@ -171,9 +172,10 @@ step_add_branch_direction() {
   for name in "${BRANCH_DIRECTION_RULESETS[@]}"; do
     rid="$("$PYTHON" "$RENDER" id-of "$name" <"$listing")"
     body="$OUT_DIR/ruleset-$name-full.json"
-    # Release Evidence waits for 9a: until T14's job is on the branch a PR runs
-    # from, the check never reports and main would be unmergeable.
-    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id"       --without-check "$RELEASE_EVIDENCE" >"$body"
+    # Release Evidence waits for 9a: until main carries T14's workflow, a hotfix/*
+    # PR into main never reports the check and could not merge.
+    "$PYTHON" "$RENDER" render "$name" --maintainer-id "$id" \
+      --without-check "$RELEASE_EVIDENCE" >"$body"
     mutate "$GH" api -X PUT "repos/$REPO/rulesets/$rid" --input "$body"
   done
 }
@@ -181,11 +183,14 @@ step_add_branch_direction() {
 # --- 9a --------------------------------------------------------------------
 step_add_release_evidence() {
   say "9a. PUT Release Evidence into main"
-  "$GIT" fetch --quiet origin dev
+  # main, not dev: a hotfix/* PR into main runs main's workflows, so the check
+  # can only be required once main itself produces it (the first release that
+  # carries T14). Until then wait-for-ci still requires it at publish time.
+  "$GIT" fetch --quiet origin main
   local required
-  for required in scripts/verify_release_evidence.py scripts/release_play_path.txt; do
-    [[ -n $("$GIT" ls-tree --name-only origin/dev -- "$required") ]] ||
-      die "T14 is not merged into dev yet: origin/dev has no $required"
+  for required in scripts/verify_release_evidence.py .github/workflows/release-evidence.yml; do
+    [[ -n $("$GIT" ls-tree --name-only origin/main -- "$required") ]] ||
+      die "main does not carry T14 yet: origin/main has no $required (merge the first release with T14 first)"
   done
   local id listing rid body
   id="$(maintainer_id)"
@@ -198,8 +203,7 @@ step_add_release_evidence() {
   mutate "$GH" api -X PUT "repos/$REPO/rulesets/$rid" --input "$body"
   cat <<'EOF'
 Manual check: open a draft PR into main and confirm "Release Evidence" is listed
-as Expected. A hotfix/* PR into main cannot report it until main carries the job
-(the first release after T14); see docs/runbooks/branching-and-release.md.
+as Expected, and that a hotfix/* PR into main reports it as n/a (success).
 EOF
 }
 
