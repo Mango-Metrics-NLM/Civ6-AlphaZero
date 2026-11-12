@@ -47,22 +47,42 @@ class HalvingRound:
 
     Attributes:
         survivors: How many of the top-ranked candidates this round visits.
-        simulations: Simulations spent in this round. They are dealt pass-major
-            over the survivors in rank order -- survivor 0, 1, ..., m-1, then
-            again -- so when ``simulations`` is not a multiple of ``survivors``
-            the higher-ranked survivors receive the extra visit.
+        simulations: Simulations spent in this round: ``full_passes`` complete
+            passes over the survivors, then ``remainder`` odd visits.
+
+    The searches deal the full passes in the ranking the round started with
+    (within a full pass the order changes no visit count), then **re-rank the
+    survivors by completed Q plus Gumbel score** and give the ``remainder`` odd
+    visits to the top of that fresh ranking. That is what ``mctx`` gets by
+    re-scoring before every simulation: the odd visit -- and so, through
+    :func:`choose_among_most_visited`, the returned move -- follows the
+    round's own evidence rather than a ranking made before the round began.
     """
 
     survivors: int
     simulations: int
 
+    @property
+    def full_passes(self) -> int:
+        """Complete passes over every survivor in this round."""
+        return self.simulations // self.survivors
+
+    @property
+    def remainder(self) -> int:
+        """Odd visits left after the full passes, dealt to the then-best survivors."""
+        return self.simulations % self.survivors
+
     def visits(self) -> list[int]:
-        """Visits each survivor receives this round, in rank order."""
+        """Visits each survivor receives this round, by rank at the time it is dealt."""
         base, extra = divmod(self.simulations, self.survivors)
         return [base + (1 if rank < extra else 0) for rank in range(self.survivors)]
 
     def order(self) -> Iterator[int]:
-        """Survivor ranks in execution order (pass-major)."""
+        """Survivor ranks in execution order (pass-major), for a fixed ranking.
+
+        The searches re-rank before the ``remainder`` visits, so for them the
+        ranks of the final partial pass refer to that fresh ranking.
+        """
         for sim in range(self.simulations):
             yield sim % self.survivors
 
@@ -91,19 +111,32 @@ def halving_schedule(
       a forced move cannot change the move or its policy target.
     * **Lone candidate.** With ``k_eff == 1`` but two or more legal moves
       (``k = 1``) the move is *not* forced, so -- as in ``mctx`` -- all ``n``
-      simulations go to the one candidate, in a single round. Its searched
-      value then feeds the completed-Q target over the whole action set.
+      simulations go to the one candidate, in a single round. The spend
+      refines the root and candidate values, but neither the move nor the
+      policy target: ``build_completed_q_policy`` puts mass only on visited
+      actions, so with one candidate the completed-Q target is a one-hot on it
+      (a recorded deviation from the paper, whose improved policy spans the
+      whole action set).
     * There are ``R = ceil(log2(k_eff))`` halving rounds. Round ``r`` visits
       ``m_r`` survivors, ``m_0 = k_eff`` and
       ``m_{r+1} = max(floor, m_r // 2)`` with ``floor = min(k_eff,
       max(2, min_survivors))``.
     * Each survivor gets ``max(1, n // (R * m_r))`` visits in round ``r``.
     * **Truncation.** The budget is a hard ceiling: a round that would overrun
-      ``n`` is cut to what remains (dealt pass-major, so top-ranked survivors
-      are visited first) and any later round is dropped.
+      ``n`` is cut to what remains and any later round is dropped.
     * **Leftover.** If the ``R`` rounds spend less than ``n``, the remainder is
       added to the final round, i.e. spent on the final survivors -- exactly
       what ``mctx`` does by continuing to cycle over its last two candidates.
+
+    * **Dealing.** A round is ``full_passes`` passes over its survivors, then
+      ``remainder`` odd visits to the top of a ranking refreshed after those
+      passes (see :class:`HalvingRound`). The refreshed ranking can change
+      *which* survivors get the odd visits, never how many simulations there are.
+
+    * **Dealing.** A round is ``full_passes`` passes over its survivors, then
+      ``remainder`` odd visits to the top of a ranking refreshed after those
+      passes (see :class:`HalvingRound`). The refreshed ranking can change
+      *which* survivors get the odd visits, never how many simulations there are.
 
     Consequently the realised total is exactly ``n`` whenever ``num_legal >= 2``,
     and 0 for a forced move; ``min_survivors`` changes the shape of the schedule

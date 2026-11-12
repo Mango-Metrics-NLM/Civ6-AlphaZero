@@ -1378,9 +1378,10 @@ class _TrainingArgumentParser(argparse.ArgumentParser):
                 flag for dest, flag in _GUMBEL_ONLY_FLAGS if getattr(parsed, dest, None) is not None
             ]
             if given:
+                noun, pronoun = ("flag", "it") if len(given) == 1 else ("flags", "them")
                 self.error(
-                    f"{', '.join(given)} only configure the Gumbel search; "
-                    "pass --mcts gumbel or drop them"
+                    f"{', '.join(given)}: Gumbel-only {noun}; "
+                    f"pass --mcts gumbel or remove {pronoun}"
                 )
         return parsed, extras
 

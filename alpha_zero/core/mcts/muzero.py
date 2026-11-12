@@ -557,33 +557,45 @@ class MuZeroMCTS:
             self.config.num_sampled_actions, self.config.num_simulations, num_legal
         ):
             survivors = actions[: halving_round.survivors]
-            for rank in halving_round.order():
-                self._run_muzero_simulation(root, survivors[rank], action_mask)
+            for _ in range(halving_round.full_passes):
+                for action in survivors:
+                    self._run_muzero_simulation(root, action, action_mask)
+            if halving_round.remainder:
+                # The odd visits follow the evidence of the passes just run,
+                # not the ranking the round started with (mctx re-scores
+                # before every simulation).
+                survivors = self._rank_by_completed_q(root, survivors, gumbel_scores, root_value)
+                for action in survivors[: halving_round.remainder]:
+                    self._run_muzero_simulation(root, action, action_mask)
 
-            # Compute completed Q-values
-            max_visits = max(
-                (root.children[a].visit_count for a in survivors if a in root.children),
-                default=0,
-            )
-
-            completed_qs = {}
-            for action in survivors:
-                if action not in root.children:
-                    continue
-                child = root.children[action]
-                q = child.value if child.visit_count > 0 else 0.0
-                completed_qs[action] = compute_completed_q(
-                    q, child.visit_count, max_visits, root_value
-                )
-
-            # Combine with Gumbel scores; the next round takes the top survivors.
-            combined = {a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0) for a in survivors}
-            actions = sorted(survivors, key=lambda a: -combined[a])
+            # The next round takes the top survivors of this ranking.
+            actions = self._rank_by_completed_q(root, survivors, gumbel_scores, root_value)
 
         return choose_among_most_visited(
             actions,
             [root.children[a].visit_count if a in root.children else 0 for a in actions],
         )
+
+    @staticmethod
+    def _rank_by_completed_q(
+        root: MuZeroNode,
+        actions: list[int],
+        gumbel_scores: dict[int, float],
+        root_value: float,
+    ) -> list[int]:
+        """Order ``actions`` best-first by completed Q plus Gumbel score."""
+        max_visits = max(
+            (root.children[a].visit_count for a in actions if a in root.children), default=0
+        )
+        combined: dict[int, float] = {}
+        for action in actions:
+            completed = 0.0
+            child = root.children.get(action)
+            if child is not None:
+                q = child.value if child.visit_count > 0 else 0.0
+                completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
+            combined[action] = completed + gumbel_scores.get(action, 0.0)
+        return sorted(actions, key=lambda a: -combined[a])
 
     def _simple_muzero_search(
         self,

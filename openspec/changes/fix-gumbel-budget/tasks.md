@@ -5,10 +5,12 @@
 - [x] 1.2 `k = 1` with several legal moves spends `n` in all three searches; RED on the first schedule
 - [x] 1.3 Adversarial `(16, 8)` one-hot test that no unvisited move is returned; RED (5 of 50 seeds)
 - [x] 1.4 CLI round trip, Gumbel-only flags refused without `--mcts gumbel`, dry-run Gumbel bound, pinned default config
+- [x] 1.5 (3, 10) action-dependent test: the returned move is the best by the final ranking; RED on the frozen in-round ranking (47/23/44 of 150)
 
 ## 2. Fix
 - [x] 2.1 `halving_schedule`, `planned_halving_sims` and `choose_among_most_visited` in `gumbel_ops`; all three searches use them
 - [x] 2.2 `SearchStats` measured at the call sites
+- [x] 2.5 Re-rank the survivors before a round's odd visits in all three searches
 - [x] 2.3 `training_civ6` search flags through one builder; `--mcts gumbel` honours the budget
 - [x] 2.4 Negative control: restoring the old floor in `batch_mcts` fails the equality tests
 

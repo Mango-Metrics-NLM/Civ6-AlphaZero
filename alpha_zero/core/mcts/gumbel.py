@@ -489,8 +489,16 @@ class GumbelMCTS:
 
         for halving_round in schedule:
             survivors = actions[: halving_round.survivors]
-            for rank in halving_round.order():
-                self._run_simulation_from_action(env, root, survivors[rank])
+            for _ in range(halving_round.full_passes):
+                for action in survivors:
+                    self._run_simulation_from_action(env, root, action)
+            if halving_round.remainder:
+                # The odd visits follow the evidence of the passes just run,
+                # not the ranking the round started with (mctx re-scores
+                # before every simulation).
+                survivors = self._rank_by_completed_q(root, survivors, scores, root_value)
+                for action in survivors[: halving_round.remainder]:
+                    self._run_simulation_from_action(env, root, action)
             actions = self._rank_by_completed_q(root, survivors, scores, root_value)
 
         return choose_among_most_visited(

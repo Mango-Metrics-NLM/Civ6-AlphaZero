@@ -411,65 +411,57 @@ class BatchGumbelMCTS:
 
         num_rounds = max(len(schedule) for schedule in schedules)
 
-        # Run halving rounds; round r of every env is evaluated in one batch.
+        # Run halving rounds. Round r of every env is evaluated in two batches:
+        # the full passes, then -- after re-ranking on their evidence -- the odd
+        # visits (mctx re-scores before every simulation).
         for round_idx in range(num_rounds):
-            pending_evals: list[_PendingEvaluation] = []
-            in_round: list[int] = []
+            in_round = [
+                env_idx for env_idx in range(num_envs) if round_idx < len(schedules[env_idx])
+            ]
 
-            for env_idx in range(num_envs):
-                if round_idx >= len(schedules[env_idx]):
-                    continue
+            pending_evals: list[_PendingEvaluation] = []
+            for env_idx in in_round:
                 halving_round = schedules[env_idx][round_idx]
-                in_round.append(env_idx)
                 survivors = active_actions_list[env_idx][: halving_round.survivors]
                 active_actions_list[env_idx] = survivors
-                for rank in halving_round.order():
+                for _ in range(halving_round.full_passes):
+                    for action in survivors:
+                        pending = self._run_simulation_for_env(
+                            env_idx, envs[env_idx], roots[env_idx], np.array([action])
+                        )
+                        if pending is not None:
+                            pending_evals.append(pending)
+            self._evaluate_pending(pending_evals)
+
+            pending_evals = []
+            for env_idx in in_round:
+                halving_round = schedules[env_idx][round_idx]
+                if not halving_round.remainder:
+                    continue
+                survivors = self._rank_by_completed_q(
+                    roots[env_idx],
+                    active_actions_list[env_idx],
+                    scores_list[env_idx],
+                    root_values[env_idx],
+                )
+                active_actions_list[env_idx] = survivors
+                for action in survivors[: halving_round.remainder]:
                     pending = self._run_simulation_for_env(
-                        env_idx, envs[env_idx], roots[env_idx], np.array([survivors[rank]])
+                        env_idx, envs[env_idx], roots[env_idx], np.array([action])
                     )
                     if pending is not None:
                         pending_evals.append(pending)
-
-            # Batch evaluate all pending leaves from this round
-            if pending_evals:
-                spatial_list = [p.spatial for p in pending_evals]
-                vector_list = [p.vector for p in pending_evals]
-                mask_list = [
-                    torch.from_numpy(p.action_mask).float().to(self.device) for p in pending_evals
-                ]
-
-                results = self._batch_evaluate(spatial_list, vector_list, mask_list)
-
-                # Expand and backpropagate
-                for pending, (policy, value) in zip(pending_evals, results, strict=True):
-                    self._env_sim_evals[pending.env_idx] += 1
-                    pending.node.expand(policy, pending.action_mask)
-                    self._backpropagate(pending.search_path, value)
+            self._evaluate_pending(pending_evals)
 
             # After the round, rank each participating env's survivors by
             # completed Q plus Gumbel score; the next round takes the top ones.
             for env_idx in in_round:
-                actions = active_actions_list[env_idx]
-                root = roots[env_idx]
-                scores = scores_list[env_idx]
-
-                max_visits = max(
-                    (root.children[a].visit_count for a in actions if a in root.children),
-                    default=0,
+                active_actions_list[env_idx] = self._rank_by_completed_q(
+                    roots[env_idx],
+                    active_actions_list[env_idx],
+                    scores_list[env_idx],
+                    root_values[env_idx],
                 )
-
-                completed_qs = {}
-                for action in actions:
-                    if action not in root.children:
-                        continue
-                    child = root.children[action]
-                    q = -child.value if child.visit_count > 0 else 0.0
-                    completed_qs[action] = compute_completed_q(
-                        q, child.visit_count, max_visits, root_values[env_idx]
-                    )
-
-                combined = {a: completed_qs.get(a, 0.0) + scores.get(a, 0.0) for a in actions}
-                active_actions_list[env_idx] = sorted(actions, key=lambda a: -combined[a])
 
         # Return best action for each env
         best_actions = []
@@ -490,6 +482,44 @@ class BatchGumbelMCTS:
                 )
 
         return best_actions
+
+    def _evaluate_pending(self, pending_evals: list[_PendingEvaluation]) -> None:
+        """Evaluate queued leaves in one batched forward pass, expand and back up."""
+        if not pending_evals:
+            return
+        spatial_list = [p.spatial for p in pending_evals]
+        vector_list = [p.vector for p in pending_evals]
+        mask_list = [torch.from_numpy(p.action_mask).float().to(self.device) for p in pending_evals]
+        results = self._batch_evaluate(spatial_list, vector_list, mask_list)
+        for pending, (policy, value) in zip(pending_evals, results, strict=True):
+            self._env_sim_evals[pending.env_idx] += 1
+            pending.node.expand(policy, pending.action_mask)
+            self._backpropagate(pending.search_path, value)
+
+    @staticmethod
+    def _rank_by_completed_q(
+        root: GumbelMCTSNode,
+        actions: list[int],
+        scores: dict[int, float],
+        root_value: float,
+    ) -> list[int]:
+        """Order ``actions`` best-first by completed Q plus Gumbel score.
+
+        Keeps this path's historical unconditional ``-child.value`` (CLAUDE.md
+        §5.3; the sign rule is task T18).
+        """
+        max_visits = max(
+            (root.children[a].visit_count for a in actions if a in root.children), default=0
+        )
+        combined: dict[int, float] = {}
+        for action in actions:
+            completed = 0.0
+            child = root.children.get(action)
+            if child is not None:
+                q = -child.value if child.visit_count > 0 else 0.0
+                completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
+            combined[action] = completed + scores.get(action, 0.0)
+        return sorted(actions, key=lambda a: -combined[a])
 
     def _batch_simple_search(
         self,

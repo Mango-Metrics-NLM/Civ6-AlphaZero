@@ -674,3 +674,170 @@ class TestDryRunBoundsGumbel:
 
         config = TrainingConfig(board_size=12, max_turns=40, num_simulations=25)
         assert DRY_RUN_PROFILE.apply_to(config) is config
+
+
+# ---------------------------------------------------------------------------
+# N-1: the odd visits of a round follow the round's own evidence
+# ---------------------------------------------------------------------------
+
+#: Leaf behaviour by root action. "deceptive" looks good on its first evaluation
+#: and bad afterwards, so the ranking at the start of a round is stale by the time
+#: the round's odd visit is dealt. "good" and "bad" are constant, and the root is
+#: valued 0, so the only thing that can reorder the final ranking is evidence
+#: gathered before the odd visit.
+_BEHAVIOURS = ("deceptive", "good", "bad")
+_ARRANGEMENTS = tuple(
+    (a, b, c) for a in _BEHAVIOURS for b in _BEHAVIOURS for c in _BEHAVIOURS if len({a, b, c}) == 3
+)
+_REMAINDER_SEEDS = range(25)
+
+
+class _FirstActionEnv(_Env):
+    """Three legal moves; the observation encodes the first action taken."""
+
+    def __init__(self, first_action: int | None = None) -> None:
+        super().__init__(3)
+        self.first_action = first_action
+
+    def clone(self) -> _FirstActionEnv:
+        return _FirstActionEnv(self.first_action)
+
+    def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        if self.first_action is None:
+            self.first_action = int(action)
+        return super().step(action)
+
+    def get_observation(self) -> dict[str, np.ndarray]:
+        obs = super().get_observation()
+        obs["vector"][0] = 0.0 if self.first_action is None else float(self.first_action + 1)
+        return obs
+
+
+class _Behaviour:
+    """Leaf value by root action; the root itself is valued 0."""
+
+    def __init__(self, arrangement: tuple[str, str, str]) -> None:
+        self.arrangement = arrangement
+        self.evaluations = [0, 0, 0]
+
+    def value(self, root_action: int | None) -> float:
+        if root_action is None:
+            return 0.0
+        kind = self.arrangement[root_action]
+        self.evaluations[root_action] += 1
+        if kind == "good":
+            return 0.5
+        if kind == "bad":
+            return -0.9
+        # +0.9, then -0.9 three times: a mean of -0.45 after the four visits
+        # (1 in round 0, 3 full passes in round 1) that precede the odd visit.
+        # Every later evaluation returns that mean, so the odd visit itself can
+        # never reorder the ranking -- the test isolates the stale-ranking
+        # defect from mctx's own behaviour of moving the leader it just visited.
+        count = self.evaluations[root_action]
+        if count == 1:
+            return 0.9
+        return -0.9 if count <= 4 else -0.45
+
+
+class _ActionValueNet(_CountingNet):
+    def __init__(self, behaviour: _Behaviour) -> None:
+        super().__init__()
+        self.behaviour = behaviour
+
+    def predict(
+        self, spatial: torch.Tensor, vector: torch.Tensor, mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        policy, _ = super().predict(spatial, vector, mask)
+        values = []
+        for code in vector[:, 0].tolist():
+            values.append(self.behaviour.value(None if code == 0 else int(code) - 1))
+        return policy, torch.tensor(values, dtype=torch.float32).unsqueeze(1)
+
+
+class _ActionValueMuZeroNet(_CountingMuZeroNet):
+    def __init__(self, behaviour: _Behaviour) -> None:
+        super().__init__()
+        self.behaviour = behaviour
+
+    def recurrent_inference(self, hidden: Any, action: Any, mask: Any) -> Any:
+        code = float(hidden.reshape(-1)[0])
+        # The root's hidden state is 0; below the root keep the root action's code.
+        child = float(int(action.reshape(-1)[0]) + 1) if code == 0 else code
+        return (
+            torch.full((1, 1), child),
+            torch.zeros(1),
+            torch.zeros(1, ACTION_SPACE),
+            torch.zeros(1),
+        )
+
+    def prediction_function(self, hidden: Any, mask: Any) -> Any:
+        logits, _ = super().prediction_function(hidden, mask)
+        code = int(float(hidden.reshape(-1)[0]))
+        return logits, torch.full((1,), self.behaviour.value(None if code == 0 else code - 1))
+
+
+def _returned_and_final_ranking(
+    variant: str, seed: int, arrangement: tuple[str, str, str]
+) -> tuple[int, list[int]]:
+    """Search at (3, 10); return the move and the ranking it was chosen from."""
+    import alpha_zero.core.batch_mcts as batch_module
+    import alpha_zero.core.mcts.gumbel as gumbel_module
+    import alpha_zero.core.mcts.muzero as muzero_module
+
+    module = {"gumbel": gumbel_module, "batch": batch_module, "muzero": muzero_module}[variant]
+    rankings: list[list[int]] = []
+    original = module.choose_among_most_visited
+
+    def spy(ranked: Any, visits: Any) -> int:
+        rankings.append([int(a) for a in ranked])
+        return original(ranked, visits)
+
+    behaviour = _Behaviour(arrangement)
+    env = _FirstActionEnv()
+    with patch.object(module, "choose_among_most_visited", spy):
+        if variant == "gumbel":
+            probs, _ = GumbelMCTS(
+                _ActionValueNet(behaviour),
+                GumbelMCTSConfig(
+                    num_simulations=10, num_sampled_actions=3, seed=seed, policy_target="one_hot"
+                ),
+            ).search(env)
+        elif variant == "batch":
+            probs, _ = BatchGumbelMCTS(
+                _ActionValueNet(behaviour),
+                BatchMCTSConfig(num_simulations=10, num_sampled_actions=3, seed=seed),
+            ).search(env)
+        else:
+            probs, _ = MuZeroMCTS(
+                _ActionValueMuZeroNet(behaviour),
+                MuZeroMCTSConfig(
+                    num_simulations=10,
+                    num_sampled_actions=3,
+                    use_categorical_reward=False,
+                    seed=seed,
+                ),
+            ).search(env.get_observation(), env.get_valid_actions())
+    assert rankings, "the search never chose among its survivors"
+    return int(np.argmax(probs)), rankings[-1]
+
+
+class TestOddVisitsFollowEvidence:
+    """At (3, 10) the final round is (2 survivors, 7 simulations): 3 full passes
+    and one odd visit. mctx deals that visit to the currently best candidate; a
+    ranking frozen at the start of the round gave it to a stale leader, and the
+    most-visited restriction (m-1) then made the stale leader the move."""
+
+    @pytest.mark.parametrize("variant", VARIANTS)
+    def test_returned_move_is_the_best_by_the_final_ranking(self, variant: str) -> None:
+        assert halving_schedule(3, 10, 3)[-1] == HalvingRound(survivors=2, simulations=7)
+        wrong = []
+        for arrangement in _ARRANGEMENTS:
+            for seed in _REMAINDER_SEEDS:
+                returned, ranking = _returned_and_final_ranking(variant, seed, arrangement)
+                if returned != ranking[0]:
+                    wrong.append((arrangement, seed))
+        runs = len(_ARRANGEMENTS) * len(_REMAINDER_SEEDS)
+        assert not wrong, (
+            f"{variant}: {len(wrong)}/{runs} runs returned a stale leader: {wrong[:5]}"
+        )
