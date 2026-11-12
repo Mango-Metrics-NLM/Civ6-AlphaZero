@@ -105,6 +105,13 @@ class RunSpec:
     at_rc: bool = False
     #: Registered invocations to edit before writing: name -> function(argv) -> argv.
     edit_argv: dict[str, Callable[[list[str]], list[str]]] = field(default_factory=dict)
+    #: An interrupted attempt as run_card writes it: only the first ``recorded``
+    #: invocations finished (and are in run.json), ``total_priced_games`` is still
+    #: the whole card's price, and only their arms wrote result.json.
+    recorded: int | None = None
+    #: Training iterations that finished (an interruption inside training); 0 lists
+    #: no iterations.jsonl at all.
+    iterations_written: int = 20
 
     @property
     def seed(self) -> int:
@@ -214,10 +221,12 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
                 "launched_argv": launched,
             }
         )
-        if name != "train":
+        if name != "train" and (spec.recorded is None or len(invocations) <= spec.recorded):
             cand, opp = _sides(argv)
             arm_records[vre.arm_name(name)] = (cand, opp, _results(name, priced, spec), launched)
-    total = sum(i["priced_games"] for i in invocations)
+    total = sum(i["priced_games"] for i in invocations)  # the whole card, as run_card prices it
+    if spec.recorded is not None:
+        invocations = invocations[: spec.recorded]
     run_json = {
         "schema_version": 1,
         "card_id": spec.run_id,
@@ -248,10 +257,11 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
                 "resumed_from": "ckpt/checkpoint_10.pt" if spec.resumed and i > 10 else None,
             }
         )
-        for i in range(1, 21)
+        for i in range(1, spec.iterations_written + 1)
     ]
-    rel = (base / "iterations.jsonl").as_posix()
-    entry["iterations"] = {"path": rel, **_write(bundle_dir / rel, "\n".join(lines) + "\n")}
+    if lines:
+        rel = (base / "iterations.jsonl").as_posix()
+        entry["iterations"] = {"path": rel, **_write(bundle_dir / rel, "\n".join(lines) + "\n")}
     entry["arms"] = {}
     for name, (cand, opp, rec, launched) in arm_records.items():
         envelope = _envelope(cand, opp, rec, seed=spec.seed, sha=sha, launched=launched)
@@ -266,12 +276,15 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
         interruptions.append("resumed")
     if any(n.startswith("MCTS_") for n in spec.env_var_names):
         interruptions.append("MCTS_")
-    entry["verdict"] = compute_verdict(
-        arm_records["primary"][2],
-        arm_records["symmetry"][2],
-        arm_records["positive_control"][2],
-        interruptions=interruptions,
-    ).to_dict()
+    if {"primary", "symmetry", "positive_control"} <= set(arm_records):
+        entry["verdict"] = compute_verdict(
+            arm_records["primary"][2],
+            arm_records["symmetry"][2],
+            arm_records["positive_control"][2],
+            interruptions=interruptions,
+        ).to_dict()
+    else:  # the judged arms never all ran: VOID by status
+        entry["verdict"] = {"verdict": "VOID", "reasons": interruptions}
     return entry
 
 

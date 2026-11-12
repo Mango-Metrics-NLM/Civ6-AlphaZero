@@ -91,5 +91,19 @@ are refused). For every attempt the verifier:
 non-VOID attempt, and that attempt is judged; a role with only VOID attempts
 fails the bundle. After a VOID, fix the cause and re-run under a new `card_id`
 at the same seed, and keep the VOID attempt listed (`docs/EVALUATION.md`
-section 7.1, "After a VOID"). A FAIL or INCONCLUSIVE verdict passes when it is
+section 7.1, "After a VOID").
+
+An attempt whose `run.json` status is not `COMPLETED` (VOID, FAILED, or a
+lingering RUNNING) is VOID by status. It lists **whatever exists**: `run_json`
+always; `iterations` if any iteration finished; an arm only if it wrote
+`result.json`; an invocation or arm that never ran is omitted. It is checked for
+honesty, not completeness:
+
+- hashes, `card_id`, `sha`, seed and ancestry, as for any attempt;
+- `run.json`'s invocations are a token-for-token prefix of the registered list;
+- `total_priced_games` is the whole registered card's price (run_card writes it
+  at start), and each recorded invocation's price is its registered price;
+- each listed arm is recomputed;
+- each `iterations.jsonl` line carries the run's seed and sha;
+- the stored verdict is `VOID`. A FAIL or INCONCLUSIVE verdict passes when it is
 recorded honestly: a negative A1 ships the release with the claim withheld.

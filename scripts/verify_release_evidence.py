@@ -35,7 +35,10 @@ sha256. This script trusts none of the stored numbers:
   attempt VOID.
 * **Learning.** ``learning_recorded`` is required. A **VOID records no learning
   result**: every role needs exactly one non-VOID attempt, and that one is
-  judged; VOID attempts stay listed beside it (section 7.1, "After a VOID"). The
+  judged; VOID attempts stay listed beside it (section 7.1, "After a VOID"). An
+  attempt whose ``run.json`` is not COMPLETED is VOID by status and lists what it
+  left: its invocations must be a prefix of the registered list, its total the
+  card's price, and each arm it lists is recomputed (honesty, not completeness). The
   protocol hash is section 7.1's at HEAD and at every attempt's commit, and
   ``docs/evidence/README.md`` has the row. ``learning_claimed`` must equal "the
   judged A1 and A1-R both PASS"; without it, "learns"/"learned"/"learnt" may not
@@ -350,6 +353,11 @@ class RunFacts:
     argv: dict[str, list[str]] = field(default_factory=dict)
     names: list[str] = field(default_factory=list)
     interruptions: list[str] = field(default_factory=list)
+    #: ``run.json`` says COMPLETED. Anything else (VOID, FAILED, a lingering
+    #: RUNNING) is VOID by status and is checked for honesty, not completeness:
+    #: run_card appends an invocation only once it finishes, so an interrupted
+    #: attempt records a prefix of the card and only the arms that ran.
+    completed: bool = False
 
 
 def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFacts:
@@ -367,7 +375,8 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
     else:
         f.problems.append(f"{label}: run.json sha {sha!r} is not a full commit sha")
     status = record.get("status")
-    if status != "COMPLETED":
+    facts.completed = status == "COMPLETED"
+    if not facts.completed:
         # RUNNING left behind by a hard kill is read as VOID (section 7.1).
         facts.interruptions.append(f"run.json status is {status!r}, not 'COMPLETED'")
     names = record.get("env_var_names")
@@ -380,10 +389,11 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
     approval = record.get("approval_ref")
     facts.approval_ref = (str(approval).strip() or None) if approval is not None else None
     invocations = record.get("invocations")
-    if not isinstance(invocations, list) or not invocations:
+    total = record.get("total_priced_games")
+    if not isinstance(invocations, list) or (facts.completed and not invocations):
         f.problems.append(f"{label}: run.json records no invocations")
         return facts
-    for inv in invocations:
+    for index, inv in enumerate(invocations):
         if not isinstance(inv, Mapping) or not isinstance(inv.get("priced_games"), int):
             f.problems.append(f"{label}: run.json invocation without integer priced_games")
             return facts
@@ -399,24 +409,53 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
                 "--max_games <priced> (was it run by run_card?)"
             )
         facts.launched[name] = expected
-        if inv.get("exit_code") != 0:
+        # A FAILED card stops on the invocation that failed, so only its last
+        # recorded invocation may carry a non-zero exit code.
+        last_of_failed = not facts.completed and index == len(invocations) - 1
+        if inv.get("exit_code") != 0 and not (
+            last_of_failed and isinstance(inv.get("exit_code"), int)
+        ):
             f.problems.append(f"{label}: invocation {name!r} exit_code {inv.get('exit_code')!r}")
-    facts.games = sum(facts.priced.values())
-    if record.get("total_priced_games") != facts.games:
-        f.problems.append(
-            f"{label}: total_priced_games {record.get('total_priced_games')!r} != "
-            f"the invocations' sum {facts.games}"
-        )
+    if facts.completed:
+        facts.games = sum(facts.priced.values())
+        if total != facts.games:
+            f.problems.append(
+                f"{label}: total_priced_games {total!r} != the invocations' sum {facts.games}"
+            )
+    elif isinstance(total, int) and not isinstance(total, bool):
+        facts.games = total  # the whole card's price, written at start (check_registered)
+    else:
+        f.problems.append(f"{label}: total_priced_games {total!r} is not an integer")
     return facts
 
 
 def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings) -> None:
-    """``run.json``'s invocations are section 7.1's, in order, token for token."""
-    if facts.names != list(reg.invocations):
+    """``run.json``'s invocations are section 7.1's, in order, token for token.
+
+    A COMPLETED attempt records every registered invocation. Any other attempt
+    records a prefix of them (those that finished), and its ``total_priced_games``
+    must be the whole registered card's price, which run_card writes at start.
+    """
+    registered = list(reg.invocations)
+    expected_names = registered if facts.completed else registered[: len(facts.names)]
+    if facts.names != expected_names:
+        what = "" if facts.completed else "a prefix of "
         f.problems.append(
-            f"{label}: run.json invokes {facts.names}, but section 7.1 registers "
-            f"{list(reg.invocations)}"
+            f"{label}: run.json invokes {facts.names}, but section 7.1 registers {what}{registered}"
         )
+    if not facts.completed and facts.games is not None:
+        price = registered_price(reg)
+        if facts.games != sum(price.values()):
+            f.problems.append(
+                f"{label}: total_priced_games {facts.games} != the registered card's price "
+                f"{sum(price.values())}"
+            )
+        for name in facts.names:
+            if name in price and facts.priced.get(name) != price[name]:
+                f.problems.append(
+                    f"{label}: invocation {name!r} priced {facts.priced.get(name)} != "
+                    f"registered {price[name]}"
+                )
     for name, registered in reg.invocations.items():
         argv = facts.argv.get(name)
         if argv is not None and argv != registered:
@@ -425,6 +464,18 @@ def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings
                 f"{label}: invocation {name!r} is not the registered command "
                 f"({', '.join(diff[:3]) or 'different length'}): an unregistered card"
             )
+
+
+def registered_price(reg: Registration) -> dict[str, int]:
+    """Each registered invocation's price by its runner's own parser, as run_card prices it."""
+    from alpha_zero.local.run_card import Invocation, _price_invocation
+
+    return {
+        name: _price_invocation(
+            Invocation(name, "training_civ6" if name == TRAIN else "benchmark", tuple(args))
+        )
+        for name, args in reg.invocations.items()
+    }
 
 
 def check_iterations(
@@ -456,7 +507,12 @@ def check_iterations(
         if isinstance(rec.get("iteration"), int):
             seen.add(rec["iteration"])
     iterations = int(reg.flag(TRAIN, "--num_iterations") or 0)
-    if seen != set(range(1, iterations + 1)):
+    expected = set(range(1, iterations + 1))
+    if not facts.completed:
+        # An interrupted attempt holds the iterations it finished, and no others.
+        if not seen <= expected:
+            f.problems.append(f"{label}: iterations.jsonl holds {sorted(seen - expected)}")
+    elif seen != expected:
         f.problems.append(f"{label}: iterations.jsonl covers {sorted(seen)}, not 1..{iterations}")
 
 
@@ -587,13 +643,19 @@ def check_arm(
     f.problems.extend(f"{label}: {p}" for p in recompute_row(row))
     _check_protocol(name, envelope, reg, label, f)
     invocation = name.replace("_", "-")
-    if facts.priced.get(invocation) != row["num_games"]:
+    priced, launched = facts.priced.get(invocation), facts.launched.get(invocation)
+    if priced is None and not facts.completed:
+        # Interrupted after the arm wrote result.json but before run_card recorded
+        # it: hold the result to the registered command as run_card would launch it.
+        n_games = reg.flag(invocation, "--n-games") or ""
+        priced = int(n_games) if n_games.isdigit() else None
+        launched = [*reg.invocations[invocation], "--max_games", n_games]
+    if priced != row["num_games"]:
         f.problems.append(
-            f"{label}: {row['num_games']} games, but run.json priced {invocation!r} at "
-            f"{facts.priced.get(invocation)!r}"
+            f"{label}: {row['num_games']} games, but run.json priced {invocation!r} at {priced!r}"
         )
     evidence = envelope["evidence"]
-    if command_args(str(evidence.get("command", ""))) != facts.launched.get(invocation):
+    if command_args(str(evidence.get("command", ""))) != launched:
         f.problems.append(
             f"{label}: evidence.command is not run.json's {invocation!r} invocation as "
             "launched (another arm's or run's result, or run by hand?)"
@@ -720,16 +782,26 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     if run.get("seed") != reg.seed:
         f.problems.append(f"{label}: seed {run.get('seed')!r} != {reg.seed} for {role}")
     check_registered(facts, reg, label, f)
-    iter_path = _load_component(bundle_dir, run.get("iterations"), f"{label} iterations", f)
-    if iter_path is not None:
-        check_iterations(iter_path.read_text(encoding="utf-8"), reg, sha, label, f, facts)
+    # An attempt killed before its first iteration finished has no record to list.
+    if facts.completed or run.get("iterations") is not None:
+        iter_path = _load_component(bundle_dir, run.get("iterations"), f"{label} iterations", f)
+        if iter_path is not None:
+            check_iterations(iter_path.read_text(encoding="utf-8"), reg, sha, label, f, facts)
 
     arms_in = run.get("arms")
-    if not isinstance(arms_in, Mapping) or set(arms_in) != set(reg.arms):
+    if not isinstance(arms_in, Mapping):
+        f.problems.append(f"{label}: arms must be an object")
+        arms_in = {}
+    if facts.completed and set(arms_in) != set(reg.arms):
         f.problems.append(f"{label}: arms must be exactly the registered {reg.arms}")
-        arms_in = arms_in if isinstance(arms_in, Mapping) else {}
+    elif not set(arms_in) <= set(reg.arms):
+        f.problems.append(
+            f"{label}: arms {sorted(set(arms_in) - set(reg.arms))} are not registered"
+        )
     arms: dict[str, ArmRead] = {}
-    for name in reg.arms:
+    # A VOID-by-status attempt lists only the arms that ran; each is still checked.
+    listed = reg.arms if facts.completed else [n for n in reg.arms if n in arms_in]
+    for name in listed:
         entry = arms_in.get(name)
         path = _load_component(bundle_dir, entry, f"{label} arm {name}", f)
         if path is None or not isinstance(entry, Mapping):
@@ -742,10 +814,21 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
         if read is not None:
             arms[name] = read
     check_budget(run, facts, label, f)
-
-    if set(arms) != set(reg.arms) or not {PRIMARY, SYMMETRY, POSITIVE_CONTROL} <= set(arms):
-        return RunOutcome(role, run_id, None, facts.games, sha)
     check_arm_identities(arms, reg, label, f)
+
+    if not facts.completed and not {PRIMARY, SYMMETRY, POSITIVE_CONTROL} <= set(arms):
+        # VOID by status (section 7.1, "Interruptions"); the judged arms never all ran.
+        stored = run.get("verdict")
+        if not isinstance(stored, Mapping) or stored.get("verdict") != VOID:
+            f.problems.append(
+                f"{label}: run.json status is not COMPLETED, so the stored verdict must be "
+                f"'VOID', not {stored.get('verdict') if isinstance(stored, Mapping) else stored!r}"
+            )
+        reasons = tuple(facts.interruptions)
+        f.notes.append(f"{label}: verdict VOID ({'; '.join(reasons)}; listed, not judged)")
+        return RunOutcome(role, run_id, VOID, facts.games, sha, reasons)
+    if facts.completed and set(arms) != set(reg.arms):
+        return RunOutcome(role, run_id, None, facts.games, sha)
     computed = compute_verdict(
         arms[PRIMARY].games,
         arms[SYMMETRY].games,

@@ -444,12 +444,18 @@ on it: T14's verifier exits 1 when a role has no non-VOID attempt.
    positive-control VOID needs the arena or harness fixed; that is a play-path
    change, so it lands as a new rc.
 2. Run the same card again under a **new `card_id`** (for example
-   `a1-20261111-r2`, so `<D>` is new) at the **same seed**. Confirmatory runs
-   are deterministic on CPU, so a re-run at the same seed reproduces the games
-   and cannot be used to fish for another result. This is the one exception to
-   "neither has been run before".
-3. Keep the VOID attempt in the release bundle beside the re-run. Each role
-   has exactly one non-VOID attempt, and that attempt is the one judged.
+   `a1-20261111-r2`, so `<D>` is new) at the **same seed**. This is the one
+   exception to "neither has been run before".
+   - After an **interruption**, nothing changed: confirmatory runs are
+     deterministic on CPU, so the re-run reproduces the same games and cannot be
+     used to fish for another result.
+   - After a **symmetry or positive-control VOID**, the code changed, so the
+     re-run plays different games: it is a **second draw**, made after the VOID
+     attempt's arms (its primary arm included, if it ran) were seen. Listing the
+     VOID attempt in the bundle is what discloses that.
+3. Keep the VOID attempt in the release bundle beside the re-run, with whatever
+   components it left (an invocation or arm that never ran is omitted). Each
+   role has exactly one non-VOID attempt, and that attempt is the one judged.
 
 #### Positive control
 
@@ -581,6 +587,7 @@ row's digest.
 | 2026-11-11 | `990989eea43b90e777a67a40da5bc319f62c2e49c82174b74530d4d1d6f2e377` | Initial registration (T13), with fix round 1: pair-bootstrap calibration, amendment limits, code binding, arena search, one-card form only, `text` fence |
 | 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
 | 2026-11-12 | `9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e` | T14 review I-1 (before any A1-family run): "After a VOID" -- a VOID records no learning result; fix the cause and re-run under a new `card_id` at the same seed; the VOID attempt stays in the bundle and exactly one non-VOID attempt per role is judged |
+| 2026-11-12 | `79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b` | T14 rereview N-1/N-2 (before any A1-family run): "After a VOID" says the same-seed re-run is a reproduction only after an interruption; after a symmetry or positive-control VOID it is a second draw, disclosed by the listed VOID attempt, which keeps whatever components it left |
 
 ## 8. The LLM advisor gate is not an evaluation
 

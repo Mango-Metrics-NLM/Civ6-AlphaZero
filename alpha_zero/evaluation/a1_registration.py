@@ -38,7 +38,7 @@ __all__ = [
 
 #: The section 7.1 digest the constants below (and the verdict table) were last
 #: confirmed against. Must equal the registration log's last row.
-REGISTRATION_DIGEST = "9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e"
+REGISTRATION_DIGEST = "79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b"
 #: A1-R's seed: "every ``--seed 20261111`` replaced by ``--seed 20261112``".
 A1R_SEED = 20261112
 #: ``<D>`` is ``<DATA_ROOT>\runs\<card>`` ("A card therefore runs with ``--data_root E:\civ6az-data``").

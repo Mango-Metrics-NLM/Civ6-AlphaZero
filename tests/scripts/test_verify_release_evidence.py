@@ -290,6 +290,100 @@ class TestVoid:
         assert code == vre.EXIT_PASS, out
         assert "2,940 games across 3 attempt(s)" in out
 
+    def test_an_interrupted_attempt_beside_its_rerun_passes(self, tmp_path: Path) -> None:
+        """Rereview N-1 / probe 3b: interrupted during the symmetry arm, as run_card writes it."""
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=2)  # train, primary
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        attempt = release.bundle["runs"][0]
+        assert set(attempt["arms"]) == {"primary"}
+        assert attempt["games"] == 980  # the whole card's price, written at start
+        code, out = verify(release)
+        assert code == vre.EXIT_PASS, out
+        assert "verdict VOID" in out and "listed, not judged" in out
+
+    def test_a_lingering_running_attempt_beside_its_rerun_passes(self, tmp_path: Path) -> None:
+        """A hard kill in training: RUNNING, no invocation finished, 7 iterations written."""
+        killed = fx.RunSpec(
+            run_id="a1-20261111", status="RUNNING", recorded=0, iterations_written=7
+        )
+        release = fx.make_release(tmp_path, [killed, fx.RunSpec(run_id="a1-20261111-r2")])
+        assert release.bundle["runs"][0]["arms"] == {}
+        code, out = verify(release)
+        assert code == vre.EXIT_PASS, out
+
+    def test_a_killed_attempt_with_no_iterations_listed_passes(self, tmp_path: Path) -> None:
+        killed = fx.RunSpec(
+            run_id="a1-20261111", status="RUNNING", recorded=0, iterations_written=0
+        )
+        release = fx.make_release(tmp_path, [killed, fx.RunSpec(run_id="a1-20261111-r2")])
+        assert "iterations" not in release.bundle["runs"][0]
+        assert verify(release)[0] == vre.EXIT_PASS
+
+    def _interrupted(self, tmp_path: Path) -> fx.Release:
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=2)
+        return fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+
+    def _edit_run_json(self, release: fx.Release, edit: Callable[[dict[str, Any]], None]) -> None:
+        run = release.bundle["runs"][0]
+        path = release.bundle_dir / run["run_json"]["path"]
+        record = _json(path)
+        edit(record)
+        _dump(path, record)
+        fx.rehash(release.bundle_dir, run["run_json"])
+        run["games"] = record["total_priced_games"]
+        total = sum(r["games"] for r in release.bundle["runs"])
+        release.bundle["games_total"] = release.bundle["evidence"]["games_total"] = total
+        release.save()
+
+    def test_an_interrupted_attempt_must_carry_the_card_price(self, tmp_path: Path) -> None:
+        release = self._interrupted(tmp_path)
+
+        def understate(record: dict[str, Any]) -> None:
+            record["total_priced_games"] = sum(i["priced_games"] for i in record["invocations"])
+
+        self._edit_run_json(release, understate)
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "the registered card's price 980" in out
+
+    def test_an_interrupted_attempt_must_record_a_prefix(self, tmp_path: Path) -> None:
+        release = self._interrupted(tmp_path)
+        self._edit_run_json(release, lambda r: r["invocations"].pop(0))  # primary without train
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "registers a prefix of" in out
+
+    def test_an_interrupted_attempt_cannot_be_stored_as_a_pass(self, tmp_path: Path) -> None:
+        release = self._interrupted(tmp_path)
+        release.bundle["runs"][0]["verdict"] = {"verdict": "PASS", "reasons": []}
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "stored verdict must be 'VOID'" in out
+
+    def test_an_interrupted_attempts_arm_is_still_recomputed(self, tmp_path: Path) -> None:
+        release = self._interrupted(tmp_path)
+        arm = release.bundle["runs"][0]["arms"]["primary"]
+        path = release.bundle_dir / arm["path"]
+        envelope = _json(path)
+        envelope["results"][0]["candidate_wins"] += 1
+        envelope["results"][0]["champion_wins"] -= 1
+        _dump(path, envelope)
+        fx.rehash(release.bundle_dir, arm)
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "counts disagree with its per-game records" in out
+
+    def test_an_interrupted_attempt_cannot_list_an_unregistered_arm(self, tmp_path: Path) -> None:
+        release = self._interrupted(tmp_path)
+        arms = release.bundle["runs"][0]["arms"]
+        arms["bonus"] = dict(arms["primary"])
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "are not registered" in out
+
     def test_two_non_void_attempts_of_one_role_fail(self, tmp_path: Path) -> None:
         specs = [fx.RunSpec(), fx.RunSpec(run_id="a1-20261111-r2", primary="FAIL")]
         code, out = verify(fx.make_release(tmp_path, specs))
