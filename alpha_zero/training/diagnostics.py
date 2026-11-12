@@ -36,6 +36,8 @@ import numpy as np
 import torch
 from torch import Tensor, nn
 
+from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
+
 logger = logging.getLogger(__name__)
 
 
@@ -533,6 +535,7 @@ def prequential_value_metrics(
     buffer_mean: float,
     *,
     batch_size: int = PREQUENTIAL_BATCH_SIZE,
+    greedy_threshold: float = GREEDY_THRESHOLD,
 ) -> dict[str, Any]:
     """Score the network, as it stood before training on them, on an iteration's games.
 
@@ -553,6 +556,11 @@ def prequential_value_metrics(
         buffer_mean: Mean value target in the replay buffer before insertion;
             ``0.0`` when the buffer is empty (iteration 0).
         batch_size: Positions per forward pass.
+        greedy_threshold: The run's ``greedy_threshold``. ``select_action``
+            ignores temperature when a target's max-p is strictly above it, so
+            ``target_share_above_greedy_threshold`` is the fraction of this
+            iteration's positions on which the temperature schedule was inert
+            (LF-A5; ``kb/specs/20261111-completed-q-alignment-memo.md``).
 
     Returns:
         A JSON-serialisable dict. ``r2_oos = 1 - SSE / SST`` where SST is taken
@@ -583,6 +591,9 @@ def prequential_value_metrics(
         "sign_accuracy_baseline_prequential": None,
         "target_entropy": None,
         "policy_entropy": None,
+        "greedy_threshold": float(greedy_threshold),
+        "target_max_p_mean": None,
+        "target_share_above_greedy_threshold": None,
         **_step_counts(step_records),
     }
     if not fresh_examples:
@@ -615,6 +626,12 @@ def prequential_value_metrics(
     metrics["target_entropy"] = float(
         np.mean([compute_policy_entropy(e.policy, e.action_mask) for e in fresh_examples])
     )
+    # Mean entropy is a weak detector of a target collapsing to deltas: the
+    # target distribution is bimodal across networks, so the mean can barely
+    # move while the near-delta share does. Record the share directly.
+    max_p = np.array([float(np.max(e.policy)) for e in fresh_examples], dtype=np.float64)
+    metrics["target_max_p_mean"] = float(max_p.mean())
+    metrics["target_share_above_greedy_threshold"] = float(np.mean(max_p > greedy_threshold))
     metrics["policy_entropy"] = float(
         np.mean(
             [

@@ -1332,7 +1332,11 @@ def _prequential_diagnostics(
     """
     try:
         metrics = prequential_value_metrics(
-            _mcts_network(network, config), examples, step_records, buffer_mean
+            _mcts_network(network, config),
+            examples,
+            step_records,
+            buffer_mean,
+            greedy_threshold=config.gumbel_greedy_threshold,
         )
     except Exception as exc:
         level = logging.ERROR if prior_failures == 0 else logging.WARNING
