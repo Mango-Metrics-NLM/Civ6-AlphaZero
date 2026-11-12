@@ -73,10 +73,14 @@ t=d.get("tool_input") if isinstance(d,dict) else None
 c=t.get("file_path") if isinstance(t,dict) else None
 sys.stdout.buffer.write((c if isinstance(c,str) else "").encode("utf-8"))'
 
+# Exactly one JSON document, as python's json.load requires: jq would otherwise read
+# empty input as zero documents (exit 0) and print one file_path per document.
+[ -n "${input//[[:space:]]/}" ] || deny "the hook payload is empty."
+
 fp=""
 parsed=0
 if command -v jq >/dev/null 2>&1 \
-   && fp="$(printf '%s' "$input" | jq -r '.tool_input.file_path // empty' 2>/dev/null)"; then
+   && fp="$(printf '%s' "$input" | jq -r -s 'if length==1 and (.[0]|type)=="object" then (.[0].tool_input.file_path // empty) else error("not exactly one payload") end' 2>/dev/null)"; then
   parsed=1
 fi
 if [ "$parsed" -eq 0 ]; then

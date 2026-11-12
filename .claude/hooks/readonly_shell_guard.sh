@@ -159,10 +159,17 @@ if not isinstance(c,str):
     sys.exit(3)
 sys.stdout.buffer.write(c.encode("utf-8"))'
 
+# An empty payload is not "nothing to run": jq reads empty input as zero documents,
+# prints nothing and exits 0, which would otherwise pass as an empty command (found on
+# Linux CI, where jq is installed). jq also slurps (-s) so that exactly one JSON
+# document is accepted -- python's json.load already rejects empty input and a second
+# document ("Extra data"); without -s jq would print one command per document.
+[ -n "${input//[[:space:]]/}" ] || deny "the hook payload is empty."
+
 cmd=""
 parsed=0
 if command -v jq >/dev/null 2>&1 \
-   && cmd="$(printf '%s' "$input" | jq -r 'if (.tool_input|type)=="object" and (.tool_input.command|type)=="string" then .tool_input.command else error("no string command") end' 2>/dev/null)"; then
+   && cmd="$(printf '%s' "$input" | jq -r -s 'if length==1 and (.[0].tool_input|type)=="object" and (.[0].tool_input.command|type)=="string" then .[0].tool_input.command else error("not exactly one payload with a string command") end' 2>/dev/null)"; then
   parsed=1
 fi
 if [ "$parsed" -eq 0 ]; then

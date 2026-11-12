@@ -268,6 +268,26 @@ def test_unparsable_payload_fails_closed(payload: str) -> None:
     assert decision == "deny"
 
 
+_TWO_DOCS_SHELL = (
+    '{"tool_input": {"command": "git log"}} {"tool_input": {"command": "git push origin dev"}}'
+)
+_TWO_DOCS_WRITE = (
+    '{"tool_input": {"file_path": "tests/x.py"}} {"tool_input": {"file_path": "alpha_zero/x.py"}}'
+)
+
+
+@pytest.mark.parametrize("payload", ["", " \n\t", _TWO_DOCS_SHELL])
+def test_empty_or_multi_document_payload_is_denied_by_the_shell_guard(payload: str) -> None:
+    # jq reads empty input as zero documents and exits 0, and without -s prints one
+    # command per document; both used to pass on Linux CI where jq is installed.
+    assert _run(READONLY_GUARD, payload)[0] == "deny"
+
+
+@pytest.mark.parametrize("payload", ["", " \n\t", _TWO_DOCS_WRITE])
+def test_empty_or_multi_document_payload_is_denied_by_the_write_guard(payload: str) -> None:
+    assert _run(WRITE_GUARD, payload)[0] == "deny"
+
+
 @pytest.mark.parametrize("payload", ["[]", '{"tool_input": 3}'])
 def test_payload_without_a_string_command_is_denied(payload: str) -> None:
     decision, _ = _run(READONLY_GUARD, payload)
