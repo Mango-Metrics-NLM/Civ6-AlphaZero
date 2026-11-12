@@ -14,6 +14,7 @@ import logging
 import os
 import platform
 import re
+import shlex
 import sys
 import time
 import warnings
@@ -51,7 +52,9 @@ from alpha_zero.multiplayer.scoring import (
     compute_rankings,
 )
 from alpha_zero.training.diagnostics import StepRecord, prequential_value_metrics
+from alpha_zero.training.run_record import IterationLog
 from alpha_zero.utils.checkpoint import (
+    GIT_SHA_ENV,
     build_provenance,
     check_provenance,
     read_git_sha,
@@ -165,6 +168,10 @@ class TrainingConfig:
     # "none" plays it with the configured search on the freshly initialised
     # network, so the first training set already comes from the search under study.
     bootstrap: str = "simple_mcts"
+
+    # Run identity stamped on every iterations.jsonl line. ``None`` falls back to
+    # CIV6AZ_RUN_ID (set by the run-card driver), then to a timestamped default.
+    run_id: str | None = None
 
     # Device. "auto" is resolved to a concrete device in __post_init__ rather
     # than probed at import time, so constructing a TrainingConfig on a GPU box
@@ -1178,8 +1185,8 @@ EVAL_SEARCH_EPOCH = "post-2026-09-04"
 
 def write_eval_json(
     path: str | os.PathLike[str], summary: ScoreSummary, meta: dict[str, Any]
-) -> None:
-    """Write one in-loop evaluation as JSON, atomically.
+) -> dict[str, Any]:
+    """Write one in-loop evaluation as JSON, atomically, and return its ``result``.
 
     The file is ``{"eval_schema_version", **meta, "result"}``: ``result`` is the
     summary's counts, ``score_rate``, ``draw_rate`` and interval, plus the legacy
@@ -1195,6 +1202,7 @@ def write_eval_json(
     tmp = target.with_name(target.name + ".tmp")
     tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     os.replace(tmp, target)
+    return result
 
 
 def _hardware_summary() -> dict[str, Any]:
@@ -1208,23 +1216,34 @@ def _hardware_summary() -> dict[str, Any]:
 
 
 def eval_evidence_block(
-    config: TrainingConfig, provenance: dict[str, Any], games_total: int
+    config: TrainingConfig,
+    provenance: dict[str, Any],
+    games_total: int,
+    *,
+    iteration: int | None = None,
 ) -> dict[str, Any]:
-    """An ``evidence`` block (``docs/evidence/SCHEMA.md``) for one in-loop evaluation."""
+    """An ``evidence`` block (``docs/evidence/SCHEMA.md``) for one in-loop evaluation.
+
+    ``iteration`` is 1-based (the network after that many iterations). The weights
+    scored may never be saved -- evaluation and checkpoint cadences are independent
+    -- so the claim names the iteration, and ``eval_<iter>.json`` names the
+    checkpoint or ``null``.
+    """
+    subject = "this network" if iteration is None else f"the network after iteration {iteration}"
     block: dict[str, Any] = {
         "schema_version": 1,
         "git_sha": provenance.get("git_sha"),
         "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "search_epoch": EVAL_SEARCH_EPOCH,
         "seed": config.seed,
-        "command": " ".join(sys.argv),
+        "command": shlex.join(["python", "-m", "alpha_zero.training_civ6", *sys.argv[1:]]),
         "hardware": _hardware_summary(),
         "python": platform.python_version(),
         "torch": torch.__version__,
         "numpy": np.__version__,
         "games_total": games_total,
         "claims": [
-            f"score rate of this checkpoint against a uniform-random opponent over "
+            f"score rate of {subject} against a uniform-random opponent over "
             f"{games_total} held-out games, with its 95% ternary-variance interval"
         ],
         "non_claims": [
@@ -1236,7 +1255,9 @@ def eval_evidence_block(
     if config.seed is None:
         block["seed_null_reason"] = "the run was unseeded"
     if block["git_sha"] is None:
-        block["git_sha_null_reason"] = "HEAD could not be resolved from the checkout"
+        block["git_sha_null_reason"] = (
+            f"no valid {GIT_SHA_ENV} and no resolvable .git at the package's source root"
+        )
     return block
 
 
@@ -1253,12 +1274,16 @@ def _evaluate_iteration(
     iteration: int,
     dry_run: bool,
     provenance: dict[str, Any],
+    checkpoint: str | None,
 ) -> dict[str, Any] | None:
     """Run the scheduled in-loop evaluation, if any, and write ``eval_<iter>.json``.
 
     Scheduled on ``config.resolved_eval_interval`` -- not on the checkpoint
     cadence -- or every iteration under ``--dry_run``; never when
-    ``eval_games`` is 0. Returns the summary as a dict, or ``None`` when none ran.
+    ``eval_games`` is 0. ``checkpoint`` is the file (relative to the checkpoint
+    directory) this iteration's weights are saved to, or ``None`` when they are
+    not saved. Returns the written ``result`` (summary plus legacy ``win_rate``),
+    or ``None`` when no evaluation ran.
     """
     num_games = in_loop_eval_games(config, dry_run)
     if num_games == 0:
@@ -1274,12 +1299,15 @@ def _evaluate_iteration(
     meta = {
         "iteration": iteration + 1,
         "opponent": "random",
+        "checkpoint": checkpoint,
         "provenance": provenance,
-        "evidence": eval_evidence_block(config, provenance, summary.total_games),
+        "evidence": eval_evidence_block(
+            config, provenance, summary.total_games, iteration=iteration + 1
+        ),
     }
-    write_eval_json(path, summary, meta)
+    result = write_eval_json(path, summary, meta)
     logger.info(f"Wrote evaluation: {path}")
-    return dict(summary.to_dict())
+    return result
 
 
 def _prequential_diagnostics(
@@ -1288,28 +1316,53 @@ def _prequential_diagnostics(
     examples: list[TrainingExample],
     step_records: list[StepRecord],
     buffer_mean: float,
+    *,
+    generator: str,
+    prior_failures: int,
 ) -> dict[str, Any]:
     """LF-A13 diagnostics for one iteration; recorded, never gated.
 
-    A failure is logged with its traceback and recorded as ``{"error": ...}``
-    rather than raised: a diagnostic must not end a multi-hour run.
+    ``generator`` names what played the games (``"simple_mcts"`` for the
+    bootstrap iteration, else ``"network"``); the scoring network is always the
+    one as it stood before this iteration's training. A failure is recorded as
+    ``{"error": ...}`` rather than raised -- a diagnostic must not end a
+    multi-hour run -- and logged with its traceback: at ERROR the first time
+    (``prior_failures == 0``), at WARNING after that. :func:`train` logs a final
+    ``prequential failures: k/N`` count.
     """
     try:
         metrics = prequential_value_metrics(
             _mcts_network(network, config), examples, step_records, buffer_mean
         )
     except Exception as exc:
-        logger.warning("Prequential diagnostics failed; continuing", exc_info=True)
-        return {"error": repr(exc)}
+        level = logging.ERROR if prior_failures == 0 else logging.WARNING
+        logger.log(level, "Prequential diagnostics failed; continuing", exc_info=True)
+        return {"error": repr(exc), "generator": generator}
+    metrics["generator"] = generator
     logger.info("Prequential diagnostics: %s", json.dumps(metrics, sort_keys=True))
     return metrics
 
 
-def _append_iteration_record(config: TrainingConfig, record: dict[str, Any]) -> None:
-    """Append one line to ``<checkpoint_dir>/iterations.jsonl``, the per-iteration record."""
-    path = os.path.join(config.checkpoint_dir, "iterations.jsonl")
-    with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, sort_keys=True) + "\n")
+def _open_iteration_log(
+    config: TrainingConfig, provenance: dict[str, Any], start_iteration: int
+) -> IterationLog:
+    """The run's ``iterations.jsonl`` writer, stamped with the run's identity.
+
+    A fresh start (no ``--resume_from``, loop index 0) rotates an earlier run's
+    record and ``eval_*.json`` aside into ``previous_<UTC stamp>/``; a resume
+    appends and marks re-run iterations. See :mod:`alpha_zero.training.run_record`.
+    """
+    run_id = config.run_id or os.environ.get("CIV6AZ_RUN_ID") or default_run_id(config.seed)
+    identity = {
+        "run_id": run_id,
+        "seed": config.seed,
+        "git_sha": provenance.get("git_sha"),
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "resumed_from": config.resume_from,
+        "start_iteration": start_iteration,
+    }
+    fresh = not config.resume_from and start_iteration == 0
+    return IterationLog(config.checkpoint_dir, identity=identity, fresh=fresh)
 
 
 def train(config: TrainingConfig, dry_run: bool = False) -> None:
@@ -1436,6 +1489,8 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         network.save(zero_path, metadata=provenance)
         logger.info(f"Saved pre-training checkpoint: {zero_path}")
 
+    iteration_log = _open_iteration_log(config, provenance, start_iteration)
+
     # Initialize optimizer
     optimizer = optim.Adam(
         network.parameters(),
@@ -1495,7 +1550,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         # positions are out of sample (prequential). The baseline is the buffer's
         # mean BEFORE these targets join it: 0.0 at iteration 0.
         prequential = _prequential_diagnostics(
-            network, config, examples, step_records, replay_buffer.mean_value()
+            network,
+            config,
+            examples,
+            step_records,
+            replay_buffer.mean_value(),
+            generator="simple_mcts" if use_simple else "network",
+            prior_failures=iteration_log.prequential_failures,
         )
         replay_buffer.add_game(examples)
         losses: dict[str, float] | None = None
@@ -1542,20 +1603,20 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             logger.info(f"Training complete ({train_time:.1f}s)")
 
         # Evaluation, on its own cadence (LF-A14).
-        evaluation = _evaluate_iteration(network, config, iteration, dry_run, provenance)
-
-        # Checkpoint, on the save cadence.
-        checkpoint_path: str | None = None
+        # Checkpoint on the save cadence; its name is known before evaluating so
+        # eval_<iter>.json can say which file (if any) holds the weights it scored.
+        checkpoint_name: str | None = None
         if (iteration + 1) % config.save_interval == 0 or dry_run:
-            checkpoint_path = os.path.join(
-                config.checkpoint_dir,
-                f"checkpoint_{iteration + 1}.pt",
-            )
+            checkpoint_name = f"checkpoint_{iteration + 1}.pt"
+        evaluation = _evaluate_iteration(
+            network, config, iteration, dry_run, provenance, checkpoint_name
+        )
+        if checkpoint_name is not None:
+            checkpoint_path = os.path.join(config.checkpoint_dir, checkpoint_name)
             network.save(checkpoint_path, metadata=provenance)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
 
-        _append_iteration_record(
-            config,
+        iteration_log.append(
             {
                 "iteration": iteration + 1,
                 "self_play": {
@@ -1567,9 +1628,17 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 "train": losses,
                 "prequential": prequential,
                 "eval": evaluation,
-                "checkpoint": checkpoint_path,
+                "checkpoint": checkpoint_name,
             },
         )
+
+    failures = iteration_log.prequential_failures
+    logger.log(
+        logging.WARNING if failures else logging.INFO,
+        "prequential failures: %d/%d",
+        failures,
+        iteration_log.records_written,
+    )
 
     # Save final model
     final_path = os.path.join(config.checkpoint_dir, "latest.pt")
@@ -1918,6 +1987,7 @@ def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingC
         resume_from=args.resume_from,
         start_iteration=args.start_iteration,
         bootstrap=args.bootstrap,
+        run_id=args.run_id,
         max_turns=args.max_turns,
         save_interval=args.save_interval,
         eval_interval=args.eval_interval,

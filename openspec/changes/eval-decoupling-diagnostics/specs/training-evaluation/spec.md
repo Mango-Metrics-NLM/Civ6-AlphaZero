@@ -38,20 +38,32 @@ through a shim that warns of deprecation.
 After self-play and before the fresh examples enter the replay buffer, the
 trainer SHALL record:
 
-- R2_oos of the generating network's value predictions, against the buffer's
-  prior mean target (0 when the buffer is empty);
-- sign accuracy on decisive positions, beside the best constant sign;
+- R2_oos of the value predictions of the network as it stood before training on
+  them, against the buffer's prior mean target (0 when the buffer is empty);
+- sign accuracy on decisive positions, beside the best constant sign and the
+  prior constant sign of that mean;
 - target and policy entropy;
 - the action-type histogram;
 - the invalid-action count.
 
 Only steps actually played SHALL be recorded; search rollouts MUST NOT be. The
-diagnostics MUST NOT change the trained weights.
+diagnostics MUST NOT change the trained weights. Every record in
+`iterations.jsonl` SHALL carry the run identity (`run_id`, `seed`, `git_sha`,
+`started_at`, `resumed_from`); a fresh run SHALL move an earlier run's record
+and `eval_*.json` aside rather than append to or delete them, and a resumed run
+SHALL mark the iterations it re-runs.
 
 #### Scenario: Rollouts are excluded
 
 - **WHEN** a self-play game is played with a step sink, by a search that steps cloned environments
 - **THEN** the sink holds exactly one record per step played on the real environment
+
+#### Scenario: A second fresh run into the same directory
+
+- **WHEN** a fresh run starts in a checkpoint directory holding an earlier run's
+  `iterations.jsonl` and `eval_*.json`
+- **THEN** those files are moved into `previous_<UTC stamp>/` and the live record
+  holds only the new run's lines
 
 #### Scenario: Iteration-zero baseline
 

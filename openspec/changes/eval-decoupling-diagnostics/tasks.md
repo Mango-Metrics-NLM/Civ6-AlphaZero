@@ -20,3 +20,8 @@
 
 ## 3. Documentation
 - [x] 3.1 CLAUDE.md §5.1 row for the new flags and §5.2 decision row
+
+## 4. Review fix round 1
+- [x] 4.1 I1: `CIV6AZ_GIT_SHA` first (set by `run_card`), worktree `commondir`, package-anchored lookup
+- [x] 4.2 I2: run identity on every `iterations.jsonl` line; fresh runs rotate into `previous_<UTC>/`; resumes mark re-run iterations
+- [x] 4.3 M1-M8: fail-soft test and failure count, prequential sign baseline, `generator`, `n_games`, eval `checkpoint`, reproducible `command`, record consistency, fsync per line

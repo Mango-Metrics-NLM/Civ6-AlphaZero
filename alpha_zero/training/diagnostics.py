@@ -520,6 +520,7 @@ def _step_counts(step_records: Sequence[StepRecord]) -> dict[str, Any]:
     return {
         "action_type_histogram": dict(sorted(histogram.items())),
         "num_steps": len(step_records),
+        "n_games": len({r.game_idx for r in step_records}),
         "invalid_action_count": len(failed),
         "invalid_move_count": sum(1 for r in failed if r.action_type == "move"),
     }
@@ -533,16 +534,20 @@ def prequential_value_metrics(
     *,
     batch_size: int = PREQUENTIAL_BATCH_SIZE,
 ) -> dict[str, Any]:
-    """Score the network that played an iteration's games on those same games.
+    """Score the network, as it stood before training on them, on an iteration's games.
 
     Called after self-play and *before* the fresh examples enter the replay
     buffer, so every position is out of sample for ``net_prev``: this is a
     prequential (predict-then-update) measurement, not a training-set fit.
+    ``net_prev`` usually also generated the games, but not always: under the
+    default ``--bootstrap simple_mcts`` iteration 0 is played by random-rollout
+    SimpleMCTS and scored by the random-init network (the caller records which,
+    as ``generator``).
 
     Args:
-        net_prev: The network that generated the games, as MCTS saw it -- a
-            module whose ``forward(spatial, vector, mask)`` returns
-            ``(policy_logits, value)`` with a scalar (current-player) value.
+        net_prev: The network as it stood before this iteration's training, as
+            MCTS sees it -- a module whose ``forward(spatial, vector, mask)``
+            returns ``(policy_logits, value)`` with a scalar (current-player) value.
         fresh_examples: The iteration's new training examples.
         step_records: The steps actually played (see :class:`StepRecord`).
         buffer_mean: Mean value target in the replay buffer before insertion;
@@ -554,8 +559,15 @@ def prequential_value_metrics(
         around ``buffer_mean`` -- a constant the network could have known
         before seeing these games -- so ``r2_oos > 0`` means the value head
         beats "predict the historical mean". Sign accuracy is over positions
-        with ``|z| = 1``, beside the best constant-sign predictor. Undefined
-        quantities are ``None``. Recorded, never gated.
+        with ``|z| = 1``, beside two constant-sign baselines:
+        ``sign_accuracy_baseline`` (the best constant sign for these targets, an
+        in-sample oracle and so a conservative bar) and
+        ``sign_accuracy_baseline_prequential`` (the constant ``sign(buffer_mean)``,
+        known beforehand; ``None`` when ``buffer_mean`` is 0, because a 0
+        prediction abstains). ``n_games`` is the number of distinct games in
+        ``step_records``: positions of one game share an outcome, so it, not
+        ``n_positions``, is the effective sample size. Undefined quantities are
+        ``None``. Recorded, never gated.
     """
     from alpha_zero.monitoring import compute_policy_entropy
 
@@ -568,6 +580,7 @@ def prequential_value_metrics(
         "n_decisive": 0,
         "sign_accuracy": None,
         "sign_accuracy_baseline": None,
+        "sign_accuracy_baseline_prequential": None,
         "target_entropy": None,
         "policy_entropy": None,
         **_step_counts(step_records),
@@ -589,9 +602,15 @@ def prequential_value_metrics(
         accuracy = TrainingDiagnostics().compute_value_accuracy(
             torch.from_numpy(predicted[decisive]), torch.from_numpy(targets[decisive])
         )
-        metrics["sign_accuracy"] = accuracy["sign_accuracy"]
+        # compute_value_accuracy works in float32; report at a precision that means something.
+        metrics["sign_accuracy"] = round(float(accuracy["sign_accuracy"]), 6)
         positive = float(np.mean(targets[decisive] > 0))
         metrics["sign_accuracy_baseline"] = max(positive, 1.0 - positive)
+        prior_sign = float(np.sign(buffer_mean))
+        if prior_sign != 0.0:
+            metrics["sign_accuracy_baseline_prequential"] = float(
+                np.mean(np.sign(targets[decisive]) == prior_sign)
+            )
 
     metrics["target_entropy"] = float(
         np.mean([compute_policy_entropy(e.policy, e.action_mask) for e in fresh_examples])

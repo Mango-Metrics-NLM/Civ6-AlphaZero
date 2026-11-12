@@ -22,7 +22,7 @@ or removed.
 | `hub` | 5 | Hugging Face Hub integration: model card generation, dataset exporter, upload utility, hub mixins (`hub` extra) |
 | `envs` | 11 | MicroCiv environment, vectorized env, state→tensor encoders |
 | `mechanics` | 12 | Game mechanics: diplomacy, trade, espionage, religion, government, climate, eras |
-| `training` | 9 | MuZero trainer/integration, training safeguards, convergence monitor |
+| `training` | 10 | MuZero trainer/integration, training safeguards, convergence monitor, diagnostics and the local run record |
 | `cloud` | 28 | `gcp/` Vertex AI orchestration and the deployed self-play / training / arena workers |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
