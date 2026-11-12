@@ -1,5 +1,8 @@
 # Tasks
 
+> Boxes ticked at archive (2026-11-11, task T13) from a spot-check of every
+> deliverable; the work itself landed in PR #132 (`8ea973e`, `b408083`).
+
 ## 0. Review and governance (P0)
 - [x] 0.1 Publish `docs/audits/2026-11-10-public-release-review.md` with the Sept-audit status table and the maintainer checklist
 - [x] 0.2 Scaffold this change and keep `python scripts/validate_openspec.py --change public-release-readiness` green
