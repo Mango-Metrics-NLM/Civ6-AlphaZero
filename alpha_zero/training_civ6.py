@@ -9,10 +9,14 @@ Implements the AlphaZero self-play training loop:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import platform
 import re
+import sys
 import time
+import warnings
 from collections import deque
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
@@ -38,7 +42,7 @@ from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
 from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.evaluation.scoring import score_interval, summarize
+from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
 from alpha_zero.multiplayer.scoring import (
@@ -46,6 +50,7 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
+from alpha_zero.training.diagnostics import StepRecord, prequential_value_metrics
 from alpha_zero.utils.checkpoint import (
     build_provenance,
     check_provenance,
@@ -143,6 +148,12 @@ class TrainingConfig:
     checkpoint_dir: str = "checkpoints/civ6"
     log_dir: str = "logs/civ6"
     save_interval: int = 10
+    # In-loop evaluation against a random opponent, decoupled from checkpointing
+    # (LF-A14). ``eval_interval=None`` keeps the historical coupling: evaluate on
+    # the checkpoint cadence, so a run that sets neither flag is unchanged.
+    # ``eval_games=0`` turns in-loop evaluation off.
+    eval_interval: int | None = None
+    eval_games: int = DEFAULT_TRAINING_EVAL_GAMES
     # Resume. `resume_from` restores network weights only -- see
     # `resume_network_weights` for what is deliberately not restored.
     # `start_iteration` is the loop index to begin at; 0 means "from the top".
@@ -164,6 +175,15 @@ class TrainingConfig:
         # Resolve rather than merely warn: an unresolved "cuda" on a CPU-only
         # host would otherwise crash later inside .to().
         self.device = resolve_device_str(self.device)
+        if self.eval_interval is not None and self.eval_interval < 1:
+            raise ValueError(f"eval_interval must be >= 1 or None, got {self.eval_interval}")
+        if self.eval_games < 0:
+            raise ValueError(f"eval_games must be >= 0, got {self.eval_games}")
+
+    @property
+    def resolved_eval_interval(self) -> int:
+        """Iterations between in-loop evaluations: ``eval_interval``, else ``save_interval``."""
+        return self.eval_interval if self.eval_interval is not None else self.save_interval
 
 
 #: ``checkpoint_<N>.pt`` is written *after* the iteration at loop index
@@ -446,6 +466,12 @@ class ReplayBuffer:
     def __len__(self) -> int:
         return len(self.buffer)
 
+    def mean_value(self) -> float:
+        """Mean scalar value target over the buffer; ``0.0`` when it is empty."""
+        if not self.buffer:
+            return 0.0
+        return float(np.mean([example.value for example in self.buffer]))
+
 
 class ReplayDataset(Dataset):
     """PyTorch dataset for replay buffer."""
@@ -677,6 +703,9 @@ def self_play_game(
     mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS,
     config: TrainingConfig,
     game_seed: int | None = None,
+    *,
+    step_sink: list[StepRecord] | None = None,
+    game_idx: int = 0,
 ) -> list[TrainingExample]:
     """Play a single self-play game.
 
@@ -686,6 +715,10 @@ def self_play_game(
         config: Training configuration.
         game_seed: Seed for this game's environment. ``None`` leaves the
             environment's existing RNG alone, which is the historical behaviour.
+        step_sink: When given, one :class:`StepRecord` is appended per step
+            actually played on ``env``. Search rollouts step *clones* of ``env``
+            inside ``mcts.search`` and are never recorded.
+        game_idx: Index of this game in its round, stamped on each record.
 
     Returns:
         List of training examples from the game.
@@ -716,6 +749,15 @@ def self_play_game(
 
         # Take action
         obs, _, terminated, truncated, info = env.step(action)
+        if step_sink is not None:
+            step_sink.append(
+                StepRecord(
+                    game_idx=game_idx,
+                    action=int(action),
+                    action_type=str(env.action_space_handler.decode_action(int(action))["type"]),
+                    success=bool(info["action_success"]),
+                )
+            )
 
         if terminated or truncated:
             break
@@ -772,6 +814,7 @@ def run_self_play(
     num_games: int,
     use_simple_mcts: bool = False,
     iteration: int = 0,
+    step_sink: list[StepRecord] | None = None,
 ) -> list[TrainingExample]:
     """Run multiple self-play games.
 
@@ -782,6 +825,9 @@ def run_self_play(
         config: Training configuration.
         num_games: Number of games to play.
         use_simple_mcts: If True, use SimpleMCTS instead of network-guided MCTS.
+        iteration: Loop index; varies every seed stream (see ``derive_seed``).
+        step_sink: Optional list receiving one :class:`StepRecord` per played
+            step of every game (see :func:`self_play_game`).
 
     Returns:
         List of training examples from all games.
@@ -850,6 +896,8 @@ def run_self_play(
                 mcts,
                 config,
                 game_seed=derive_seed(config.seed, SeedStream.SELF_PLAY_ENV, iteration, game_idx),
+                step_sink=step_sink,
+                game_idx=game_idx,
             )
             examples.extend(game_examples)
 
@@ -967,29 +1015,29 @@ def train_epoch(
 def evaluate_against_random(
     network: torch.nn.Module,
     config: TrainingConfig,
-    num_games: int = 20,
+    num_games: int = DEFAULT_TRAINING_EVAL_GAMES,
     iteration: int = 0,
-) -> float:
+) -> ScoreSummary:
     """Evaluate network against random player.
 
     Args:
         network: Neural network.
         config: Training configuration.
         num_games: Number of games to play.
+        iteration: Loop index, for the caller's bookkeeping. Deliberately unused
+            by the seeds (see the comment below).
 
     Returns:
-        Win rate against random player: ``wins / num_games``.
+        The full :class:`~alpha_zero.evaluation.scoring.ScoreSummary`: counts,
+        draw-aware score rate with its ternary-variance interval, draw rate.
 
-    Note:
-        Draws count against this statistic, exactly as they do in the deployed
-        promotion gate (``cloud/gcp/arena.py``; see
-        ``docs/runbooks/promotion-gate.md``). A measured example: the final
-        checkpoint of the 2026-08-28 validation run scored 0 wins / 10 draws /
-        10 losses over 20 games, which this function reports as ``0.0`` -- a
-        number that reads as "lost every game" but did not. The return value is
-        left as-is for backwards compatibility; the win/draw/loss breakdown and
-        the draw-aware score rate are logged so the figure can be interpreted
-        rather than guessed at.
+    .. versionchanged:: 2.0
+       Returned ``wins / num_games`` as a float before LF-A3. That statistic
+       scores every draw as a loss: the final checkpoint of the 2026-08-28
+       validation run scored 0 W / 10 D / 10 L and was reported as ``0.0``,
+       which reads as "lost every game" but did not. The float is still
+       available, with a deprecation warning, from
+       :func:`evaluate_win_rate_against_random`.
     """
     # Named streams keep the evaluation's three sources (environment, search,
     # random opponent) distinct from each other and from self-play's, so a
@@ -1072,7 +1120,6 @@ def evaluate_against_random(
     # gate cannot disagree about what a draw is worth.
     win_rate = legacy_win_rate(wins, draws, losses)
     summary = summarize(wins, draws, losses)
-    ci_low, ci_high = score_interval(wins, draws, losses)
     logger.info(
         "Eval vs random: %d W / %d D / %d L over %d games "
         "(win rate %.1f%%, draw-aware score rate %.3f, draw rate %.1f%%)",
@@ -1090,13 +1137,179 @@ def evaluate_against_random(
         "Eval score rate vs random: %.4f (95%% CI [%.4f, %.4f], draw rate %.4f, "
         "win rate %.4f, n=%d)",
         summary.score_rate,
-        ci_low,
-        ci_high,
+        summary.ci_low,
+        summary.ci_high,
         summary.draw_rate,
         win_rate,
         num_games,
     )
-    return win_rate
+    return summary
+
+
+def evaluate_win_rate_against_random(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    num_games: int = DEFAULT_TRAINING_EVAL_GAMES,
+    iteration: int = 0,
+) -> float:
+    """Deprecated float shim: ``wins / num_games`` from :func:`evaluate_against_random`.
+
+    .. deprecated:: 2.0
+       Draws count as losses in this number. Use :func:`evaluate_against_random`
+       and read ``score_rate`` (draw-aware) or the counts from its summary.
+    """
+    warnings.warn(
+        "evaluate_win_rate_against_random is deprecated: it scores draws as losses. "
+        "Use evaluate_against_random, which returns a ScoreSummary.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    summary = evaluate_against_random(network, config, num_games=num_games, iteration=iteration)
+    return legacy_win_rate(summary.wins, summary.draws, summary.losses)
+
+
+#: Version of the ``eval_<iter>.json`` layout written by :func:`write_eval_json`.
+EVAL_JSON_SCHEMA_VERSION = 1
+
+#: ``docs/evidence/SCHEMA.md`` epoch for anything this module produces: the local
+#: trainer post-dates the 2026-09-04 search fixes by construction.
+EVAL_SEARCH_EPOCH = "post-2026-09-04"
+
+
+def write_eval_json(
+    path: str | os.PathLike[str], summary: ScoreSummary, meta: dict[str, Any]
+) -> None:
+    """Write one in-loop evaluation as JSON, atomically.
+
+    The file is ``{"eval_schema_version", **meta, "result"}``: ``result`` is the
+    summary's counts, ``score_rate``, ``draw_rate`` and interval, plus the legacy
+    ``win_rate`` beside it (never instead of it). ``meta`` carries the caller's
+    context -- for :func:`train` the iteration, the opponent, the checkpoint
+    provenance and an ``evidence`` block shaped like ``docs/evidence/SCHEMA.md``.
+    It is a run artifact under the checkpoint directory, not committed evidence.
+    """
+    result: dict[str, Any] = dict(summary.to_dict())
+    result["win_rate"] = legacy_win_rate(summary.wins, summary.draws, summary.losses)
+    payload = {"eval_schema_version": EVAL_JSON_SCHEMA_VERSION, **meta, "result": result}
+    target = Path(path)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, target)
+
+
+def _hardware_summary() -> dict[str, Any]:
+    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    return {
+        "cpu_model": platform.processor() or None,
+        "gpu_model": gpu,
+        "logical_cores": os.cpu_count(),
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+    }
+
+
+def eval_evidence_block(
+    config: TrainingConfig, provenance: dict[str, Any], games_total: int
+) -> dict[str, Any]:
+    """An ``evidence`` block (``docs/evidence/SCHEMA.md``) for one in-loop evaluation."""
+    block: dict[str, Any] = {
+        "schema_version": 1,
+        "git_sha": provenance.get("git_sha"),
+        "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "search_epoch": EVAL_SEARCH_EPOCH,
+        "seed": config.seed,
+        "command": " ".join(sys.argv),
+        "hardware": _hardware_summary(),
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "numpy": np.__version__,
+        "games_total": games_total,
+        "claims": [
+            f"score rate of this checkpoint against a uniform-random opponent over "
+            f"{games_total} held-out games, with its 95% ternary-variance interval"
+        ],
+        "non_claims": [
+            "run artifact, not committed evidence",
+            "says nothing about strength against any non-random opponent",
+            "in-loop evaluation searches at half the self-play budget",
+        ],
+    }
+    if config.seed is None:
+        block["seed_null_reason"] = "the run was unseeded"
+    if block["git_sha"] is None:
+        block["git_sha_null_reason"] = "HEAD could not be resolved from the checkout"
+    return block
+
+
+def in_loop_eval_games(config: TrainingConfig, dry_run: bool) -> int:
+    """Games per in-loop evaluation: 0 when ``eval_games`` is 0, else the dry-run or configured count."""
+    if config.eval_games == 0:
+        return 0
+    return DRY_RUN_PROFILE.num_eval_games if dry_run else config.eval_games
+
+
+def _evaluate_iteration(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    iteration: int,
+    dry_run: bool,
+    provenance: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Run the scheduled in-loop evaluation, if any, and write ``eval_<iter>.json``.
+
+    Scheduled on ``config.resolved_eval_interval`` -- not on the checkpoint
+    cadence -- or every iteration under ``--dry_run``; never when
+    ``eval_games`` is 0. Returns the summary as a dict, or ``None`` when none ran.
+    """
+    num_games = in_loop_eval_games(config, dry_run)
+    if num_games == 0:
+        return None
+    if not dry_run and (iteration + 1) % config.resolved_eval_interval != 0:
+        return None
+    logger.info("Evaluating against random...")
+    summary = evaluate_against_random(network, config, num_games=num_games, iteration=iteration)
+    logger.info(
+        f"Win rate vs random: {legacy_win_rate(summary.wins, summary.draws, summary.losses):.1%}"
+    )
+    path = os.path.join(config.checkpoint_dir, f"eval_{iteration + 1}.json")
+    meta = {
+        "iteration": iteration + 1,
+        "opponent": "random",
+        "provenance": provenance,
+        "evidence": eval_evidence_block(config, provenance, summary.total_games),
+    }
+    write_eval_json(path, summary, meta)
+    logger.info(f"Wrote evaluation: {path}")
+    return dict(summary.to_dict())
+
+
+def _prequential_diagnostics(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    examples: list[TrainingExample],
+    step_records: list[StepRecord],
+    buffer_mean: float,
+) -> dict[str, Any]:
+    """LF-A13 diagnostics for one iteration; recorded, never gated.
+
+    A failure is logged with its traceback and recorded as ``{"error": ...}``
+    rather than raised: a diagnostic must not end a multi-hour run.
+    """
+    try:
+        metrics = prequential_value_metrics(
+            _mcts_network(network, config), examples, step_records, buffer_mean
+        )
+    except Exception as exc:
+        logger.warning("Prequential diagnostics failed; continuing", exc_info=True)
+        return {"error": repr(exc)}
+    logger.info("Prequential diagnostics: %s", json.dumps(metrics, sort_keys=True))
+    return metrics
+
+
+def _append_iteration_record(config: TrainingConfig, record: dict[str, Any]) -> None:
+    """Append one line to ``<checkpoint_dir>/iterations.jsonl``, the per-iteration record."""
+    path = os.path.join(config.checkpoint_dir, "iterations.jsonl")
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 def train(config: TrainingConfig, dry_run: bool = False) -> None:
@@ -1264,15 +1477,28 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         # Use simple MCTS for first iteration (no trained network) unless the
         # run asked for the configured search from the start (--bootstrap none).
         use_simple = iteration == 0 and config.bootstrap == "simple_mcts"
+        step_records: list[StepRecord] = []
         examples = run_self_play(
-            network, config, num_games, use_simple_mcts=use_simple, iteration=iteration
+            network,
+            config,
+            num_games,
+            use_simple_mcts=use_simple,
+            iteration=iteration,
+            step_sink=step_records,
         )
-        replay_buffer.add_game(examples)
-
         self_play_time = time.time() - start_time
         logger.info(
             f"Self-play: {len(examples)} examples from {num_games} games ({self_play_time:.1f}s)",
         )
+
+        # Scored before insertion, by the network that played the games, so the
+        # positions are out of sample (prequential). The baseline is the buffer's
+        # mean BEFORE these targets join it: 0.0 at iteration 0.
+        prequential = _prequential_diagnostics(
+            network, config, examples, step_records, replay_buffer.mean_value()
+        )
+        replay_buffer.add_game(examples)
+        losses: dict[str, float] | None = None
 
         # Training
         if len(replay_buffer) >= config.min_replay_size or dry_run:
@@ -1315,24 +1541,35 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             train_time = time.time() - start_time
             logger.info(f"Training complete ({train_time:.1f}s)")
 
-        # Evaluation
-        if (iteration + 1) % config.save_interval == 0 or dry_run:
-            logger.info("Evaluating against random...")
-            win_rate = evaluate_against_random(
-                network,
-                config,
-                num_games=DRY_RUN_PROFILE.num_eval_games if dry_run else DEFAULT_EVAL_GAMES,
-                iteration=iteration,
-            )
-            logger.info(f"Win rate vs random: {win_rate:.1%}")
+        # Evaluation, on its own cadence (LF-A14).
+        evaluation = _evaluate_iteration(network, config, iteration, dry_run, provenance)
 
-            # Save checkpoint
+        # Checkpoint, on the save cadence.
+        checkpoint_path: str | None = None
+        if (iteration + 1) % config.save_interval == 0 or dry_run:
             checkpoint_path = os.path.join(
                 config.checkpoint_dir,
                 f"checkpoint_{iteration + 1}.pt",
             )
             network.save(checkpoint_path, metadata=provenance)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
+
+        _append_iteration_record(
+            config,
+            {
+                "iteration": iteration + 1,
+                "self_play": {
+                    "games": num_games,
+                    "examples": len(examples),
+                    "seconds": round(self_play_time, 3),
+                    "simple_mcts": use_simple,
+                },
+                "train": losses,
+                "prequential": prequential,
+                "eval": evaluation,
+                "checkpoint": checkpoint_path,
+            },
+        )
 
     # Save final model
     final_path = os.path.join(config.checkpoint_dir, "latest.pt")
@@ -1345,8 +1582,10 @@ def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, A
 
     Mirrors the loop bounds in :func:`train` -- the dry-run profile replaces the
     iteration, game and evaluation counts, evaluation happens every iteration
-    under ``--dry_run``, and ``--resume_from`` names the start iteration -- so the
-    price is of the run that will actually happen.
+    under ``--dry_run``, it runs on ``--eval_interval`` (defaulting to
+    ``--save_interval``) with ``--eval_games`` games (none when 0), and
+    ``--resume_from`` names the start iteration -- so the price is of the run that
+    will actually happen.
     """
     start = config.start_iteration
     if config.resume_from and start == 0:
@@ -1356,7 +1595,7 @@ def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, A
             "num_games": DRY_RUN_PROFILE.num_games_per_iteration,
             "num_iterations": DRY_RUN_PROFILE.num_iterations,
             "start_iteration": start,
-            "eval_games": DRY_RUN_PROFILE.num_eval_games,
+            "eval_games": in_loop_eval_games(config, dry_run=True),
             "eval_always": True,
         }
     return {
@@ -1364,7 +1603,8 @@ def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, A
         "num_iterations": config.num_iterations,
         "start_iteration": start,
         "save_interval": config.save_interval,
-        "eval_games": DEFAULT_EVAL_GAMES,
+        "eval_interval": config.resolved_eval_interval,
+        "eval_games": in_loop_eval_games(config, dry_run=False),
     }
 
 
@@ -1391,6 +1631,13 @@ def _positive_int(text: str) -> int:
     value = int(text)
     if value < 1:
         raise argparse.ArgumentTypeError(f"must be >= 1; got {value}")
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0; got {value}")
     return value
 
 
@@ -1465,8 +1712,26 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=10,
         help=(
-            "Evaluate and checkpoint every N iterations. The default means a run "
-            "shorter than 10 iterations reports no win rate at all."
+            "Checkpoint every N iterations; also the evaluation cadence unless "
+            "--eval_interval is given."
+        ),
+    )
+    parser.add_argument(
+        "--eval_interval",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Evaluate against a random opponent every N iterations, independently "
+            "of checkpointing. Default: --save_interval's value."
+        ),
+    )
+    parser.add_argument(
+        "--eval_games",
+        type=_non_negative_int,
+        default=DEFAULT_EVAL_GAMES,
+        help=(
+            f"Games per in-loop evaluation (default {DEFAULT_EVAL_GAMES}). 0 turns "
+            "in-loop evaluation off, including under --dry_run."
         ),
     )
     parser.add_argument(
@@ -1655,6 +1920,8 @@ def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingC
         bootstrap=args.bootstrap,
         max_turns=args.max_turns,
         save_interval=args.save_interval,
+        eval_interval=args.eval_interval,
+        eval_games=args.eval_games,
         device=args.device or "auto",
         seed=args.seed,
         use_gumbel_mcts=args.mcts == "gumbel",

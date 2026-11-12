@@ -29,7 +29,8 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Sequence
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 import numpy as np
 import torch
@@ -438,3 +439,169 @@ class TrainingDiagnostics:
         if self._tracker is not None:
             return self._tracker.get_history(name)  # type: ignore[no-any-return]
         return list(self._history.get(name, []))
+
+
+# ---------------------------------------------------------------------------
+# Prequential (out-of-sample) diagnostics for the local training loop (LF-A13)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StepRecord:
+    """One step actually played in a self-play game -- never a search rollout.
+
+    ``action_type`` is ``decode_action(action)["type"]`` and ``success`` is the
+    environment's ``info["action_success"]`` for that step.
+    """
+
+    game_idx: int
+    action: int
+    action_type: str
+    success: bool
+
+
+class _ExampleLike(Protocol):
+    """The fields of ``training_civ6.TrainingExample`` these diagnostics read.
+
+    Structural, because ``training_civ6`` imports this module and not the reverse.
+    """
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    value: float
+
+
+#: Positions per forward pass when scoring an iteration's fresh games.
+PREQUENTIAL_BATCH_SIZE = 256
+
+
+def _network_device(net: nn.Module) -> torch.device:
+    first = next(iter(net.parameters()), None)
+    return first.device if first is not None else torch.device("cpu")
+
+
+def _predict(
+    net: nn.Module, examples: Sequence[_ExampleLike], batch_size: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scalar values and masked policy probabilities, in eval mode, without gradients.
+
+    The network's training mode is restored afterwards. Eval mode matters for more
+    than tidiness: a train-mode forward would update BatchNorm running statistics
+    and so change the weights the next training phase starts from.
+    """
+    device = _network_device(net)
+    was_training = net.training
+    net.eval()
+    values: list[np.ndarray] = []
+    probs: list[np.ndarray] = []
+    try:
+        with torch.no_grad():
+            for start in range(0, len(examples), batch_size):
+                chunk = examples[start : start + batch_size]
+                spatial = torch.from_numpy(np.stack([e.spatial for e in chunk])).float()
+                vector = torch.from_numpy(np.stack([e.vector for e in chunk])).float()
+                mask = torch.from_numpy(np.stack([e.action_mask for e in chunk])).float()
+                logits, value = net(spatial.to(device), vector.to(device), mask.to(device))
+                masked = logits.float().masked_fill(mask.to(device) <= 0, -1e9)
+                probs.append(torch.softmax(masked, dim=-1).cpu().numpy())
+                values.append(value.detach().float().reshape(len(chunk), -1)[:, 0].cpu().numpy())
+    finally:
+        net.train(was_training)
+    return np.concatenate(values), np.concatenate(probs)
+
+
+def _step_counts(step_records: Sequence[StepRecord]) -> dict[str, Any]:
+    histogram: dict[str, int] = {}
+    for record in step_records:
+        histogram[record.action_type] = histogram.get(record.action_type, 0) + 1
+    failed = [r for r in step_records if not r.success]
+    return {
+        "action_type_histogram": dict(sorted(histogram.items())),
+        "num_steps": len(step_records),
+        "invalid_action_count": len(failed),
+        "invalid_move_count": sum(1 for r in failed if r.action_type == "move"),
+    }
+
+
+def prequential_value_metrics(
+    net_prev: nn.Module,
+    fresh_examples: Sequence[_ExampleLike],
+    step_records: Sequence[StepRecord],
+    buffer_mean: float,
+    *,
+    batch_size: int = PREQUENTIAL_BATCH_SIZE,
+) -> dict[str, Any]:
+    """Score the network that played an iteration's games on those same games.
+
+    Called after self-play and *before* the fresh examples enter the replay
+    buffer, so every position is out of sample for ``net_prev``: this is a
+    prequential (predict-then-update) measurement, not a training-set fit.
+
+    Args:
+        net_prev: The network that generated the games, as MCTS saw it -- a
+            module whose ``forward(spatial, vector, mask)`` returns
+            ``(policy_logits, value)`` with a scalar (current-player) value.
+        fresh_examples: The iteration's new training examples.
+        step_records: The steps actually played (see :class:`StepRecord`).
+        buffer_mean: Mean value target in the replay buffer before insertion;
+            ``0.0`` when the buffer is empty (iteration 0).
+        batch_size: Positions per forward pass.
+
+    Returns:
+        A JSON-serialisable dict. ``r2_oos = 1 - SSE / SST`` where SST is taken
+        around ``buffer_mean`` -- a constant the network could have known
+        before seeing these games -- so ``r2_oos > 0`` means the value head
+        beats "predict the historical mean". Sign accuracy is over positions
+        with ``|z| = 1``, beside the best constant-sign predictor. Undefined
+        quantities are ``None``. Recorded, never gated.
+    """
+    from alpha_zero.monitoring import compute_policy_entropy
+
+    metrics: dict[str, Any] = {
+        "n_positions": len(fresh_examples),
+        "buffer_mean": float(buffer_mean),
+        "value_mse": None,
+        "baseline_mse": None,
+        "r2_oos": None,
+        "n_decisive": 0,
+        "sign_accuracy": None,
+        "sign_accuracy_baseline": None,
+        "target_entropy": None,
+        "policy_entropy": None,
+        **_step_counts(step_records),
+    }
+    if not fresh_examples:
+        return metrics
+
+    predicted, policy_probs = _predict(net_prev, fresh_examples, batch_size)
+    targets = np.array([float(e.value) for e in fresh_examples], dtype=np.float64)
+    sse = float(np.sum((targets - predicted) ** 2))
+    sst = float(np.sum((targets - buffer_mean) ** 2))
+    metrics["value_mse"] = sse / len(targets)
+    metrics["baseline_mse"] = sst / len(targets)
+    metrics["r2_oos"] = 1.0 - sse / sst if sst > 0.0 else None
+
+    decisive = np.isclose(np.abs(targets), 1.0)
+    metrics["n_decisive"] = int(decisive.sum())
+    if decisive.any():
+        accuracy = TrainingDiagnostics().compute_value_accuracy(
+            torch.from_numpy(predicted[decisive]), torch.from_numpy(targets[decisive])
+        )
+        metrics["sign_accuracy"] = accuracy["sign_accuracy"]
+        positive = float(np.mean(targets[decisive] > 0))
+        metrics["sign_accuracy_baseline"] = max(positive, 1.0 - positive)
+
+    metrics["target_entropy"] = float(
+        np.mean([compute_policy_entropy(e.policy, e.action_mask) for e in fresh_examples])
+    )
+    metrics["policy_entropy"] = float(
+        np.mean(
+            [
+                compute_policy_entropy(p, e.action_mask)
+                for p, e in zip(policy_probs, fresh_examples, strict=True)
+            ]
+        )
+    )
+    return metrics

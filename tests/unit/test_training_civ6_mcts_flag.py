@@ -92,10 +92,10 @@ class TestEvaluationUsesTheConfiguredSearch:
             patch.object(training_civ6, "GumbelMCTS", gumbel_cls),
             patch.object(training_civ6, "Civ6MCTS", puct_cls),
         ):
-            rate = evaluate_against_random(MagicMock(), _config(use_gumbel=True), num_games=1)
+            summary = evaluate_against_random(MagicMock(), _config(use_gumbel=True), num_games=1)
         assert gumbel_cls.called
         assert not puct_cls.called
-        assert 0.0 <= rate <= 1.0
+        assert 0.0 <= summary.score_rate <= 1.0
         # The Gumbel config carries the derived evaluation search seed.
         gumbel_config = gumbel_cls.call_args.args[1]
         assert gumbel_config.seed is not None

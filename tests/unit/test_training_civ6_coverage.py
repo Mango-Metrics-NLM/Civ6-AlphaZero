@@ -15,6 +15,7 @@ import pytest
 import torch
 from torch.utils.data import DataLoader
 
+from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.training_civ6 import (
     ReplayBuffer,
     ReplayDataset,
@@ -561,9 +562,9 @@ class TestEvaluateAgainstRandom:
         network = MagicMock()
         cfg = TrainingConfig(board_size=8, num_simulations=2, device="cpu")
 
-        win_rate = evaluate_against_random(network, cfg, num_games=4)
-        assert isinstance(win_rate, float)
-        assert 0.0 <= win_rate <= 1.0
+        summary = evaluate_against_random(network, cfg, num_games=4)
+        assert isinstance(summary, ScoreSummary)
+        assert 0.0 <= summary.score_rate <= 1.0
 
     @patch("alpha_zero.training_civ6.Civ6MCTS")
     @patch("alpha_zero.training_civ6.MicroCivEnv")
@@ -597,9 +598,10 @@ class TestEvaluateAgainstRandom:
         network = MagicMock()
         cfg = TrainingConfig(board_size=8, num_simulations=2, device="cpu")
 
-        win_rate = evaluate_against_random(network, cfg, num_games=4)
-        # No winners so 0 wins
-        assert win_rate == 0.0
+        summary = evaluate_against_random(network, cfg, num_games=4)
+        # No winners: every game a draw, so 0 wins and a draw-aware score of 0.5.
+        assert (summary.wins, summary.draws) == (0, 4)
+        assert summary.score_rate == 0.5
 
     @patch("alpha_zero.training_civ6.Civ6MCTS")
     @patch("alpha_zero.training_civ6.MicroCivEnv")
@@ -634,8 +636,9 @@ class TestEvaluateAgainstRandom:
         network = MagicMock()
         cfg = TrainingConfig(board_size=8, num_simulations=2, device="cpu")
 
-        win_rate = evaluate_against_random(network, cfg, num_games=4)
-        assert win_rate == 1.0
+        summary = evaluate_against_random(network, cfg, num_games=4)
+        assert summary.wins == 4
+        assert summary.score_rate == 1.0
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +659,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         # We need to mock the MicroCivEnv to control action_space_size
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
@@ -681,7 +684,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
@@ -706,7 +709,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
@@ -737,7 +740,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(5)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
@@ -763,7 +766,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()
@@ -805,7 +808,7 @@ class TestTrain:
         mock_self_play.return_value = [
             _make_example(board_size=config.board_size, action_size=action_size) for _ in range(20)
         ]
-        mock_eval.return_value = 0.5
+        mock_eval.return_value = summarize(1, 0, 1)
 
         with patch("alpha_zero.training_civ6.MicroCivEnv") as mock_env_cls:
             mock_env = MagicMock()

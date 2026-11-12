@@ -132,19 +132,27 @@ def _scheduled_hits(start: int, end: int, every: int) -> int:
 def _training_civ6(r: Mapping[str, Any]) -> int:
     """``G*(I-S) + eval_games * evaluations`` for ``alpha_zero.training_civ6``.
 
-    The trainer evaluates when ``(iteration + 1) % save_interval == 0`` for
+    The trainer evaluates when ``(iteration + 1) % eval_interval == 0`` for
     iteration in ``[S, I)`` -- or on every iteration under ``--dry_run``
-    (``eval_always``) -- and each evaluation plays ``eval_games`` games.
+    (``eval_always``) -- and each evaluation plays ``eval_games`` games, so
+    ``eval_games == 0`` contributes nothing. ``eval_interval`` defaults to
+    ``save_interval``, the trainer's own default (LF-A14), so inputs written
+    before the two were decoupled price exactly as they did.
     """
     iterations = _nonneg(r["num_iterations"])
     start = min(_nonneg(r.get("start_iteration", 0)), iterations)
     games = _nonneg(r["num_games"])
     eval_games = _nonneg(r.get("eval_games", DEFAULT_TRAINING_EVAL_GAMES))
     remaining = iterations - start
-    if r.get("eval_always"):
+    if eval_games == 0:
+        evaluations = 0
+    elif r.get("eval_always"):
         evaluations = remaining
     else:
-        every = max(_nonneg(r.get("save_interval", 1)), 1)
+        interval = r.get("eval_interval")
+        if interval is None:
+            interval = r.get("save_interval", 1)
+        every = max(_nonneg(interval), 1)
         # (i + 1) % every == 0  <=>  i + 1 is a multiple of `every`, i + 1 in [S+1, I].
         evaluations = iterations // every - start // every
     return games * remaining + eval_games * evaluations

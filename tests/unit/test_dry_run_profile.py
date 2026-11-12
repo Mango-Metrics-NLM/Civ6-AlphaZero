@@ -111,11 +111,11 @@ class TestProfileShape:
 
 
 class TestEvalDrawAccounting:
-    """`evaluate_against_random` returns wins/games, so draws count as losses.
+    """The legacy wins/games figure counts draws as losses; the breakdown must be reported.
 
-    That is the same draw-blindness as the deployed promotion gate. The return
-    value is kept for backwards compatibility; these tests pin that the
-    breakdown is *reported*, so a 0.0 cannot be misread as "lost every game".
+    That is the same draw-blindness as the deployed promotion gate. Since LF-A3
+    `evaluate_against_random` returns the full ScoreSummary; these tests pin that
+    the breakdown is also *logged*, so a 0.0 cannot be misread as "lost every game".
     """
 
     @staticmethod
@@ -165,10 +165,10 @@ class TestEvalDrawAccounting:
             patch("alpha_zero.training_civ6._mcts_network"),
             caplog.at_level("INFO"),
         ):
-            rate = evaluate_against_random(object(), config, num_games=4)  # type: ignore[arg-type]
+            summary = evaluate_against_random(object(), config, num_games=4)  # type: ignore[arg-type]
 
-        # Two of the four games were draws, and they are invisible in the return
-        # value -- which is the whole point of also logging the breakdown.
-        assert rate == pytest.approx(0.25)
+        # Two of the four games were draws; the legacy figure (still logged as
+        # "win rate") hides them, the summary does not.
+        assert (summary.wins, summary.draws, summary.losses) == (1, 2, 1)
         assert "1 W / 2 D / 1 L" in caplog.text
         assert "draw-aware score rate 0.500" in caplog.text

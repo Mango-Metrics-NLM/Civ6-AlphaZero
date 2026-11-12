@@ -95,6 +95,36 @@ class TestTrainingCiv6Model:
         )
         assert priced == expected_evals
 
+    def test_eval_interval_overrides_save_interval(self) -> None:
+        # LF-A14: evaluation on its own cadence. 100 x 100 + 20 x 4 (i+1 in 25..100).
+        resolved = {**self.DEFAULTS, "save_interval": 1, "eval_interval": 25}
+        assert worst_case_games("training_civ6", resolved) == 10_080
+
+    def test_eval_interval_none_falls_back_to_save_interval(self) -> None:
+        resolved = {**self.DEFAULTS, "eval_interval": None}
+        assert worst_case_games("training_civ6", resolved) == 10_200
+
+    def test_eval_games_zero_is_free_even_under_dry_run(self) -> None:
+        from alpha_zero.training_civ6 import TrainingConfig, training_budget_inputs
+
+        inputs = training_budget_inputs(TrainingConfig(eval_games=0), dry_run=True)
+        assert worst_case_games("training_civ6", inputs) == 4
+        assert worst_case_games("training_civ6", {**self.DEFAULTS, "eval_always": True}) > 10_000
+        no_eval = {**self.DEFAULTS, "eval_always": True, "eval_games": 0}
+        assert worst_case_games("training_civ6", no_eval) == 10_000
+
+    def test_trainer_inputs_carry_the_resolved_eval_schedule(self) -> None:
+        from alpha_zero.training_civ6 import TrainingConfig, training_budget_inputs
+
+        inputs = training_budget_inputs(
+            TrainingConfig(save_interval=5, eval_interval=2, eval_games=3), dry_run=False
+        )
+        assert (inputs["eval_interval"], inputs["eval_games"]) == (2, 3)
+        # 100 x 100 + 3 x 50.
+        assert worst_case_games("training_civ6", inputs) == 10_150
+        coupled = training_budget_inputs(TrainingConfig(save_interval=5), dry_run=False)
+        assert coupled["eval_interval"] == 5
+
     def test_resume_prices_only_the_remaining_iterations(self) -> None:
         from alpha_zero.training_civ6 import TrainingConfig, training_budget_inputs
 
