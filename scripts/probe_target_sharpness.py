@@ -22,22 +22,30 @@ Variants (one search per row, then a target computed from that search's root)
     c_visit 50, c_scale 1.0, ``completed_q`` target, ``greedy_threshold``).
     Halving ranks survivors by ``g + log pi + completedQ`` with raw Q and no
     sigma; the target is ``build_completed_q_policy``.
-``current_search_paper_target``
-    The *same* tree as ``current``, with the paper's target formula -- isolates
-    the target formula from the search path.
 ``sigma_halving``
     The A12 change alone: halving ranks by ``g + log pi + sigma(completedQ)``,
     ``sigma = (c_visit + max_b N(b)) * c_scale``, on this repository's own
     completion (raw Q, no normalisation). Target unchanged (repository formula).
-``paper``
-    Danihelka et al. (2022), Go/chess settings: completion of unvisited actions
-    by ``v_mix``, min-max normalisation to [0, 1], ``sigma`` with c_visit 50 and
-    c_scale 1.0 in the halving score **and** in the target, target a softmax
-    over every legal action. As implemented by ``mctx``'s
-    ``qtransform_completed_by_mix_value`` and ``gumbel_muzero_policy``.
-``paper_mctx_scale``
-    ``paper`` with c_scale 0.1 (``mctx``'s default ``value_scale``; the paper's
-    Atari setting).
+``paper_affine``
+    Danihelka et al. (2022), Go/chess constants (c_visit 50, c_scale 1.0,
+    Appendix F), with Q mapped to [0, 1] by the fixed affine map ``(q + 1) / 2``.
+    The paper says only that Go/chess Q values "are normalized to be from the
+    [0, 1] interval"; for a value in [-1, 1] the fixed map is the conventional
+    reading (MuZero's pseudocode uses known bounds (-1, 1) for board games).
+    ``v_mix`` completion, sigma in the halving score and in a softmax target
+    over every legal action.
+``mctx_minmax_c1``
+    As ``paper_affine`` but with ``mctx``'s per-node min-max rescale
+    (``qtransform_completed_by_mix_value``, ``rescale_values=True``) and the
+    paper's board-game c_scale 1.0. **No published configuration pairs these**:
+    ``mctx`` pairs min-max with ``value_scale = 0.1``; the paper documents a
+    min-max form only for Atari (section 7).
+``mctx_default``
+    ``mctx``'s defaults: per-node min-max, ``value_scale`` (c_scale) 0.1,
+    ``maxvisit_init`` (c_visit) 50.
+``current_search_paper_affine_target`` / ``current_search_mctx_minmax_c1_target``
+    The *same* tree as ``current``, scored with that target formula -- isolates
+    the target formula from the search path.
 
 Deliberately *not* varied: interior (non-root) selection stays this
 repository's PUCT (``c_puct = c_visit / 50``), where ``mctx`` uses the
@@ -107,21 +115,31 @@ HALVING_CURRENT = "current"
 HALVING_SIGMA_RAW = "sigma_raw"
 HALVING_PAPER = "paper"
 
-#: (cell name, search key, target key). Search keys index ``_SEARCHES``.
+#: Ways to map completed Q onto [0, 1] before sigma.
+NORM_AFFINE = "affine"  # (q + 1) / 2: fixed, for values known to lie in [-1, 1]
+NORM_MINMAX = "minmax"  # mctx: per node, over the completed-Q vector
+NORMALISATIONS = (NORM_AFFINE, NORM_MINMAX)
+
+#: (cell name, search key, target key). Search keys index ``_SEARCHES``; a target
+#: key is ``"repo"`` (``build_completed_q_policy``) or a normalisation, scored with
+#: the search's own c_visit / c_scale.
 CELLS: tuple[tuple[str, str, str], ...] = (
     ("current", "current", "repo"),
-    ("current_search_paper_target", "current", "paper"),
     ("sigma_halving", "sigma_halving", "repo"),
-    ("paper", "paper", "paper"),
-    ("paper_mctx_scale", "paper_mctx_scale", "paper"),
+    ("paper_affine", "paper_affine", NORM_AFFINE),
+    ("current_search_paper_affine_target", "current", NORM_AFFINE),
+    ("mctx_minmax_c1", "mctx_minmax_c1", NORM_MINMAX),
+    ("current_search_mctx_minmax_c1_target", "current", NORM_MINMAX),
+    ("mctx_default", "mctx_default", NORM_MINMAX),
 )
 
-#: search key -> (halving mode, c_scale override or None for the run's own).
-_SEARCHES: dict[str, tuple[str, float | None]] = {
-    "current": (HALVING_CURRENT, None),
-    "sigma_halving": (HALVING_SIGMA_RAW, None),
-    "paper": (HALVING_PAPER, PAPER_C_SCALE),
-    "paper_mctx_scale": (HALVING_PAPER, MCTX_DEFAULT_C_SCALE),
+#: search key -> (halving mode, normalisation or None, c_scale override or None).
+_SEARCHES: dict[str, tuple[str, str | None, float | None]] = {
+    "current": (HALVING_CURRENT, None, None),
+    "sigma_halving": (HALVING_SIGMA_RAW, None, None),
+    "paper_affine": (HALVING_PAPER, NORM_AFFINE, PAPER_C_SCALE),
+    "mctx_minmax_c1": (HALVING_PAPER, NORM_MINMAX, PAPER_C_SCALE),
+    "mctx_default": (HALVING_PAPER, NORM_MINMAX, MCTX_DEFAULT_C_SCALE),
 }
 
 
@@ -145,13 +163,19 @@ def paper_sigma_completed(
     raw_value: float,
     c_visit: float,
     c_scale: float,
+    normalisation: str = NORM_MINMAX,
 ) -> np.ndarray:
-    """``sigma(completedQ)`` as ``mctx``'s ``qtransform_completed_by_mix_value``.
+    """``sigma(completedQ)`` with ``v_mix`` completion and a chosen [0, 1] map.
 
     Args are aligned arrays over the *legal* actions only. Visited actions keep
-    their own Q; unvisited ones take ``v_mix``; the vector is min-max rescaled to
-    [0, 1] and multiplied by ``(c_visit + max N) * c_scale``.
+    their own Q; unvisited ones take ``v_mix`` (``mctx``'s
+    ``_compute_mixed_value``); the vector is mapped to [0, 1] -- ``"minmax"``
+    per node as ``mctx``'s ``_rescale_qvalues``, or ``"affine"`` ``(q + 1) / 2``
+    -- and multiplied by ``(c_visit + max N) * c_scale``. With ``"minmax"`` this
+    is ``qtransform_completed_by_mix_value``.
     """
+    if normalisation not in NORMALISATIONS:
+        raise ValueError(f"unknown normalisation {normalisation!r}")
     visited = visits > 0
     total = float(visits.sum())
     if visited.any():
@@ -162,14 +186,23 @@ def paper_sigma_completed(
     else:
         v_mix = raw_value
     completed = np.where(visited, q_values, v_mix)
-    low, high = float(completed.min()), float(completed.max())
-    normalised = (completed - low) / max(high - low, MCTX_RESCALE_EPSILON)
+    if normalisation == NORM_AFFINE:
+        normalised = (completed + 1.0) / 2.0
+    else:
+        low, high = float(completed.min()), float(completed.max())
+        normalised = (completed - low) / max(high - low, MCTX_RESCALE_EPSILON)
     max_visits = float(visits.max()) if visits.size else 0.0
     return (c_visit + max_visits) * c_scale * normalised
 
 
 def paper_target(
-    root: GumbelMCTSNode, raw_value: float, action_space: int, *, c_visit: float, c_scale: float
+    root: GumbelMCTSNode,
+    raw_value: float,
+    action_space: int,
+    *,
+    c_visit: float,
+    c_scale: float,
+    normalisation: str = NORM_MINMAX,
 ) -> np.ndarray:
     """``softmax(logits + sigma(completedQ))`` over every legal root action."""
     actions = np.array(sorted(root.children), dtype=np.int64)
@@ -187,6 +220,7 @@ def paper_target(
         raw_value=raw_value,
         c_visit=c_visit,
         c_scale=c_scale,
+        normalisation=normalisation,
     )
     scores = np.log(np.maximum(priors, EPSILON)) + sigma
     scores -= scores.max()
@@ -229,12 +263,21 @@ class ProbeGumbelMCTS(GumbelMCTS):
     """
 
     def __init__(
-        self, network: Any, config: GumbelMCTSConfig, *, halving: str, device: str = "cpu"
+        self,
+        network: Any,
+        config: GumbelMCTSConfig,
+        *,
+        halving: str,
+        normalisation: str | None = None,
+        device: str = "cpu",
     ) -> None:
         super().__init__(network, config, device=device)
         if halving not in (HALVING_CURRENT, HALVING_SIGMA_RAW, HALVING_PAPER):
             raise ValueError(f"unknown halving mode {halving!r}")
+        if (halving == HALVING_PAPER) != (normalisation is not None):
+            raise ValueError("a normalisation is required by, and only by, the paper halving")
         self.halving = halving
+        self.normalisation = normalisation
         self.last_root: GumbelMCTSNode | None = None
         self.last_raw_value = 0.0
         self.last_choice = -1
@@ -289,6 +332,7 @@ class ProbeGumbelMCTS(GumbelMCTS):
             raw_value=root_value,
             c_visit=self.config.c_visit,
             c_scale=self.config.c_scale,
+            normalisation=self.normalisation or NORM_MINMAX,
         )
         by_action = dict(zip(legal, sigma.tolist(), strict=True))
         return sorted(actions, key=lambda a: -(by_action.get(a, 0.0) + scores.get(a, 0.0)))
@@ -428,16 +472,18 @@ def run_probe(
 
     with inference_thread_limit():
         for index in range(positions):
-            env, played = sample_position(board_size, max_turns, seed, index)
+            env, _played = sample_position(board_size, max_turns, seed, index)
             legal = int((env.get_valid_actions() > 0).sum())
             forced += int(legal <= 1)
             search_seed = derive_seed(seed, STREAM_SEARCH, index)
             roots: dict[str, ProbeGumbelMCTS] = {}
-            for key, (halving, c_scale) in _SEARCHES.items():
+            for key, (halving, normalisation, c_scale) in _SEARCHES.items():
                 config = dataclasses.replace(base, seed=search_seed)
                 if c_scale is not None:
                     config = dataclasses.replace(config, c_scale=c_scale, c_visit=PAPER_C_VISIT)
-                mcts = ProbeGumbelMCTS(network, config, halving=halving, device=device)
+                mcts = ProbeGumbelMCTS(
+                    network, config, halving=halving, normalisation=normalisation, device=device
+                )
                 mcts.search(env)
                 roots[key] = mcts
             current = roots["current"]
@@ -445,7 +491,6 @@ def run_probe(
                 agree[key] += int(roots[key].last_choice == current.last_choice)
 
             row: dict[str, Any] = {"index": index, "turn": int(env.turn), "legal": legal}
-            row["actions_played"] = played
             if current.last_root is not None:
                 priors = np.array([c.prior for c in current.last_root.children.values()])
                 prior_stats["entropy"].append(entropy(priors))
@@ -472,6 +517,7 @@ def run_probe(
                         int(env.action_space.n),
                         c_visit=mcts.config.c_visit,
                         c_scale=mcts.config.c_scale,
+                        normalisation=target_key,
                     )
                 if target.sum() <= 0.0 and mcts.last_choice >= 0:
                     target[mcts.last_choice] = 1.0  # GumbelMCTS's own fallback
@@ -569,6 +615,20 @@ def run_probes(
         for seed in seeds
     ]
     pooled_rows = [row for run in per_seed for row in run["positions"]]
+    pooled_cells = cell_summaries(
+        pooled_rows, float(base.greedy_threshold), base.temperature_threshold
+    )
+    for name, cell in pooled_cells.items():
+        shares = np.array(
+            [run["cells"][name]["share_max_p_above_greedy_threshold"] for run in per_seed]
+        )
+        se = float(shares.std(ddof=1) / math.sqrt(len(shares))) if len(shares) > 1 else None
+        cell["share_across_seeds"] = {
+            "mean": round(float(shares.mean()), 6),
+            "se": None if se is None else round(se, 6),
+            "min": round(float(shares.min()), 6),
+            "max": round(float(shares.max()), 6),
+        }
     return {
         "probe": RUNNER,
         "probe_schema_version": SCHEMA_VERSION,
@@ -597,7 +657,11 @@ def run_probes(
                 "c_scale": PAPER_C_SCALE,
                 "mctx_default_c_scale": MCTX_DEFAULT_C_SCALE,
                 "completion": "visited: own Q; unvisited: v_mix",
-                "normalisation": "min-max over completed Q of all legal actions",
+                "normalisation": {
+                    "paper_affine": "(q + 1) / 2 (paper: 'normalized to [0, 1]', method unstated)",
+                    "mctx_minmax_c1": "per-node min-max (mctx) with the paper's c_scale 1.0",
+                    "mctx_default": "per-node min-max with mctx's value_scale 0.1",
+                },
                 "halving_score": "g + log pi + sigma(completedQ_normalised)",
                 "target": "softmax(log pi + sigma) over all legal actions",
             },
@@ -607,9 +671,7 @@ def run_probes(
             "positions": len(pooled_rows),
             "temperature_phase_positions": sum(r["temperature_phase_positions"] for r in per_seed),
             "positions_forced": sum(r["positions_forced"] for r in per_seed),
-            "cells": cell_summaries(
-                pooled_rows, float(base.greedy_threshold), base.temperature_threshold
-            ),
+            "cells": pooled_cells,
         },
         "per_seed": per_seed,
     }
@@ -656,7 +718,10 @@ def evidence_block(result: dict[str, Any], argv: list[str]) -> dict[str, Any]:
             "untrained networks only; a trained network's targets may be sharper or flatter",
             "positions come from random play, not from self-play",
             "interior (non-root) selection is this repository's PUCT in every variant",
+            "the paper does not state how Go/chess Q is normalised; paper_affine is one "
+            "reading of it, mctx_minmax_c1 is mctx's rescale at the paper's c_scale",
             "the seed field is the first of several; every seed is listed under seeds",
+            "per-position rows are omitted; they are regenerated from the seeds",
         ],
     }
     if sha is None:
@@ -673,6 +738,11 @@ def _cell_row(name: str, cell: dict[str, Any]) -> str:
         f"{cell['share_max_p_above_greedy_threshold']:.3f} | "
         f"{'n/a' if tphase is None else f'{tphase:.3f}'} | "
         f"{cell['support']['median']:.0f} | {cell['argmax_agrees_with_current']:.3f} |"
+        + (
+            f" {spread['se']:.3f} [{spread['min']:.3f}, {spread['max']:.3f}] |"
+            if (spread := cell.get("share_across_seeds")) and spread["se"] is not None
+            else " n/a |"
+        )
     )
 
 
@@ -685,7 +755,8 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
     header = (
         "| Variant | Search (halving score) | Target | Entropy mean / median (nats) "
         "| max-p mean / median | Share max-p > threshold | Same in temperature phase "
-        "| Support (median) | Argmax = `current` argmax |\n|---|---|---|---|---|---|---|---|---|"
+        "| Support (median) | Argmax = `current` argmax "
+        "| Share across seeds: SE [min, max] |\n|---|---|---|---|---|---|---|---|---|---|"
     )
     lines = [
         "# Gumbel policy-target sharpness probe (LF-A5 / LF-A12)",
@@ -717,7 +788,8 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
         "",
         "| Seed | abs root value, median | Visited-Q spread, median | "
         + " | ".join(f"`{n}`" for n in names)
-        + " | Halving winner agrees with `current` (sigma_halving / paper) |",
+        + " | Halving winner agrees with `current` (sigma_halving / paper_affine / "
+        "mctx_minmax_c1) |",
         "|---|---|---|" + "---|" * len(names) + "---|",
     ]
     for run in result["per_seed"]:
@@ -730,27 +802,35 @@ def render_report(result: dict[str, Any], evidence: dict[str, Any]) -> str:
         lines.append(
             f"| {run['seed']} | {run['abs_root_network_value']['median']:.3f} | "
             f"{run['current_visited_q_spread']['median']:.3f} | {cells} | "
-            f"{agree['sigma_halving']:.2f} / {agree['paper']:.2f} |"
+            f"{agree['sigma_halving']:.2f} / {agree['paper_affine']:.2f} / "
+            f"{agree['mctx_minmax_c1']:.2f} |"
         )
     lines += [
         "",
         "The current target's sharpness scales with the *absolute* spread of the visited "
-        "root-child Q values (raw Q, no normalisation); the paper's is min-max normalised, "
-        "so any spread at all is stretched to the full `(c_visit + max N) * c_scale` range.",
+        "root-child Q values: raw Q in [-1, 1] times `(c_visit + max N) * c_scale`, i.e. 57 "
+        "per unit of Q at n=24. Under the affine reading the paper's coefficient per unit of "
+        "raw Q is half that (28.5). Under per-node min-max any spread at all is stretched to "
+        "the full 57-logit range.",
         "",
         "## Variants",
         "",
         f"- `current` — A1's settings: c_visit {cur['c_visit']}, c_scale {cur['c_scale']}, "
         f"target `{cur['policy_target']}`; halving ranks by {cur['halving_score']}; target "
         "restricted to visited actions; completion `q + ((maxN-N)/maxN)·v_root`, raw Q.",
-        "- `current_search_paper_target` — the same tree, scored with the paper's target.",
         "- `sigma_halving` — LF-A12 alone: halving ranks by `g + log pi + (c_visit + max N)"
         "·c_scale·completedQ` on this repository's completion; repository target.",
-        "- `paper` — Danihelka et al. (2022), Go/chess: c_visit 50, c_scale 1.0, `v_mix` "
-        "completion, min-max normalised Q, sigma in the halving score and in a softmax target "
-        "over all legal actions (as `mctx`'s `qtransform_completed_by_mix_value`).",
-        f"- `paper_mctx_scale` — `paper` with c_scale {s['paper']['mctx_default_c_scale']} "
-        "(`mctx`'s default; the paper's Atari setting).",
+        "- `paper_affine` — Danihelka et al. (2022) Go/chess constants (c_visit 50, c_scale 1.0, "
+        "Appendix F) with Q mapped to [0, 1] by `(q + 1) / 2`; `v_mix` completion; sigma in the "
+        "halving score and in a softmax target over all legal actions. The paper says only that "
+        "Go/chess Q values are normalised to [0, 1]; this is the fixed-bounds reading.",
+        "- `mctx_minmax_c1` — the same, but with `mctx`'s per-node min-max rescale "
+        "(`qtransform_completed_by_mix_value`) at c_scale 1.0. No published configuration pairs "
+        "the two: `mctx` uses min-max with value_scale 0.1, and the paper shows a min-max form "
+        "only for Atari (section 7).",
+        f"- `mctx_default` — `mctx`'s defaults: per-node min-max, c_scale "
+        f"{s['paper']['mctx_default_c_scale']}, c_visit 50.",
+        "- `current_search_*_target` — the `current` tree, scored with that target formula.",
         "",
         "Not varied: interior selection (this repository's PUCT, c_puct "
         f"{cur['interior_c_puct']}) and the halving schedule (already `mctx`'s).",
@@ -782,6 +862,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--device", default="cpu")
     p.add_argument("--out_dir", type=Path, default=None, help="write JSON + report.md here")
+    p.add_argument(
+        "--per_position",
+        action="store_true",
+        help="keep the per-position rows in the JSON (omitted by default; seeds regenerate them)",
+    )
     add_budget_arguments(p)
     return p.parse_args(argv)
 
@@ -805,6 +890,10 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("probe finished in %.1f s", time.perf_counter() - started)
     evidence = evidence_block(result, raw)
     payload = {"evidence": evidence, **result}
+    if not args.per_position:
+        payload["per_seed"] = [
+            {k: v for k, v in run.items() if k != "positions"} for run in result["per_seed"]
+        ]
     text = json.dumps(payload, indent=2, sort_keys=True)
     if args.out_dir is not None:
         args.out_dir.mkdir(parents=True, exist_ok=True)
