@@ -515,7 +515,26 @@ def train(config: MuZeroRunConfig, wandb_logger: Any = None) -> dict[str, float]
     return training_stats
 
 
-def main():
+#: Iterations and games per iteration the ``--quick`` / ``--fast`` presets fix.
+QUICK_SHAPE = (2, 5)
+FAST_SHAPE = (10, 10)
+
+
+def resolve_iterations_and_games(args: argparse.Namespace) -> tuple[int, int]:
+    """``(iterations, games_per_iteration)`` a parsed command line will play.
+
+    The single source for both the run and its game-budget pricing, so the
+    two cannot disagree about which flag wins.
+    """
+    if args.quick:
+        return QUICK_SHAPE
+    if args.fast:
+        return FAST_SHAPE
+    return args.iterations, args.games
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The runner's own argv parser (also used to price a command, e.g. by a sweep)."""
     parser = argparse.ArgumentParser(description="MuZero Training for Civ6")
 
     # Quick presets
@@ -562,25 +581,26 @@ def main():
     )
 
     add_budget_arguments(parser)
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
 
     # Build config
     config = MuZeroRunConfig()
 
     if args.quick:
-        config.num_iterations = 2
-        config.num_games_per_iteration = 5
+        config.num_iterations, config.num_games_per_iteration = QUICK_SHAPE
         config.min_replay_size = 100
         config.num_simulations = 8
         logger.info("Quick test mode: 2 iterations, 5 games each")
     elif args.fast:
-        config.num_iterations = 10
-        config.num_games_per_iteration = 10
+        config.num_iterations, config.num_games_per_iteration = FAST_SHAPE
         config.min_replay_size = 200
         logger.info("Fast training mode: 10 iterations, 10 games each")
     else:
-        config.num_iterations = args.iterations
-        config.num_games_per_iteration = args.games
+        config.num_iterations, config.num_games_per_iteration = resolve_iterations_and_games(args)
 
     # Small board for faster testing
     if args.small:

@@ -35,7 +35,7 @@ import argparse
 import logging
 import math
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -49,12 +49,6 @@ DEFAULT_TRAINING_EVAL_GAMES = 20
 
 #: Process exit status used when a runner refuses to start.
 EXIT_CODE_REFUSED = 2
-
-#: Games one ``run_muzero_training.py`` invocation plays, by preset flag.
-_MUZERO_QUICK_GAMES = 2 * 5
-_MUZERO_FAST_GAMES = 10 * 10
-_MUZERO_DEFAULT_ITERATIONS = 50
-_MUZERO_DEFAULT_GAMES = 20
 
 
 class GameBudgetExceededError(RuntimeError):
@@ -316,36 +310,6 @@ def orchestrator_budget_inputs(config: Any, dry_run: bool) -> dict[str, Any]:
 def priced_runners() -> tuple[str, ...]:
     """Names of the runners that have a cost model."""
     return tuple(sorted(_MODELS))
-
-
-def muzero_command_games(command: Sequence[str]) -> int | None:
-    """Games one ``run_muzero_training.py`` invocation plays, or ``None`` if unknown.
-
-    Used by the sweep runner to price a trial. Returns ``None`` (unpriceable)
-    when the command is not that script or its game-count flags still contain
-    an unexpanded ``{placeholder}``.
-    """
-    if not any(str(tok).replace("\\", "/").endswith("run_muzero_training.py") for tok in command):
-        return None
-    flags: dict[str, str] = {}
-    toks = [str(t) for t in command]
-    for i, tok in enumerate(toks):
-        if not tok.startswith("--"):
-            continue
-        name, eq, value = tok[2:].partition("=")
-        if not eq and i + 1 < len(toks) and not toks[i + 1].startswith("--"):
-            value = toks[i + 1]
-        flags[name] = value
-    if "quick" in flags:
-        return _MUZERO_QUICK_GAMES
-    if "fast" in flags:
-        return _MUZERO_FAST_GAMES
-    try:
-        iterations = int(flags.get("iterations") or _MUZERO_DEFAULT_ITERATIONS)
-        games = int(flags.get("games") or _MUZERO_DEFAULT_GAMES)
-    except ValueError:
-        return None  # an unexpanded "{placeholder}" or other non-integer
-    return iterations * games
 
 
 # ---------------------------------------------------------------------------

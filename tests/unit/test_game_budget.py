@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -27,7 +28,6 @@ from alpha_zero.utils.game_budget import (
     GameBudgetExceeded,
     GameBudgetUnpriceable,
     enforce,
-    muzero_command_games,
     priced_runners,
     worst_case_games,
 )
@@ -196,26 +196,6 @@ class TestOtherModels:
     def test_calibrate_throughput_prices_one_game_per_game(self) -> None:
         assert worst_case_games("calibrate_throughput", {"games": 2}) == 2
         assert worst_case_games("calibrate_throughput", {"games": 1001}) == 1_001
-
-
-class TestMuzeroCommandGames:
-    def test_shipped_sweep_command_is_quick_small(self) -> None:
-        cmd = ["python", "scripts/run_muzero_training.py", "--quick", "--small", "--lr=0.1"]
-        assert muzero_command_games(cmd) == 10
-
-    def test_explicit_iterations_and_games(self) -> None:
-        cmd = ["py", "scripts/run_muzero_training.py", "--iterations", "4", "--games=6"]
-        assert muzero_command_games(cmd) == 24
-
-    def test_defaults_when_unspecified(self) -> None:
-        assert muzero_command_games(["py", "run_muzero_training.py"]) == 50 * 20
-
-    def test_unexpanded_placeholder_is_unpriceable(self) -> None:
-        cmd = ["py", "run_muzero_training.py", "--iterations={it}"]
-        assert muzero_command_games(cmd) is None
-
-    def test_other_script_is_unpriceable(self) -> None:
-        assert muzero_command_games(["py", "something_else.py"]) is None
 
 
 # ---------------------------------------------------------------------------
@@ -572,6 +552,47 @@ class TestScriptRunnersRefuse:
         with pytest.raises(SystemExit) as excinfo:
             script.main(["--n-trials", "101"])  # 101 trials x 10 games
         _assert_refused(excinfo, capsys)
+
+    def test_run_sweep_prices_with_the_runners_own_parser(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """``--gam`` is an abbreviation the child accepts: 20 x 30 x 2 trials = 1,200."""
+        config = tmp_path / "sweep.yaml"
+        lines = [
+            "study_name: s",
+            "n_trials: 2",
+            "metric: m",
+            "command:",
+            '  - "{python}"',
+            "  - scripts/run_muzero_training.py",
+            "  - --iterations",
+            '  - "20"',
+            "  - --gam",
+            '  - "30"',
+            "search_space:",
+            "  lr: {type: float, low: 0.001, high: 0.01}",
+        ]
+        config.write_text(os.linesep.join(lines) + os.linesep, encoding="utf-8")
+        script = _import_script("run_sweep")
+        cmd = ["py", "scripts/run_muzero_training.py", "--iterations", "20", "--gam", "30"]
+        assert script.trial_games(cmd, {}) == 600
+        with pytest.raises(SystemExit) as excinfo:
+            script.main(["--config", str(config)])
+        err = _assert_refused(excinfo, capsys)
+        assert "1,200" in err
+
+    def test_run_sweep_ambiguous_abbreviation_is_unpriceable(self) -> None:
+        script = _import_script("run_sweep")
+        # "--w" matches --workers, --wandb ...: the child would die, so refuse.
+        assert script.trial_games(["py", "run_muzero_training.py", "--w", "1"], {}) is None
+
+    def test_run_sweep_prices_presets_and_placeholders(self) -> None:
+        script = _import_script("run_sweep")
+        cmd = ["{python}", "scripts/run_muzero_training.py", "--quick", "--lr={lr}"]
+        space = {"lr": {"type": "float", "low": 0.001, "high": 0.01}}
+        assert script.trial_games(cmd, space) == 10
+        assert script.trial_games(["py", "something_else.py"], {}) is None
+        assert script.trial_games(["py", "run_muzero_training.py", "--lr={nope}"], {}) is None
 
     def test_run_sweep_dry_run_is_allowed(self) -> None:
         script = _import_script("run_sweep")
