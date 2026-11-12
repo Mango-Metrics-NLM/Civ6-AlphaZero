@@ -53,9 +53,12 @@ Harness-engineering principle: a model over-rates its own work, so **evaluation
 must run with context independent from generation**. Do not eyeball your own diff
 inline. Instead, dispatch the review to a fresh agent so judgement is decoupled:
 
-- Run the `code-review` skill on the diff, **or**
-- Launch an `Agent` (e.g. `subagent_type: Explore`) whose only task is to review
-  the changed files against the spec's acceptance criteria and report defects.
+- Dispatch `sdlc-qa-sdet` (`Agent` with `subagent_type: sdlc-qa-sdet`) with the diff
+  and the spec's acceptance criteria. It is the review of record for every DEV-SQE
+  output and its only write access is `tests/**`; **or**
+- Run the `code-review` skill on the diff, **or** launch another fresh `Agent`
+  (e.g. `subagent_type: Explore`) whose only task is to review the changed files
+  against the acceptance criteria and report defects.
 
 Treat the subagent's findings as the review of record; fold fixes back through
 DEV-SQE (QA-GAP) if they are non-trivial. Note in the summary that review ran in
@@ -123,6 +126,11 @@ The repository has three long-lived branches: `dev` (default, integration), `qa`
 | RC fix | `rcfix/<topic>` | `qa` | merge commit | maintainer (cherry-picks of dev commits, `-x`) |
 | Release | `qa` | `main` | merge commit | maintainer |
 | Hotfix | `hotfix/*` | `main` | merge commit | maintainer |
+
+Dispatch `sdlc-release-manager` to set the target branch and PR type from this
+table and to draft the promotion, release or back-merge PR text and the bundle
+manifest. It returns text; `sdlc-developer` commits it with `authored-by:
+sdlc-release-manager`, and the release manager then reviews the PR.
 
 An agent opens only the first two rows (against `dev`) and, when asked, drafts the
 others; **it never merges into `qa` or `main` and never tags.** Those are

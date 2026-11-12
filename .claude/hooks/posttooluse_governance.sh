@@ -64,6 +64,15 @@ case "$rel" in
   */Agent.md|Agent.md)
     python3 scripts/validate_agents.py --path "$rel" --quiet || exit 2
     ;;
+  .claude/agents/*|.claude/hooks/readonly_shell_guard.sh|.claude/hooks/tests_only_write_guard.sh)
+    # SDLC role subagents (local-first plan LF-G13). A role file is checked on its
+    # own (--path); an edit to one of the two guards a role attaches re-checks the
+    # whole directory, because the guard's existence is part of every role's C3.
+    case "$rel" in
+      .claude/agents/*) python3 scripts/validate_claude_agents.py --path "$rel" --quiet || exit 2 ;;
+      *) python3 scripts/validate_claude_agents.py --quiet || exit 2 ;;
+    esac
+    ;;
   .claude/skills/*|.agents/skills/*)
     python3 scripts/validate_skills.py --path "$rel" --quiet || exit 2
     ;;

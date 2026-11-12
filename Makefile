@@ -358,6 +358,7 @@ validate:
 	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
 	$(PYTHON) scripts/validate_agents.py
+	$(PYTHON) scripts/validate_claude_agents.py
 	$(PYTHON) scripts/check_doc_sync.py
 
 # Self-installing: pre-commit is not a declared dependency, so the bare

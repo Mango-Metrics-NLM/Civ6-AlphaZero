@@ -12,7 +12,8 @@ caveats in *Threat model* below.
 |------|-----|---------|
 | `settings.json` | committed | Permission allow/deny lists, hook registrations, environment variables. |
 | `settings.local.json` | gitignored | Personal overrides (tokens, machine-specific paths). Never committed. |
-| `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`. |
+| `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`, plus `readonly_shell_guard.sh` and `tests_only_write_guard.sh`, which role subagents attach in their own frontmatter. |
+| `agents/sdlc-*.md` | committed | The eight SDLC role subagents (product-owner, scrum-master, architect, ml-scientist, ai-engineer, developer, qa-sdet, release-manager). Validated by `scripts/validate_claude_agents.py`. |
 | `skills/*/SKILL.md` | committed | Ten skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`. Each has frontmatter validated by `scripts/validate_skills.py`. |
 
 `.agents/skills/` (a sibling directory, three entries) is **validated but never
@@ -27,9 +28,37 @@ as gated documentation (CLAUDE.md §5.2, row dated 2026-09-02).
 | `SessionStart` | `hooks/sessionstart_bootstrap.sh` | Checks Python ≥ 3.11, installs the `dev` extra, and reports what is *actually* true: install failure with the log tail, missing packages, and a tool/interpreter split (a `mypy` resolved from an isolated tool venv cannot see the project's stubs and reports phantom errors). It used to print "pytest ready" unconditionally. |
 | `PreToolUse` (Bash **and** PowerShell) | `hooks/pretooluse_guard.sh` | **Denies** commits/pushes while on a protected branch, pushes to or deletions of one in any refspec form, tag pushes (`refs/tags/*`, `--tags`, `--follow-tags`), `--all`/`--mirror`, `git tag` with any non-listing argument, force-pushes (`--force-with-lease` allowed), `gh pr merge`, `gh release`, `gh repo edit`, `gh ruleset`, `gh api` with a method/body field or `graphql`, and an explicit game count above 1000 without `--approval_ref` (the guard cannot price a run; the runner's `game_budget` refuses the worst case). **Asks** (prompts you) on `--approval_ref`, `--preset production`, `--config` on a game runner, and unknown game runners. Protected = `dev qa main` + the default branch + `CIV6AZ_PROTECTED_BRANCHES`. Unwraps `pwsh -c`, `powershell -Command`, `cmd /c`, `bash -c`, `iex`, `&` and launchers (`env`, `command`, `sudo`, `nohup`, `timeout`, ...) first; program names match case-insensitively (`GIT`, `git.EXE`); quotes inside arguments (`HEAD:"qa"`) and PowerShell backtick escapes (`` g`it ``) are removed; a quoted program path (`& 'C:\Program Files\Git\cmd\git.exe'`) is reduced to its basename. Matching is anchored to the command itself so a quoted mention does not trip it. If no parser (jq, python3, python) can read the payload, or the script fails for any reason, it **denies** (exit 0 + JSON), because a guard that fails open is invisible. |
 | `PostToolUse` (Write/Edit) | `hooks/posttooluse_lint.sh` | `ruff check --fix` + `ruff format` on the edited Python file. F401 and RUF100 are deferred to the commit-time gates so an import added in one edit is not stripped before its first use lands in the next. Never fails the originating tool call. |
-| `PostToolUse` (Write/Edit **and** Bash) | `hooks/posttooluse_governance.sh` | Runs the matching governance validator in single-file mode for `openspec/`, `kb/` and skills, a whole-repo `check_doc_sync.py` for documentation, and the dead-code ratchet when a file appears under or leaves `alpha_zero/` (which is why it is also on the Bash matcher — a deletion is not a Write). |
+| `PostToolUse` (Write/Edit **and** Bash) | `hooks/posttooluse_governance.sh` | Runs the matching governance validator in single-file mode for `openspec/`, `kb/`, skills and `.claude/agents/` role subagents, a whole-repo `check_doc_sync.py` for documentation, and the dead-code ratchet when a file appears under or leaves `alpha_zero/` (which is why it is also on the Bash matcher — a deletion is not a Write). |
 | `PreCompact` | `hooks/precompact_state.sh` | Folds KB session state, recent ledger lines and a `git diff --stat` into the compacted context so workflow state survives compaction. |
 | `Stop` | inline `echo` | Reminds the agent to run its role's handoff skill (CLAUDE.md §14). |
+
+## Role subagents (`agents/`)
+
+Eight persisted subagents carry the SDLC roles; the three handoff skills dispatch
+them. Read-only roles return text (a memo, script, doc, PR body or manifest) and
+`sdlc-developer` commits it verbatim with `authored-by: sdlc-<role>`, after which the
+authoring role reviews the PR. `sdlc-qa-sdet` may edit `tests/**` only.
+
+| Role | Model | Tools | Shell guard |
+|------|-------|-------|-------------|
+| `sdlc-product-owner` | sonnet | Read, Grep, Glob | none (no shell) |
+| `sdlc-scrum-master` | sonnet | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
+| `sdlc-architect` | opus | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
+| `sdlc-ml-scientist` | opus | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
+| `sdlc-ai-engineer` | opus | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
+| `sdlc-developer` | inherit | all | none (the executor) |
+| `sdlc-qa-sdet` | sonnet | Read, Grep, Glob, Bash, Edit, Write | `tests_only_write_guard.sh` on Edit/Write |
+| `sdlc-release-manager` | sonnet | Read, Grep, Glob, Bash | `readonly_shell_guard.sh` |
+
+The guards are attached through each role's own frontmatter `hooks:` (they run only while
+that subagent is active) -- never through `settings.json`. `readonly_shell_guard.sh` allows
+exactly one plain command: `git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file`,
+`git tag -l`, `gh pr view|list|checks`, `gh api` (GET only: a path plus `--jq`/`-q`,
+`--paginate`, `-H X-GitHub-Api-Version:...`) and `python scripts/{validate_,check_,verify_release_evidence}*.py`.
+It rejects every metacharacter (`; & | < > ( ) { } $` backtick, quotes, backslash, `, @ # %`),
+every glob character, every flag not on the per-command allowlist, and anything it cannot parse.
+Quote-free by design: use `--pretty=oneline`, not `--format="%h %s"`. It is an accident
+net: identity is the control. Check the files with `python scripts/validate_claude_agents.py`.
 
 ## What the permission allowlist allows
 

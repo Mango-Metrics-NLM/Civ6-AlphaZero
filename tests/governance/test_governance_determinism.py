@@ -86,7 +86,7 @@ def test_validators_are_deterministic_across_hash_seeds() -> None:
     ``PYTHONHASHSEED`` is the only lever that changes ``set`` ordering between
     processes, so varying it is the discriminating test for "we iterated a set".
     """
-    for script_name in ("validate_skills.py", "validate_agents.py"):
+    for script_name in ("validate_skills.py", "validate_agents.py", "validate_claude_agents.py"):
         script = SCRIPTS / script_name
         results = [_run(script, hash_seed=seed) for seed in HASH_SEEDS]
         assert _all_identical(results), (

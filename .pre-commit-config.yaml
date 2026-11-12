@@ -69,6 +69,14 @@ repos:
         pass_filenames: false
         files: 'Agent\.md$'
 
+      - id: validate-claude-agents
+        name: validate SDLC role subagents
+        entry: python scripts/validate_claude_agents.py
+        language: system
+        # Also the two hooks a role attaches and the skills that dispatch roles
+        # (C3 and C8 read them), not just the role files.
+        files: ^\.claude/(agents/|hooks/(readonly_shell_guard|tests_only_write_guard)\.sh$|skills/(planning|dev-sqe|pre-pr)-handoff/)
+        pass_filenames: false
       - id: validate-skills
         name: validate skills
         entry: python scripts/validate_skills.py

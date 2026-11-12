@@ -38,6 +38,7 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # PostToolUse hook calls them.
 PATH_VALIDATORS = (
     "validate_agents.py",
+    "validate_claude_agents.py",
     "validate_kb.py",
     "validate_openspec.py",
     "validate_skills.py",
@@ -125,6 +126,7 @@ class TestMisnamedPathIsAnError:
     # validator -> a tracked file that exists but is not what it validates
     WRONG_FILE = {
         "validate_agents.py": "README.md",
+        "validate_claude_agents.py": "README.md",
         "validate_skills.py": "README.md",
     }
 
@@ -147,6 +149,7 @@ class TestMisnamedPathIsAnError:
         satisfy the assertions above."""
         targets = {
             "validate_agents.py": "tests/Agent.md",
+            "validate_claude_agents.py": ".claude/agents/sdlc-architect.md",
             "validate_skills.py": ".claude/skills/verify/SKILL.md",
         }
         result = _run(script, "--path", targets[script])

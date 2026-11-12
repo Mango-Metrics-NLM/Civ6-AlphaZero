@@ -1,7 +1,7 @@
 ---
 name: planning-handoff
 description: Run at the end of every Planning session that did meaningful work — updates the summary, appends a ledger event, writes any cross-role handoff document, and rewrites the session state. Gated by scripts/validate_kb.py.
-allowed-tools: Read, Write, Edit, Bash
+allowed-tools: Read, Write, Edit, Bash, Agent
 ---
 
 # Planning Handoff Skill
@@ -24,6 +24,27 @@ Read `kb/sessions/planning.state.json` to understand the current focus and resum
 - **SESSION-END**: No cross-role handoff needed (continuing Planning work next session).
 - **PLANNING-HANDOFF**: Handing off a spec/task to DEV-SQE for implementation.
 - **SCOPE-CHANGE**: Responding to a Pre-PR feedback event.
+
+### 2b. Dispatch the role subagents
+
+Planning work is done by persisted role subagents in `.claude/agents/`
+(`scripts/validate_claude_agents.py` checks them). Dispatch each as an `Agent`
+with `subagent_type` set to the role name, and give it the spec path and the
+question, not your conclusion:
+
+| Role | Dispatch when |
+|---|---|
+| `sdlc-product-owner` | always: stories, acceptance criteria, scope |
+| `sdlc-scrum-master` | always: sequencing, the compute queue, run cards, WIP and capacity |
+| `sdlc-architect` | always: design, confirm-first triage (CLAUDE.md section 3.2), OpenSpec; reviews anything touching more than 3 modules |
+| `sdlc-ml-scientist` | the work involves ML results, a pre-registration or an evidence audit |
+| `sdlc-ai-engineer` | the work involves LLM, RAG, the StrategyAdvisor or the agent harness |
+
+These roles are read-only: each returns text (a memo, script, doc, PR body or
+manifest). Do not write it yourself. Hand it to `sdlc-developer`, which commits it
+verbatim with `authored-by: sdlc-<role>`; the authoring role then reviews that PR,
+so the author is never the evaluator of its own text. Until the role files exist
+in a checkout, brief a general-purpose subagent from the role's draft text.
 
 ### 3. Write Summary
 

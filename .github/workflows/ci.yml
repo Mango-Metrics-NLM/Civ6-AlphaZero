@@ -339,6 +339,7 @@ jobs:
           ruff check
           scripts/validate_openspec.py scripts/validate_kb.py
           scripts/validate_skills.py scripts/validate_agents.py
+          scripts/validate_claude_agents.py
           scripts/check_doc_sync.py
           tests/governance/
 
@@ -353,6 +354,9 @@ jobs:
 
       - name: Validate Agent.md persona docs
         run: python scripts/validate_agents.py
+
+      - name: Validate SDLC role subagents
+        run: python scripts/validate_claude_agents.py
 
       - name: Check documentation sync
         run: python scripts/check_doc_sync.py
