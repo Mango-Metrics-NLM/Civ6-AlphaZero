@@ -80,7 +80,9 @@ are refused). For every attempt the verifier:
   commands section 7.1 registers **at the attempt's commit**
   (`alpha_zero/evaluation/a1_registration.py`: the base block, the 40/60 branch in
   force, `<D>` for the `card_id`, the role's seed), launched by `run_card`
-  (`launched_argv` = `argv` + `--max_games <priced>`);
+  (`launched_argv` = `argv` + `--max_games <priced>`), with `total_priced_games`
+  equal to the registered card's price and each invocation's price its
+  registered price (`run_card.price_invocation`);
 - re-hashes every component and re-validates each arm's `result.json` with the
   benchmark's `validate_envelope`, ties its `evidence.command` to the launched
   invocation, and recomputes its counts, `scoring.summarize`, both intervals and
@@ -103,7 +105,11 @@ honesty, not completeness:
 - `run.json`'s invocations are a token-for-token prefix of the registered list;
 - `total_priced_games` is the whole registered card's price (run_card writes it
   at start), and each recorded invocation's price is its registered price;
+- every arm that `run.json` records as finished (exit 0) **must** be listed;
+  besides those, only the next registered arm may be listed (it wrote
+  `result.json` before run_card recorded it);
 - each listed arm is recomputed;
-- each `iterations.jsonl` line carries the run's seed and sha;
+- if `run.json` records training as finished, `iterations` must be listed and
+  cover every iteration; each line carries the run's seed and sha;
 - the stored verdict is `VOID`. A FAIL or INCONCLUSIVE verdict passes when it is
 recorded honestly: a negative A1 ships the release with the claim withheld.

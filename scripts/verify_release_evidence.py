@@ -352,6 +352,8 @@ class RunFacts:
     launched: dict[str, list[str]] = field(default_factory=dict)
     argv: dict[str, list[str]] = field(default_factory=dict)
     names: list[str] = field(default_factory=list)
+    #: Invocation name -> its recorded ``exit_code``.
+    exit_codes: dict[str, Any] = field(default_factory=dict)
     interruptions: list[str] = field(default_factory=list)
     #: ``run.json`` says COMPLETED. Anything else (VOID, FAILED, a lingering
     #: RUNNING) is VOID by status and is checked for honesty, not completeness:
@@ -400,6 +402,7 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
         name = str(inv.get("name"))
         facts.names.append(name)
         facts.priced[name] = int(inv["priced_games"])
+        facts.exit_codes[name] = inv.get("exit_code")
         facts.argv[name] = [str(a) for a in inv.get("argv") or []]
         launched = inv.get("launched_argv")
         expected = [*facts.argv[name], "--max_games", str(inv["priced_games"])]
@@ -433,8 +436,10 @@ def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings
     """``run.json``'s invocations are section 7.1's, in order, token for token.
 
     A COMPLETED attempt records every registered invocation. Any other attempt
-    records a prefix of them (those that finished), and its ``total_priced_games``
-    must be the whole registered card's price, which run_card writes at start.
+    records a prefix of them (those that finished). Either way ``total_priced_games``
+    must be the whole registered card's price, which run_card writes at start, and
+    each recorded invocation's price its registered price (each runner's own
+    parser, ``run_card.price_invocation``).
     """
     registered = list(reg.invocations)
     expected_names = registered if facts.completed else registered[: len(facts.names)]
@@ -443,7 +448,7 @@ def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings
         f.problems.append(
             f"{label}: run.json invokes {facts.names}, but section 7.1 registers {what}{registered}"
         )
-    if not facts.completed and facts.games is not None:
+    if facts.games is not None:
         price = registered_price(reg)
         if facts.games != sum(price.values()):
             f.problems.append(
@@ -468,10 +473,10 @@ def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings
 
 def registered_price(reg: Registration) -> dict[str, int]:
     """Each registered invocation's price by its runner's own parser, as run_card prices it."""
-    from alpha_zero.local.run_card import Invocation, _price_invocation
+    from alpha_zero.local.run_card import Invocation, price_invocation
 
     return {
-        name: _price_invocation(
+        name: price_invocation(
             Invocation(name, "training_civ6" if name == TRAIN else "benchmark", tuple(args))
         )
         for name, args in reg.invocations.items()
@@ -479,7 +484,14 @@ def registered_price(reg: Registration) -> dict[str, int]:
 
 
 def check_iterations(
-    text: str, reg: Registration, sha: str | None, label: str, f: Findings, facts: RunFacts
+    text: str,
+    reg: Registration,
+    sha: str | None,
+    label: str,
+    f: Findings,
+    facts: RunFacts,
+    *,
+    require_all: bool,
 ) -> None:
     seen: set[int] = set()
     for number, line in enumerate(text.splitlines(), start=1):
@@ -508,8 +520,8 @@ def check_iterations(
             seen.add(rec["iteration"])
     iterations = int(reg.flag(TRAIN, "--num_iterations") or 0)
     expected = set(range(1, iterations + 1))
-    if not facts.completed:
-        # An interrupted attempt holds the iterations it finished, and no others.
+    if not require_all:
+        # Interrupted inside training: the iterations it finished, and no others.
         if not seen <= expected:
             f.problems.append(f"{label}: iterations.jsonl holds {sorted(seen - expected)}")
     elif seen != expected:
@@ -782,11 +794,23 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     if run.get("seed") != reg.seed:
         f.problems.append(f"{label}: seed {run.get('seed')!r} != {reg.seed} for {role}")
     check_registered(facts, reg, label, f)
-    # An attempt killed before its first iteration finished has no record to list.
-    if facts.completed or run.get("iterations") is not None:
+    # What run.json records as finished must be listed (T14 rereview N-4): a VOID
+    # attempt discloses what preceded a re-run, so it cannot drop a finished arm.
+    finished = [n for n in facts.names if facts.exit_codes.get(n) == 0]
+    trained = facts.completed or TRAIN in finished
+    # An attempt killed before its first iteration finished has no record to list;
+    # one whose training finished must list every iteration.
+    if trained and run.get("iterations") is None:
+        f.problems.append(
+            f"{label}: training finished (run.json records it), but iterations.jsonl is not listed"
+        )
+    elif trained or run.get("iterations") is not None:
         iter_path = _load_component(bundle_dir, run.get("iterations"), f"{label} iterations", f)
         if iter_path is not None:
-            check_iterations(iter_path.read_text(encoding="utf-8"), reg, sha, label, f, facts)
+            check_iterations(
+                iter_path.read_text(encoding="utf-8"), reg, sha, label, f, facts,
+                require_all=trained,
+            )  # fmt: skip
 
     arms_in = run.get("arms")
     if not isinstance(arms_in, Mapping):
@@ -798,6 +822,8 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
         f.problems.append(
             f"{label}: arms {sorted(set(arms_in) - set(reg.arms))} are not registered"
         )
+    elif not facts.completed:
+        check_void_arms(facts, reg, set(arms_in), finished, label, f)
     arms: dict[str, ArmRead] = {}
     # A VOID-by-status attempt lists only the arms that ran; each is still checked.
     listed = reg.arms if facts.completed else [n for n in reg.arms if n in arms_in]
@@ -838,6 +864,39 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     compare_verdict(run.get("verdict"), computed.to_dict(), label, f)
     f.notes.append(f"{label}: verdict {computed.verdict} ({'; '.join(computed.reasons)})")
     return RunOutcome(role, run_id, computed.verdict, facts.games, sha, computed.reasons)
+
+
+def check_void_arms(
+    facts: RunFacts,
+    reg: Registration,
+    listed: set[str],
+    finished: Sequence[str],
+    label: str,
+    f: Findings,
+) -> None:
+    """A VOID-by-status attempt lists every arm it finished, and nothing it never reached.
+
+    Required: each arm ``run.json`` records with exit 0. Allowed besides: a
+    recorded arm that failed, and the **next** registered arm (interrupted after it
+    wrote ``result.json``, before run_card recorded it). Nothing later.
+    """
+    required = {arm_name(n) for n in finished if n != TRAIN}
+    omitted = sorted(required - listed)
+    if omitted:
+        f.problems.append(
+            f"{label}: omits arm(s) {omitted} that run.json records as finished; a VOID "
+            "attempt lists whatever it left (section 7.1, 'After a VOID')"
+        )
+    registered = list(reg.invocations)
+    reachable = set(facts.names)
+    if len(facts.names) < len(registered):
+        reachable.add(registered[len(facts.names)])
+    unreached = sorted(listed - {arm_name(n) for n in reachable if n != TRAIN})
+    if unreached:
+        f.problems.append(
+            f"{label}: lists arm(s) {unreached} that the attempt never reached "
+            f"(run.json recorded {facts.names})"
+        )
 
 
 def compare_verdict(stored: Any, computed: Mapping[str, Any], label: str, f: Findings) -> None:

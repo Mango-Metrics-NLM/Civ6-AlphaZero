@@ -112,6 +112,9 @@ class RunSpec:
     #: Training iterations that finished (an interruption inside training); 0 lists
     #: no iterations.jsonl at all.
     iterations_written: int = 20
+    #: The next arm wrote result.json, but the attempt was interrupted before
+    #: run_card recorded its invocation.
+    unrecorded_next_arm: bool = False
 
     @property
     def seed(self) -> int:
@@ -221,7 +224,8 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
                 "launched_argv": launched,
             }
         )
-        if name != "train" and (spec.recorded is None or len(invocations) <= spec.recorded):
+        reached = None if spec.recorded is None else spec.recorded + spec.unrecorded_next_arm
+        if name != "train" and (reached is None or len(invocations) <= reached):
             cand, opp = _sides(argv)
             arm_records[vre.arm_name(name)] = (cand, opp, _results(name, priced, spec), launched)
     total = sum(i["priced_games"] for i in invocations)  # the whole card, as run_card prices it

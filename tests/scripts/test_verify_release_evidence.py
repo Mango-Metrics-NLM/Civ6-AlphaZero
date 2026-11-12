@@ -384,6 +384,53 @@ class TestVoid:
         assert code == vre.EXIT_FAIL
         assert "are not registered" in out
 
+    def test_a_finished_arm_omitted_from_a_void_attempt_fails(self, tmp_path: Path) -> None:
+        """Rereview N-4 / probe 4: interrupted after symmetry; the (FAIL) primary is dropped."""
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=3, primary="FAIL")
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        assert verify(release)[0] == vre.EXIT_PASS  # listed in full, it is honest
+        del release.bundle["runs"][0]["arms"]["primary"]
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "omits arm(s) ['primary'] that run.json records as finished" in out
+
+    def test_finished_training_without_iterations_fails(self, tmp_path: Path) -> None:
+        """Rereview N-4 / probe 4b: train recorded with exit 0, iterations.jsonl left out."""
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=1)
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        assert verify(release)[0] == vre.EXIT_PASS
+        del release.bundle["runs"][0]["iterations"]
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "iterations.jsonl is not listed" in out
+
+    def test_finished_training_with_partial_iterations_fails(self, tmp_path: Path) -> None:
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=1, iterations_written=12)
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "not 1..20" in out
+
+    def test_the_next_unrecorded_arm_may_be_listed(self, tmp_path: Path) -> None:
+        """Interrupted after symmetry wrote result.json but before run_card recorded it."""
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=2, unrecorded_next_arm=True)
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        assert set(release.bundle["runs"][0]["arms"]) == {"primary", "symmetry"}
+        code, out = verify(release)
+        assert code == vre.EXIT_PASS, out
+
+    def test_an_arm_beyond_the_next_one_fails(self, tmp_path: Path) -> None:
+        void = fx.RunSpec(run_id="a1-20261111", status="VOID", recorded=2)
+        release = fx.make_release(tmp_path, [void, fx.RunSpec(run_id="a1-20261111-r2")])
+        arms = release.bundle["runs"][0]["arms"]
+        arms["secondary_10"] = dict(arms["primary"])
+        release.save()
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "never reached" in out
+
     def test_two_non_void_attempts_of_one_role_fail(self, tmp_path: Path) -> None:
         specs = [fx.RunSpec(), fx.RunSpec(run_id="a1-20261111-r2", primary="FAIL")]
         code, out = verify(fx.make_release(tmp_path, specs))
@@ -596,15 +643,42 @@ class TestBudget:
         assert code == vre.EXIT_FAIL
         assert "1,040 games exceeds 1,000 without an approval_ref" in out
 
-    def test_one_1040_game_run_with_its_own_approval_passes(self, tmp_path: Path) -> None:
+    def test_one_1040_game_run_with_its_own_approval_passes_the_budget(
+        self, tmp_path: Path
+    ) -> None:
+        """The approval clears the budget; the card is still not the registered 980 (N-6)."""
         release = fx.make_release(tmp_path, [fx.RunSpec(train_games=540, approval_ref="#151")])
-        assert verify(release)[0] == vre.EXIT_PASS
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "exceeds 1,000" not in out
+        assert "the registered card's price 980" in out
+
+    def test_the_budget_rule_alone(self) -> None:
+        def findings(games: int, approval: str | None) -> list[str]:
+            f = vre.Findings()
+            facts = vre.RunFacts(games=games, approval_ref=approval)
+            vre.check_budget({"games": games, "approval_ref": approval}, facts, "run", f)
+            return f.problems
+
+        assert findings(980, None) == []
+        assert findings(1040, "#151") == []
+        assert findings(1040, None) and "without an approval_ref" in findings(1040, None)[0]
 
     def test_an_approval_only_in_the_bundle_does_not_count(self, tmp_path: Path) -> None:
         release = fx.make_release(tmp_path, [fx.RunSpec(train_games=540)])
         release.bundle["runs"][0]["approval_ref"] = "#151"
         release.save()
-        assert verify(release)[0] == vre.EXIT_FAIL
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "approval_ref differs" in out
+
+    def test_a_completed_card_at_another_price_fails(self, tmp_path: Path) -> None:
+        """N-6: a COMPLETED attempt is held to the registered card's price too."""
+        release = fx.make_release(tmp_path, [fx.RunSpec(train_games=470)])
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL
+        assert "the registered card's price 980" in out
+        assert "invocation 'train' priced 470 != registered 480" in out
 
 
 # ---------------------------------------------------------------------------

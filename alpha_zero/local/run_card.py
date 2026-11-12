@@ -316,7 +316,13 @@ def load_card(path: str | Path) -> RunCard:
 # ---------------------------------------------------------------------------
 
 
-def _price_invocation(inv: Invocation) -> int:
+def price_invocation(inv: Invocation) -> int:
+    """Games one invocation can play, priced by its runner's own parser.
+
+    Public so ``scripts/verify_release_evidence.py`` prices a registered card the
+    way this module does. Raises :class:`RunCardError` for an unknown runner or
+    an argv the parser rejects.
+    """
     if inv.runner not in game_budget.priced_runners():
         raise RunCardError(
             f"invocation {inv.name!r}: unknown runner {inv.runner!r}; "
@@ -359,9 +365,7 @@ def price_card(card: RunCard) -> PricedCard:
         raise game_budget.GameBudgetCapRaisedError(label, card.max_games)
     priced = PricedCard(
         card=card,
-        invocations=tuple(
-            PricedInvocation(inv, _price_invocation(inv)) for inv in card.invocations
-        ),
+        invocations=tuple(PricedInvocation(inv, price_invocation(inv)) for inv in card.invocations),
     )
     if priced.total > card.max_games:
         if not ref:
