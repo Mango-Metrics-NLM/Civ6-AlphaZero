@@ -81,6 +81,7 @@ from alpha_zero.local.pinned_env import (
     prepare_pinned_run,
 )
 from alpha_zero.utils import game_budget
+from alpha_zero.utils.checkpoint import GIT_SHA_ENV
 from alpha_zero.utils.data_root import (
     ENV_VAR as DATA_ROOT_ENV,
 )
@@ -599,6 +600,9 @@ def run_card(
             child = child_env(base)
             child.update(scoped_temp_env(root))
             child[DATA_ROOT_ENV] = str(root)
+            # The child runs from a `git archive` export with no .git; this is how its
+            # checkpoints and evaluations learn their commit (utils.checkpoint.read_git_sha).
+            child[GIT_SHA_ENV] = env.sha
             device_source = "unset"
             if card.cuda_visible_devices is not None:
                 child["CUDA_VISIBLE_DEVICES"] = card.cuda_visible_devices

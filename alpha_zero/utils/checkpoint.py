@@ -14,6 +14,8 @@ Security Note:
 from __future__ import annotations
 
 import logging
+import os
+import re
 import warnings
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass, fields, is_dataclass
@@ -312,48 +314,120 @@ def validate_primitive_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     return metadata
 
 
-def read_git_sha(start: Path | None = None) -> str | None:
-    """Commit at ``HEAD`` by reading ``.git`` directly -- no subprocess.
+#: Environment variable carrying the commit a run was launched from. The run-card
+#: driver sets it for every child, which executes from a ``git archive`` export
+#: with no ``.git`` to read.
+GIT_SHA_ENV = "CIV6AZ_GIT_SHA"
 
-    Walks up from ``start`` (default: the working directory) to the nearest
-    ``.git``; follows a symbolic ``HEAD`` through loose and packed refs. Returns
-    ``None`` outside a repository or when the ref cannot be resolved, rather
-    than guessing.
-    """
-    here = (start or Path.cwd()).resolve()
-    for candidate in (here, *here.parents):
-        git_dir = candidate / ".git"
-        if git_dir.is_file():  # worktree: "gitdir: <path>"
-            try:
-                pointer = git_dir.read_text(encoding="utf-8").strip()
-            except OSError:
-                return None
-            git_dir = Path(pointer.removeprefix("gitdir:").strip())
-        if not git_dir.is_dir():
-            continue
-        try:
-            head = (git_dir / "HEAD").read_text(encoding="utf-8").strip()
-        except OSError:
-            return None
-        if not head.startswith("ref:"):
-            return head or None
-        ref = head.removeprefix("ref:").strip()
-        loose = git_dir / ref
-        if loose.is_file():
-            try:
-                return loose.read_text(encoding="utf-8").strip() or None
-            except OSError:
-                return None
-        packed = git_dir / "packed-refs"
-        if packed.is_file():
-            try:
-                for line in packed.read_text(encoding="utf-8").splitlines():
-                    parts = line.split()
-                    if len(parts) == 2 and parts[1] == ref:
-                        return parts[0]
-            except OSError:
-                return None
+#: The source tree this package was imported from (``<root>/alpha_zero/utils/``).
+_SOURCE_ROOT = Path(__file__).resolve().parents[2]
+
+
+_FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
+
+
+def _sha_from_env() -> str | None:
+    """``CIV6AZ_GIT_SHA`` when it is a full 40-hex SHA; otherwise ``None`` (warned)."""
+    value = os.environ.get(GIT_SHA_ENV)
+    if value is None:
         return None
+    sha = value.strip().lower()
+    if _FULL_SHA_RE.match(sha):
+        return sha
+    logger.warning(
+        "Ignoring %s=%r: not a 40-hex commit SHA; falling back to the checkout.",
+        GIT_SHA_ENV,
+        value,
+    )
+    return None
+
+
+def _read_text(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+
+
+def _git_dir_of(candidate: Path) -> Path | None:
+    """The git directory for a checkout root, following a worktree's ``gitdir:`` file.
+
+    A relative pointer is resolved against the directory holding the ``.git``
+    file (git's own rule), never against the process's working directory.
+    """
+    dot_git = candidate / ".git"
+    if dot_git.is_file():
+        pointer = _read_text(dot_git)
+        if pointer is None or not pointer.startswith("gitdir:"):
+            return None
+        target = Path(pointer.removeprefix("gitdir:").strip())
+        dot_git = target if target.is_absolute() else (candidate / target).resolve()
+    return dot_git if dot_git.is_dir() else None
+
+
+def _resolve_ref(git_dir: Path, ref: str) -> str | None:
+    """A ref's SHA from loose refs and ``packed-refs``, per-worktree dir first.
+
+    In a worktree, ``HEAD`` lives in the per-worktree gitdir but branch refs live
+    in the common dir named by its ``commondir`` file.
+    """
+    dirs = [git_dir]
+    commondir = _read_text(git_dir / "commondir")
+    if commondir:
+        common = Path(commondir)
+        dirs.append(common if common.is_absolute() else (git_dir / common).resolve())
+    for directory in dirs:
+        loose = directory / ref
+        if loose.is_file():
+            return _read_text(loose) or None
+    for directory in dirs:
+        packed = _read_text(directory / "packed-refs")
+        if packed is None:
+            continue
+        for line in packed.splitlines():
+            parts = line.split()
+            if len(parts) == 2 and parts[1] == ref:
+                return parts[0]
+    return None
+
+
+def _sha_at(git_dir: Path) -> str | None:
+    head = _read_text(git_dir / "HEAD")
+    if not head:
+        return None
+    if not head.startswith("ref:"):
+        return head
+    return _resolve_ref(git_dir, head.removeprefix("ref:").strip())
+
+
+def read_git_sha(start: Path | None = None) -> str | None:
+    """Commit the running code came from, without a subprocess.
+
+    Resolution order:
+
+    1. ``CIV6AZ_GIT_SHA``, if it is a full 40-hex SHA (an invalid value is
+       ignored with a warning). The run-card driver sets it for every child,
+       which runs from a ``git archive`` export that has no ``.git``.
+    2. With no ``start``: the checkout at this package's own source root only --
+       never the working directory, and never an ancestor, so an unrelated
+       repository enclosing a pinned export cannot lend it a wrong SHA.
+    3. With ``start``: the nearest ``.git`` at or above ``start``.
+
+    Worktrees are followed through ``commondir`` to loose and packed refs.
+    Returns ``None`` when nothing resolves, rather than guessing.
+    """
+    from_env = _sha_from_env()
+    if from_env is not None:
+        return from_env
+    if start is None:
+        git_dir = _git_dir_of(_SOURCE_ROOT)
+        return _sha_at(git_dir) if git_dir is not None else None
+    here = start.resolve()
+    for candidate in (here, *here.parents):
+        if not (candidate / ".git").exists():
+            continue
+        git_dir = _git_dir_of(candidate)
+        return _sha_at(git_dir) if git_dir is not None else None
     return None
 
 

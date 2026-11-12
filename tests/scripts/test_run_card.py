@@ -316,6 +316,10 @@ def test_child_env_is_pinned_and_scoped(
     assert Path(seen["TMP"]) == root / "tmp" and Path(seen["TEMP"]) == root / "tmp"
     assert Path(seen["CIV6AZ_DATA_ROOT"]) == root
     assert "PYTHONPATH" not in seen
+    # The child runs from a `git archive` export with no .git: the pinned SHA is how
+    # its checkpoints and evaluations record their commit (T10 review I1).
+    assert seen["CIV6AZ_GIT_SHA"] == _run_json(tmp_path)["sha"]
+    assert len(seen["CIV6AZ_GIT_SHA"]) == 40
 
 
 def test_preflight_version_mismatch_fails_card(

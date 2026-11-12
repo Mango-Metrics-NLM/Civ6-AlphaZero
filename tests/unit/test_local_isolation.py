@@ -302,3 +302,16 @@ def test_cloud_gcp_backend_cached_client_is_guarded(
     ):
         with pytest.raises(LocalModeViolation):
             op()
+
+
+def test_git_sha_passes_through_to_the_child(
+    cloud_env: None, tmp_path: Path, restore_environ: dict[str, str]
+) -> None:
+    """``CIV6AZ_GIT_SHA`` is how a pinned child learns its commit (T10 review I1).
+
+    A pinned child runs from a ``git archive`` export with no ``.git``, so if the
+    allowlist ever swallowed this name every checkpoint would record ``git_sha: null``.
+    """
+    os.environ["CIV6AZ_GIT_SHA"] = "0123456789abcdef0123456789abcdef01234567"
+    child = enter_local_mode("run1", tmp_path)
+    assert child["CIV6AZ_GIT_SHA"] == "0123456789abcdef0123456789abcdef01234567"
