@@ -16,6 +16,7 @@ named here are implemented in `scripts/check_branch_direction.py`,
 | Only the maintainer merges into `qa`/`main` and creates `v*` tags | The machine user `civ6az-agent` (repo Write, on no ruleset bypass list) plus the `qa-main-merge` and `release-tags` rulesets | **A convention until the maintainer provisions the user and applies the rulesets** (`scripts/maintainer/branch_cutover.sh`). After that it is enforced by identity. |
 | A PR goes in the right direction | `Branch Direction` check (`scripts/check_branch_direction.py`) | **Accident net, not a control.** A same-repo PR runs the workflow file from its own merge ref, so any Write-holder can fake the check. The control for `qa`/`main` is the maintainer-only merge above. |
 | A tag is only published if its lineage is right | `release.yml` `verify-tag` + `wait-for-ci`, and `tag_release` | Enforced by the workflow once it is on the tagged commit. Required checks are pinned to `integration_id` 15368 (GitHub Actions). |
+| A release PR into `main` carries verified evidence | `Release Evidence` check (`scripts/verify_release_evidence.py`, `ci.yml`) | **Accident net, not a control,** for the same reason as Branch Direction. Required on `main` only after maintainer action 9a; `wait-for-ci` requires it for a non-hotfix final either way. |
 | No run over 1,000 games | `alpha_zero/utils/game_budget.py` in every runner | Enforced by the runner. `--max_games` can only lower the cap. `--approval_ref <issue>` raises it and is **recorded, not verified**; the guard asks before running a command that carries it. |
 
 Do not describe the repository as enforcing a row before the status in that row is true.
@@ -67,6 +68,21 @@ Run cards execute on the rc commit (section 4). Results go on branch
 PR. Evidence follows `docs/evidence/SCHEMA.md` (`search_epoch: post-2026-09-04`);
 determinism holds on CPU only, so confirmatory runs use CPU and GPU runs are exploratory.
 
+The release's evidence is `docs/evidence/release_vX_Y_Z/bundle.json` (schema: `SCHEMA.md`,
+"Release evidence bundle"), with `report.md` and an index row. Check it before opening the
+release PR:
+
+```bash
+python scripts/verify_release_evidence.py --repo OWNER/NAME   # 0 pass, 1 fail, 2 missing
+```
+
+It recomputes every count, interval and the section 7.1 verdict from the per-game records,
+re-hashes every component, reads the rc's check runs as `wait-for-ci` does, caps each run at
+1,000 games without its own `approval_ref`, and refuses a run whose commit is not an ancestor
+of the rc or whose play path (`scripts/release_play_path.txt`) changed since. A FAIL, VOID or
+INCONCLUSIVE verdict passes when recorded honestly (`learning_claimed: false`, no "learns"
+wording); a negative A1 ships the release with the claim withheld.
+
 ### Release-candidate fix
 
 Fix upstream first on `dev` (squash). Then either:
@@ -77,14 +93,20 @@ Fix upstream first on `dev` (squash). Then either:
 
 ### Release (maintainer)
 
-`qa` -> `main` through a PR titled "Release vX.Y.Z" (merge commit). Then
-`tag_release.py vX.Y.Z`. The same day, back-merge `backmerge/vX.Y.Z-to-dev` (from `main`) into
+`qa` -> `main` through a PR titled "Release vX.Y.Z" (merge commit). The PR needs a green
+`Release Evidence` check (section "Evidence"). Then `tag_release.py vX.Y.Z`. The same day, back-merge `backmerge/vX.Y.Z-to-dev` (from `main`) into
 `dev` with a merge commit, using `merge_backmerge.sh`.
 
 ### Hotfix (maintainer)
 
 `hotfix/*` from `main` -> `main`, then tag. Then `backmerge/...-to-qa` and
-`backmerge/...-to-dev`.
+`backmerge/...-to-dev`. `Release Evidence` reports n/a for a `hotfix/*` head, but only once
+`main` carries the job: between action 9a and the first release after T14, a hotfix PR into
+`main` runs from a `ci.yml` without it, the required check never reports, and the PR cannot
+merge. Either cherry-pick the T14 commit (the job, `scripts/verify_release_evidence.py`,
+`scripts/release_play_path.txt`) onto the hotfix branch, or remove Release Evidence from the
+`main` ruleset for that merge and put it back afterwards (`branch_cutover.sh
+add-release-evidence`).
 
 ### Keeping a back-merge current
 
@@ -137,6 +159,13 @@ the steps. Nothing here is run by an agent.
    tag. Only now may the docs claim identity enforcement.
 8. Update local clones and worktrees (`local`):
    `git branch -m <old> dev && git branch -u origin/dev dev && git remote set-head origin -a && git fetch --prune`.
+
+9a. **After T14 (Release Evidence) merges into `dev`:** PATCH Release Evidence into the `main`
+    ruleset (`branch_cutover.sh --execute add-release-evidence`, which refuses until
+    `origin/dev` has `scripts/verify_release_evidence.py`, then PUTs the full `main.json`).
+    Confirm that a draft PR into `main` shows Release Evidence as **Expected**. Steps 4 and 5
+    deliberately leave it out, so applying them again never adds it early. Read the hotfix
+    caveat in section 3 first.
 
 Rollback: `rollback` deletes the rulesets, renames `dev` back, deletes the `qa` and `main`
 refs and restores the settings snapshot.

@@ -15,7 +15,7 @@
 
 ## 2. R2 -- branch direction, rulesets, release scripts
 - [x] 2.1 `scripts/check_branch_direction.py` + `branch-policy.yml` (an accident net; judge fetched from the default branch, no PR-copy fallback)
-- [x] 2.2 `.github/rulesets/{dev,qa,main,qa-main-merge,release-tags,legacy-name}.json` (no Release Evidence until T14)
+- [x] 2.2 `.github/rulesets/{dev,qa,main,qa-main-merge,release-tags,legacy-name}.json` (`main.json` gains Release Evidence in T14, task 5.3)
 - [x] 2.3 `scripts/maintainer/{rulesets.py,branch_cutover.sh,merge_backmerge.sh}` (dry run by default)
 - [x] 2.4 `scripts/release_version.py`, `scripts/release_checks.py`, `scripts/maintainer/tag_release.py`
 - [x] 2.5 `release.yml`: `verify-tag` + `wait-for-ci` gate the publish job
@@ -28,3 +28,11 @@
 
 ## 4. R4 -- retire the old default
 - [ ] 4.1 Drop `claude/civ6-alphazero-implementation-vMnun` from the protected list and workflow triggers
+
+## 5. T14 -- Release Evidence (LF-D8)
+- [x] 5.1 `a1_protocol.compute_verdict` / `verdict_from_bounds`: the one section 7.1 verdict implementation (`tests/unit/test_a1_verdict.py`)
+- [x] 5.2 `scripts/verify_release_evidence.py` + `scripts/release_play_path.txt`; bundle schema in `docs/evidence/SCHEMA.md`
+- [x] 5.3 `ci.yml` job `Release Evidence` (always runs; n/a off main and on `hotfix/*`); `main.json` requires it
+- [x] 5.4 `branch_cutover.sh`: steps 4 and 5 withhold Release Evidence; new step `add-release-evidence` (9a)
+- [x] 5.5 Gates: `tests/scripts/test_verify_release_evidence.py`; negative controls (symmetry VOID ignored, freshness diff dropped) recorded in its module
+- [ ] 5.6 Maintainer action 9a: after T14 merges into dev, PUT Release Evidence into the main ruleset (`branch_cutover.sh add-release-evidence`); confirm a draft PR into main shows it as Expected
