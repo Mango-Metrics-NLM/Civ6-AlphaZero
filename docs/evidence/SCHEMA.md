@@ -38,3 +38,45 @@ Produce the JSON with the block (the benchmark CLI does this), write the report,
 add the index row, and label the epoch honestly. A result generated on
 post-2026-09-04 code is the first kind of artifact that may be quoted as evidence
 of strength, and only with its score-rate interval (see `docs/EVALUATION.md`).
+
+## Release evidence bundle (`release_vX_Y_Z/bundle.json`)
+
+A release's evidence directory (plan section 6, LF-D8) holds `bundle.json`,
+`report.md`, an index row, and the components the bundle names. It is a normal
+artifact under the contract above: `bundle.json` carries the `evidence` block.
+`scripts/verify_release_evidence.py` checks it, and the `Release Evidence` CI job
+runs it on every pull request into `main` except `hotfix/*` (exit 0 pass, 1 fail,
+2 missing). Generated example bundles live in
+`tests/scripts/release_evidence_fixture.py`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `bundle_schema_version` | int | `1` |
+| `release` | `X.Y.Z` | equals `pyproject.toml`; the directory is `release_vX_Y_Z` |
+| `rc_tag`, `rc_sha` | tag, 40 hex | the rc the evidence was produced on; the tag must point at `rc_sha`, and `rc_sha` must be an ancestor of the PR head |
+| `protocol_sha256` | 64 hex | sha256 of `docs/EVALUATION.md` section 7.1, at HEAD and at every run's commit |
+| `runs` | list | the component runs (below): `A1`, and `A1-R` when it ran |
+| `games_total` | int | sum of the runs' `games`; reported, not gated |
+| `learning_recorded` | `true` | required: the verdict is recorded whatever it is |
+| `learning_claimed` | bool | `true` only when A1 and A1-R both recompute to PASS; the only thing that permits "learns" wording in `report.md` (the word may appear in backticks or quotes as a mention) |
+| `evidence` | object | the block above, with `games_total` equal to the bundle's |
+
+Each `runs[]` entry:
+
+| Field | Meaning |
+|---|---|
+| `run_id`, `role`, `seed` | the card's `card_id`; `A1` (seed 20261111) or `A1-R` (20261112) |
+| `git_sha` | the card's pinned commit (`run.json`'s `sha`); every component must record it, and it must be an ancestor of `rc_sha` with no change since it on `scripts/release_play_path.txt` |
+| `games`, `approval_ref` | the run's priced games (the sum of `run.json`'s invocations) and `run.json`'s own `approval_ref`; over 1,000 games needs one |
+| `run_json`, `iterations` | `{path, sha256}` of the run's `run.json` and `iterations.jsonl` |
+| `arms` | `{name: {path, sha256, wins, draws, losses, score_rate, confidence, hull}}` for `primary`, `symmetry`, `positive_control`, `secondary_5`, `secondary_10`, `secondary_15`, `final_vs_random`; `hull` is at 99% for `symmetry`, 95% otherwise |
+| `verdict` | `a1_protocol.compute_verdict(...).to_dict()`: `verdict`, `reasons`, the three hulls, and for INCONCLUSIVE `mde_alpha025_80pct`, `hull_ratio`, `mde_alpha025_80pct_hull` |
+
+Paths are POSIX and relative to the bundle directory (`..` and absolute paths
+are refused). The verifier re-hashes every component, re-validates each arm's
+`result.json` with the benchmark's `validate_envelope`, recomputes its counts,
+`scoring.summarize`, both intervals and their hull from the per-game records,
+checks each arm's `evidence.command` against its `run.json` invocation, and
+recomputes the verdict; a stored number that disagrees fails the bundle. A VOID,
+FAIL or INCONCLUSIVE verdict passes when it is recorded honestly: a negative A1
+ships the release with the claim withheld.

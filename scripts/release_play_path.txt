@@ -1,0 +1,43 @@
+# The play path (plan section 6, LF-D8): code that changes how a fixed network
+# plays, so a change to any of it since an evidence run's commit makes that run
+# stale. scripts/verify_release_evidence.py requires
+#   git diff --name-only <run git_sha> <rc_sha> -- <these pathspecs>
+# to be empty for every component run of a release evidence bundle.
+#
+# One git pathspec per line, matched with the :(glob) magic: `**` spans
+# directories, anything else is a literal path from the repository root.
+# Blank lines and lines starting with # are ignored.
+# tests/scripts/test_verify_release_evidence.py fails if a literal path or a
+# glob's directory does not exist, so a rename cannot silently drop coverage.
+
+# Search
+alpha_zero/core/mcts/**
+alpha_zero/core/mcts_constants.py
+alpha_zero/core/mcts_factory.py
+alpha_zero/core/batch_mcts.py
+alpha_zero/core/civ6_mcts.py
+
+# Actions and the network
+alpha_zero/core/civ6_actions.py
+alpha_zero/core/civ6_network.py
+
+# The encoders (the hexcrystal implementation and its core re-export shims)
+alpha_zero/hexcrystal/**
+alpha_zero/core/encoder_registry.py
+alpha_zero/core/hex_encoder.py
+alpha_zero/core/hex_conv.py
+alpha_zero/core/crystalline_layers.py
+
+# The environment and its encoders (envs/civ6_encoder.py)
+alpha_zero/envs/**
+
+# Evaluation: the benchmark, its statistics and the verdict (a1_protocol)
+alpha_zero/evaluation/**
+
+# Seeds and constants
+alpha_zero/utils/seeding.py
+alpha_zero/utils/constants.py
+
+# The arena and the training entry point
+alpha_zero/cloud/gcp/arena.py
+alpha_zero/training_civ6.py
