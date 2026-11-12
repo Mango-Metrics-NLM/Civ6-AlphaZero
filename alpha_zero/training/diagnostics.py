@@ -559,8 +559,14 @@ def prequential_value_metrics(
         greedy_threshold: The run's ``greedy_threshold``. ``select_action``
             ignores temperature when a target's max-p is strictly above it, so
             ``target_share_above_greedy_threshold`` is the fraction of this
-            iteration's positions on which the temperature schedule was inert
-            (LF-A5; ``kb/specs/20261111-completed-q-alignment-memo.md``).
+            iteration's *non-forced* positions on which the temperature
+            schedule was inert (LF-A5;
+            ``kb/specs/20261111-completed-q-alignment-memo.md``). Both target
+            sharpness fields are over positions with more than one legal action
+            (``n_unforced`` of them): a forced move's target is a one-hot
+            whatever the search does, and temperature cannot matter there, so
+            counting it would measure how often moves are forced, not how sharp
+            the targets are. ``forced_move_share`` records that separately.
 
     Returns:
         A JSON-serialisable dict. ``r2_oos = 1 - SSE / SST`` where SST is taken
@@ -594,6 +600,8 @@ def prequential_value_metrics(
         "greedy_threshold": float(greedy_threshold),
         "target_max_p_mean": None,
         "target_share_above_greedy_threshold": None,
+        "n_unforced": 0,
+        "forced_move_share": None,
         **_step_counts(step_records),
     }
     if not fresh_examples:
@@ -629,9 +637,14 @@ def prequential_value_metrics(
     # Mean entropy is a weak detector of a target collapsing to deltas: the
     # target distribution is bimodal across networks, so the mean can barely
     # move while the near-delta share does. Record the share directly.
-    max_p = np.array([float(np.max(e.policy)) for e in fresh_examples], dtype=np.float64)
-    metrics["target_max_p_mean"] = float(max_p.mean())
-    metrics["target_share_above_greedy_threshold"] = float(np.mean(max_p > greedy_threshold))
+    # Forced moves (one legal action) are excluded: see ``greedy_threshold`` above.
+    unforced = [e for e in fresh_examples if int(np.count_nonzero(e.action_mask)) > 1]
+    metrics["n_unforced"] = len(unforced)
+    metrics["forced_move_share"] = 1.0 - len(unforced) / len(fresh_examples)
+    if unforced:
+        max_p = np.array([float(np.max(e.policy)) for e in unforced], dtype=np.float64)
+        metrics["target_max_p_mean"] = float(max_p.mean())
+        metrics["target_share_above_greedy_threshold"] = float(np.mean(max_p > greedy_threshold))
     metrics["policy_entropy"] = float(
         np.mean(
             [

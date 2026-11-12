@@ -164,7 +164,13 @@ The raw data and the per-seed table are in `docs/evidence/target_sharpness_probe
 | `current_search_mctx_minmax_c1_target` | 0.775 | 0.634 / 0.563 | 41.3% | 11.3 pt [1.0%, 90.5%] | 61.4% |
 | `mctx_default` (min-max, c_scale 0.1) | 1.722 | 0.425 / 0.296 | 0.5% | 0.2 pt [0.0%, 1.5%] | 60.2% |
 
-The 11 forced positions (one legal action) count in every row, about 0.6 points of each share.
+The probe's shares are over all positions. It counts 11 positions with at most one legal
+action (0.55% of 2,000), so at most 0.55 points of any share come from them. That is small in
+random play but not in self-play: the review's A1-style self-play run found **8.4% forced
+positions**, and every above-threshold target there was a forced move (0 of 727 non-forced
+positions). A forced move's target is a one-hot whatever the search does, and temperature
+cannot matter on it. A13 therefore measures sharpness over **non-forced positions only** (see
+finding 4 and §6), and the probe's shares are not directly comparable to A13's.
 The across-seed spread of the min-max rows is driven by the network, not by the position set.
 The review held positions fixed and varied the network (shares 2–83%), and held the network
 fixed and varied positions (63–77%).
@@ -198,15 +204,17 @@ What the numbers say:
    separates moves by about a tenth of a game result will push the current target to the
    threshold. The probe cannot measure that.
    - The in-run detector is A13's per-iteration record.
-   - As of this fix round it includes `target_share_above_greedy_threshold` and
-     `target_max_p_mean` (`alpha_zero/training/diagnostics.py`, `prequential_value_metrics`),
-     beside the target entropy.
+   - It includes `target_share_above_greedy_threshold` and `target_max_p_mean`
+     (`alpha_zero/training/diagnostics.py`, `prequential_value_metrics`), beside the target
+     entropy. Both are computed over **non-forced positions** (more than one legal action;
+     `n_unforced` of them), and the forced share is recorded on its own as
+     `forced_move_share`.
 
 ## 5. Options
 
 | Option | What changes | Code before T13 | Effect at iteration 0 (probe) | Risk to A1 |
 |---|---|---|---|---|
-| **A. Register current settings unchanged (default)** | nothing; the divergences in §3 are recorded as deliberate (this closes CFP S3's "or record deliberately") | none | max-p > 0.99 on 1.9% | the current target is the one that sharpens fastest per unit of Q (finding 4); watched by A13's target-sharpness record and the §6 trigger, not prevented |
+| **A. Register current settings unchanged (default)** | nothing; the divergences in §3 are recorded as deliberate (this closes CFP S3's "or record deliberately") | none | max-p > 0.99 on 1.9% | the current target is the one that sharpens fastest per unit of Q (finding 4); watched by A13's target-sharpness record (non-forced positions) and the §6 trigger, not prevented |
 | B. A12 only: σ in the halving score | `gumbel`, `muzero`, `batch_mcts` (+ a shared helper in `gumbel_ops`), CONFIRM-FIRST | yes, with the forced-win oracle and `SearchStats` equality re-run; A16 provenance needs a new field so B-checkpoints are distinguishable | 1.8%; target argmax differs on 6.7% | small effect at n = 24; delays T13 by one PR + review |
 | C. Full paper alignment (c_scale 1.0) | B + `v_mix` completion, a [0, 1] normalisation, all-legal support. Changes training targets (CONFIRM-FIRST, CFP S3). **The maintainer must also choose the normalisation, which the paper does not specify** | yes, larger: new negative controls for the target, new provenance fields (target variant, normalisation), the oracle re-validated | **affine: 1.3%**, entropy 2.40, argmax differs on 32%. **Per-node min-max: 38%**, argmax differs on 47% | affine: softer targets and a different search on about a third of moves, with no evidence that it is better at this budget. Min-max: near-delta targets from uninformative values from iteration 0 |
 | D. `mctx` defaults (min-max, c_scale 0.1) | as C, with `mctx`'s normalisation and scale | as C | 0.5%; argmax differs on 40% | a different search on 40% of moves; Atari's scale, not the board-game one |
@@ -229,18 +237,34 @@ deliberately, with this memo as the reference. Reasons:
 
 The live risk is the one finding 4 names: the current target sharpening mid-run. It is now
 measured.
-- A13 records `target_share_above_greedy_threshold` and `target_max_p_mean` per iteration.
-  These are recorded, not gated.
+- A13 records `target_share_above_greedy_threshold` and `target_max_p_mean` per iteration, over
+  non-forced positions, with `forced_move_share` and `n_unforced` beside them. These are
+  recorded, not gated. Excluding forced moves matters: counted in, they would make the share
+  track how often moves are forced (about 8% in self-play, and drifting as the policy changes)
+  rather than how sharp the targets are.
 - T13 should take the **baseline from A1's own iteration 0** (A13 measures self-play positions,
   which differ from the probe's random-play positions). It should quote the probe's 1.9% only as
   context.
 
-**Pre-declared trigger for Option E**, for T13 to register in section 7.1 before A1 runs. Let
-`s₀` be `target_share_above_greedy_threshold` at A1's first iteration (loop index 0) and `sᵢ` its
-value at iteration `i`. After A1 finishes, whatever its verdict, check:
+**Pre-declared trigger for Option E**, for T13 to register in section 7.1 before A1 runs. All
+quantities are the A13 fields in `iterations.jsonl`, which are computed over **non-forced
+positions only**.
+
+- **`sᵢ`** is `prequential.target_share_above_greedy_threshold` at iteration `i`, and **`mᵢ`** is
+  `prequential.target_max_p_mean`. An iteration whose record carries an `error`, or whose
+  value is `null` (no non-forced positions), contributes nothing.
+- **`s₀`** is `s` from A1's iteration-0 record (loop index 0) **only if** that record has
+  `generator == "network"` (A1 runs `--bootstrap none`) and carries no `error`. **Otherwise
+  `s₀ := 0`**, so the 0.25 floor applies.
+
+After A1 finishes, whatever its verdict, check:
 
 - **T1:** `sᵢ > max(0.25, 5 · s₀)` at any iteration `i ≥ 1`; or
-- **T2:** `target_max_p_mean > 0.80` at any iteration.
+- **T2:** `mᵢ > 0.80` at any iteration.
+
+For reference, the non-forced starting values in the review's A1-style self-play were about
+0–1.5% (share) and about 0.36 (mean max-p). So the 0.25 floor binds, and `5 · s₀` matters only
+if `s₀` exceeds 5%.
 
 If either fires, the Option E ablation is the next experiment. Run B first, because it is the
 smaller change; run C only if the maintainer has chosen its normalisation. It is pre-registered
@@ -264,7 +288,7 @@ current settings unchanged".**
 
 | Option | Consequence for T13 registration |
 |---|---|
-| **A — register current settings unchanged (DEFAULT)** | T13 proceeds immediately. Section 7.1 registers the commands of plan §5.2 verbatim and states the divergences of §3 items 3–8 as deliberate, with a link to this memo. It registers the §6 trigger (T1/T2), the rule that A1's own iteration-0 A13 value is the baseline, and the requirement that `MCTS_GREEDY_THRESHOLD` / `MCTS_C_VISIT` are unset or recorded. No code change; no new gate. |
+| **A — register current settings unchanged (DEFAULT)** | T13 proceeds immediately. Section 7.1 registers the commands of plan §5.2 verbatim and states the divergences of §3 items 3–8 as deliberate, with a link to this memo. It registers the §6 trigger (T1/T2, on the non-forced A13 fields), the definition of `s₀` (A1's own iteration-0 record, `generator == "network"` and no `error`, else `s₀ := 0`), and the requirement that `MCTS_GREEDY_THRESHOLD` / `MCTS_C_VISIT` are unset or recorded. No code change; no new gate. |
 | B — σ in halving | T13 waits for a CONFIRM-FIRST PR. The PR adds a shared σ-ranking helper used by `gumbel`, `muzero` and `batch_mcts`. The forced-win oracle and the `SearchStats` equality are re-run with negative controls. A16 provenance gains a halving-score field. Section 7.1 records the new search and the §6 trigger. The probe is re-run on the merged code. |
 | C — full paper alignment (c_scale 1.0) | As B, plus the target change (CFP S3's "changes training targets"): `v_mix` completion, a [0, 1] normalisation **named in the decision** (affine or per-node min-max), all-legal support, provenance fields for the target variant and normalisation, and target-width/negative-control tests. Section 7.1 states the iteration-0 consequence under the chosen normalisation: about 1.3% near-deltas with affine, about 38% with min-max. |
 | D — `mctx` defaults (min-max, c_scale 0.1) | As C with `mctx`'s normalisation and scale. Section 7.1 records that the scale is the paper's Atari value, not its board-game value. |

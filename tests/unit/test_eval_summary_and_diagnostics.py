@@ -447,10 +447,32 @@ class TestPrequentialMetrics:
         assert metrics["target_share_above_greedy_threshold"] == pytest.approx(share)
         assert metrics["greedy_threshold"] == pytest.approx(threshold)
 
+    def test_forced_moves_are_excluded_from_target_sharpness(self) -> None:
+        # T12 rereview N1: a forced move's target is a one-hot whatever the search
+        # does, and temperature is irrelevant there, so it must not count. One forced
+        # one-hot + the four-position fixture: sharpness is the fixture's, and the
+        # forced share (1/5) is reported on its own.
+        forced = _example(0.0, 1.0, self.ONE_HOT, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        metrics = prequential_value_metrics(_VectorValueNet(8), [*self._fixture(), forced], [], 0.0)
+        assert metrics["n_unforced"] == 4
+        assert metrics["forced_move_share"] == pytest.approx(0.2)
+        assert metrics["target_max_p_mean"] == pytest.approx(0.75)
+        assert metrics["target_share_above_greedy_threshold"] == pytest.approx(0.5)
+
+    def test_only_forced_moves_leave_sharpness_undefined(self) -> None:
+        forced = _example(0.0, 1.0, self.ONE_HOT, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+        metrics = prequential_value_metrics(_VectorValueNet(8), [forced, forced], [], 0.0)
+        assert metrics["n_unforced"] == 0
+        assert metrics["forced_move_share"] == pytest.approx(1.0)
+        assert metrics["target_max_p_mean"] is None
+        assert metrics["target_share_above_greedy_threshold"] is None
+
     def test_target_sharpness_is_none_without_positions(self) -> None:
         metrics = prequential_value_metrics(_VectorValueNet(8), [], [], 0.0)
         assert metrics["target_max_p_mean"] is None
         assert metrics["target_share_above_greedy_threshold"] is None
+        assert metrics["forced_move_share"] is None
+        assert metrics["n_unforced"] == 0
 
     def test_histogram_and_invalid_counts(self) -> None:
         steps = [
@@ -600,6 +622,8 @@ class TestTrainLoopDiagnostics:
             assert 0.0 <= pq["target_share_above_greedy_threshold"] <= 1.0
             assert 0.0 < pq["target_max_p_mean"] <= 1.0
             assert pq["greedy_threshold"] == pytest.approx(config.gumbel_greedy_threshold)
+            assert 0.0 <= pq["forced_move_share"] <= 1.0
+            assert 0 <= pq["n_unforced"] <= pq["n_positions"]
 
     def test_record_eval_entry_and_checkpoint_path(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
