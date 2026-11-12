@@ -22,6 +22,7 @@ from alpha_zero.core.mcts.backup import (
 from alpha_zero.core.mcts.gumbel_ops import (
     SearchStats,
     build_completed_q_policy,
+    choose_among_most_visited,
     compute_completed_q,
     gumbel_sample_actions,
     halving_schedule,
@@ -289,6 +290,7 @@ class GumbelMCTS:
         # What the most recent `search` actually spent. Measured, never copied
         # from the plan, so a test can hold it against `planned_halving_sims`.
         self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._root_evals = 0
         self._sim_evals = 0
 
     def search(
@@ -321,9 +323,11 @@ class GumbelMCTS:
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
 
+        self._root_evals = 0
         self._sim_evals = 0
         policy, value = self._evaluate(spatial, vector, action_mask)
-        self.last_search_stats = SearchStats(root_evals=1, sim_evals=0)
+        self._root_evals += 1
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=0)
 
         # Expand root
         root.expand(policy, action_mask)
@@ -355,7 +359,7 @@ class GumbelMCTS:
         else:
             best_action = self._simple_search(env, root, sampled_actions)
 
-        self.last_search_stats = SearchStats(root_evals=1, sim_evals=self._sim_evals)
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=self._sim_evals)
         action_probs = self._build_policy_target(root, best_action, env.action_space.n)
         return action_probs, root.value
 
@@ -489,7 +493,10 @@ class GumbelMCTS:
                 self._run_simulation_from_action(env, root, survivors[rank])
             actions = self._rank_by_completed_q(root, survivors, scores, root_value)
 
-        return int(actions[0])
+        return choose_among_most_visited(
+            actions,
+            [root.children[a].visit_count if a in root.children else 0 for a in actions],
+        )
 
     def _rank_by_completed_q(
         self,

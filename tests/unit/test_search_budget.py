@@ -37,6 +37,7 @@ import torch
 from alpha_zero.core.batch_mcts import BatchGumbelMCTS, BatchMCTSConfig
 from alpha_zero.core.mcts.gumbel import GumbelMCTS, GumbelMCTSConfig
 from alpha_zero.core.mcts.gumbel_ops import (
+    HalvingRound,
     SearchStats,
     halving_schedule,
     planned_halving_sims,
@@ -62,6 +63,9 @@ BUDGET_POINTS: tuple[tuple[int, int, int], ...] = (
     (16, 8, AMPLE_LEGAL),
     (8, 30, AMPLE_LEGAL),
     (16, 64, 2),
+    # k = 1 is not a forced move: mctx spends all n on the lone candidate.
+    (1, 24, AMPLE_LEGAL),
+    (1, 24, 2),
 )
 
 
@@ -108,6 +112,10 @@ class _CountingNet:
 
     def __init__(self) -> None:
         self.positions = 0
+        # Rows per predict() call, in order. Every search evaluates the root(s)
+        # in its first call, so calls[0] is the root count and the rest are
+        # simulation leaves -- counted here, independently of the search.
+        self.calls: list[int] = []
 
     def eval(self) -> None:
         return None
@@ -117,6 +125,7 @@ class _CountingNet:
     ) -> tuple[torch.Tensor, torch.Tensor]:
         batch = spatial.shape[0]
         self.positions += batch
+        self.calls.append(batch)
         return torch.full((batch, ACTION_SPACE), 1.0 / ACTION_SPACE), torch.zeros(batch, 1)
 
 
@@ -161,14 +170,14 @@ def _run(variant: str, k: int, n: int, legal: int) -> tuple[SearchStats, int, in
             ),
         )
         search.search(env)
-        return search.last_search_stats, 1, net.positions - 1
+        return search.last_search_stats, net.calls[0], sum(net.calls[1:])
     if variant == "batch":
         net = _CountingNet()
         batch = BatchGumbelMCTS(
             net, BatchMCTSConfig(num_simulations=n, num_sampled_actions=k, seed=0)
         )
         batch.search(env)
-        return batch.last_search_stats, 1, net.positions - 1
+        return batch.last_search_stats, net.calls[0], sum(net.calls[1:])
     if variant == "muzero":
         mz = _CountingMuZeroNet()
         muzero = MuZeroMCTS(
@@ -206,8 +215,14 @@ class TestPlannedHalvingSims:
         ]
 
     @pytest.mark.parametrize(("k", "n", "legal"), BUDGET_POINTS)
-    def test_spends_exactly_n_with_two_or_more_candidates(self, k: int, n: int, legal: int) -> None:
+    def test_spends_exactly_n_unless_forced(self, k: int, n: int, legal: int) -> None:
         assert planned_halving_sims(k, n, legal) == n
+
+    @pytest.mark.parametrize("legal", [2, AMPLE_LEGAL])
+    def test_lone_candidate_gets_the_whole_budget(self, legal: int) -> None:
+        # --gumbel_k 1 with several legal moves is a search, not a forced move.
+        assert halving_schedule(1, 24, legal) == (HalvingRound(survivors=1, simulations=24),)
+        assert planned_halving_sims(1, 24, legal) == 24
 
     def test_k_is_capped_by_legal_moves(self) -> None:
         assert halving_schedule(16, 64, 5) == halving_schedule(5, 64, 5)
@@ -271,6 +286,15 @@ class TestSearchesSpendThePlan:
         # copied from the plan.
         assert counted_root == stats.root_evals
         assert counted_sims == stats.sim_evals
+
+    @pytest.mark.parametrize("variant", VARIANTS)
+    @pytest.mark.parametrize("legal", [2, AMPLE_LEGAL])
+    def test_lone_candidate_is_searched(self, variant: str, legal: int) -> None:
+        # Literal, not the plan: `--gumbel_k 1` with several legal moves must
+        # spend the whole budget in every search, even if the plan regresses.
+        stats, _, counted_sims = _run(variant, 1, 24, legal)
+        assert stats.sim_evals == 24
+        assert counted_sims == 24
 
     @pytest.mark.parametrize("variant", VARIANTS)
     def test_forced_move_is_not_searched(self, variant: str) -> None:
@@ -349,6 +373,32 @@ class TestTrainingCli:
             assert cfg.gumbel_policy_target == defaults.gumbel_policy_target
             assert cfg.gumbel_greedy_threshold == defaults.gumbel_greedy_threshold
 
+    def test_default_gumbel_config_is_pinned(self) -> None:
+        # Literals, not the same module's defaults: a changed default must fail here.
+        from alpha_zero.training_civ6 import TrainingConfig, gumbel_search_config
+
+        built = gumbel_search_config(
+            TrainingConfig(),
+            num_simulations=16,
+            seed=None,
+            temperature=1.0,
+            temperature_threshold=30,
+        )
+        assert built == GumbelMCTSConfig(
+            num_simulations=16,
+            num_sampled_actions=16,
+            max_considered_actions=32,
+            c_visit=50.0,
+            c_scale=1.0,
+            use_sequential_halving=True,
+            min_actions_after_halving=1,
+            temperature=1.0,
+            temperature_threshold=30,
+            seed=None,
+            policy_target="completed_q",
+            greedy_threshold=0.99,
+        )
+
     def test_gumbel_honours_num_simulations(self) -> None:
         # LF-A7: --mcts gumbel used to ignore --num_simulations entirely.
         cfg = _config_from_argv(["--mcts", "gumbel", "--num_simulations", "32"])
@@ -375,7 +425,37 @@ class TestTrainingCli:
     )
     def test_invalid_values_are_rejected(self, argv: list[str]) -> None:
         with pytest.raises(SystemExit):
-            _config_from_argv(argv)
+            _config_from_argv(["--mcts", "gumbel", *argv])
+
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--gumbel_k", "8"],
+            ["--gumbel_sims", "24"],
+            ["--c_scale", "0.1"],
+            ["--greedy_threshold", "0.9"],
+            ["--policy_target", "visit_counts"],
+        ],
+    )
+    @pytest.mark.parametrize("mcts", [[], ["--mcts", "civ6"]])
+    def test_gumbel_only_flags_need_mcts_gumbel(
+        self, argv: list[str], mcts: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        # Silently ignoring them under PUCT would let a run believe it was
+        # configured when it was not.
+        with pytest.raises(SystemExit):
+            _config_from_argv([*mcts, *argv])
+        assert "--mcts gumbel" in capsys.readouterr().err
+
+    def test_gumbel_only_flags_are_accepted_with_mcts_gumbel(self) -> None:
+        cfg = _config_from_argv(["--mcts", "gumbel", "--policy_target", "visit_counts"])
+        assert cfg.gumbel_policy_target == "visit_counts"
+
+    def test_gumbel_k_1_is_accepted(self) -> None:
+        assert (
+            _config_from_argv(["--mcts", "gumbel", "--gumbel_k", "1"]).gumbel_num_sampled_actions
+            == 1
+        )
 
     def test_new_flags_do_not_change_the_price(self) -> None:
         from alpha_zero.training_civ6 import training_budget_inputs
@@ -435,3 +515,162 @@ class TestTrainingCli:
             assert gcfg.c_scale == pytest.approx(0.1)
             assert gcfg.policy_target == "visit_counts"
             assert gcfg.greedy_threshold == pytest.approx(0.9)
+
+
+# ---------------------------------------------------------------------------
+# m-1: the chosen move is always one the search visited
+# ---------------------------------------------------------------------------
+
+ROOT_VALUE = 0.9
+ADVERSARIAL_SEEDS = range(50)
+
+
+class _AdversarialNet(_CountingNet):
+    """Root value +0.9, every leaf ``leaf_value``.
+
+    With ``leaf_value`` = -0.9 an unvisited candidate's completed Q (the root
+    value) beats every visited one, which is what tempts a search that ranks
+    unvisited candidates alongside visited ones into returning one of them.
+    Both signs are swept so the invariant does not depend on a variant's sign rule.
+    """
+
+    def __init__(self, leaf_value: float) -> None:
+        super().__init__()
+        self.leaf_value = leaf_value
+
+    def predict(
+        self, spatial: torch.Tensor, vector: torch.Tensor, mask: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        policy, _ = super().predict(spatial, vector, mask)
+        value = ROOT_VALUE if len(self.calls) == 1 else self.leaf_value
+        return policy, torch.full((spatial.shape[0], 1), value)
+
+
+class _AdversarialMuZeroNet(_CountingMuZeroNet):
+    def __init__(self, leaf_value: float) -> None:
+        super().__init__()
+        self.leaf_value = leaf_value
+
+    def initial_inference(self, spatial: Any, vector: Any, mask: Any) -> Any:
+        out = super().initial_inference(spatial, vector, mask)
+        return SimpleNamespace(
+            hidden_state=out.hidden_state,
+            policy_logits=out.policy_logits,
+            value=torch.full((1,), ROOT_VALUE),
+        )
+
+    def prediction_function(self, hidden: Any, mask: Any) -> Any:
+        logits, _ = super().prediction_function(hidden, mask)
+        return logits, torch.full((1,), self.leaf_value)
+
+
+def _chosen_and_visited(variant: str, seed: int, leaf_value: float) -> tuple[int, set[int]]:
+    """Search at (16, 8) -- the default evaluation shape -- with a one-hot target."""
+    k, n = 16, 8
+    env = _Env(AMPLE_LEGAL)
+    visited: set[int] = set()
+    if variant == "gumbel":
+        gumbel = GumbelMCTS(
+            _AdversarialNet(leaf_value),
+            GumbelMCTSConfig(
+                num_simulations=n, num_sampled_actions=k, seed=seed, policy_target="one_hot"
+            ),
+        )
+        original = gumbel._run_simulation_from_action
+
+        def record(e: Any, root: Any, action: int) -> None:
+            visited.add(int(action))
+            original(e, root, action)
+
+        gumbel._run_simulation_from_action = record  # type: ignore[method-assign]
+        probs, _ = gumbel.search(env)
+    elif variant == "batch":
+        batch = BatchGumbelMCTS(
+            _AdversarialNet(leaf_value),
+            BatchMCTSConfig(
+                num_simulations=n, num_sampled_actions=k, seed=seed, policy_target="one_hot"
+            ),
+        )
+        original_b = batch._run_simulation_for_env
+
+        def record_b(i: int, e: Any, root: Any, candidates: np.ndarray) -> Any:
+            visited.add(int(candidates[0]))
+            return original_b(i, e, root, candidates)
+
+        batch._run_simulation_for_env = record_b  # type: ignore[method-assign]
+        probs, _ = batch.search(env)
+    else:
+        muzero = MuZeroMCTS(
+            _AdversarialMuZeroNet(leaf_value),
+            MuZeroMCTSConfig(
+                num_simulations=n, num_sampled_actions=k, use_categorical_reward=False, seed=seed
+            ),
+        )
+        original_m = muzero._run_muzero_simulation
+
+        def record_m(root: Any, action: int, mask: np.ndarray) -> None:
+            visited.add(int(action))
+            original_m(root, action, mask)
+
+        muzero._run_muzero_simulation = record_m  # type: ignore[method-assign]
+        probs, _ = muzero.search(env.get_observation(), env.get_valid_actions())
+    assert np.isclose(probs.sum(), 1.0) and probs.max() == 1.0, "expected a one-hot target"
+    return int(np.argmax(probs)), visited
+
+
+class TestChosenMoveWasVisited:
+    """mctx's ``score_considered``: choose only among the most-visited candidates.
+
+    At (16, 8) the first round is truncated, so half the candidates are never
+    visited. Ranking them alongside the visited ones let an unsearched move win.
+    """
+
+    @pytest.mark.parametrize("leaf_value", [-0.9, 0.9])
+    @pytest.mark.parametrize("variant", VARIANTS)
+    def test_no_unvisited_move_is_returned(self, variant: str, leaf_value: float) -> None:
+        bad = []
+        for seed in ADVERSARIAL_SEEDS:
+            chosen, visited = _chosen_and_visited(variant, seed, leaf_value)
+            assert len(visited) == 8
+            if chosen not in visited:
+                bad.append(seed)
+        assert not bad, f"{variant} returned an unvisited move for seeds {bad}"
+
+
+# ---------------------------------------------------------------------------
+# m-3: the dry run bounds the Gumbel budget too, and says so
+# ---------------------------------------------------------------------------
+
+
+class TestDryRunBoundsGumbel:
+    def test_default_gumbel_budget_is_bounded(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        from alpha_zero.training_civ6 import DRY_RUN_PROFILE, TrainingConfig
+
+        with caplog.at_level(logging.INFO, logger="alpha_zero.training_civ6"):
+            bounded = DRY_RUN_PROFILE.apply_to(TrainingConfig(use_gumbel_mcts=True))
+        assert bounded.gumbel_num_simulations == DRY_RUN_PROFILE.gumbel_num_simulations
+        assert bounded.gumbel_num_simulations < TrainingConfig().gumbel_num_simulations
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            f"Gumbel search uses {bounded.gumbel_num_simulations} simulations" in m
+            for m in messages
+        ), messages
+
+    def test_explicit_gumbel_budget_wins(self, caplog: pytest.LogCaptureFixture) -> None:
+        import logging
+
+        from alpha_zero.training_civ6 import DRY_RUN_PROFILE
+
+        cfg = _config_from_argv(["--mcts", "gumbel", "--gumbel_k", "8", "--gumbel_sims", "24"])
+        with caplog.at_level(logging.INFO, logger="alpha_zero.training_civ6"):
+            bounded = DRY_RUN_PROFILE.apply_to(cfg)
+        assert bounded.gumbel_num_simulations == 24
+        assert any("Gumbel search uses 24 simulations" in r.getMessage() for r in caplog.records)
+
+    def test_puct_config_gumbel_field_is_left_alone(self) -> None:
+        from alpha_zero.training_civ6 import DRY_RUN_PROFILE, TrainingConfig
+
+        config = TrainingConfig(board_size=12, max_turns=40, num_simulations=25)
+        assert DRY_RUN_PROFILE.apply_to(config) is config

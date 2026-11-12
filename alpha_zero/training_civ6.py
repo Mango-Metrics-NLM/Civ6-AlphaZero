@@ -14,6 +14,7 @@ import os
 import re
 import time
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
@@ -253,6 +254,13 @@ EVAL_SEED_OFFSET = 1_000_000
 #: whose forward cost grows with ``board_size ** 2``.
 _INNER_DIMENSION_FIELDS: tuple[str, ...] = ("board_size", "max_turns", "num_simulations")
 
+#: Inner dimensions bounded only when the run uses the Gumbel search; under PUCT
+#: the field is inert, so a PUCT config is left exactly as given.
+_GUMBEL_INNER_DIMENSION_FIELDS: tuple[str, ...] = ("gumbel_num_simulations",)
+
+#: The CLI flag that sets each bounded field, for the "pass --X to override" hint.
+_FIELD_FLAGS: dict[str, str] = {"gumbel_num_simulations": "gumbel_sims"}
+
 
 @dataclass(frozen=True)
 class DryRunProfile:
@@ -281,6 +289,8 @@ class DryRunProfile:
     board_size: int = 6
     max_turns: int = 8
     num_simulations: int = 4
+    # Bounded only under --mcts gumbel (see _GUMBEL_INNER_DIMENSION_FIELDS).
+    gumbel_num_simulations: int = 4
 
     def apply_to(self, config: TrainingConfig) -> TrainingConfig:
         """Return *config* with unset inner dimensions bounded for a smoke test.
@@ -292,26 +302,40 @@ class DryRunProfile:
         value. That is the right default for a flag whose entire purpose is to
         finish quickly.
 
+        The Gumbel budget is bounded only when the run uses the Gumbel search,
+        and the budget the Gumbel search will actually use is always logged, so
+        a dry run never reports one budget while searching with another.
+
         The original config is not mutated; a copy is returned.
         """
         defaults = TrainingConfig()
+        fields = _INNER_DIMENSION_FIELDS + (
+            _GUMBEL_INNER_DIMENSION_FIELDS if config.use_gumbel_mcts else ()
+        )
         overrides = {
             field: getattr(self, field)
-            for field in _INNER_DIMENSION_FIELDS
+            for field in fields
             if getattr(config, field) == getattr(defaults, field)
         }
-        if not overrides:
-            logger.debug("dry-run: all inner dimensions set explicitly; none overridden")
-            return config
         for field, value in overrides.items():
             logger.info(
                 "dry-run: bounding %s %s -> %s (pass --%s to override)",
                 field,
                 getattr(config, field),
                 value,
-                field,
+                _FIELD_FLAGS.get(field, field),
             )
-        return replace(config, **overrides)
+        bounded = replace(config, **overrides) if overrides else config
+        if not overrides:
+            logger.debug("dry-run: all inner dimensions set explicitly; none overridden")
+        if bounded.use_gumbel_mcts:
+            logger.info(
+                "dry-run: Gumbel search uses %d simulations (k=%d) in self-play, %d in evaluation",
+                bounded.gumbel_num_simulations,
+                bounded.gumbel_num_sampled_actions,
+                max(1, bounded.gumbel_num_simulations // 2),
+            )
+        return bounded
 
 
 #: The profile used by every ``dry_run=True`` code path.
@@ -1324,9 +1348,46 @@ def _unit_interval(text: str) -> float:
     return value
 
 
+#: Flags that configure only the Gumbel search, as (argparse dest, flag). Given
+#: without ``--mcts gumbel`` they would be silently ignored, so the parser refuses.
+#: ``--policy_target`` is among them: the PUCT and Simple searches have no such field.
+_GUMBEL_ONLY_FLAGS: tuple[tuple[str, str], ...] = (
+    ("gumbel_k", "--gumbel_k"),
+    ("gumbel_sims", "--gumbel_sims"),
+    ("c_scale", "--c_scale"),
+    ("greedy_threshold", "--greedy_threshold"),
+    ("policy_target", "--policy_target"),
+)
+
+
+class _TrainingArgumentParser(argparse.ArgumentParser):
+    """Refuses Gumbel-only flags unless ``--mcts gumbel`` selects that search.
+
+    The check runs inside parsing so every caller of :func:`build_parser` --
+    :func:`main` and the run-card pricer alike -- gets it.
+    """
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        parsed, extras = super().parse_known_args(args, namespace)
+        if getattr(parsed, "mcts", "gumbel") != "gumbel":
+            given = [
+                flag for dest, flag in _GUMBEL_ONLY_FLAGS if getattr(parsed, dest, None) is not None
+            ]
+            if given:
+                self.error(
+                    f"{', '.join(given)} only configure the Gumbel search; "
+                    "pass --mcts gumbel or drop them"
+                )
+        return parsed, extras
+
+
 def build_parser() -> argparse.ArgumentParser:
     """The trainer's CLI parser. Also used by the run-card driver to price an argv."""
-    parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
+    parser = _TrainingArgumentParser(description="Train Civ6 AlphaZero")
     parser.add_argument("--board_size", type=int, default=16)
     parser.add_argument(
         "--max_turns",

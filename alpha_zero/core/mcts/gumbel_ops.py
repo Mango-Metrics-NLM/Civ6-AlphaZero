@@ -8,7 +8,7 @@ depend on the Gumbel variant.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -84,11 +84,15 @@ def halving_schedule(
     The rule (Danihelka et al., 2022, as implemented by ``mctx``'s
     ``get_sequence_of_considered_visits``):
 
-    * ``k_eff = min(k, num_legal)`` candidates enter. With ``k_eff <= 1`` the
-      move is forced (or there is none) and the schedule is empty: **no
+    * ``k_eff = min(k, num_legal)`` candidates enter.
+    * **Forced move.** With ``num_legal <= 1`` the schedule is empty: **no
       simulations are spent**. This is the one deliberate deviation from
-      ``mctx``, which spends the whole budget on a lone action; searching a
-      forced move cannot change the move or its policy target.
+      ``mctx``, which spends the whole budget on a lone legal action; searching
+      a forced move cannot change the move or its policy target.
+    * **Lone candidate.** With ``k_eff == 1`` but two or more legal moves
+      (``k = 1``) the move is *not* forced, so -- as in ``mctx`` -- all ``n``
+      simulations go to the one candidate, in a single round. Its searched
+      value then feeds the completed-Q target over the whole action set.
     * There are ``R = ceil(log2(k_eff))`` halving rounds. Round ``r`` visits
       ``m_r`` survivors, ``m_0 = k_eff`` and
       ``m_{r+1} = max(floor, m_r // 2)`` with ``floor = min(k_eff,
@@ -101,9 +105,12 @@ def halving_schedule(
       added to the final round, i.e. spent on the final survivors -- exactly
       what ``mctx`` does by continuing to cycle over its last two candidates.
 
-    Consequently the realised total is exactly ``n`` whenever ``k_eff >= 2``,
-    and 0 otherwise; ``min_survivors`` changes the shape of the schedule but
-    never its total.
+    Consequently the realised total is exactly ``n`` whenever ``num_legal >= 2``,
+    and 0 for a forced move; ``min_survivors`` changes the shape of the schedule
+    but never its total.
+
+    The move a search *returns* is chosen by :func:`choose_among_most_visited`,
+    not by the ranking alone: a truncated round leaves some candidates unvisited.
 
     Args:
         k: Configured number of Gumbel-sampled candidates.
@@ -126,8 +133,10 @@ def halving_schedule(
         raise ValueError(f"num_legal must be >= 0; got {num_legal}")
 
     k_eff = min(k, num_legal)
-    if k_eff <= 1 or n == 0:
+    if num_legal <= 1 or n == 0:
         return ()
+    if k_eff == 1:
+        return (HalvingRound(survivors=1, simulations=n),)
 
     num_rounds = math.ceil(math.log2(k_eff))
     floor = min(k_eff, max(MIN_HALVING_SURVIVORS, min_survivors))
@@ -152,8 +161,8 @@ def halving_schedule(
 def planned_halving_sims(k: int, n: int, num_legal: int) -> int:
     """Simulations a sequential-halving search spends for ``(k, n, num_legal)``.
 
-    The total of :func:`halving_schedule`: ``n`` when ``min(k, num_legal) >= 2``,
-    else 0. It does not depend on a search's ``min_actions_after_halving``,
+    The total of :func:`halving_schedule`: ``n`` when ``num_legal >= 2``, else 0
+    (a forced move). It does not depend on a search's ``min_actions_after_halving``,
     which only reshapes the rounds. Every search's
     ``last_search_stats.sim_evals`` must equal this.
 
@@ -161,6 +170,39 @@ def planned_halving_sims(k: int, n: int, num_legal: int) -> int:
         ValueError: As :func:`halving_schedule`.
     """
     return sum(r.simulations for r in halving_schedule(k, n, num_legal))
+
+
+def choose_among_most_visited(ranked_actions: Sequence[int], visit_counts: Sequence[int]) -> int:
+    """The best-ranked action among those with the maximum visit count.
+
+    ``mctx``'s ``score_considered`` restricts the final choice to the actions
+    holding the maximum visit count. Without that restriction a truncated round
+    -- at ``(k=16, n=8)``, half the candidates are never visited -- leaves
+    unvisited candidates in the ranking with a completed Q equal to the root
+    value, and one of them can be returned: a move the search never looked at.
+
+    Args:
+        ranked_actions: Candidates, best first by completed Q plus Gumbel score.
+        visit_counts: Root visit count of each action, aligned with
+            ``ranked_actions``.
+
+    Returns:
+        The first action in ``ranked_actions`` whose visit count is maximal.
+
+    Raises:
+        ValueError: If ``ranked_actions`` is empty or the lengths differ.
+    """
+    if not ranked_actions:
+        raise ValueError("ranked_actions must not be empty")
+    if len(ranked_actions) != len(visit_counts):
+        raise ValueError(
+            f"visit_counts has {len(visit_counts)} entries for {len(ranked_actions)} actions"
+        )
+    most = max(visit_counts)
+    for action, visits in zip(ranked_actions, visit_counts, strict=True):
+        if visits == most:
+            return int(action)
+    raise AssertionError("unreachable: max() is attained")  # pragma: no cover
 
 
 def gumbel_sample_actions(

@@ -51,7 +51,12 @@ from alpha_zero.core.mcts.backup import (
 from alpha_zero.core.mcts.gumbel import (
     POLICY_TARGET_COMPLETED_Q,
 )
-from alpha_zero.core.mcts.gumbel_ops import HalvingRound, SearchStats, halving_schedule
+from alpha_zero.core.mcts.gumbel_ops import (
+    HalvingRound,
+    SearchStats,
+    choose_among_most_visited,
+    halving_schedule,
+)
 from alpha_zero.core.mcts_constants import (
     DEFAULT_C_VISIT,
     DEFAULT_C_VISIT_DIVISOR,
@@ -191,6 +196,7 @@ class BatchGumbelMCTS:
         # summed. Measured, never copied from the plan.
         self.last_batch_search_stats: list[SearchStats] = []
         self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._env_root_evals: list[int] = []
         self._env_sim_evals: list[int] = []
 
         # Metrics tracking for W&B logging
@@ -242,6 +248,7 @@ class BatchGumbelMCTS:
         start_time = time.perf_counter()
         num_envs = len(envs)
         total_evals = 0
+        self._env_root_evals = [0] * num_envs
         self._env_sim_evals = [0] * num_envs
 
         # Step 1: Initialize root nodes and get initial evaluations (batched)
@@ -268,7 +275,9 @@ class BatchGumbelMCTS:
         eval_start = time.perf_counter()
         initial_results = self._batch_evaluate(spatial_list, vector_list, mask_list)
         eval_time = (time.perf_counter() - eval_start) * 1000
-        total_evals += num_envs
+        for i in range(len(initial_results)):
+            self._env_root_evals[i] += 1
+        total_evals += len(initial_results)
 
         # Step 2: Expand roots and sample candidate actions
         candidate_actions_list: list[np.ndarray] = []
@@ -316,10 +325,11 @@ class BatchGumbelMCTS:
 
         # Count total evaluations as measured, not as configured.
         self.last_batch_search_stats = [
-            SearchStats(root_evals=1, sim_evals=sims) for sims in self._env_sim_evals
+            SearchStats(root_evals=roots, sim_evals=sims)
+            for roots, sims in zip(self._env_root_evals, self._env_sim_evals, strict=True)
         ]
         self.last_search_stats = SearchStats(
-            root_evals=num_envs, sim_evals=sum(self._env_sim_evals)
+            root_evals=sum(self._env_root_evals), sim_evals=sum(self._env_sim_evals)
         )
         total_evals += self.last_search_stats.sim_evals
 
@@ -468,7 +478,16 @@ class BatchGumbelMCTS:
             if len(actions) == 0:
                 best_actions.append(0)
             else:
-                best_actions.append(int(actions[0]))
+                root = roots[env_idx]
+                best_actions.append(
+                    choose_among_most_visited(
+                        actions,
+                        [
+                            root.children[a].visit_count if a in root.children else 0
+                            for a in actions
+                        ],
+                    )
+                )
 
         return best_actions
 

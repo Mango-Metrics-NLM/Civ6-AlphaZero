@@ -12,6 +12,7 @@ import torch.nn.functional as F  # noqa: N812
 from alpha_zero.core.mcts.backup import backpropagate_path, log_backup_diagnostics
 from alpha_zero.core.mcts.gumbel_ops import (
     SearchStats,
+    choose_among_most_visited,
     compute_completed_q,
     gumbel_sample_actions,
     halving_schedule,
@@ -248,6 +249,7 @@ class MuZeroMCTS:
         # What the most recent `search` actually spent. Measured, never copied
         # from the plan, so a test can hold it against `planned_halving_sims`.
         self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._root_evals = 0
         self._sim_evals = 0
 
     @classmethod
@@ -387,6 +389,7 @@ class MuZeroMCTS:
         mask_tensor = torch.from_numpy(action_mask).float().to(self.device)
 
         # Initial inference: observation -> hidden_state, policy, value
+        self._root_evals = 0
         self._sim_evals = 0
         self.network.eval()
         with torch.no_grad():
@@ -395,7 +398,8 @@ class MuZeroMCTS:
                 vector.unsqueeze(0),
                 mask_tensor.unsqueeze(0),
             )
-        self.last_search_stats = SearchStats(root_evals=1, sim_evals=0)
+        self._root_evals += 1
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=0)
 
         # Create root node
         root = MuZeroNode(
@@ -475,7 +479,7 @@ class MuZeroMCTS:
             # Get action probabilities from visit counts
             action_probs = self._get_action_probs(root, len(action_mask))
 
-        self.last_search_stats = SearchStats(root_evals=1, sim_evals=self._sim_evals)
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=self._sim_evals)
         return action_probs, root.value
 
     def _gumbel_search(
@@ -509,8 +513,8 @@ class MuZeroMCTS:
         if len(sampled_actions) == 0:
             return valid_actions[0] if valid_actions else 0
 
-        if len(sampled_actions) == 1:
-            return int(sampled_actions[0])
+        # No early return for a single candidate: with k = 1 and several legal
+        # moves the schedule still spends the budget on it (gumbel_ops).
 
         # Store gumbel scores
         scores = dict(zip(sampled_actions, gumbel_scores, strict=False))
@@ -576,7 +580,10 @@ class MuZeroMCTS:
             combined = {a: completed_qs.get(a, 0.0) + gumbel_scores.get(a, 0.0) for a in survivors}
             actions = sorted(survivors, key=lambda a: -combined[a])
 
-        return int(actions[0])
+        return choose_among_most_visited(
+            actions,
+            [root.children[a].visit_count if a in root.children else 0 for a in actions],
+        )
 
     def _simple_muzero_search(
         self,
