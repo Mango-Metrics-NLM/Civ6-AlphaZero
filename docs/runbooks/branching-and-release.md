@@ -21,6 +21,13 @@ named here are implemented in `scripts/check_branch_direction.py`,
 
 Do not describe the repository as enforcing a row before the status in that row is true.
 
+**Known gap (T14 review M-9, deferred).** Release Evidence is not re-verified at publish
+time. `wait-for-ci` trusts the conclusion of the PR's own check, and a same-repo PR can
+rewrite its own job. Proposed fix: `release.yml` re-runs `scripts/verify_release_evidence.py`
+from the tagged commit for a non-hotfix final. It is CONFIRM-FIRST because it changes the
+release gate and adds a torch install to the publish path. Tracked as OpenSpec task 5.7 in
+`openspec/changes/branching-and-release/tasks.md`.
+
 ## 2. The branches
 
 | Branch | Role | Accepts (same-repo heads) | Merge method | Up to date required |

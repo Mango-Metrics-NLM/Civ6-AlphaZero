@@ -36,8 +36,12 @@ jobs:
     # tests/regression/test_branch_rulesets_regression.py holds the two together.
     name: Release Evidence
     # Only open PRs: an `edited` event on a merged PR would re-judge it against
-    # refs the merge moved. A skipped required check never satisfies a ruleset,
-    # so there is no other job-level condition: n/a is decided by the scope step.
+    # refs the merge moved. CAUTION: a job skipped by a job-level `if:` concludes
+    # `skipped`, which GitHub counts as PASSING for a required check. This guard
+    # is safe only because every trigger above fires on an open PR, where it is
+    # true. Never add a condition here to mean "n/a": that would turn the check
+    # green without verifying anything. n/a is decided by the scope step, which
+    # still runs and says why.
     if: github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 30
