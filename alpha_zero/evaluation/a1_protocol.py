@@ -59,7 +59,12 @@ from typing import Any
 import numpy as np
 
 from alpha_zero.evaluation.benchmark_evidence import facing_hull_ratio, interval_summary
-from alpha_zero.evaluation.scoring import minimum_detectable_effect, summarize
+from alpha_zero.evaluation.scoring import (
+    minimum_detectable_effect,
+    score_rate,
+    summarize,
+    win_rate,
+)
 
 __all__ = [
     "POSITIVE_CONTROL_CONFIDENCE",
@@ -594,13 +599,18 @@ def calibrate_t0b(
         draws=draws,
         losses=losses,
         pairs=len(pairs),
-        score_rate=(wins + 0.5 * draws) / total,
+        score_rate=score_rate(wins, draws, losses),
         hull=_hull(pooled, POSITIVE_CONTROL_CONFIDENCE),
         p40=positive_control_void_probability(pairs, 40, reps=reps, seed=seed),
         p40_interval=p40_interval,
         p60=positive_control_void_probability(pairs, 60, reps=reps, seed=seed),
         iid_p40=iid_positive_control_void_probability(
-            wins / total, draws / total, 40, reps=reps, seed=seed
+            # The iid model's outcome probabilities (not a reported statistic).
+            win_rate(wins, draws, losses),
+            draws / total,
+            40,
+            reps=reps,
+            seed=seed,
         ),
         branch=60 if p40_interval[1] > BRANCH_VOID_RISK else 40,
         shape_problems=problems,
