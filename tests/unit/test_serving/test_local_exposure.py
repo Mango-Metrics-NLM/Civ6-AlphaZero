@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
+from alpha_zero.utils.network import resolve_bind_host
 from alpha_zero.web.config import WebConfig
 
 
@@ -50,3 +52,37 @@ class TestWebConfigLoopbackDefaults:
             config = WebConfig(host="0.0.0.0")
         assert config.host == "0.0.0.0"
         assert any("non-loopback" in r.getMessage() for r in caplog.records)
+
+
+class TestProductionPreset:
+    def test_production_preset_is_loopback_with_loopback_cors(self):
+        config = WebConfig.from_preset("production")
+        assert config.host == "127.0.0.1"
+        assert "*" not in config.cors_origins
+
+
+class TestResolveBindHost:
+    """The inference server's bind address (no fastapi needed to test it)."""
+
+    def test_default_is_loopback_and_silent(self, monkeypatch, caplog):
+        monkeypatch.delenv("INFERENCE_HOST", raising=False)
+        with caplog.at_level(logging.WARNING):
+            assert resolve_bind_host("INFERENCE_HOST", logging.getLogger("t"), "x") == "127.0.0.1"
+        assert not caplog.records
+
+    def test_blank_env_falls_back_to_loopback(self, monkeypatch):
+        monkeypatch.setenv("INFERENCE_HOST", "  ")
+        assert resolve_bind_host("INFERENCE_HOST", logging.getLogger("t"), "x") == "127.0.0.1"
+
+    def test_all_interfaces_honoured_and_warned(self, monkeypatch, caplog):
+        monkeypatch.setenv("INFERENCE_HOST", "0.0.0.0")
+        with caplog.at_level(logging.WARNING):
+            host = resolve_bind_host("INFERENCE_HOST", logging.getLogger("t"), "x")
+        assert host == "0.0.0.0"
+        assert any("non-loopback" in r.getMessage() for r in caplog.records)
+
+
+def test_inference_dockerfile_binds_all_interfaces_explicitly():
+    """Without this ENV the container would bind loopback and be unreachable."""
+    text = (Path(__file__).parents[3] / "dockerfiles" / "Dockerfile.inference").read_text()
+    assert "ENV INFERENCE_HOST=0.0.0.0" in text

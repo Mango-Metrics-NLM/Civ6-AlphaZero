@@ -304,7 +304,7 @@ class WebConfig:
                 "default_opponent": "random",
             },
             "production": {
-                "host": "0.0.0.0",  # noqa: S104
+                "host": "127.0.0.1",
                 "port": 8080,
                 "debug": False,
                 "log_level": "info",

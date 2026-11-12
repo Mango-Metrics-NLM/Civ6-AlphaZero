@@ -361,7 +361,10 @@ async def compute_move(request: MoveRequest) -> MoveResponse:
 if __name__ == "__main__":
     from alpha_zero.utils.network import resolve_bind_host
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     uvicorn.run(
         "alpha_zero.serving.inference_server:app",
         host=resolve_bind_host("INFERENCE_HOST", logger, "Inference server"),

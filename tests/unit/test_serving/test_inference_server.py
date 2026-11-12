@@ -251,13 +251,9 @@ def test_load_model_refuses_to_start_without_a_bucket(reset_model_state, monkeyp
     fake_net = Mock()
     fake_net.to.return_value = fake_net
 
-    with (
-        patch.multiple("builtins"),
-        pytest.raises(RuntimeError, match="CIV6AZ_GCS_BUCKET is not set"),
-    ):
-        p1, p2, p3 = _network_patches(fake_net)
-        with p1, p2, p3:
-            srv._load_model()
+    p1, p2, p3 = _network_patches(fake_net)
+    with p1, p2, p3, pytest.raises(RuntimeError, match="CIV6AZ_GCS_BUCKET is not set"):
+        srv._load_model()
 
     assert srv._model is None
 
@@ -341,35 +337,3 @@ def test_load_model_loads_state_dict_when_gcs_succeeds(reset_model_state, monkey
     torch_load.assert_called_once()
     fake_net.load_state_dict.assert_called_once_with({"w": 1})
     assert srv._model is fake_net
-
-
-class TestInferenceServerBind:
-    """LF-G14: the inference server binds loopback unless told otherwise."""
-
-    def test_default_host_is_loopback(self, monkeypatch):
-        from alpha_zero.utils.network import resolve_bind_host
-
-        monkeypatch.delenv("INFERENCE_HOST", raising=False)
-        assert resolve_bind_host("INFERENCE_HOST", srv.logger, "x") == "127.0.0.1"
-
-    def test_main_block_resolves_host_from_env(self):
-        import inspect
-
-        assert 'resolve_bind_host("INFERENCE_HOST"' in inspect.getsource(srv)
-        assert "0.0.0.0" not in inspect.getsource(srv)
-
-    def test_explicit_all_interfaces_works_and_warns(self, monkeypatch, caplog):
-        import logging
-
-        from alpha_zero.utils.network import resolve_bind_host
-
-        monkeypatch.setenv("INFERENCE_HOST", "0.0.0.0")
-        with caplog.at_level(logging.WARNING):
-            assert resolve_bind_host("INFERENCE_HOST", srv.logger, "x") == "0.0.0.0"
-        assert any("non-loopback" in r.getMessage() for r in caplog.records)
-
-    def test_dockerfile_binds_explicitly(self):
-        from pathlib import Path
-
-        text = (Path(__file__).parents[3] / "dockerfiles" / "Dockerfile.inference").read_text()
-        assert "INFERENCE_HOST=0.0.0.0" in text

@@ -782,7 +782,7 @@ class TestWebConfigFromPreset:
         """Test production preset has expected values."""
         config = WebConfig.from_preset("production")
 
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.port == 8080
         assert config.debug is False
         assert config.log_level == "info"
