@@ -271,6 +271,16 @@ def _calibrate_throughput(r: Mapping[str, Any]) -> int:
     return _nonneg(r["games"])
 
 
+def _probe_target_sharpness(r: Mapping[str, Any]) -> int:
+    """No games: it searches positions from random play and steps only clones.
+
+    Priced explicitly (rather than exempt) so a later change that makes it play
+    games has to change this model, and a test, to say so.
+    """
+    _nonneg(r["positions"])
+    return 0
+
+
 def _local_muzero_launcher(r: Mapping[str, Any]) -> int:
     return (
         _nonneg(r["iterations"])
@@ -295,6 +305,7 @@ _MODELS: dict[str, Callable[[Mapping[str, Any]], int]] = {
     "benchmark_batch_selfplay": _benchmark_batch_selfplay,
     "local_muzero_launcher": _local_muzero_launcher,
     "calibrate_throughput": _calibrate_throughput,
+    "probe_target_sharpness": _probe_target_sharpness,
 }
 
 
