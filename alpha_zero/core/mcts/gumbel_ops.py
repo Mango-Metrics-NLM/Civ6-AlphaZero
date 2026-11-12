@@ -377,11 +377,18 @@ def build_completed_q_policy(
     is deliberately unchanged; each is a separate, measurable decision):
 
     * ``c_scale`` defaults to **1.0** (``utils/constants.py:GUMBEL_C_SCALE``)
-      where the paper uses **0.1** with ``c_visit = 50``. Combined with the
-      missing normalisation below, ``sigma`` is ~10x the reference, so the
-      searched values dominate the prior sooner than the paper's targets do.
+      with ``c_visit = 50``, which **matches** the paper's Go and chess
+      setting (Appendix F). The paper's Atari runs, and ``mctx``'s default
+      ``value_scale``, use 0.1. (Corrected 2026-11-11; this note previously
+      said the paper uses 0.1. See ``kb/specs/20261111-completed-q-alignment-memo.md``.)
     * **No min-max Q normalisation** before ``sigma`` (see
-      :func:`compute_completed_q`).
+      :func:`compute_completed_q`). The paper's ``sigma`` acts on Q rescaled
+      to [0, 1]; here it acts on raw Q in [-1, 1], so the target's sharpness
+      depends on the *absolute* spread of the searched values rather than on
+      their relative order.
+    * **No ``sigma`` in sequential halving.** The searches rank survivors by
+      ``g + log pi + completedQ`` with a coefficient of 1 on Q, where the
+      paper ranks by ``g + logits + sigma(q)`` (LF-A12; decision pending).
     * **Non-convex completion** ``q + ((maxN - N) / maxN) * root_value`` for
       visited actions, where the paper keeps a visited action's own Q.
     * **Zero mass on unvisited actions.** The paper's improved policy is a

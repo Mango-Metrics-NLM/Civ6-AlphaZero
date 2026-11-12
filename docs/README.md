@@ -92,7 +92,7 @@ taken on code **before** or **after** the 2026-09-04 search fixes
 ### Evidence (committed measurements)
 
 Index and contract: [`evidence/README.md`](evidence/README.md). Every artifact
-below was measured on **pre-fix** code.
+below marked *before* was measured on **pre-fix** code.
 
 | Doc | What it measured | Before / after 2026-09-04 |
 |-----|------------------|---------------------------|
@@ -102,6 +102,7 @@ below was measured on **pre-fix** code.
 | [`evidence/hexcrystal_ab/ab_report.md`](evidence/hexcrystal_ab/ab_report.md) | Encoder A/B arena (800 games); superseded as a strength comparison — it shows the harness runs. | before |
 | [`evidence/hexcrystal_ab/summary_table.md`](evidence/hexcrystal_ab/summary_table.md) | The A/B counts and Wilson interval, as a table. | before |
 | [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
+| [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget, current settings vs Danihelka et al. (2022); 0 games. | after |
 
 ### Architecture decision records
 
@@ -120,6 +121,8 @@ are the 2026-09 pair.
 
 | Doc | What it is | Before / after 2026-09-04 |
 |-----|------------|---------------------------|
+| [`../kb/specs/20261111-completed-q-alignment-memo.md`](../kb/specs/20261111-completed-q-alignment-memo.md) | LF-A5/A12: the Gumbel target and halving score against Danihelka et al. (2022), with the probe numbers and the maintainer's decision. | post-fix; feeds A1's registration |
+| [`../kb/specs/20261111-seed-overlap-memo.md`](../kb/specs/20261111-seed-overlap-memo.md) | LF-A17: the encoder A/B's train/test seed overlap (S5) and whether A1's seed streams overlap. | post-fix |
 | [`../kb/specs/20260904-correctness-first-plan.md`](../kb/specs/20260904-correctness-first-plan.md) | **Current sequencing of open work**: search correctness first, then the draw-rate re-measure and the seeded learning run. | written on the fix day; sequences the post-fix runs |
 | [`../kb/specs/20260902-validated-learning-plan.md`](../kb/specs/20260902-validated-learning-plan.md) | Content of each validation workstream (draw-rate fix, learning-trend run, promotion gate). | plan over pre-fix measurements |
 | [`../kb/specs/20260902-tech-debt-hardening.md`](../kb/specs/20260902-tech-debt-hardening.md) | Tech-debt reduction plan; Core scope landed 2026-09-02, Tier B decisions and WS3–WS7 remain. | n/a |
