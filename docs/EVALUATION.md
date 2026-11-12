@@ -203,9 +203,13 @@ same search? A1 answers it once at seed 20261111. A1-R repeats it at seed
   from alpha_zero.envs.microciv import MicroCivEnv
   from alpha_zero.utils.seeding import SeedStream, derive_seed
   import hashlib
+
+
   def fp(s):
       obs, _ = MicroCivEnv(board_size=8, max_turns=60).reset(seed=s)
       return hashlib.sha256(obs["spatial"].tobytes() + obs["vector"].tobytes()).hexdigest()
+
+
   S = 20261111
   train = {fp(derive_seed(S, SeedStream.SELF_PLAY_ENV, it, g)) for it in range(20) for g in range(24)}
   bench = {fp(derive_seed(S, SeedStream.BENCH_ENV, p)) for p in range(100)}
