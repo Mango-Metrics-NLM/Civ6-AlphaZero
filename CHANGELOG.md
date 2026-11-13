@@ -53,6 +53,7 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - **Gumbel budget:** one sequential-halving schedule (`gumbel_ops.halving_schedule`) for the sequential, batch and MuZero searches spends exactly the configured `n` whenever two or more moves are legal, and nothing on a forced move. Before, `(16, 64)` spent 40 with 5 legal moves and the batch search's spend depended on its neighbours.
 - **Batch Gumbel search:** survivors are ranked with the mover-relative sign; halving steps every tree one simulation per batch (it re-evaluated one unexpanded leaf per root action); it returns the completed-Q policy target. A single-environment batch search is now exactly `GumbelMCTS`, gated on seeded MicroCiv positions.
 - **MuZero Gumbel path:** root Q includes the edge reward (a game ending on that edge valued every action 0), and the policy target is the shared completed-Q target instead of a one-hot that Gumbel noise could make a losing move.
+- **MuZero is two-player sign-correct:** a turn model (END_TURN passes the move) tracks the mover through the latent tree, and the backup, root Q and in-tree selection sign `reward + discount * value` by mover on both the Gumbel and PUCT paths. Both MuZero self-play paths write outcome-only targets in the mover's frame (`alpha_zero/training/muzero_targets.py`); shaped rewards are no longer reward targets. Seeded MuZero runs and checkpoints from before this change do not carry over. Sequential `GumbelMCTS` (A1) is byte-identical.
 - Checkpoint `git_sha` resolves in worktrees and pinned runs (`CIV6AZ_GIT_SHA`).
 - `tag_release` refuses while CI is pending, failed or missing; pushes to protected branches get their own CI concurrency group; `merge_backmerge.sh` strips CR from `gh` output.
 - `run_sweep.py` prices MuZero trials with the MuZero runner's own parser.
@@ -64,7 +65,6 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - The role-subagent guards deny an empty or multi-document hook payload rather than allow it.
 
 ### Known limitations
-- **MuZero search is not two-player sign-correct** (known defect, CLAUDE.md section 5.3; the fix is confirm-first): its backup sums mover-relative rewards with no sign flip, and its value targets use a third frame. A1 does not use MuZero. The alternating forced-win case is a strict `xfail`.
 - The branch model, rulesets and agent identity are not enforced until the maintainer's cut-over; until then the guard is the only barrier, and it is an accident net.
 - Section 7.1's "pending T0b" slots are open, so neither A1 card can run yet.
 

@@ -69,3 +69,10 @@ option on each of three questions:
     search.
   - The value targets are undiscounted while the search discounts at `0.997`.
     The sign is consistent, but the magnitudes are not.
+  - Pre-existing, found in review: the deployed trainer builds no reward
+    tensor (`training_worker.prepare_dataset`), so `train_muzero_epoch` trains
+    the reward head toward 0 and the new `reward_targets` are not read there.
+    The cloud search therefore gets its terminal signal from the value head
+    alone.
+  - `EndTurnModel` is two-player only and now raises for any other mover
+    rather than returning `-1`.
