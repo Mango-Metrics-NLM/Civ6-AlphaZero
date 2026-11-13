@@ -586,6 +586,58 @@ class TestMuZeroTrainingBridgeSelfplayStep:
             # Verify action_mask was retrieved
             mock_env.action_mask.assert_called()
 
+    def test_selfplay_step_roots_search_at_the_player_to_move(self):
+        """Each search is rooted at the env's mover, not player 0 (PR #136 review)."""
+
+        class _TurnEnv:
+            """Two players; the mover changes after every second step."""
+
+            def __init__(self) -> None:
+                self.current_player = 0
+                self._steps = 0
+                self._obs = {"spatial": np.zeros((13, 8, 8)), "vector": np.zeros(64)}
+
+            def reset(self):
+                self.current_player, self._steps = 0, 0
+                return self._obs
+
+            def action_mask(self):
+                return np.ones(376, dtype=bool)
+
+            def step(self, action):
+                self._steps += 1
+                if self._steps % 2 == 0:
+                    self.current_player = 1 - self.current_player
+                return self._obs, 0.0, self._steps >= 6, {}
+
+        env = _TurnEnv()
+        mock_mcts = Mock()
+        mock_mcts.search.return_value = (np.zeros(376), 0.5)
+        mock_mcts.select_action.return_value = 0
+
+        with patch("alpha_zero.training.muzero_trainer.GameTrajectory"):
+            MuZeroTrainingBridge().selfplay_step(network=Mock(), env=env, mcts=mock_mcts)
+
+        roots = [c.kwargs["to_play"] for c in mock_mcts.search.call_args_list]
+        assert roots == [0, 0, 1, 1, 0, 0]
+
+    def test_selfplay_step_passes_no_mover_for_an_env_without_one(self):
+        """A Mock env's ``current_player`` is not a player; the search gets ``None``."""
+        bridge = MuZeroTrainingBridge()
+        mock_mcts = Mock()
+        mock_env = Mock()
+        mock_obs = {"spatial": np.zeros((13, 8, 8)), "vector": np.zeros(64)}
+        mock_env.reset.return_value = mock_obs
+        mock_env.action_mask.return_value = np.ones(376, dtype=bool)
+        mock_env.step.return_value = (mock_obs, 0.0, True, {})
+        mock_mcts.search.return_value = (np.zeros(376), 0.5)
+        mock_mcts.select_action.return_value = 0
+
+        with patch("alpha_zero.training.muzero_trainer.GameTrajectory"):
+            bridge.selfplay_step(network=Mock(), env=mock_env, mcts=mock_mcts)
+
+        assert mock_mcts.search.call_args.kwargs["to_play"] is None
+
 
 class TestMuZeroTrainingBridgeTrainingStep:
     """Test training step execution."""
