@@ -145,13 +145,26 @@ def test_edge_q_matches_the_backup_and_updates_bounds() -> None:
     assert stats.minimum == stats.maximum == pytest.approx(-1.0)
 
 
-def test_min_max_stats_normalise_and_are_constant_until_spread() -> None:
+def test_min_max_stats_normalise_and_pass_through_until_spread() -> None:
     stats = MinMaxStats()
-    assert stats.normalize(3.0) == stats.normalize(-3.0)
+    assert stats.normalize(0.3) == 0.3
     stats.update(-1.0)
     stats.update(1.0)
     assert stats.normalize(0.0) == pytest.approx(0.5)
     assert stats.normalize(1.0) == pytest.approx(1.0)
+
+
+def test_equal_q_without_spread_does_not_favour_visited_children() -> None:
+    """Copilot review on PR #136: a 0.5 no-spread fallback scored a visited child
+    above an unvisited one at equal Q, so selection never left the visited branch.
+    """
+    parent = MuZeroNode(to_play=0, visit_count=1)
+    parent.children[0] = MuZeroNode(to_play=0, prior=0.5, visit_count=1, value_sum=0.0)
+    parent.children[1] = MuZeroNode(to_play=0, prior=0.5)
+    stats = MinMaxStats()
+    stats.update(0.0)  # one Q seen: no spread
+    action, _child = parent.select_child(1.5, stats.minimum, stats.maximum)
+    assert action == 1, "at equal Q the unvisited child's exploration term must win"
 
 
 def test_selection_prefers_the_edge_that_is_good_for_the_parent() -> None:

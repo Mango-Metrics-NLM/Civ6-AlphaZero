@@ -55,12 +55,6 @@ __all__ = [
 #: and against a played game, so the two cannot drift apart silently.
 MICROCIV_END_TURN_ACTION = 0
 
-#: What :meth:`MinMaxStats.normalize` returns before two distinct Q values have
-#: been seen. Any constant works -- it is the same for every sibling, so it
-#: cannot change which one wins -- and 0.5 is what the fixed normaliser this
-#: replaced returned.
-_UNNORMALISED_Q = 0.5
-
 
 class TurnModel(Protocol):
     """Who moves after ``action`` is played by ``to_play``."""
@@ -108,9 +102,13 @@ class MinMaxStats:
         self.maximum = max(self.maximum, value)
 
     def normalize(self, value: float) -> float:
+        # With no spread yet the value passes through unnormalised, as in
+        # MuZero's reference. A constant here (0.5 was tried) scores every
+        # visited child above an unvisited one at equal Q, so selection keeps
+        # following the branch it already visited.
         if self.maximum > self.minimum:
             return (value - self.minimum) / (self.maximum - self.minimum)
-        return _UNNORMALISED_Q
+        return value
 
 
 @dataclass
@@ -164,7 +162,8 @@ class MuZeroNode:
 
         The exploitation term is the edge's Q in *this* node's frame,
         ``sign * (child.reward + discount * child.value)``, normalised into
-        ``[0, 1]`` by ``(min_q, max_q)`` -- the bounds of a :class:`MinMaxStats`.
+        ``[0, 1]`` by ``(min_q, max_q)`` -- the bounds of a :class:`MinMaxStats` --
+        and left raw while there is no spread, so equal Q values score equally.
         It scored ``child.value`` alone until 2026-11-12: unsigned, so a
         player-change edge was ranked from the opponent's side, and without the
         edge reward, so a game ending on that edge looked worth nothing.
@@ -189,8 +188,6 @@ class MuZeroNode:
                 q_value = edge_q(self, child, discount)
                 if max_q > min_q:
                     q_value = (q_value - min_q) / (max_q - min_q)
-                else:
-                    q_value = _UNNORMALISED_Q
             else:
                 q_value = 0.0
 
