@@ -1,5 +1,17 @@
 # DEV-SQE Log
 
+## 2026-11-13 - MuZero reward-sign fix (CONFIRM-FIRST; PR #136)
+- **Session:** session_2157ad15-5aad-45f3-b0a8-9cfc4f486f8d
+- **Task:** Fixed the MuZero two-player sign defect T18 exposed (CLAUDE.md §5.3), with the maintainer-approved design. A rule-based turn model (`EndTurnModel`) carries `to_play` through the latent tree. Backup, root Q and selection share a signed `edge_q` with a running MinMaxStats, on both the Gumbel and PUCT paths. Both self-play paths write outcome-only targets in the mover's frame.
+- **Files Changed:** `core/mcts/muzero_tree.py` (new), `core/mcts/muzero.py`, `training/muzero_targets.py` (new), `scripts/run_muzero_training.py`, `cloud/gcp/selfplay_worker.py`, 5 test files, CLAUDE.md, CHANGELOG, MODULE_REFERENCE, `openspec/changes/fix-muzero-reward-sign`.
+- **Tests:**
+  - Full local run at 220da9e: 13,345 passed, 8 failed (environment-only: no `.env`, the seeding subprocess, a Windows path).
+  - MuZero oracle 48/48, with the 6 xfails removed; 4 negative controls recorded.
+  - Sequential GumbelMCTS byte-identical (84/84).
+  - CI green (23/23). Coverage not measured locally; CI gate.
+- **Status:** complete; draft PR #136, handoff `kb/handoffs/20261113-devsqe-to-prepr-muzero-reward-sign.md`.
+- **Next:** Pre-PR review of #136, then the maintainer merges it and `openspec-archive` runs. Follow-ups: `MuZeroTrainingBridge.self_play_game` (shaped rewards, 3-arg `select_action`); the undiscounted value targets vs the 0.997 search discount; the cloud trainer's missing reward tensor.
+
 ## 2026-11-12 - Local-first v2.1 implementation (T0a–T16, T18; PR #135)
 - **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
 - **Task:** Implemented every v2.1 task of `kb/specs/20261111-local-first-and-branching-plan.md` except T17 (the maintainer-gated release). The work was run subagent-driven: per task, an implementer, an independent task review and fix rounds until approved, then a whole-branch review with one fix wave and a re-review (READY TO FINISH).
