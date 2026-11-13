@@ -29,4 +29,4 @@
 
 ## 5. Documentation
 - [x] 5.1 CHANGELOG, CLAUDE.md decision row, known-issue update
-- [ ] 5.2 Archive this change after merge (separate PR)
+- [x] 5.2 Archive this change after merge (separate PR) (archived 2026-11-11, task T13)

@@ -1,0 +1,91 @@
+name: Release Evidence
+
+# Plan section 6 (LF-D8): a release PR into main must carry a verified evidence
+# bundle, docs/evidence/release_vX_Y_Z/bundle.json for pyproject.toml's version
+# (scripts/verify_release_evidence.py; schema in docs/evidence/SCHEMA.md). A
+# required check on main once the maintainer applies action 9a
+# (scripts/maintainer/branch_cutover.sh add-release-evidence); wait-for-ci in
+# release.yml requires it on the PR that produced a non-hotfix final either way.
+#
+# PR-ONLY, deliberately (T14 review I-2). Under ci.yml every push to qa left a
+# constant n/a "Release Evidence" run on the very SHA a qa -> main PR heads, so
+# the newest completed run of that name could be the n/a one. No push trigger
+# here means no push-event run carries the name;
+# tests/scripts/test_verify_release_evidence.py fails if any push-triggered
+# workflow defines it. `edited` is included because retargeting a PR to main is
+# an edit: the check must be re-judged against the new base.
+#
+# AN ACCIDENT NET, NOT A CONTROL, for the same reason as Branch Direction: a
+# pull_request workflow runs this file from the PR's own merge ref. The control
+# is that only the maintainer merges into main.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  # PR runs only (no push trigger), so superseding a run loses no record.
+  cancel-in-progress: true
+
+jobs:
+  release-evidence:
+    # The job name IS the status-check context main.json requires;
+    # tests/regression/test_branch_rulesets_regression.py holds the two together.
+    name: Release Evidence
+    # Only open PRs: an `edited` event on a merged PR would re-judge it against
+    # refs the merge moved. CAUTION: a job skipped by a job-level `if:` concludes
+    # `skipped`, which GitHub counts as PASSING for a required check. This guard
+    # is safe only because every trigger above fires on an open PR, where it is
+    # true. Never add a condition here to mean "n/a": that would turn the check
+    # green without verifying anything. n/a is decided by the scope step, which
+    # still runs and says why.
+    if: github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: read # the rc commit's check runs, read as wait-for-ci reads them
+      pull-requests: read # GET /commits/{rc}/pulls: the PR that produced the rc
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Ancestry (every run's git_sha -> rc_sha -> HEAD), the play-path diff
+          # since each run's commit, and every rc tag of the release.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # Refs reach the script through env, never interpolated into `run:`: a
+      # branch name is attacker-controlled text. --scope imports only the
+      # standard library, so it runs on any tree.
+      - name: Decide whether this PR needs release evidence
+        id: scope
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: python scripts/verify_release_evidence.py --scope
+
+      - name: Install dependencies
+        if: steps.scope.outputs.applies == 'true'
+        env:
+          TORCH_INDEX_URL: https://download.pytorch.org/whl/cpu
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "torch>=2.0.0" --index-url "$TORCH_INDEX_URL"  # CPU wheel first (see ci.yml)
+          pip install -e .
+
+      # Exit 0 pass, 1 fail, 2 missing (no bundle, a missing component, a git
+      # object, or no way to read the check runs). Anything but 0 fails the job.
+      - name: Verify the release evidence bundle
+        if: steps.scope.outputs.applies == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/verify_release_evidence.py

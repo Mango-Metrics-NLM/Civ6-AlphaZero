@@ -605,10 +605,15 @@ class TestValidateMethod:
         warnings = cfg.validate()
         assert any("bridge_ipc_dir" in w for w in warnings)
 
-    def test_web_mode_open_host_warns(self) -> None:
+    def test_web_mode_open_host_is_warned_once_by_webconfig(self, caplog) -> None:
+        """validate() stays silent; WebConfig emits the single non-loopback warning."""
         cfg = Civ6LocalConfig(mode="web", web_host="0.0.0.0")
-        warnings = cfg.validate()
-        assert any("0.0.0.0" in w for w in warnings)
+        assert not any("web_host" in w for w in cfg.validate())
+        from alpha_zero.web.config import WebConfig
+
+        with caplog.at_level(logging.WARNING):
+            WebConfig(host=cfg.web_host)
+        assert sum("non-loopback" in r.getMessage() for r in caplog.records) == 1
 
 
 # ---------------------------------------------------------------------------

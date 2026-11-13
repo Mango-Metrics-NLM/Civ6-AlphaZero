@@ -49,6 +49,7 @@ walkthrough is a welcome contribution.
 | [`GCP_INFRA.md`](GCP_INFRA.md) | Stand up the Vertex AI / GCS training infrastructure. | operator | Current | 2026-09-02 |
 | [`GCP_TROUBLESHOOTING.md`](GCP_TROUBLESHOOTING.md) | Fix gcloud and Windows connectivity problems. | operator | Reference | 2026-02-21 |
 | [`MUZERO_CLOUD_INTEGRATION.md`](MUZERO_CLOUD_INTEGRATION.md) | Run the MuZero variant on Vertex AI. | operator | Current | 2026-09-02 |
+| [`runbooks/branching-and-release.md`](runbooks/branching-and-release.md) | Move work through `dev`/`qa`/`main`, cut a release candidate and a release, run local run cards, and what is enforced versus convention. | contributor | Current | 2026-11-11 |
 | [`runbooks/promotion-gate.md`](runbooks/promotion-gate.md) | Configure the model-promotion gate, and why the shipped defaults cannot promote at a 73.5% draw rate. | operator | Current | 2026-08-28 |
 | [`runbooks/secret-scanning.md`](runbooks/secret-scanning.md) | Run gitleaks locally; triage of the open leaked-credential finding. | contributor | Current | 2026-08-30 |
 | [`runbooks/v1.6.0-cloud-deploy.md`](runbooks/v1.6.0-cloud-deploy.md) | The v1.6.0 cloud deployment, step by step. | operator | Reference | 2026-05-22 |
@@ -86,11 +87,12 @@ taken on code **before** or **after** the 2026-09-04 search fixes
 |-----|-----------------|---------------------------|
 | [`audits/2026-09-04-standards-audit.md`](audits/2026-09-04-standards-audit.md) | Coding-standards audit; its §0 records the review corrections and its remediation list is superseded by `kb/specs/20260904-correctness-first-plan.md`. | n/a (review) |
 | [`audits/2026-11-10-public-release-review.md`](audits/2026-11-10-public-release-review.md) | Public-release review: status of the September items, the maintainer checklist and the post-flip backlog. | n/a (review) |
+| [`audits/2026-11-11-local-first-plan-review.md`](audits/2026-11-11-local-first-plan-review.md) | Panel and two adversarial review rounds behind the local-first gap-closure and dev/qa/main branching plan (`kb/specs/20261111-local-first-and-branching-plan.md`). | n/a (review) |
 
 ### Evidence (committed measurements)
 
 Index and contract: [`evidence/README.md`](evidence/README.md). Every artifact
-below was measured on **pre-fix** code.
+below marked *before* was measured on **pre-fix** code.
 
 | Doc | What it measured | Before / after 2026-09-04 |
 |-----|------------------|---------------------------|
@@ -99,6 +101,8 @@ below was measured on **pre-fix** code.
 | [`evidence/seeded_probe_reproducibility/README.md`](evidence/seeded_probe_reproducibility/README.md) | Seeded probes of one checkpoint are identical (5/5); unseeded ones spread 0.30–0.45. | before |
 | [`evidence/hexcrystal_ab/ab_report.md`](evidence/hexcrystal_ab/ab_report.md) | Encoder A/B arena (800 games); superseded as a strength comparison — it shows the harness runs. | before |
 | [`evidence/hexcrystal_ab/summary_table.md`](evidence/hexcrystal_ab/summary_table.md) | The A/B counts and Wilson interval, as a table. | before |
+| [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
+| [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget: current settings vs Danihelka et al. (2022) under two normalisation readings and `mctx`'s defaults; 0 games. | after |
 
 ### Architecture decision records
 
@@ -117,6 +121,8 @@ are the 2026-09 pair.
 
 | Doc | What it is | Before / after 2026-09-04 |
 |-----|------------|---------------------------|
+| [`../kb/specs/20261111-completed-q-alignment-memo.md`](../kb/specs/20261111-completed-q-alignment-memo.md) | LF-A5/A12: the Gumbel target and halving score against Danihelka et al. (2022), with the probe numbers and the maintainer's decision. | post-fix; feeds A1's registration |
+| [`../kb/specs/20261111-seed-overlap-memo.md`](../kb/specs/20261111-seed-overlap-memo.md) | LF-A17: the encoder A/B's train/test seed overlap (S5) and whether A1's seed streams overlap. | post-fix |
 | [`../kb/specs/20260904-correctness-first-plan.md`](../kb/specs/20260904-correctness-first-plan.md) | **Current sequencing of open work**: search correctness first, then the draw-rate re-measure and the seeded learning run. | written on the fix day; sequences the post-fix runs |
 | [`../kb/specs/20260902-validated-learning-plan.md`](../kb/specs/20260902-validated-learning-plan.md) | Content of each validation workstream (draw-rate fix, learning-trend run, promotion gate). | plan over pre-fix measurements |
 | [`../kb/specs/20260902-tech-debt-hardening.md`](../kb/specs/20260902-tech-debt-hardening.md) | Tech-debt reduction plan; Core scope landed 2026-09-02, Tier B decisions and WS3–WS7 remain. | n/a |

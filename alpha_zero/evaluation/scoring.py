@@ -35,6 +35,7 @@ interval roughly twice as wide as the data supports.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
 
@@ -46,7 +47,9 @@ __all__ = [
     "elo_from_score_rate",
     "elo_interval",
     "games_for_score_rate",
+    "interval_hull",
     "minimum_detectable_effect",
+    "pair_score_interval",
     "promotion_decision",
     "score_interval",
     "score_rate",
@@ -65,6 +68,10 @@ _Z_TWO_SIDED = {0.90: 1.6448536269514722, 0.95: 1.959963984540054, 0.99: 2.57582
 #: Confidence levels :func:`score_interval` can evaluate. Exposed so callers can
 #: validate configuration up front rather than failing mid-evaluation.
 SUPPORTED_CONFIDENCE_LEVELS: tuple[float, ...] = tuple(sorted(_Z_TWO_SIDED))
+
+# One-sided upper quantiles for the significance levels the MDE supports. 0.025
+# is the one-sided half of a 95% two-sided interval (same quantile).
+_Z_ONE_SIDED = {0.05: 1.6448536269514722, 0.025: 1.959963984540054, 0.01: 2.3263478740408408}
 
 
 class PromotionDecision(str, Enum):
@@ -202,17 +209,81 @@ def minimum_detectable_effect(
     evaluated at parity. Note this *grows* as the draw rate falls: at fixed ``n``,
     converting draws into near-noise decisive results widens the MDE rather than
     narrowing it.
+
+    ``alpha`` is one-sided: ``0.05``, ``0.025`` (the one-sided reading of a 95%
+    two-sided interval, which is how the A1 protocol decides) or ``0.01``.
     """
     if n_games <= 0:
         raise ValueError(f"n_games must be positive, got {n_games}")
     if not 0.0 <= draw_rate <= 1.0:
         raise ValueError(f"draw_rate must be in [0, 1], got {draw_rate}")
-    z_alpha = {0.05: 1.6448536269514722, 0.01: 2.3263478740408408}.get(alpha)
+    z_alpha = _Z_ONE_SIDED.get(alpha)
     z_power = {0.80: 0.8416212335729143, 0.90: 1.2815515655446004}.get(power)
     if z_alpha is None or z_power is None:
         raise ValueError(f"unsupported alpha={alpha} / power={power}")
     sigma = math.sqrt((1.0 - draw_rate) / 4.0)
     return (z_alpha + z_power) * sigma / math.sqrt(n_games)
+
+
+def pair_score_interval(
+    pair_scores: Sequence[float], confidence: float = 0.95
+) -> tuple[float, float]:
+    """Two-sided interval for the score rate with seat-swapped pairs as the unit.
+
+    The benchmark plays every map twice, once from each seat. The two games of a
+    pair share a map, so they are not independent: :func:`score_interval`, which
+    treats games as iid, is too narrow when a map decides both games the same
+    way and too wide when the seat decides them. Taking the *pair* as the sample
+    unit (the pentanomial, or pair-clustered, interval) uses the observed spread
+    of pair scores instead. Each pair score is the mean of its two game scores,
+    so it lies in ``{0, 0.25, 0.5, 0.75, 1}``.
+
+    Formula -- the plain pentanomial interval. With ``P`` pair scores
+    ``s_1 .. s_P`` and ``z`` the two-sided normal quantile for ``confidence``::
+
+        m  = (1 / P) * sum_p s_p
+        v  = (1 / (P - 1)) * sum_p (s_p - m)^2        (sample variance, ddof 1)
+        CI = [m - z * sqrt(v / P), m + z * sqrt(v / P)]   clipped to [0, 1]
+
+    There are **no pseudo-counts**. An earlier version added ``z^2 / 2``
+    pseudo-pairs at 0 and 1 (``score_interval``'s adjustment applied per pair,
+    so twice its weight per game); it widened the interval where no clustering
+    existed and, through the hull, cut the symmetry control's detection of a 0.20
+    asymmetry from about 84% to 40% (T11 review C1).
+
+    Degenerate cases, both deliberate:
+
+    * ``P < 2``: the sample variance is undefined, so the interval is ``(0.0, 1.0)``.
+    * Zero variance (every pair scored the same): the interval has zero width at
+      the mean. That is not false certainty in a verdict, because the A1 rule
+      reads the hull with :func:`score_interval`, whose pseudo-counts always
+      give it positive width.
+    """
+    if confidence not in _Z_TWO_SIDED:
+        raise ValueError(f"confidence must be one of {sorted(_Z_TWO_SIDED)}, got {confidence}")
+    for s in pair_scores:
+        if not 0.0 <= s <= 1.0:  # also rejects NaN
+            raise ValueError(f"pair score must be in [0, 1], got {s}")
+    n = len(pair_scores)
+    if n < 2:
+        return (0.0, 1.0)
+
+    z = _Z_TWO_SIDED[confidence]
+    mean = math.fsum(pair_scores) / n
+    variance = math.fsum((s - mean) ** 2 for s in pair_scores) / (n - 1)
+    half = z * math.sqrt(variance / n)
+    return (max(0.0, mean - half), min(1.0, mean + half))
+
+
+def interval_hull(*intervals: tuple[float, float]) -> tuple[float, float]:
+    """``(min of the lows, max of the highs)`` -- the conservative union of intervals.
+
+    The A1 protocol decides on the hull of the iid and the pair-clustered
+    interval, so a verdict does not depend on which variance model is right.
+    """
+    if not intervals:
+        raise ValueError("interval_hull needs at least one interval")
+    return (min(low for low, _ in intervals), max(high for _, high in intervals))
 
 
 # Clip for the Elo transform: a score rate of exactly 0 or 1 maps to an

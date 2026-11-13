@@ -344,10 +344,7 @@ class Civ6LocalConfig:
                     "Civ6 must create it before the bridge starts"
                 )
 
-        if self.mode == "web" and self.web_host == "0.0.0.0":  # noqa: S104
-            warnings.append(
-                "web_host is 0.0.0.0 — server will accept connections from any interface"
-            )
+        # A non-loopback web_host is warned once, by WebConfig when the app is built.
 
         # Device fallback is handled in __post_init__, which resolves and
         # reports it rather than warning here and leaving self.device stale.

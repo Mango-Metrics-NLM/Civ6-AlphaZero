@@ -32,6 +32,7 @@ from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.monitoring.config import MonitoringConfig
 from alpha_zero.monitoring.mlflow_logger import MLflowLogger
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 from tests.mocks.cloud_mocks import MockStorageBackend
 
 logger = logging.getLogger(__name__)
@@ -349,7 +350,17 @@ def parse_args() -> ValidationConfig:
     p.add_argument("--num-filters", type=int, default=64)
     p.add_argument("--learning-rate", type=float, default=1e-3)
     p.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    add_budget_arguments(p)
     a = p.parse_args()
+    enforce_cli(
+        "validate_convergence",
+        {
+            "iterations": a.iterations,
+            "games_per_iter": a.games,
+            "eval_games": a.eval_games,
+        },
+        a,
+    )
     return ValidationConfig(
         iterations=a.iterations,
         games_per_iter=a.games,

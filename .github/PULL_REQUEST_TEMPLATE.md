@@ -2,6 +2,27 @@
 
 <!-- What does this PR change, and why? One paragraph; the diff is the detail. -->
 
+## Target branch and PR type
+
+<!-- Default is a feature PR into `dev`. Anything else is the maintainer's to merge.
+     See docs/runbooks/branching-and-release.md. The Branch Direction check fails a
+     wrong-direction PR, but it is an accident net, not a control. -->
+
+- [ ] Feature / fix / chore / docs -> `dev` (squash)
+- [ ] Release prep (version in `pyproject.toml`, `alpha_zero/__init__.py`, `CITATION.cff`; CHANGELOG rolled) -> `dev` (squash)
+- [ ] Back-merge `backmerge/*` -> `dev` or `qa` (merge commit, via `scripts/maintainer/merge_backmerge.sh`)
+- [ ] Promotion `dev` -> `qa` (merge commit, maintainer)
+- [ ] Evidence `evidence/vX.Y.Z-rc.N` -> `qa` (merge commit; only `docs/evidence/**` changes)
+- [ ] RC fix `rcfix/<topic>` -> `qa` (cherry-picks of dev commits, `-x`, no conflict edits)
+- [ ] Release `qa` -> `main`, titled "Release vX.Y.Z" (merge commit, maintainer)
+- [ ] Hotfix `hotfix/*` -> `main` (merge commit, maintainer)
+
+## Game budget
+
+<!-- If this PR changes or documents a run, give its priced worst-case games. Every
+     runner refuses more than 1,000 unless `--approval_ref <issue>` is passed, and
+     that reference is recorded, not verified. "No run" is a valid answer. -->
+
 ## Tracking issue
 
 <!-- #NN, or "none — <why this did not need an issue>". -->

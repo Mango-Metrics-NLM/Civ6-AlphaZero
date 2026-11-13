@@ -1,0 +1,72 @@
+name: Branch Policy
+
+# Branch Direction (plan S3.4): may this pull request's head merge into its
+# base? A required status check on dev, qa and main once the maintainer adds it
+# to the rulesets (scripts/maintainer/branch_cutover.sh, step 5).
+#
+# AN ACCIDENT NET, NOT A CONTROL. A pull_request workflow runs this file from the
+# PR's own merge ref, so a same-repo PR can rewrite these steps, or add any job
+# named "Branch Direction", and turn the context green (pull_request_target
+# would not stop a Write-holder either). It catches wrong-direction PRs opened
+# by mistake. The control for qa and main is that only the maintainer can merge
+# into them (the qa-main-merge ruleset); tag_release and release.yml re-check
+# ancestry at release time.
+#
+# `edited` is included because changing a PR's base is an edit: the check must
+# be re-judged against the new base. The script reads base and head from the
+# API, not from this event's payload, for the same reason.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  # PR runs only (no push trigger), so superseding a run loses no record.
+  cancel-in-progress: true
+
+jobs:
+  branch-direction:
+    # The job name IS the status-check context the rulesets require; renaming it
+    # silently un-gates every protected branch.
+    # tests/regression/test_branch_rulesets_regression.py holds the two together.
+    name: Branch Direction
+    # Only open PRs: an `edited` event on a merged PR would re-judge it against
+    # refs the merge itself moved and post a misleading failure on its head.
+    # (wait-for-ci also reads only runs completed before merged_at.)
+    if: github.event.pull_request.state == 'open'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Every rule is ancestry over origin/<branch> and rc tags.
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      # The script comes from the default branch, not this PR's checkout, so an
+      # ordinary PR that edits the script is not judged by its own edit. (It does
+      # not stop a PR that edits this workflow; see the header.) No fallback: if
+      # the default branch has no judge, `git show` fails and so does the job.
+      - name: Fetch the judge from the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git show "origin/${DEFAULT_BRANCH}:scripts/check_branch_direction.py" > "$RUNNER_TEMP/check_branch_direction.py"
+
+      - name: Check branch direction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: python "$RUNNER_TEMP/check_branch_direction.py"

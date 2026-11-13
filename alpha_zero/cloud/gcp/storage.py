@@ -24,6 +24,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, TypeVar, cast
 
 from alpha_zero.cloud.gcp.exceptions import GCSStorageError
+from alpha_zero.local.isolation import guard_gcs
 from alpha_zero.utils.compat import UTC
 
 if TYPE_CHECKING:
@@ -269,13 +270,18 @@ class GCSBackend:
 
         Args:
             project_id: GCP project ID. If None, uses default.
+
+        Raises:
+            LocalModeViolation: Under ``CIV6AZ_LOCAL_RUN=1`` (fail-closed).
         """
+        guard_gcs("GCSBackend")
         self._project_id = project_id
         self._client: gcs.Client | None = None
 
     @property
     def client(self) -> gcs.Client:
         """Lazy-initialize GCS client."""
+        guard_gcs("GCS client")
         if self._client is None:
             try:
                 from google.cloud import storage as gcs_lib

@@ -1,5 +1,12 @@
 # Planning Log
 
+## 2026-11-11 - Local-first gap closure + dev/qa/main branching (program plan v3)
+- **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
+- **Focus:** Close every recorded gap except Vertex/GCP, running everything on the Windows workstation, and adopt a professional dev/qa/main branching strategy. Done as an expert team: 3 explore agents, a 3-role design panel (architect/SDLC/release, ML scientist/AI, product owner/scrum), then two adversarial review rounds (73 + 25 agents; 72 + 17 confirmed findings, 0 refuted).
+- **Decisions:** dev (renamed default) / qa (RCs) / main (tags); code promotes by branch, models by `champion.json`. The local loop is the CLI `run_iterations`, completed (it crashes on real training today); Vertex `main()` frozen, no parity claimed. Maintainer-only enforced by a machine-user identity + `qa-main-merge`/`release-tags` rulesets, hooks are an accident net (guard now covers PowerShell). Runs are fail-closed against GCP (ADC + user-scope bucket var present on the box) and pinned to source (installed `alpha_zero` is a stale editable v1.8.0). A1 re-registered as EVALUATION.md section 7.1: checkpoint_0 as random-init, `--bootstrap none`, hull intervals, ordered verdicts, 980 games priced per card. A negative A1 still ships v2.1 (`learning_recorded` vs `learning_claimed`).
+- **Output:** `kb/specs/20261111-local-first-and-branching-plan.md`, `kb/specs/20261111-local-first-gap-register.md` (82 `LF-` rows), `docs/audits/2026-11-11-local-first-plan-review.md`, handoff `kb/handoffs/20261111-planning-to-devsqe-local-first-and-branching.md`.
+- **Next:** Maintainer §10 actions 1–5 (W&B key revoke + refs/pull/72 purge, IAM, machine user, tag v2.0.0). DEV-SQE Sprint 0: T0a, T1, T2, T3a, T4 (R1), then cut-over with T6 (R2).
+
 ## 2026-09-04 - 2026 coding-standards audit
 - **Session:** session_01KZPsP2Mvg333p1akDqpLTG
 - **Focus:** "Is this project meeting 2026 best coding standards?" Six parallel read-only audit passes (CI/supply chain, application security, code quality/architecture, test suite, docs/governance, and a primary-source 2026 rubric), with every gate-integrity and high-severity claim reproduced by hand before acceptance.

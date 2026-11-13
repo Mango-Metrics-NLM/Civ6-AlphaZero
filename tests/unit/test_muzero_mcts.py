@@ -9,6 +9,7 @@ from alpha_zero.core.civ6_mcts import (
     MuZeroMCTSConfig,
     MuZeroNode,
 )
+from alpha_zero.core.mcts.gumbel_ops import build_completed_q_policy
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 
 
@@ -184,12 +185,78 @@ class TestMuZeroMCTS:
         assert np.all(action_probs >= 0)
         assert abs(action_probs.sum() - 1.0) < 1e-5
 
-    def test_search_returns_one_hot_with_gumbel(self, mcts, sample_observation, sample_action_mask):
-        """Gumbel MCTS returns one-hot policy."""
-        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
+    def test_search_returns_completed_q_target_with_gumbel(
+        self, mcts, sample_observation, sample_action_mask
+    ):
+        """The Gumbel path returns the completed-Q target over searched actions (T18).
 
-        # Should have exactly one action with probability ~1
-        assert action_probs.max() > 0.99
+        It used to return a one-hot on the halving winner; the one-hot is now
+        opt-in via ``policy_target="one_hot"`` (see the next test).
+        """
+        captured = {}
+        original = mcts._gumbel_policy_target
+
+        def spy(root, best_action, action_space_size):
+            captured["root"], captured["best"] = root, best_action
+            return original(root, best_action, action_space_size)
+
+        mcts._gumbel_policy_target = spy
+        action_probs, _ = mcts.search(sample_observation, sample_action_mask, add_noise=False)
+        root = captured["root"]
+
+        # Normalised, with mass only on legal actions the search actually visited.
+        assert action_probs.dtype == np.float32
+        assert abs(float(action_probs.sum()) - 1.0) < 1e-5
+        visited = {a for a, child in root.children.items() if child.visit_count > 0}
+        support = set(np.flatnonzero(action_probs).tolist())
+        assert len(visited) >= 2, "the fixture must search more than one action"
+        assert support and support <= visited
+        assert np.all(action_probs[sample_action_mask == 0] == 0.0)
+        assert captured["best"] in visited
+
+        # Exactly Danihelka's completed-Q target on the root's own statistics,
+        # recomputed here independently of the search's builder. Root Q is the
+        # edge reward plus the discounted value after it.
+        size = len(sample_action_mask)
+        priors = np.zeros(size, dtype=np.float32)
+        visits = np.zeros(size, dtype=np.float32)
+        qs = np.zeros(size, dtype=np.float32)
+        for action, child in root.children.items():
+            priors[action] = child.prior
+            visits[action] = child.visit_count
+            if child.visit_count > 0:
+                qs[action] = child.reward + mcts.config.discount * child.value
+        expected = build_completed_q_policy(
+            priors=priors,
+            visit_counts=visits,
+            q_values=qs,
+            root_value=root.value,
+            c_visit=mcts.config.c_visit,
+            c_scale=mcts.config.c_scale,
+        )
+        np.testing.assert_array_equal(action_probs, expected)
+
+    def test_search_returns_one_hot_when_configured(
+        self, network, sample_observation, sample_action_mask
+    ):
+        """``policy_target="one_hot"`` reproduces the pre-T18 target exactly."""
+        config = MuZeroMCTSConfig(
+            num_simulations=8,
+            num_sampled_actions=8,
+            use_gumbel=True,
+            use_sequential_halving=True,
+            policy_target="one_hot",
+        )
+        action_probs, _ = MuZeroMCTS(network, config, device="cpu").search(
+            sample_observation, sample_action_mask, add_noise=False
+        )
+
+        assert action_probs.max() == 1.0
+        assert (action_probs > 0).sum() == 1
+
+    def test_invalid_policy_target_rejected(self):
+        with pytest.raises(ValueError, match="policy_target"):
+            MuZeroMCTSConfig(policy_target="argmax")
 
     def test_search_respects_action_mask(self, mcts, sample_observation, sample_action_mask):
         """Search only selects valid actions."""
@@ -316,7 +383,7 @@ class TestMuZeroMCTSIntegration:
 
         action_probs, root_value = mcts.search(obs, mask, add_noise=False)
 
-        assert action_probs.max() > 0.99  # Should select one action
+        assert abs(action_probs.sum() - 1.0) < 1e-5  # completed-Q target (T18)
         assert np.isfinite(root_value)
         # Value should be bounded (untrained networks can produce larger values)
         assert -100.0 <= root_value <= 100.0, f"Root value {root_value} outside reasonable range"
@@ -420,7 +487,7 @@ class TestMuZeroMCTSNoEnvCloning:
         # Search should succeed using only the network's dynamics
         action_probs, _ = mcts.search(obs, mask)
 
-        assert action_probs.max() > 0.99
+        assert abs(action_probs.sum() - 1.0) < 1e-5
 
 
 class TestMuZeroMCTSRewardHandling:

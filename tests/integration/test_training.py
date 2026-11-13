@@ -651,14 +651,16 @@ class TestFullPipeline:
     def test_evaluation_against_random(self, small_config, small_network):
         """Test the evaluate_against_random function."""
         # Run evaluation with minimal games
-        win_rate = evaluate_against_random(
+        summary = evaluate_against_random(
             small_network,
             small_config,
             num_games=4,  # Small number for speed
         )
 
-        # Win rate should be between 0 and 1
-        assert 0.0 <= win_rate <= 1.0
+        # A full ScoreSummary (LF-A3): counts add up, rates in [0, 1].
+        assert summary.total_games == 4
+        assert 0.0 <= summary.score_rate <= 1.0
+        assert summary.ci_low <= summary.score_rate <= summary.ci_high
 
     def test_self_play_generates_diverse_data(self, small_config, small_network):
         """Verify self-play generates diverse training data."""
@@ -730,8 +732,8 @@ class TestFullPipeline:
             loaded_network = MicroCivNetwork.load(checkpoint_path, device="cpu")
 
             # Run evaluation with loaded network
-            win_rate = evaluate_against_random(loaded_network, small_config, num_games=2)
-            assert 0.0 <= win_rate <= 1.0
+            summary = evaluate_against_random(loaded_network, small_config, num_games=2)
+            assert 0.0 <= summary.score_rate <= 1.0
 
             # Generate more data with loaded network
             more_examples = run_self_play(

@@ -29,11 +29,14 @@ from __future__ import annotations
 import logging
 import math
 from collections.abc import Sequence
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Protocol
 
 import numpy as np
 import torch
 from torch import Tensor, nn
+
+from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -438,3 +441,216 @@ class TrainingDiagnostics:
         if self._tracker is not None:
             return self._tracker.get_history(name)  # type: ignore[no-any-return]
         return list(self._history.get(name, []))
+
+
+# ---------------------------------------------------------------------------
+# Prequential (out-of-sample) diagnostics for the local training loop (LF-A13)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class StepRecord:
+    """One step actually played in a self-play game -- never a search rollout.
+
+    ``action_type`` is ``decode_action(action)["type"]`` and ``success`` is the
+    environment's ``info["action_success"]`` for that step.
+    """
+
+    game_idx: int
+    action: int
+    action_type: str
+    success: bool
+
+
+class _ExampleLike(Protocol):
+    """The fields of ``training_civ6.TrainingExample`` these diagnostics read.
+
+    Structural, because ``training_civ6`` imports this module and not the reverse.
+    """
+
+    spatial: np.ndarray
+    vector: np.ndarray
+    action_mask: np.ndarray
+    policy: np.ndarray
+    value: float
+
+
+#: Positions per forward pass when scoring an iteration's fresh games.
+PREQUENTIAL_BATCH_SIZE = 256
+
+
+def _network_device(net: nn.Module) -> torch.device:
+    first = next(iter(net.parameters()), None)
+    return first.device if first is not None else torch.device("cpu")
+
+
+def _predict(
+    net: nn.Module, examples: Sequence[_ExampleLike], batch_size: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Scalar values and masked policy probabilities, in eval mode, without gradients.
+
+    The network's training mode is restored afterwards. Eval mode matters for more
+    than tidiness: a train-mode forward would update BatchNorm running statistics
+    and so change the weights the next training phase starts from.
+    """
+    device = _network_device(net)
+    was_training = net.training
+    net.eval()
+    values: list[np.ndarray] = []
+    probs: list[np.ndarray] = []
+    try:
+        with torch.no_grad():
+            for start in range(0, len(examples), batch_size):
+                chunk = examples[start : start + batch_size]
+                spatial = torch.from_numpy(np.stack([e.spatial for e in chunk])).float()
+                vector = torch.from_numpy(np.stack([e.vector for e in chunk])).float()
+                mask = torch.from_numpy(np.stack([e.action_mask for e in chunk])).float()
+                logits, value = net(spatial.to(device), vector.to(device), mask.to(device))
+                masked = logits.float().masked_fill(mask.to(device) <= 0, -1e9)
+                probs.append(torch.softmax(masked, dim=-1).cpu().numpy())
+                values.append(value.detach().float().reshape(len(chunk), -1)[:, 0].cpu().numpy())
+    finally:
+        net.train(was_training)
+    return np.concatenate(values), np.concatenate(probs)
+
+
+def _step_counts(step_records: Sequence[StepRecord]) -> dict[str, Any]:
+    histogram: dict[str, int] = {}
+    for record in step_records:
+        histogram[record.action_type] = histogram.get(record.action_type, 0) + 1
+    failed = [r for r in step_records if not r.success]
+    return {
+        "action_type_histogram": dict(sorted(histogram.items())),
+        "num_steps": len(step_records),
+        "n_games": len({r.game_idx for r in step_records}),
+        "invalid_action_count": len(failed),
+        "invalid_move_count": sum(1 for r in failed if r.action_type == "move"),
+    }
+
+
+def prequential_value_metrics(
+    net_prev: nn.Module,
+    fresh_examples: Sequence[_ExampleLike],
+    step_records: Sequence[StepRecord],
+    buffer_mean: float,
+    *,
+    batch_size: int = PREQUENTIAL_BATCH_SIZE,
+    greedy_threshold: float = GREEDY_THRESHOLD,
+) -> dict[str, Any]:
+    """Score the network, as it stood before training on them, on an iteration's games.
+
+    Called after self-play and *before* the fresh examples enter the replay
+    buffer, so every position is out of sample for ``net_prev``: this is a
+    prequential (predict-then-update) measurement, not a training-set fit.
+    ``net_prev`` usually also generated the games, but not always: under the
+    default ``--bootstrap simple_mcts`` iteration 0 is played by random-rollout
+    SimpleMCTS and scored by the random-init network (the caller records which,
+    as ``generator``).
+
+    Args:
+        net_prev: The network as it stood before this iteration's training, as
+            MCTS sees it -- a module whose ``forward(spatial, vector, mask)``
+            returns ``(policy_logits, value)`` with a scalar (current-player) value.
+        fresh_examples: The iteration's new training examples.
+        step_records: The steps actually played (see :class:`StepRecord`).
+        buffer_mean: Mean value target in the replay buffer before insertion;
+            ``0.0`` when the buffer is empty (iteration 0).
+        batch_size: Positions per forward pass.
+        greedy_threshold: The run's ``greedy_threshold``. ``select_action``
+            ignores temperature when a target's max-p is strictly above it, so
+            ``target_share_above_greedy_threshold`` is the fraction of this
+            iteration's *non-forced* positions on which the temperature
+            schedule was inert (LF-A5;
+            ``kb/specs/20261111-completed-q-alignment-memo.md``). Both target
+            sharpness fields are over positions with more than one legal action
+            (``n_unforced`` of them): a forced move's target is a one-hot
+            whatever the search does, and temperature cannot matter there, so
+            counting it would measure how often moves are forced, not how sharp
+            the targets are. ``forced_move_share`` records that separately.
+
+    Returns:
+        A JSON-serialisable dict. ``r2_oos = 1 - SSE / SST`` where SST is taken
+        around ``buffer_mean`` -- a constant the network could have known
+        before seeing these games -- so ``r2_oos > 0`` means the value head
+        beats "predict the historical mean". Sign accuracy is over positions
+        with ``|z| = 1``, beside two constant-sign baselines:
+        ``sign_accuracy_baseline`` (the best constant sign for these targets, an
+        in-sample oracle and so a conservative bar) and
+        ``sign_accuracy_baseline_prequential`` (the constant ``sign(buffer_mean)``,
+        known beforehand; ``None`` when ``buffer_mean`` is 0, because a 0
+        prediction abstains). ``n_games`` is the number of distinct games in
+        ``step_records``: positions of one game share an outcome, so it, not
+        ``n_positions``, is the effective sample size. Undefined quantities are
+        ``None``. Recorded, never gated.
+    """
+    from alpha_zero.monitoring import compute_policy_entropy
+
+    metrics: dict[str, Any] = {
+        "n_positions": len(fresh_examples),
+        "buffer_mean": float(buffer_mean),
+        "value_mse": None,
+        "baseline_mse": None,
+        "r2_oos": None,
+        "n_decisive": 0,
+        "sign_accuracy": None,
+        "sign_accuracy_baseline": None,
+        "sign_accuracy_baseline_prequential": None,
+        "target_entropy": None,
+        "policy_entropy": None,
+        "greedy_threshold": float(greedy_threshold),
+        "target_max_p_mean": None,
+        "target_share_above_greedy_threshold": None,
+        "n_unforced": 0,
+        "forced_move_share": None,
+        **_step_counts(step_records),
+    }
+    if not fresh_examples:
+        return metrics
+
+    predicted, policy_probs = _predict(net_prev, fresh_examples, batch_size)
+    targets = np.array([float(e.value) for e in fresh_examples], dtype=np.float64)
+    sse = float(np.sum((targets - predicted) ** 2))
+    sst = float(np.sum((targets - buffer_mean) ** 2))
+    metrics["value_mse"] = sse / len(targets)
+    metrics["baseline_mse"] = sst / len(targets)
+    metrics["r2_oos"] = 1.0 - sse / sst if sst > 0.0 else None
+
+    decisive = np.isclose(np.abs(targets), 1.0)
+    metrics["n_decisive"] = int(decisive.sum())
+    if decisive.any():
+        accuracy = TrainingDiagnostics().compute_value_accuracy(
+            torch.from_numpy(predicted[decisive]), torch.from_numpy(targets[decisive])
+        )
+        # compute_value_accuracy works in float32; report at a precision that means something.
+        metrics["sign_accuracy"] = round(float(accuracy["sign_accuracy"]), 6)
+        positive = float(np.mean(targets[decisive] > 0))
+        metrics["sign_accuracy_baseline"] = max(positive, 1.0 - positive)
+        prior_sign = float(np.sign(buffer_mean))
+        if prior_sign != 0.0:
+            metrics["sign_accuracy_baseline_prequential"] = float(
+                np.mean(np.sign(targets[decisive]) == prior_sign)
+            )
+
+    metrics["target_entropy"] = float(
+        np.mean([compute_policy_entropy(e.policy, e.action_mask) for e in fresh_examples])
+    )
+    # Mean entropy is a weak detector of a target collapsing to deltas: the
+    # target distribution is bimodal across networks, so the mean can barely
+    # move while the near-delta share does. Record the share directly.
+    # Forced moves (one legal action) are excluded: see ``greedy_threshold`` above.
+    unforced = [e for e in fresh_examples if int(np.count_nonzero(e.action_mask)) > 1]
+    metrics["n_unforced"] = len(unforced)
+    metrics["forced_move_share"] = 1.0 - len(unforced) / len(fresh_examples)
+    if unforced:
+        max_p = np.array([float(np.max(e.policy)) for e in unforced], dtype=np.float64)
+        metrics["target_max_p_mean"] = float(max_p.mean())
+        metrics["target_share_above_greedy_threshold"] = float(np.mean(max_p > greedy_threshold))
+    metrics["policy_entropy"] = float(
+        np.mean(
+            [
+                compute_policy_entropy(p, e.action_mask)
+                for p, e in zip(policy_probs, fresh_examples, strict=True)
+            ]
+        )
+    )
+    return metrics

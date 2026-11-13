@@ -1,28 +1,26 @@
 {
-    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-10T06:06:16Z",
-    "current_focus": "Public-release readiness implemented and pushed (PR #132, v2.0.0 roll); handed off to Pre-PR",
+    "last_session_id": "session_9a6019a1-f6d9-4e79-9f63-04002716a56d",
+    "last_timestamp": "2026-11-12T15:30:00Z",
+    "current_focus": "v2.1 local-first + dev/qa/main implemented on draft PR #135 (head 825e5c3); handed off to Pre-PR and the maintainer",
     "resume_pointers": {
-        "current_task": "Pre-PR review of PR #132; then the maintainer checklist (review \u00a79) before flipping the repository public",
+        "current_task": "Pre-PR review of PR #135, then the maintainer cut-over and T17 (A1/A1-R, v2.1.0)",
         "blocked_on": [
-            "maintainer: rotate the W&B key (commit is the head of closed PR #72; branch deletion does nothing)",
-            "maintainer: remove the four allUsers IAM bindings / confirm services undeployed",
-            "maintainer: merge P5 before renaming the default branch to main; protection with required checks and zero approvals",
-            "maintainer: make ianshank/Agents public or remove the eval extra from make verify",
-            "maintainer: ratify the charter commit c66f12b; tag v2.0.0 on the merge commit"
+            "maintainer: review/merge PR #135; run scripts/maintainer/branch_cutover.sh (rulesets, dev rename); create the civ6az-agent machine user",
+            "maintainer: live-guard probe in a fresh session after merge (T4 guard + .claude/agents hooks have not run live)",
+            "maintainer: A5/A12 decision (memo kb/specs/20261111-completed-q-alignment-memo.md; Option A registered)",
+            "maintainer: revoke the W&B key and the plan's section 10 actions 1-2"
         ],
         "next_steps": [
-            "Pre-PR: independent review of PR #132 per .claude/skills/pre-pr-handoff",
-            "After merge: openspec-archive for public-release-readiness, harden-governance-gates and reproducible-runs",
-            "Milestone v2.1: first post-fix learning run per docs/EVALUATION.md \u00a77; CONFIRM-FIRST hunks for coordinator.py / vertex_orchestrator.py (E5, seeding)",
-            "Open the public backlog issues from the review \u00a710 (security items stay private)"
+            "Run configs/run_cards/t0b.yaml; python -m alpha_zero.evaluation.a1_protocol calibrate; fill the section 7.1 slots + card sha + registration row in one PR",
+            "Then A1 and A1-R cards on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
+            "Follow-ups (CONFIRM-FIRST): MuZero reward-sign fix (CLAUDE.md section 5.3); coordinator pricing; OpenSpec branching-and-release task 5.7 (re-verify in release.yml)"
         ]
     },
     "context_files": [
-        "kb/specs/20261110-public-release-readiness.md",
-        "docs/audits/2026-11-10-public-release-review.md",
-        "openspec/changes/public-release-readiness/tasks.md",
+        "kb/specs/20261111-local-first-and-branching-plan.md",
+        "kb/handoffs/20261112-devsqe-to-prepr-local-first-v2-1.md",
         "docs/EVALUATION.md",
-        "kb/handoffs/20261110-devsqe-to-prepr-public-release-readiness.md"
+        "docs/runbooks/branching-and-release.md",
+        "kb/specs/20261111-completed-q-alignment-memo.md"
     ]
 }

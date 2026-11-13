@@ -17,7 +17,7 @@ class TestWebConfigDefaults:
         config = WebConfig()
 
         # Server defaults
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.port == 8080
         assert config.debug is False
         assert config.log_level == "info"
@@ -50,7 +50,8 @@ class TestWebConfigDefaults:
         assert config.save_dir == "saves/web_games"
 
         # Security defaults
-        assert config.cors_origins == ["*"]
+        assert "*" not in config.cors_origins
+        assert "http://127.0.0.1:8080" in config.cors_origins
 
     def test_custom_initialization(self):
         """Test initialization with custom values."""
@@ -509,7 +510,7 @@ class TestWebConfigFromEnv:
         config = WebConfig.from_env()
 
         assert config.port == 8080
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.board_size == 16
 
     def test_from_env_port_override(self, monkeypatch):
@@ -781,7 +782,7 @@ class TestWebConfigFromPreset:
         """Test production preset has expected values."""
         config = WebConfig.from_preset("production")
 
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.port == 8080
         assert config.debug is False
         assert config.log_level == "info"

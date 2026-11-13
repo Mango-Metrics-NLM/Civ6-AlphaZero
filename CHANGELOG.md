@@ -7,9 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Local-first operation and the dev/qa/main release model (plan:
+[`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)).
+The A1 learning run is registered, not run: no verdict exists yet.
+
+### Changed (BREAKING)
+- `evaluate_against_random` (`alpha_zero/training_civ6.py`) returns the full `ScoreSummary` from `evaluation/scoring.py` instead of the float `wins / games`, which scored every draw as a loss. `evaluate_win_rate_against_random` is the deprecated float shim: it returns the old value and emits a `DeprecationWarning`.
+- Game runners refuse a worst case over 1,000 games (`alpha_zero/utils/game_budget.py`): every runner except the distributed coordinator prices itself after resolving its CLI, preset, YAML and environment, and exits 2 over the cap. A bare `python -m alpha_zero.training_civ6` prices at 10,200 and is refused; `--dry_run` prices at 8. `--max_games` can only lower the cap; `--approval_ref <issue>` raises it and is recorded, not verified. `scripts/run_civ6_ai.py`'s hard-coded 100 x 100 games is now 10 x 10. The coordinator's own `--max_games` stays unpriced (distributed coordination is confirm-first; the PreToolUse guard asks on it).
+- The web UI and the inference server bind `127.0.0.1` with loopback-only CORS by default (`alpha_zero/utils/network.py`); a non-loopback bind is opt-in (`WebConfig.host`, `INFERENCE_HOST`) and logged as a warning. The production web preset is loopback; `Dockerfile.inference` sets its container bind explicitly.
+
 ### Changed
+- Seeded Gumbel trajectories differ from 2.0.0 at every `(k, n)` except `(8, 24)` and `(16, 64)`, because the halving schedule now spends exactly the configured budget (see Fixed). `--mcts gumbel` honours `--num_simulations` (it silently used 16) unless `--gumbel_sims` is given.
+- In-loop evaluation is decoupled from checkpointing: `--eval_interval` (default `--save_interval`, so an unflagged run evaluates and prices as before) and `--eval_games` (`0` turns it off, also under `--dry_run`). Each evaluation writes `eval_<iter>.json` beside the checkpoints.
 - Deployed images (`Dockerfile.vertex`, `Dockerfile.inference`) move from NGC PyTorch 24.09 (Python 3.10, CUDA 12) to 26.10 (Python 3.12, CUDA 13.4, PyTorch 2.15 pre-release). Supersedes Dependabot #130. `pip install` is constrained to NGC's own torch build so a PyPI wheel cannot replace it.
 - The Cloud Build `check-python-version` step fails the build below Python 3.11 again (it was report-only while the base shipped 3.10). Gated by `tests/regression/test_base_image_python_regression.py`.
+- `scripts/local_muzero_launcher.py` is superseded by run cards and refuses unless `--allow-gcs`: despite its name it reads and writes models through GCS whenever credentials are present.
+- Charter amendment A-1 (proposed; ratified by the merge that carries it): training runs locally on one workstation, the Vertex/GCP path is frozen and dormant (kept, not deleted, no parity claimed), and branching is dev -> qa -> main.
+
+### Added — local runs
+- **Data root and pinned runs:** `CIV6AZ_DATA_ROOT` (`alpha_zero/utils/data_root.py`) holds every run's output outside the repository. `alpha_zero/local/pinned_env.py` runs a card from a `git archive` of its SHA in a venv built from that SHA's wheel, and a preflight proves the child imports the pinned code.
+- **Local isolation** (`alpha_zero/local/isolation.py`): `enter_local_mode` scrubs cloud variables, points `CLOUDSDK_CONFIG` at an empty directory, sets `CIV6AZ_SKIP_DOTENV`, and makes any GCS access raise `LocalModeViolation`.
+- **Run cards** (`configs/run_cards/*.yaml`, `scripts/run_card.py`): every invocation is priced with its runner's own parser and the card refused over its cap before anything is created; then pinned, isolated, run, and recorded in `run.json` (environment variable names, never values). A run directory is single-use; an interrupted or resumed card is VOID, and a card refuses to start while any `MCTS_*` variable is set. Cards: `smoke`, `a1`, `a1r`, `t0b`.
+- **Game-cap cost models** for every priced runner (`training_civ6`, the orchestrator CLI and the production launcher, the benchmark, and the `scripts/` runners), each with `--max_games` and `--approval_ref`.
+- `scripts/calibrate_throughput.py` (self-play throughput harness) and `docs/evidence/windows_baseline_20261111/` (machine snapshot; no ETA claim).
+
+### Added — branching and release
+- **Branch Direction** (`scripts/check_branch_direction.py`, `.github/workflows/branch-policy.yml`): judges every PR into `dev`, `qa` or `main` by git ancestry. An accident net, not a control.
+- **Rulesets** (`.github/rulesets/*.json`) and the maintainer scripts `scripts/maintainer/branch_cutover.sh`, `merge_backmerge.sh` and `tag_release.py`. Nothing is enforced until the maintainer runs the cut-over and provisions the `civ6az-agent` identity.
+- **Release gates** in `release.yml`: `verify-tag` (the version matches `pyproject.toml`; an rc descends from `qa` and a final from `main`; after the highest rc only `docs/evidence/**` may change) and `wait-for-ci`. `scripts/release_version.py` stamps an rc's PEP 440 version into the build copy only.
+- **Release Evidence** (`scripts/verify_release_evidence.py`, `.github/workflows/release-evidence.yml`, pull requests only): recomputes every count, interval, hull and verdict from per-game records, re-hashes every component, binds each run to the commands section 7.1 registers at its commit, caps each run at 1,000 games without its own `approval_ref`, and refuses evidence staler than the highest rc on `scripts/release_play_path.txt`. `tests/scripts/test_release_play_path_closure.py` derives the play path from the A1 import closure. `scripts/build_release_bundle.py` builds the bundle from run directories and verifies it before writing.
+- **Role subagents:** eight SDLC roles in `.claude/agents/sdlc-*.md`, the `readonly_shell_guard.sh` and `tests_only_write_guard.sh` hooks, and `scripts/validate_claude_agents.py` in the governance gates.
+- The PreToolUse guard covers Bash and PowerShell (wrappers unwrapped), protects `dev`, `qa`, `main` and the default branch, denies tag creation and write-capable `gh` calls, and asks on `--approval_ref`, `--preset production` and unknown runners. An accident net, not a control.
+
+### Added — evaluation
+- **Benchmark evidence producer** (`alpha_zero/evaluation/benchmark.py`, `scripts/benchmark_suite.py`): schema 2 envelope with per-game `{pair, seat, result}` records, the iid and pair-clustered intervals and their hull at 95% and 99%, `--candidate`, `--opponent-checkpoint`, `--shard`/`--merge`; `result.json` is never overwritten.
+- **A1 registration:** `docs/EVALUATION.md` section 7.1 pre-registers the first post-fix learning run (A1, seed 20261111) and its replication (A1-R, seed 20261112), frozen by a sha256 with a registration log. `alpha_zero/evaluation/a1_protocol.py` holds the hash, the hull-based positive-control calibration and `compute_verdict` (the one implementation of the verdict table); `a1_registration.py` reads the registered commands; the A1 and A1-R cards are priced at 980 games each.
+- **T0b:** `configs/run_cards/t0b.yaml` (the A1 wall-clock calibration plus heuristic vs random at seeds 1001-1003 x 200 games) and `python -m alpha_zero.evaluation.a1_protocol calibrate`, which prints the reference, P(40) with its 95% interval, P(60), the 40/60 branch and the exact section 7.1 slot text.
+- **Checkpoint provenance:** checkpoints carry primitive metadata (`board_size`, `max_turns`, `num_players`, search settings, `bootstrap`, `seed`, `git_sha`, `env_version`) that loads under `weights_only=True`; a `max_turns` mismatch raises `HorizonMismatch`; `--bootstrap {simple_mcts,none}`; `checkpoint_0.pt` is written before training.
+- **Diagnostics:** prequential value metrics, target sharpness and invalid-action counts per iteration in `<checkpoint_dir>/iterations.jsonl`, stamped with the run's identity (`training/run_record.py`); recorded, never gated.
+- Search flags on `training_civ6`: `--gumbel_k`, `--gumbel_sims`, `--c_scale`, `--policy_target`, `--greedy_threshold`.
+- `scripts/check_learning_trend.py` (descriptive only), `scripts/probe_target_sharpness.py` (0 games) with its evidence, and the LF-A5/A12 and LF-A17 memos.
+
+### Fixed
+- **Move mask:** a move onto a tile occupied by a unit is no longer marked legal; the mask now agrees with the executor, which rejected it and zeroed the unit's moves.
+- **Gumbel budget:** one sequential-halving schedule (`gumbel_ops.halving_schedule`) for the sequential, batch and MuZero searches spends exactly the configured `n` whenever two or more moves are legal, and nothing on a forced move. Before, `(16, 64)` spent 40 with 5 legal moves and the batch search's spend depended on its neighbours.
+- **Batch Gumbel search:** survivors are ranked with the mover-relative sign; halving steps every tree one simulation per batch (it re-evaluated one unexpanded leaf per root action); it returns the completed-Q policy target. A single-environment batch search is now exactly `GumbelMCTS`, gated on seeded MicroCiv positions.
+- **MuZero Gumbel path:** root Q includes the edge reward (a game ending on that edge valued every action 0), and the policy target is the shared completed-Q target instead of a one-hot that Gumbel noise could make a losing move.
+- Checkpoint `git_sha` resolves in worktrees and pinned runs (`CIV6AZ_GIT_SHA`).
+- `tag_release` refuses while CI is pending, failed or missing; pushes to protected branches get their own CI concurrency group; `merge_backmerge.sh` strips CR from `gh` output.
+- `run_sweep.py` prices MuZero trials with the MuZero runner's own parser.
+
+### Security
+- **Fail-closed GCS under local mode:** `GCSStorageBackend` and `cloud/gcp/storage.py` check local mode at construction and on every lazy client and bucket access, so a backend built before `enter_local_mode` cannot reach GCS.
+- The live GCS test module needs `CIV6AZ_LIVE_GCS_TESTS=1`; the test session scrubs bucket and project variables.
+- Loopback-only defaults for the web UI and the inference server (see Changed (BREAKING)).
+- The role-subagent guards deny an empty or multi-document hook payload rather than allow it.
+
+### Known limitations
+- **MuZero search is not two-player sign-correct** (known defect, CLAUDE.md section 5.3; the fix is confirm-first): its backup sums mover-relative rewards with no sign flip, and its value targets use a third frame. A1 does not use MuZero. The alternating forced-win case is a strict `xfail`.
+- The branch model, rulesets and agent identity are not enforced until the maintainer's cut-over; until then the guard is the only barrier, and it is an accident net.
+- Section 7.1's "pending T0b" slots are open, so neither A1 card can run yet.
 
 ## [2.0.0] — 2026-11-10 — Public release: honest surface, corrected search, measured evaluation
 

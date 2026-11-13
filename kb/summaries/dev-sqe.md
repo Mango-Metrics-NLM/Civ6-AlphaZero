@@ -1,5 +1,19 @@
 # DEV-SQE Log
 
+## 2026-11-12 - Local-first v2.1 implementation (T0a–T16, T18; PR #135)
+- **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
+- **Task:** Implemented every v2.1 task of `kb/specs/20261111-local-first-and-branching-plan.md` except T17 (the maintainer-gated release). The work was run subagent-driven: per task, an implementer, an independent task review and fix rounds until approved, then a whole-branch review with one fix wave and a re-review (READY TO FINISH).
+  - Branching and harness: game cap (T5), data root and pinned env (T1), GCP isolation (T2), run cards (T1b), charter amendment A-1 (T3a), R1 guard (T4), R2 Branch Direction, rulesets and release gates (T6), R3 docs (T3).
+  - Science: move mask (T7), Gumbel budget (T8), bootstrap and provenance (T9), eval decoupling and diagnostics (T10), benchmark evidence producer (T11), A5/A12/A17 memos and probe (T12), EVALUATION.md section 7.1 registration (T13).
+  - Release and security: release-evidence verifier and job (T14), role subagents and guards (T15), loopback defaults (T16), forced-win oracle over batch/MuZero (T18).
+- **Files Changed:** 98 commits, 235 files (+38,630 / −1,163) on `claude/local-deployment-branching-plan-51a0cb`; 57 test files added or changed.
+- **Tests:** `make verify` (Git Bash, worktree on PYTHONPATH) at 2a54941:
+  - green: lint, ruff format (pinned 0.15.8), unit 8,809 passed, governance 767, coverage 89.82% (gate 85), cloud floor 60.0% (58), gitleaks clean, LLM eval PASS.
+  - environment-only failures: mypy 23 errors from local numpy/jax stubs (CI Lint & Type Check green), and `test_seed_is_stable_across_processes` (the subprocess imports the main checkout's editable install).
+  - Final fix wave verified by focused suites (1,879 passed; the 7 failures are local `.env`/Windows-path issues) and by the re-review (483 passed).
+- **Status:** complete; draft PR #135 open, all commits pushed (head 825e5c3); CI green except Branch Direction, which fails closed until the judge reaches the default branch at cut-over step 5.
+- **Next:** maintainer — review and merge PR #135, cut-over (`scripts/maintainer/branch_cutover.sh`), create `civ6az-agent`, live-guard probe in a fresh session, A5/A12 decision (Option A registered), T0b card then fill the section 7.1 slots, then A1/A1-R (T17). Follow-ups: MuZero sign defect (CLAUDE.md §5.3, CONFIRM-FIRST), coordinator pricing (CONFIRM-FIRST), M-9 release-time re-verification (OpenSpec task 5.7).
+
 ## 2026-11-10 - Public-release readiness (PR #132, v2.0.0)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
 - **Task:** Peer review for the public flip run as a five-role panel (SDLC/DevSecOps, ML/AI science, Product + Scrum, architect, integration lead), every decision argued thesis → counter → rebuttal → gate (`docs/audits/2026-11-10-public-release-review.md`, spec `kb/specs/20261110-public-release-readiness.md`, OpenSpec change `public-release-readiness`), then implemented as seven slices by five sub-agents in one PR, committed by reviewability class.

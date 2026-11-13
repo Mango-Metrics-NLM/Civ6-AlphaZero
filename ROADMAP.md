@@ -18,14 +18,16 @@ about learning.
 | Theme | Name | Delivery status | Validation (evidence) |
 |-------|------|-----------------|-----------------------|
 | M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
-| M2 | Scale & Observability | ✅ Delivered | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
+| M2 | Scale & Observability | ✅ Delivered; ⏸ **Vertex/GCP path dormant** (frozen 2026-11-11) | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
 | M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery proven, demo-grade.** Four `END_TURN`s on random weights, 2026-07-12; turn-cycle stall open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
 | M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
 | M5 | Full Civ6 Mastery | ⏳ Future | — |
 
 ## Now / Next / Later
 
-Sequencing authority: [`kb/specs/20260904-correctness-first-plan.md`](kb/specs/20260904-correctness-first-plan.md)
+Sequencing authority for v2.1: [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+(local-first program; gap register `kb/specs/20261111-local-first-gap-register.md`). It carries forward
+[`kb/specs/20260904-correctness-first-plan.md`](kb/specs/20260904-correctness-first-plan.md)
 (search correctness → draw-rate re-measure → seeded learning run), which amends
 [`kb/specs/20260902-validated-learning-plan.md`](kb/specs/20260902-validated-learning-plan.md).
 Every *Now* bullet names the issue or OpenSpec change that tracks it
@@ -33,24 +35,38 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
 
 ### Now
 
-- Public-release readiness — all tasks under `openspec/changes/public-release-readiness`
-  (deletion of off-scope material, identifier scrub, README v2, documentation index
-  and gates, charter corrections, CI/supply-chain hardening, the v2.0.0 changelog roll).
+- `openspec/changes/branching-and-release`: the dev / qa / main branch model,
+  rulesets and release gates of the local-first plan.
+- `openspec/changes/harden-governance-gates`: governance-gate hardening.
+- `openspec/changes/fix-gumbel-budget`, `openspec/changes/fix-move-mask`: the
+  search-budget and move-mask fixes A1 runs on.
+- `openspec/changes/checkpoint-provenance`, `openspec/changes/eval-decoupling-diagnostics`:
+  checkpoint provenance and `checkpoint_0`; decoupled in-loop evaluation and the
+  prequential diagnostics A1's target-sharpness trigger reads.
+- `openspec/changes/benchmark-evidence-producer`: the benchmark as the A1
+  evidence producer (pair and hull intervals, per-arm `--out`, shards).
 
 ### Next — v2.1 "First validated learning run"
 
+- **A1**, registered in [`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1
+  (2026-11-11): 20 iterations × 24 self-play games at board 8 / 60 turns on the
+  Gumbel search, then a 200-game paired arena of the final checkpoint against its
+  own random initialisation, with symmetry and positive controls; 980 games
+  priced by `configs/run_cards/a1.yaml`. The verdict is the registered table,
+  whichever way it comes out. Before it runs, T0b measures the positive-control
+  reference and the wall clock.
+- **A1-R** at seed 20261112 (`configs/run_cards/a1r.yaml`); it must also pass
+  before any public claim that the agent learns. A FAIL is followed by A1-P (the
+  PUCT search at the same seed).
 - Re-measure the draw rate under *trained* post-fix play (the committed sweep is
   random play on pre-fix code), then set `max_turns` on the deployed path from
   that number.
-- A seeded 20-iteration learning-trend run on the fixed search, read against a
-  draw-aware score rate with a paired-seat protocol, committed under
-  `docs/evidence/` with the post-fix banner.
-- Evaluation plumbing the run needs: a search seed and paired seats in
-  `run_arena`, additive draw-aware metrics with a regression gate, and a
-  promotion-feasibility report with a corrected runbook.
-- Gumbel policy-target entropy measurement and the documented deviations from
-  the reference algorithm; a closed-loop learning oracle.
-- Memo on the seed overlap in the encoder A/B evidence (WS-S S5).
+
+Done for v2.1 and no longer listed: the evaluation plumbing (seeded, paired
+arena; additive draw-aware metrics; promotion feasibility), the Gumbel
+target-sharpness probe and completed-Q alignment memo (decision pending with
+the maintainer; A1 registers the current settings), and the seed-overlap memo
+(`kb/specs/20261111-seed-overlap-memo.md`).
 
 ### Later
 
@@ -74,6 +90,11 @@ AlphaZero on MicroCiv, built end-to-end. *(Delivered: Phases 1–18, v0.x–v1.5
 ## M2 — Scale & Observability
 
 Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7, 19–21, v1.6.0.)*
+
+> **DORMANT (2026-11-11):** the Vertex/GCP half of this milestone is frozen — code kept, not
+> deleted, no local/cloud parity claimed; training runs locally. See
+> [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+> and charter amendment A-1. The history below is preserved.
 
 - 3-phase Vertex AI pipeline (self-play → train → eval) in a single image
   (`dockerfiles/Dockerfile.vertex`, routed by `alpha_zero.cloud.gcp.entrypoint`),

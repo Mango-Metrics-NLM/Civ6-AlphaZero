@@ -82,8 +82,46 @@ def _has_jax() -> bool:
 
 
 # Pytest markers for conditional execution
+#: Set to ``1`` to let tests that hit a REAL bucket see cloud credentials/config.
+LIVE_GCS_OPT_IN_ENV = "CIV6AZ_LIVE_GCS_TESTS"
+
+_CLOUD_ENV_EXACT = frozenset(
+    {
+        "CIV6AZ_LOCAL_RUN",
+        "CIV6AZ_GCS_BUCKET",
+        "CIV6AZ_SKIP_DOTENV",
+        "CIV6AZ_STORAGE_BACKEND",
+        # Legacy and test-only names that select a real bucket or project
+        # (CLAUDE.md section 12.5; tests/e2e/test_gcp_integration.py fixtures).
+        "CIV6_GCS_BUCKET",
+        "CIV6_STORAGE_BACKEND",
+        "GCS_BUCKET_NAME",
+        "GCP_PROJECT_ID",
+    }
+)
+_CLOUD_ENV_PREFIXES = ("GOOGLE_", "VERTEX_")
+
+
+def scrub_cloud_environment(environ: dict[str, str] | os._Environ[str]) -> list[str]:
+    """Remove the developer's cloud variables from *environ*; return the names removed.
+
+    Does nothing under the live-GCS opt-in. Runs at ``pytest_configure``, i.e.
+    BEFORE collection, so a module that reads a variable at import time (as
+    ``test_gcs_live`` once did) sees it gone.
+    """
+    if environ.get(LIVE_GCS_OPT_IN_ENV) == "1":
+        return []
+    removed = [
+        n for n in list(environ) if n in _CLOUD_ENV_EXACT or n.startswith(_CLOUD_ENV_PREFIXES)
+    ]
+    for name in removed:
+        environ.pop(name, None)
+    return removed
+
+
 def pytest_configure(config: pytest.Config) -> None:
-    """Register custom markers."""
+    """Scrub cloud variables for the whole session and register custom markers."""
+    scrub_cloud_environment(os.environ)
     config.addinivalue_line(
         "markers", "requires_gcp: marks tests requiring GCP credentials (skip if unavailable)"
     )
@@ -136,6 +174,21 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 
 
 # Fixtures for cloud testing
+@pytest.fixture(autouse=True)
+def _strip_cloud_and_local_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's cloud env (and local-mode flag) out of every test.
+
+    A workstation may carry ``CIV6AZ_GCS_BUCKET`` or ``GOOGLE_*`` at user scope;
+    a leaked ``CIV6AZ_LOCAL_RUN=1`` would make ``GCSBackend`` unconstructible.
+    A test that needs one of these sets it itself.
+    """
+    if os.environ.get(LIVE_GCS_OPT_IN_ENV) == "1":
+        return
+    for name in list(os.environ):
+        if name in _CLOUD_ENV_EXACT or name.startswith(_CLOUD_ENV_PREFIXES):
+            monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def gcp_credentials_available() -> bool:
     """Check if GCP credentials are available.

@@ -6,7 +6,9 @@ import sys
 def main():
     """
     Run the Civ6 AlphaZero AI training.
-    Default: python -m alpha_zero.training_civ6 --num_games=100 --num_iterations=100
+    Default: python -m alpha_zero.training_civ6 --num_games=10 --num_iterations=10
+    (10 x 10 stays under the 1,000-game cap; pass --approval_ref / --max_games through
+    for a larger, approved run.)
     """
     parser = argparse.ArgumentParser(description="Run Civ6 AlphaZero AI Training")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
@@ -25,8 +27,8 @@ def main():
         sys.executable,
         "-m",
         "alpha_zero.training_civ6",
-        "--num_games=100",
-        "--num_iterations=100",
+        "--num_games=10",
+        "--num_iterations=10",
     ]
 
     # Add optional flags

@@ -9,12 +9,19 @@ Implements the AlphaZero self-play training loop:
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import platform
 import re
+import shlex
+import sys
 import time
+import warnings
 from collections import deque
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
+from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
 
 import numpy as np
@@ -33,8 +40,10 @@ from alpha_zero.core.civ6_mcts import (
     SimpleMCTS,
 )
 from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
+from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
+from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.evaluation.scoring import score_interval, summarize
+from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
 from alpha_zero.multiplayer.scoring import (
@@ -42,8 +51,29 @@ from alpha_zero.multiplayer.scoring import (
     compute_player_values,
     compute_rankings,
 )
-from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.training.diagnostics import StepRecord, prequential_value_metrics
+from alpha_zero.training.run_record import IterationLog
+from alpha_zero.utils.checkpoint import (
+    GIT_SHA_ENV,
+    build_provenance,
+    check_provenance,
+    read_git_sha,
+    safe_load_checkpoint,
+)
+from alpha_zero.utils.constants import MCTS
+from alpha_zero.utils.data_root import (
+    assert_safe_data_root,
+    default_checkpoint_dir,
+    default_run_id,
+    resolve_data_root,
+    validate_run_id,
+)
 from alpha_zero.utils.device import inference_thread_limit, resolve_device_str
+from alpha_zero.utils.game_budget import (
+    DEFAULT_TRAINING_EVAL_GAMES,
+    add_budget_arguments,
+    enforce_cli,
+)
 from alpha_zero.utils.seeding import SeedStream, derive_seed
 
 # Configure logging
@@ -93,12 +123,16 @@ class TrainingConfig:
     temperature: float = 1.0
     temperature_threshold: int = 30
 
-    # Gumbel MuZero MCTS (alternative to standard MCTS)
+    # Gumbel MuZero MCTS (alternative to standard MCTS). Every field below
+    # reaches BOTH the self-play and the evaluation search (gumbel_search_config).
     use_gumbel_mcts: bool = False
     gumbel_num_simulations: int = 16
     gumbel_num_sampled_actions: int = 16
     gumbel_c_visit: float = 50.0
+    gumbel_c_scale: float = MCTS.GUMBEL_C_SCALE
     gumbel_use_sequential_halving: bool = True
+    gumbel_policy_target: str = POLICY_TARGET_COMPLETED_Q
+    gumbel_greedy_threshold: float = GREEDY_THRESHOLD
 
     # Training
     batch_size: int = 128
@@ -117,11 +151,27 @@ class TrainingConfig:
     checkpoint_dir: str = "checkpoints/civ6"
     log_dir: str = "logs/civ6"
     save_interval: int = 10
+    # In-loop evaluation against a random opponent, decoupled from checkpointing
+    # (LF-A14). ``eval_interval=None`` keeps the historical coupling: evaluate on
+    # the checkpoint cadence, so a run that sets neither flag is unchanged.
+    # ``eval_games=0`` turns in-loop evaluation off.
+    eval_interval: int | None = None
+    eval_games: int = DEFAULT_TRAINING_EVAL_GAMES
     # Resume. `resume_from` restores network weights only -- see
     # `resume_network_weights` for what is deliberately not restored.
     # `start_iteration` is the loop index to begin at; 0 means "from the top".
     resume_from: str | None = None
     start_iteration: int = 0
+
+    # Iteration-0 data source. "simple_mcts" (the historical behaviour) plays
+    # iteration 0 with random-rollout SimpleMCTS because the network is untrained;
+    # "none" plays it with the configured search on the freshly initialised
+    # network, so the first training set already comes from the search under study.
+    bootstrap: str = "simple_mcts"
+
+    # Run identity stamped on every iterations.jsonl line. ``None`` falls back to
+    # CIV6AZ_RUN_ID (set by the run-card driver), then to a timestamped default.
+    run_id: str | None = None
 
     # Device. "auto" is resolved to a concrete device in __post_init__ rather
     # than probed at import time, so constructing a TrainingConfig on a GPU box
@@ -132,6 +182,15 @@ class TrainingConfig:
         # Resolve rather than merely warn: an unresolved "cuda" on a CPU-only
         # host would otherwise crash later inside .to().
         self.device = resolve_device_str(self.device)
+        if self.eval_interval is not None and self.eval_interval < 1:
+            raise ValueError(f"eval_interval must be >= 1 or None, got {self.eval_interval}")
+        if self.eval_games < 0:
+            raise ValueError(f"eval_games must be >= 0, got {self.eval_games}")
+
+    @property
+    def resolved_eval_interval(self) -> int:
+        """Iterations between in-loop evaluations: ``eval_interval``, else ``save_interval``."""
+        return self.eval_interval if self.eval_interval is not None else self.save_interval
 
 
 #: ``checkpoint_<N>.pt`` is written *after* the iteration at loop index
@@ -161,6 +220,8 @@ def resume_network_weights(
     resume_path: str,
     *,
     device: str = "cpu",
+    max_turns: int | None = None,
+    board_size: int | None = None,
 ) -> None:
     """Load weights from a checkpoint into an already-constructed network.
 
@@ -178,8 +239,15 @@ def resume_network_weights(
         network: The network to load into, already on ``device``.
         resume_path: Path to a checkpoint written by this script.
         device: Device to map the checkpoint onto.
+        max_turns: The horizon this run plays at. When given, a checkpoint
+            recorded at a different ``max_turns`` raises ``HorizonMismatch``; a
+            legacy file with no provenance only warns.
+        board_size: The board edge this run plays at. A recorded mismatch is
+            reported by name; without provenance ``load_state_dict`` still
+            refuses the shape.
 
     Raises:
+        HorizonMismatch: ``max_turns`` disagrees with the checkpoint's.
         ValueError: If the checkpoint has no ``state_dict``, or its parameter
             shapes do not match ``network``.
         FileNotFoundError: If ``resume_path`` does not exist. I/O failures are
@@ -197,6 +265,17 @@ def resume_network_weights(
             f"{resume_path} is not a checkpoint written by this trainer: "
             "expected a dict with a 'state_dict' key."
         )
+    metadata = checkpoint.get("metadata")
+    check_provenance(metadata, expected_max_turns=max_turns, source=resume_path)
+    if (
+        board_size is not None
+        and isinstance(metadata, dict)
+        and metadata.get("board_size") not in (None, board_size)
+    ):
+        raise ValueError(
+            f"{resume_path} was trained at board_size={metadata['board_size']}, "
+            f"but this run uses {board_size}."
+        )
     try:
         network.load_state_dict(checkpoint["state_dict"])
     except RuntimeError as exc:
@@ -213,8 +292,9 @@ def resume_network_weights(
         )
 
 
-#: Evaluation games played per checkpoint on a normal (non-dry) run.
-DEFAULT_EVAL_GAMES = 20
+#: Evaluation games played per checkpoint on a normal (non-dry) run. Owned by
+#: ``game_budget`` so the cost model and the trainer cannot drift apart.
+DEFAULT_EVAL_GAMES = DEFAULT_TRAINING_EVAL_GAMES
 
 # Superseded by `alpha_zero.utils.seeding.derive_seed`, which separates RNG
 # streams by NAME rather than by an offset that had to be re-reasoned whenever a
@@ -231,6 +311,13 @@ EVAL_SEED_OFFSET = 1_000_000
 #: ``games * max_turns * actions_per_turn * num_simulations`` against a network
 #: whose forward cost grows with ``board_size ** 2``.
 _INNER_DIMENSION_FIELDS: tuple[str, ...] = ("board_size", "max_turns", "num_simulations")
+
+#: Inner dimensions bounded only when the run uses the Gumbel search; under PUCT
+#: the field is inert, so a PUCT config is left exactly as given.
+_GUMBEL_INNER_DIMENSION_FIELDS: tuple[str, ...] = ("gumbel_num_simulations",)
+
+#: The CLI flag that sets each bounded field, for the "pass --X to override" hint.
+_FIELD_FLAGS: dict[str, str] = {"gumbel_num_simulations": "gumbel_sims"}
 
 
 @dataclass(frozen=True)
@@ -260,6 +347,8 @@ class DryRunProfile:
     board_size: int = 6
     max_turns: int = 8
     num_simulations: int = 4
+    # Bounded only under --mcts gumbel (see _GUMBEL_INNER_DIMENSION_FIELDS).
+    gumbel_num_simulations: int = 4
 
     def apply_to(self, config: TrainingConfig) -> TrainingConfig:
         """Return *config* with unset inner dimensions bounded for a smoke test.
@@ -271,26 +360,40 @@ class DryRunProfile:
         value. That is the right default for a flag whose entire purpose is to
         finish quickly.
 
+        The Gumbel budget is bounded only when the run uses the Gumbel search,
+        and the budget the Gumbel search will actually use is always logged, so
+        a dry run never reports one budget while searching with another.
+
         The original config is not mutated; a copy is returned.
         """
         defaults = TrainingConfig()
+        fields = _INNER_DIMENSION_FIELDS + (
+            _GUMBEL_INNER_DIMENSION_FIELDS if config.use_gumbel_mcts else ()
+        )
         overrides = {
             field: getattr(self, field)
-            for field in _INNER_DIMENSION_FIELDS
+            for field in fields
             if getattr(config, field) == getattr(defaults, field)
         }
-        if not overrides:
-            logger.debug("dry-run: all inner dimensions set explicitly; none overridden")
-            return config
         for field, value in overrides.items():
             logger.info(
                 "dry-run: bounding %s %s -> %s (pass --%s to override)",
                 field,
                 getattr(config, field),
                 value,
-                field,
+                _FIELD_FLAGS.get(field, field),
             )
-        return replace(config, **overrides)
+        bounded = replace(config, **overrides) if overrides else config
+        if not overrides:
+            logger.debug("dry-run: all inner dimensions set explicitly; none overridden")
+        if bounded.use_gumbel_mcts:
+            logger.info(
+                "dry-run: Gumbel search uses %d simulations (k=%d) in self-play, %d in evaluation",
+                bounded.gumbel_num_simulations,
+                bounded.gumbel_num_sampled_actions,
+                max(1, bounded.gumbel_num_simulations // 2),
+            )
+        return bounded
 
 
 #: The profile used by every ``dry_run=True`` code path.
@@ -369,6 +472,12 @@ class ReplayBuffer:
 
     def __len__(self) -> int:
         return len(self.buffer)
+
+    def mean_value(self) -> float:
+        """Mean scalar value target over the buffer; ``0.0`` when it is empty."""
+        if not self.buffer:
+            return 0.0
+        return float(np.mean([example.value for example in self.buffer]))
 
 
 class ReplayDataset(Dataset):
@@ -562,11 +671,48 @@ def _mcts_network(network: torch.nn.Module, config: TrainingConfig) -> torch.nn.
     return network
 
 
+def gumbel_search_config(
+    config: TrainingConfig,
+    *,
+    num_simulations: int,
+    seed: int | None,
+    **extra: Any,
+) -> GumbelMCTSConfig:
+    """The :class:`GumbelMCTSConfig` a run's self-play and evaluation searches use.
+
+    One builder for both, so a ``gumbel_*`` field cannot reach one search and
+    silently miss the other. ``max_considered_actions`` is raised to ``k`` when
+    ``k`` exceeds its default, since the config rejects ``k`` above it.
+
+    Args:
+        config: The run's training configuration.
+        num_simulations: Simulation budget for this search.
+        seed: Seed for this search's own RNG.
+        **extra: Further :class:`GumbelMCTSConfig` fields (e.g. temperature).
+    """
+    k = config.gumbel_num_sampled_actions
+    return GumbelMCTSConfig(
+        num_simulations=num_simulations,
+        num_sampled_actions=k,
+        max_considered_actions=max(MCTS.GUMBEL_MAX_CONSIDERED_ACTIONS, k),
+        c_visit=config.gumbel_c_visit,
+        c_scale=config.gumbel_c_scale,
+        use_sequential_halving=config.gumbel_use_sequential_halving,
+        policy_target=config.gumbel_policy_target,
+        greedy_threshold=config.gumbel_greedy_threshold,
+        seed=seed,
+        **extra,
+    )
+
+
 def self_play_game(
     env: MicroCivEnv,
     mcts: Civ6MCTS | SimpleMCTS | GumbelMCTS,
     config: TrainingConfig,
     game_seed: int | None = None,
+    *,
+    step_sink: list[StepRecord] | None = None,
+    game_idx: int = 0,
 ) -> list[TrainingExample]:
     """Play a single self-play game.
 
@@ -576,6 +722,10 @@ def self_play_game(
         config: Training configuration.
         game_seed: Seed for this game's environment. ``None`` leaves the
             environment's existing RNG alone, which is the historical behaviour.
+        step_sink: When given, one :class:`StepRecord` is appended per step
+            actually played on ``env``. Search rollouts step *clones* of ``env``
+            inside ``mcts.search`` and are never recorded.
+        game_idx: Index of this game in its round, stamped on each record.
 
     Returns:
         List of training examples from the game.
@@ -606,6 +756,15 @@ def self_play_game(
 
         # Take action
         obs, _, terminated, truncated, info = env.step(action)
+        if step_sink is not None:
+            step_sink.append(
+                StepRecord(
+                    game_idx=game_idx,
+                    action=int(action),
+                    action_type=str(env.action_space_handler.decode_action(int(action))["type"]),
+                    success=bool(info["action_success"]),
+                )
+            )
 
         if terminated or truncated:
             break
@@ -662,6 +821,7 @@ def run_self_play(
     num_games: int,
     use_simple_mcts: bool = False,
     iteration: int = 0,
+    step_sink: list[StepRecord] | None = None,
 ) -> list[TrainingExample]:
     """Run multiple self-play games.
 
@@ -672,6 +832,9 @@ def run_self_play(
         config: Training configuration.
         num_games: Number of games to play.
         use_simple_mcts: If True, use SimpleMCTS instead of network-guided MCTS.
+        iteration: Loop index; varies every seed stream (see ``derive_seed``).
+        step_sink: Optional list receiving one :class:`StepRecord` per played
+            step of every game (see :func:`self_play_game`).
 
     Returns:
         List of training examples from all games.
@@ -709,14 +872,12 @@ def run_self_play(
     elif config.use_gumbel_mcts:
         # Use Gumbel MuZero MCTS for efficient search with few simulations.
         # N-player networks emit value vectors; wrap so scalar MCTS gets a scalar.
-        gumbel_config = GumbelMCTSConfig(
+        gumbel_config = gumbel_search_config(
+            config,
             num_simulations=config.gumbel_num_simulations,
-            num_sampled_actions=config.gumbel_num_sampled_actions,
-            c_visit=config.gumbel_c_visit,
-            use_sequential_halving=config.gumbel_use_sequential_halving,
+            seed=search_seed,
             temperature=config.temperature,
             temperature_threshold=config.temperature_threshold,
-            seed=search_seed,
         )
         mcts = GumbelMCTS(_mcts_network(network, config), gumbel_config, device=config.device)  # type: ignore[arg-type]
         logger.info(f"Using Gumbel MuZero MCTS with {config.gumbel_num_simulations} simulations")
@@ -742,6 +903,8 @@ def run_self_play(
                 mcts,
                 config,
                 game_seed=derive_seed(config.seed, SeedStream.SELF_PLAY_ENV, iteration, game_idx),
+                step_sink=step_sink,
+                game_idx=game_idx,
             )
             examples.extend(game_examples)
 
@@ -859,29 +1022,29 @@ def train_epoch(
 def evaluate_against_random(
     network: torch.nn.Module,
     config: TrainingConfig,
-    num_games: int = 20,
+    num_games: int = DEFAULT_TRAINING_EVAL_GAMES,
     iteration: int = 0,
-) -> float:
+) -> ScoreSummary:
     """Evaluate network against random player.
 
     Args:
         network: Neural network.
         config: Training configuration.
         num_games: Number of games to play.
+        iteration: Loop index, for the caller's bookkeeping. Deliberately unused
+            by the seeds (see the comment below).
 
     Returns:
-        Win rate against random player: ``wins / num_games``.
+        The full :class:`~alpha_zero.evaluation.scoring.ScoreSummary`: counts,
+        draw-aware score rate with its ternary-variance interval, draw rate.
 
-    Note:
-        Draws count against this statistic, exactly as they do in the deployed
-        promotion gate (``cloud/gcp/arena.py``; see
-        ``docs/runbooks/promotion-gate.md``). A measured example: the final
-        checkpoint of the 2026-08-28 validation run scored 0 wins / 10 draws /
-        10 losses over 20 games, which this function reports as ``0.0`` -- a
-        number that reads as "lost every game" but did not. The return value is
-        left as-is for backwards compatibility; the win/draw/loss breakdown and
-        the draw-aware score rate are logged so the figure can be interpreted
-        rather than guessed at.
+    .. versionchanged:: 2.0
+       Returned ``wins / num_games`` as a float before LF-A3. That statistic
+       scores every draw as a loss: the final checkpoint of the 2026-08-28
+       validation run scored 0 W / 10 D / 10 L and was reported as ``0.0``,
+       which reads as "lost every game" but did not. The float is still
+       available, with a deprecation warning, from
+       :func:`evaluate_win_rate_against_random`.
     """
     # Named streams keep the evaluation's three sources (environment, search,
     # random opponent) distinct from each other and from self-play's, so a
@@ -908,11 +1071,9 @@ def evaluate_against_random(
     # unchanged.
     mcts: Civ6MCTS | GumbelMCTS
     if config.use_gumbel_mcts:
-        gumbel_config = GumbelMCTSConfig(
+        gumbel_config = gumbel_search_config(
+            config,
             num_simulations=max(1, config.gumbel_num_simulations // 2),
-            num_sampled_actions=config.gumbel_num_sampled_actions,
-            c_visit=config.gumbel_c_visit,
-            use_sequential_halving=config.gumbel_use_sequential_halving,
             seed=search_seed,
         )
         mcts = GumbelMCTS(
@@ -966,7 +1127,6 @@ def evaluate_against_random(
     # gate cannot disagree about what a draw is worth.
     win_rate = legacy_win_rate(wins, draws, losses)
     summary = summarize(wins, draws, losses)
-    ci_low, ci_high = score_interval(wins, draws, losses)
     logger.info(
         "Eval vs random: %d W / %d D / %d L over %d games "
         "(win rate %.1f%%, draw-aware score rate %.3f, draw rate %.1f%%)",
@@ -984,13 +1144,229 @@ def evaluate_against_random(
         "Eval score rate vs random: %.4f (95%% CI [%.4f, %.4f], draw rate %.4f, "
         "win rate %.4f, n=%d)",
         summary.score_rate,
-        ci_low,
-        ci_high,
+        summary.ci_low,
+        summary.ci_high,
         summary.draw_rate,
         win_rate,
         num_games,
     )
-    return win_rate
+    return summary
+
+
+def evaluate_win_rate_against_random(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    num_games: int = DEFAULT_TRAINING_EVAL_GAMES,
+    iteration: int = 0,
+) -> float:
+    """Deprecated float shim: ``wins / num_games`` from :func:`evaluate_against_random`.
+
+    .. deprecated:: 2.0
+       Draws count as losses in this number. Use :func:`evaluate_against_random`
+       and read ``score_rate`` (draw-aware) or the counts from its summary.
+    """
+    warnings.warn(
+        "evaluate_win_rate_against_random is deprecated: it scores draws as losses. "
+        "Use evaluate_against_random, which returns a ScoreSummary.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    summary = evaluate_against_random(network, config, num_games=num_games, iteration=iteration)
+    return legacy_win_rate(summary.wins, summary.draws, summary.losses)
+
+
+#: Version of the ``eval_<iter>.json`` layout written by :func:`write_eval_json`.
+EVAL_JSON_SCHEMA_VERSION = 1
+
+#: ``docs/evidence/SCHEMA.md`` epoch for anything this module produces: the local
+#: trainer post-dates the 2026-09-04 search fixes by construction.
+EVAL_SEARCH_EPOCH = "post-2026-09-04"
+
+
+def write_eval_json(
+    path: str | os.PathLike[str], summary: ScoreSummary, meta: dict[str, Any]
+) -> dict[str, Any]:
+    """Write one in-loop evaluation as JSON, atomically, and return its ``result``.
+
+    The file is ``{"eval_schema_version", **meta, "result"}``: ``result`` is the
+    summary's counts, ``score_rate``, ``draw_rate`` and interval, plus the legacy
+    ``win_rate`` beside it (never instead of it). ``meta`` carries the caller's
+    context -- for :func:`train` the iteration, the opponent, the checkpoint
+    provenance and an ``evidence`` block shaped like ``docs/evidence/SCHEMA.md``.
+    It is a run artifact under the checkpoint directory, not committed evidence.
+    """
+    result: dict[str, Any] = dict(summary.to_dict())
+    result["win_rate"] = legacy_win_rate(summary.wins, summary.draws, summary.losses)
+    payload = {"eval_schema_version": EVAL_JSON_SCHEMA_VERSION, **meta, "result": result}
+    target = Path(path)
+    tmp = target.with_name(target.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(tmp, target)
+    return result
+
+
+def _hardware_summary() -> dict[str, Any]:
+    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    return {
+        "cpu_model": platform.processor() or None,
+        "gpu_model": gpu,
+        "logical_cores": os.cpu_count(),
+        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
+    }
+
+
+def eval_evidence_block(
+    config: TrainingConfig,
+    provenance: dict[str, Any],
+    games_total: int,
+    *,
+    iteration: int | None = None,
+) -> dict[str, Any]:
+    """An ``evidence`` block (``docs/evidence/SCHEMA.md``) for one in-loop evaluation.
+
+    ``iteration`` is 1-based (the network after that many iterations). The weights
+    scored may never be saved -- evaluation and checkpoint cadences are independent
+    -- so the claim names the iteration, and ``eval_<iter>.json`` names the
+    checkpoint or ``null``.
+    """
+    subject = "this network" if iteration is None else f"the network after iteration {iteration}"
+    block: dict[str, Any] = {
+        "schema_version": 1,
+        "git_sha": provenance.get("git_sha"),
+        "generated_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "search_epoch": EVAL_SEARCH_EPOCH,
+        "seed": config.seed,
+        "command": shlex.join(["python", "-m", "alpha_zero.training_civ6", *sys.argv[1:]]),
+        "hardware": _hardware_summary(),
+        "python": platform.python_version(),
+        "torch": torch.__version__,
+        "numpy": np.__version__,
+        "games_total": games_total,
+        "claims": [
+            f"score rate of {subject} against a uniform-random opponent over "
+            f"{games_total} held-out games, with its 95% ternary-variance interval"
+        ],
+        "non_claims": [
+            "run artifact, not committed evidence",
+            "says nothing about strength against any non-random opponent",
+            "in-loop evaluation searches at half the self-play budget",
+        ],
+    }
+    if config.seed is None:
+        block["seed_null_reason"] = "the run was unseeded"
+    if block["git_sha"] is None:
+        block["git_sha_null_reason"] = (
+            f"no valid {GIT_SHA_ENV} and no resolvable .git at the package's source root"
+        )
+    return block
+
+
+def in_loop_eval_games(config: TrainingConfig, dry_run: bool) -> int:
+    """Games per in-loop evaluation: 0 when ``eval_games`` is 0, else the dry-run or configured count."""
+    if config.eval_games == 0:
+        return 0
+    return DRY_RUN_PROFILE.num_eval_games if dry_run else config.eval_games
+
+
+def _evaluate_iteration(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    iteration: int,
+    dry_run: bool,
+    provenance: dict[str, Any],
+    checkpoint: str | None,
+) -> dict[str, Any] | None:
+    """Run the scheduled in-loop evaluation, if any, and write ``eval_<iter>.json``.
+
+    Scheduled on ``config.resolved_eval_interval`` -- not on the checkpoint
+    cadence -- or every iteration under ``--dry_run``; never when
+    ``eval_games`` is 0. ``checkpoint`` is the file (relative to the checkpoint
+    directory) this iteration's weights are saved to, or ``None`` when they are
+    not saved. Returns the written ``result`` (summary plus legacy ``win_rate``),
+    or ``None`` when no evaluation ran.
+    """
+    num_games = in_loop_eval_games(config, dry_run)
+    if num_games == 0:
+        return None
+    if not dry_run and (iteration + 1) % config.resolved_eval_interval != 0:
+        return None
+    logger.info("Evaluating against random...")
+    summary = evaluate_against_random(network, config, num_games=num_games, iteration=iteration)
+    logger.info(
+        f"Win rate vs random: {legacy_win_rate(summary.wins, summary.draws, summary.losses):.1%}"
+    )
+    path = os.path.join(config.checkpoint_dir, f"eval_{iteration + 1}.json")
+    meta = {
+        "iteration": iteration + 1,
+        "opponent": "random",
+        "checkpoint": checkpoint,
+        "provenance": provenance,
+        "evidence": eval_evidence_block(
+            config, provenance, summary.total_games, iteration=iteration + 1
+        ),
+    }
+    result = write_eval_json(path, summary, meta)
+    logger.info(f"Wrote evaluation: {path}")
+    return result
+
+
+def _prequential_diagnostics(
+    network: torch.nn.Module,
+    config: TrainingConfig,
+    examples: list[TrainingExample],
+    step_records: list[StepRecord],
+    buffer_mean: float,
+    *,
+    generator: str,
+    prior_failures: int,
+) -> dict[str, Any]:
+    """LF-A13 diagnostics for one iteration; recorded, never gated.
+
+    ``generator`` names what played the games (``"simple_mcts"`` for the
+    bootstrap iteration, else ``"network"``); the scoring network is always the
+    one as it stood before this iteration's training. A failure is recorded as
+    ``{"error": ...}`` rather than raised -- a diagnostic must not end a
+    multi-hour run -- and logged with its traceback: at ERROR the first time
+    (``prior_failures == 0``), at WARNING after that. :func:`train` logs a final
+    ``prequential failures: k/N`` count.
+    """
+    try:
+        metrics = prequential_value_metrics(
+            _mcts_network(network, config),
+            examples,
+            step_records,
+            buffer_mean,
+            greedy_threshold=config.gumbel_greedy_threshold,
+        )
+    except Exception as exc:
+        level = logging.ERROR if prior_failures == 0 else logging.WARNING
+        logger.log(level, "Prequential diagnostics failed; continuing", exc_info=True)
+        return {"error": repr(exc), "generator": generator}
+    metrics["generator"] = generator
+    logger.info("Prequential diagnostics: %s", json.dumps(metrics, sort_keys=True))
+    return metrics
+
+
+def _open_iteration_log(
+    config: TrainingConfig, provenance: dict[str, Any], start_iteration: int
+) -> IterationLog:
+    """The run's ``iterations.jsonl`` writer, stamped with the run's identity.
+
+    A fresh start (no ``--resume_from``, loop index 0) rotates an earlier run's
+    record and ``eval_*.json`` aside into ``previous_<UTC stamp>/``; a resume
+    appends and marks re-run iterations. See :mod:`alpha_zero.training.run_record`.
+    """
+    run_id = config.run_id or os.environ.get("CIV6AZ_RUN_ID") or default_run_id(config.seed)
+    identity = {
+        "run_id": run_id,
+        "seed": config.seed,
+        "git_sha": provenance.get("git_sha"),
+        "started_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "resumed_from": config.resume_from,
+        "start_iteration": start_iteration,
+    }
+    fresh = not config.resume_from and start_iteration == 0
+    return IterationLog(config.checkpoint_dir, identity=identity, fresh=fresh)
 
 
 def train(config: TrainingConfig, dry_run: bool = False) -> None:
@@ -1065,7 +1441,13 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         # bootstrap, neither of which fails loudly on its own.
         raise ValueError(f"--start_iteration must be >= 0, got {start_iteration}.")
     if config.resume_from:
-        resume_network_weights(network, config.resume_from, device=config.device)
+        resume_network_weights(
+            network,
+            config.resume_from,
+            device=config.device,
+            max_turns=config.max_turns,
+            board_size=config.board_size,
+        )
         if start_iteration == 0:
             inferred = infer_start_iteration(config.resume_from)
             if inferred is None:
@@ -1088,6 +1470,30 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             "replay buffer are not restored, so the first resumed iteration "
             "trains on freshly generated games alone.",
         )
+
+    # Provenance is resolved once per run (no subprocess, no per-save lookup) from
+    # the RESOLVED config -- after the dry-run profile -- so it records what the
+    # run used, not what the caller typed.
+    provenance = build_provenance(config, git_sha=read_git_sha())
+
+    # checkpoint_0 is the pinned random-init the A1 protocol compares against, so
+    # it is written before any training. Not when resuming: `checkpoint_<N>.pt`
+    # resumes at index N, so `checkpoint_0.pt` means "from the top", and writing
+    # here would overwrite the very file a resume just read (or a trained
+    # network's weights under the random-init name).
+    if not config.resume_from and start_iteration == 0:
+        zero_path = os.path.join(config.checkpoint_dir, "checkpoint_0.pt")
+        if os.path.exists(zero_path):
+            logger.warning(
+                "Overwriting existing %s: a fresh run replaces the pinned random-init, "
+                "and any checkpoint_N.pt from the earlier run stays beside the new one. "
+                "Use a new --checkpoint_dir/--run_id to keep both.",
+                zero_path,
+            )
+        network.save(zero_path, metadata=provenance)
+        logger.info(f"Saved pre-training checkpoint: {zero_path}")
+
+    iteration_log = _open_iteration_log(config, provenance, start_iteration)
 
     # Initialize optimizer
     optimizer = optim.Adam(
@@ -1127,17 +1533,37 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         logger.info("Running self-play...")
         start_time = time.time()
 
-        # Use simple MCTS for first iteration (no trained network)
-        use_simple = iteration == 0
+        # Use simple MCTS for first iteration (no trained network) unless the
+        # run asked for the configured search from the start (--bootstrap none).
+        use_simple = iteration == 0 and config.bootstrap == "simple_mcts"
+        step_records: list[StepRecord] = []
         examples = run_self_play(
-            network, config, num_games, use_simple_mcts=use_simple, iteration=iteration
+            network,
+            config,
+            num_games,
+            use_simple_mcts=use_simple,
+            iteration=iteration,
+            step_sink=step_records,
         )
-        replay_buffer.add_game(examples)
-
         self_play_time = time.time() - start_time
         logger.info(
             f"Self-play: {len(examples)} examples from {num_games} games ({self_play_time:.1f}s)",
         )
+
+        # Scored before insertion, by the network that played the games, so the
+        # positions are out of sample (prequential). The baseline is the buffer's
+        # mean BEFORE these targets join it: 0.0 at iteration 0.
+        prequential = _prequential_diagnostics(
+            network,
+            config,
+            examples,
+            step_records,
+            replay_buffer.mean_value(),
+            generator="simple_mcts" if use_simple else "network",
+            prior_failures=iteration_log.prequential_failures,
+        )
+        replay_buffer.add_game(examples)
+        losses: dict[str, float] | None = None
 
         # Training
         if len(replay_buffer) >= config.min_replay_size or dry_run:
@@ -1180,34 +1606,169 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             train_time = time.time() - start_time
             logger.info(f"Training complete ({train_time:.1f}s)")
 
-        # Evaluation
+        # Evaluation, on its own cadence (LF-A14).
+        # Checkpoint on the save cadence; its name is known before evaluating so
+        # eval_<iter>.json can say which file (if any) holds the weights it scored.
+        checkpoint_name: str | None = None
         if (iteration + 1) % config.save_interval == 0 or dry_run:
-            logger.info("Evaluating against random...")
-            win_rate = evaluate_against_random(
-                network,
-                config,
-                num_games=DRY_RUN_PROFILE.num_eval_games if dry_run else DEFAULT_EVAL_GAMES,
-                iteration=iteration,
-            )
-            logger.info(f"Win rate vs random: {win_rate:.1%}")
-
-            # Save checkpoint
-            checkpoint_path = os.path.join(
-                config.checkpoint_dir,
-                f"checkpoint_{iteration + 1}.pt",
-            )
-            network.save(checkpoint_path)
+            checkpoint_name = f"checkpoint_{iteration + 1}.pt"
+        evaluation = _evaluate_iteration(
+            network, config, iteration, dry_run, provenance, checkpoint_name
+        )
+        if checkpoint_name is not None:
+            checkpoint_path = os.path.join(config.checkpoint_dir, checkpoint_name)
+            network.save(checkpoint_path, metadata=provenance)
             logger.info(f"Saved checkpoint: {checkpoint_path}")
+
+        iteration_log.append(
+            {
+                "iteration": iteration + 1,
+                "self_play": {
+                    "games": num_games,
+                    "examples": len(examples),
+                    "seconds": round(self_play_time, 3),
+                    "simple_mcts": use_simple,
+                },
+                "train": losses,
+                "prequential": prequential,
+                "eval": evaluation,
+                "checkpoint": checkpoint_name,
+            },
+        )
+
+    failures = iteration_log.prequential_failures
+    logger.log(
+        logging.WARNING if failures else logging.INFO,
+        "prequential failures: %d/%d",
+        failures,
+        iteration_log.records_written,
+    )
 
     # Save final model
     final_path = os.path.join(config.checkpoint_dir, "latest.pt")
-    network.save(final_path)
+    network.save(final_path, metadata=provenance)
     logger.info(f"Training complete. Final model: {final_path}")
 
 
-def main() -> None:
-    """Main entry point."""
-    parser = argparse.ArgumentParser(description="Train Civ6 AlphaZero")
+def training_budget_inputs(config: TrainingConfig, dry_run: bool) -> dict[str, Any]:
+    """Resolved values the game-budget cost model needs, as :func:`train` will use them.
+
+    Mirrors the loop bounds in :func:`train` -- the dry-run profile replaces the
+    iteration, game and evaluation counts, evaluation happens every iteration
+    under ``--dry_run``, it runs on ``--eval_interval`` (defaulting to
+    ``--save_interval``) with ``--eval_games`` games (none when 0), and
+    ``--resume_from`` names the start iteration -- so the price is of the run that
+    will actually happen.
+    """
+    start = config.start_iteration
+    if config.resume_from and start == 0:
+        start = infer_start_iteration(config.resume_from) or 0
+    if dry_run:
+        return {
+            "num_games": DRY_RUN_PROFILE.num_games_per_iteration,
+            "num_iterations": DRY_RUN_PROFILE.num_iterations,
+            "start_iteration": start,
+            "eval_games": in_loop_eval_games(config, dry_run=True),
+            "eval_always": True,
+        }
+    return {
+        "num_games": config.num_games_per_iteration,
+        "num_iterations": config.num_iterations,
+        "start_iteration": start,
+        "save_interval": config.save_interval,
+        "eval_interval": config.resolved_eval_interval,
+        "eval_games": in_loop_eval_games(config, dry_run=False),
+    }
+
+
+def resolve_checkpoint_dir(explicit: str | None, run_id: str | None, seed: int | None) -> str:
+    """Pick the checkpoint directory.
+
+    An explicit ``--checkpoint_dir`` always wins. Otherwise, with
+    ``CIV6AZ_DATA_ROOT`` unset the historical ``checkpoints/civ6`` is kept; with
+    it set, the directory is ``<root>/runs/<run_id>/checkpoints`` after the root
+    has passed :func:`assert_safe_data_root`.
+    """
+    if run_id is not None:
+        validate_run_id(run_id)
+    if explicit is not None:
+        return explicit
+    root = resolve_data_root()
+    if root is None:
+        return "checkpoints/civ6"
+    assert_safe_data_root(root, Path(__file__).resolve().parents[1])
+    return str(default_checkpoint_dir(root, run_id or default_run_id(seed)))
+
+
+def _positive_int(text: str) -> int:
+    value = int(text)
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be >= 1; got {value}")
+    return value
+
+
+def _non_negative_int(text: str) -> int:
+    value = int(text)
+    if value < 0:
+        raise argparse.ArgumentTypeError(f"must be >= 0; got {value}")
+    return value
+
+
+def _non_negative_float(text: str) -> float:
+    value = float(text)
+    if not value >= 0.0:
+        raise argparse.ArgumentTypeError(f"must be >= 0; got {value}")
+    return value
+
+
+def _unit_interval(text: str) -> float:
+    value = float(text)
+    if not 0.0 < value <= 1.0:
+        raise argparse.ArgumentTypeError(f"must be in (0, 1]; got {value}")
+    return value
+
+
+#: Flags that configure only the Gumbel search, as (argparse dest, flag). Given
+#: without ``--mcts gumbel`` they would be silently ignored, so the parser refuses.
+#: ``--policy_target`` is among them: the PUCT and Simple searches have no such field.
+_GUMBEL_ONLY_FLAGS: tuple[tuple[str, str], ...] = (
+    ("gumbel_k", "--gumbel_k"),
+    ("gumbel_sims", "--gumbel_sims"),
+    ("c_scale", "--c_scale"),
+    ("greedy_threshold", "--greedy_threshold"),
+    ("policy_target", "--policy_target"),
+)
+
+
+class _TrainingArgumentParser(argparse.ArgumentParser):
+    """Refuses Gumbel-only flags unless ``--mcts gumbel`` selects that search.
+
+    The check runs inside parsing so every caller of :func:`build_parser` --
+    :func:`main` and the run-card pricer alike -- gets it.
+    """
+
+    def parse_known_args(  # type: ignore[override]
+        self,
+        args: Sequence[str] | None = None,
+        namespace: argparse.Namespace | None = None,
+    ) -> tuple[argparse.Namespace, list[str]]:
+        parsed, extras = super().parse_known_args(args, namespace)
+        if getattr(parsed, "mcts", "gumbel") != "gumbel":
+            given = [
+                flag for dest, flag in _GUMBEL_ONLY_FLAGS if getattr(parsed, dest, None) is not None
+            ]
+            if given:
+                noun, pronoun = ("flag", "it") if len(given) == 1 else ("flags", "them")
+                self.error(
+                    f"{', '.join(given)}: Gumbel-only {noun}; "
+                    f"pass --mcts gumbel or remove {pronoun}"
+                )
+        return parsed, extras
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """The trainer's CLI parser. Also used by the run-card driver to price an argv."""
+    parser = _TrainingArgumentParser(description="Train Civ6 AlphaZero")
     parser.add_argument("--board_size", type=int, default=16)
     parser.add_argument(
         "--max_turns",
@@ -1224,8 +1785,26 @@ def main() -> None:
         type=int,
         default=10,
         help=(
-            "Evaluate and checkpoint every N iterations. The default means a run "
-            "shorter than 10 iterations reports no win rate at all."
+            "Checkpoint every N iterations; also the evaluation cadence unless "
+            "--eval_interval is given."
+        ),
+    )
+    parser.add_argument(
+        "--eval_interval",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Evaluate against a random opponent every N iterations, independently "
+            "of checkpointing. Default: --save_interval's value."
+        ),
+    )
+    parser.add_argument(
+        "--eval_games",
+        type=_non_negative_int,
+        default=DEFAULT_EVAL_GAMES,
+        help=(
+            f"Games per in-loop evaluation (default {DEFAULT_EVAL_GAMES}). 0 turns "
+            "in-loop evaluation off, including under --dry_run."
         ),
     )
     parser.add_argument(
@@ -1243,7 +1822,15 @@ def main() -> None:
         help="How terminal outcomes become per-player training values "
         "(winner-derivable methods only; 'proportional' needs per-player scores).",
     )
-    parser.add_argument("--num_simulations", type=int, default=50)
+    parser.add_argument(
+        "--num_simulations",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Search budget per move (default 50 for PUCT). With --mcts gumbel it is "
+            "also the Gumbel budget unless --gumbel_sims is given."
+        ),
+    )
     parser.add_argument("--num_games", type=int, default=100)
     parser.add_argument("--num_iterations", type=int, default=100)
     parser.add_argument("--batch_size", type=int, default=128)
@@ -1251,7 +1838,25 @@ def main() -> None:
     parser.add_argument("--num_epochs", type=int, default=10)
     parser.add_argument("--num_res_blocks", type=int, default=6)
     parser.add_argument("--num_filters", type=int, default=64)
-    parser.add_argument("--checkpoint_dir", type=str, default="checkpoints/civ6")
+    parser.add_argument(
+        "--checkpoint_dir",
+        type=str,
+        default=None,
+        help=(
+            "Where checkpoints are written. Default: 'checkpoints/civ6', or "
+            "<CIV6AZ_DATA_ROOT>/runs/<run_id>/checkpoints when that variable is set."
+        ),
+    )
+    parser.add_argument(
+        "--run_id",
+        type=str,
+        default=None,
+        help=(
+            "Run identifier (^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$). Only used to place the "
+            "default checkpoint directory under CIV6AZ_DATA_ROOT. Default: "
+            "train-<seed or 'unseeded'>-<UTC timestamp>."
+        ),
+    )
     parser.add_argument(
         "--resume_from",
         type=str,
@@ -1273,6 +1878,17 @@ def main() -> None:
             "of additional iterations."
         ),
     )
+    parser.add_argument(
+        "--bootstrap",
+        type=str,
+        default="simple_mcts",
+        choices=["simple_mcts", "none"],
+        help=(
+            "Iteration-0 data source: 'simple_mcts' (default, unchanged) plays "
+            "iteration 0 with random-rollout SimpleMCTS; 'none' plays it with the "
+            "configured --mcts search on the freshly initialised network."
+        ),
+    )
     parser.add_argument("--dry_run", action="store_true", help="Quick test run")
     parser.add_argument("--device", type=str, default=None)
     parser.add_argument(
@@ -1283,8 +1899,46 @@ def main() -> None:
         help=(
             "Search used for self-play AND evaluation: 'civ6' (PUCT, the default, "
             "byte-identical to runs made before this flag existed) or 'gumbel' "
-            "(sets use_gumbel_mcts; budget from --num_simulations is ignored in "
-            "favour of the gumbel_* config fields)."
+            "(sets use_gumbel_mcts). The Gumbel budget is --gumbel_sims, else "
+            "--num_simulations, else 16; evaluation searches at half of it."
+        ),
+    )
+    parser.add_argument(
+        "--gumbel_sims",
+        type=_positive_int,
+        default=None,
+        help=(
+            "Gumbel simulation budget per move. Spent exactly whenever two or more "
+            "candidates are legal (gumbel_ops.halving_schedule). Overrides "
+            "--num_simulations for the Gumbel search."
+        ),
+    )
+    parser.add_argument(
+        "--gumbel_k",
+        type=_positive_int,
+        default=None,
+        help="Gumbel-Top-k candidates sampled at the root (default 16).",
+    )
+    parser.add_argument(
+        "--c_scale",
+        type=_non_negative_float,
+        default=None,
+        help=f"Gumbel sigma scale c_scale (default {MCTS.GUMBEL_C_SCALE}).",
+    )
+    parser.add_argument(
+        "--policy_target",
+        type=str,
+        default=None,
+        choices=sorted(VALID_POLICY_TARGETS),
+        help=f"Gumbel policy training target (default {POLICY_TARGET_COMPLETED_Q}).",
+    )
+    parser.add_argument(
+        "--greedy_threshold",
+        type=_unit_interval,
+        default=None,
+        help=(
+            "Gumbel select_action plays greedily once one action holds at least this "
+            f"probability mass, in (0, 1] (default {GREEDY_THRESHOLD})."
         ),
     )
     parser.add_argument(
@@ -1297,13 +1951,35 @@ def main() -> None:
             "at the same seed replay exactly. Omitted means unseeded."
         ),
     )
-    args = parser.parse_args()
+    add_budget_arguments(parser)
+    return parser
 
-    config = TrainingConfig(
+
+def config_from_args(args: argparse.Namespace, checkpoint_dir: str) -> TrainingConfig:
+    """The :class:`TrainingConfig` that :func:`main` trains with for parsed ``args``.
+
+    Search flags left unset keep the :class:`TrainingConfig` defaults, so a run
+    that passes none of them is unchanged. The one deliberate exception is the
+    LF-A7 fix: ``--mcts gumbel`` used to ignore ``--num_simulations``; it is now
+    the Gumbel budget too, unless ``--gumbel_sims`` names one explicitly.
+    """
+    search: dict[str, Any] = {}
+    if args.num_simulations is not None:
+        search["num_simulations"] = args.num_simulations
+    gumbel_sims = args.gumbel_sims if args.gumbel_sims is not None else args.num_simulations
+    if gumbel_sims is not None:
+        search["gumbel_num_simulations"] = gumbel_sims
+    optional = {
+        "gumbel_num_sampled_actions": args.gumbel_k,
+        "gumbel_c_scale": args.c_scale,
+        "gumbel_policy_target": args.policy_target,
+        "gumbel_greedy_threshold": args.greedy_threshold,
+    }
+    search.update({field: value for field, value in optional.items() if value is not None})
+    return TrainingConfig(
         board_size=args.board_size,
         num_players=args.num_players,
         scoring_method=args.scoring_method,
-        num_simulations=args.num_simulations,
         num_games_per_iteration=args.num_games,
         num_iterations=args.num_iterations,
         batch_size=args.batch_size,
@@ -1311,15 +1987,29 @@ def main() -> None:
         num_epochs=args.num_epochs,
         num_res_blocks=args.num_res_blocks,
         num_filters=args.num_filters,
-        checkpoint_dir=args.checkpoint_dir,
+        checkpoint_dir=checkpoint_dir,
         resume_from=args.resume_from,
         start_iteration=args.start_iteration,
+        bootstrap=args.bootstrap,
+        run_id=args.run_id,
         max_turns=args.max_turns,
         save_interval=args.save_interval,
+        eval_interval=args.eval_interval,
+        eval_games=args.eval_games,
         device=args.device or "auto",
         seed=args.seed,
         use_gumbel_mcts=args.mcts == "gumbel",
+        **search,
     )
+
+
+def main() -> None:
+    """Main entry point."""
+    args = build_parser().parse_args()
+    checkpoint_dir = resolve_checkpoint_dir(args.checkpoint_dir, args.run_id, args.seed)
+    config = config_from_args(args, checkpoint_dir)
+
+    enforce_cli("training_civ6", training_budget_inputs(config, args.dry_run), args)
 
     train(config, dry_run=args.dry_run)
 

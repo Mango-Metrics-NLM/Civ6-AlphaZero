@@ -615,6 +615,7 @@ class NeuralNetworkPlayer:
         use_mcts: bool = True,
         mcts_simulations: int = 50,
         name: str | None = None,
+        expected_max_turns: int | None = None,
     ) -> NeuralNetworkPlayer:
         """Create player from checkpoint file.
 
@@ -624,12 +625,17 @@ class NeuralNetworkPlayer:
             use_mcts: Whether to use MCTS
             mcts_simulations: Number of MCTS simulations
             name: Player name (defaults to checkpoint filename)
+            expected_max_turns: Horizon the player will be evaluated at; a
+                checkpoint recorded at another raises ``HorizonMismatch``.
 
         Returns:
             NeuralNetworkPlayer instance
         """
         from alpha_zero.core.checkpoint_utils import safe_torch_load
-        from alpha_zero.core.civ6_network import MicroCivNetwork
+        from alpha_zero.utils.checkpoint import (
+            build_micro_network_from_checkpoint,
+            extract_state_dict,
+        )
 
         path = Path(checkpoint_path)
         if not path.exists():
@@ -639,25 +645,17 @@ class NeuralNetworkPlayer:
         # suffices; a legacy pickle needs CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1.
         checkpoint = safe_torch_load(path, map_location=device)
 
-        # Extract network config from checkpoint
-        network_config = checkpoint.get("network_config", {})
-        board_size = network_config.get("board_size", 16)
-        action_size = network_config.get("action_size", 8000)
-
-        # Create network
-        network = MicroCivNetwork(
-            board_size=board_size,
-            action_space_size=action_size,
-            **{k: v for k, v in network_config.items() if k not in ["board_size", "action_size"]},
+        network = build_micro_network_from_checkpoint(
+            checkpoint,
+            default_board_size=16,
+            default_action_size=8000,
+            expected_max_turns=expected_max_turns,
+            source=path,
         )
 
         # Load weights
-        if "model_state_dict" in checkpoint:
-            network.load_state_dict(checkpoint["model_state_dict"])
-        elif "network" in checkpoint:
-            network.load_state_dict(checkpoint["network"])
-        else:
-            network.load_state_dict(checkpoint)
+        state = checkpoint["network"] if "network" in checkpoint else extract_state_dict(checkpoint)
+        network.load_state_dict(state)
 
         player_name = name or path.stem
         return cls(

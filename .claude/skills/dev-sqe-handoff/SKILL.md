@@ -1,7 +1,7 @@
 ---
 name: dev-sqe-handoff
 description: Run at the end of every DEV-SQE session that did meaningful work — runs the verification gate (tests, coverage, lint, types), updates the summary, appends a ledger event, writes any cross-role handoff document, and rewrites the session state. Gated by scripts/validate_kb.py.
-allowed-tools: Read, Write, Edit, Bash
+allowed-tools: Read, Write, Edit, Bash, Agent
 ---
 
 # DEV-SQE Handoff Skill
@@ -54,6 +54,19 @@ plainly rather than reporting an unchanged percentage as if it were evidence.
 **When adding a regression test for a bug you just fixed, run the
 `negative-control` skill** and record the result. A test that has never been
 seen to fail is not yet known to discriminate.
+
+### 3b. Role subagents: executor and independent QA
+
+- **`sdlc-developer`** is the executor: every write, commit, push and PR (and
+  run-card execution) goes through it, including text a read-only planning role
+  returned, which it commits verbatim with `authored-by: sdlc-<role>`.
+- **`sdlc-qa-sdet`** reviews every DEV-SQE output before the handoff, in a context
+  that did not produce it, and writes tests and negative controls (Edit/Write are
+  limited to `tests/**`; its shell to the read-only commands plus `python -m pytest`
+  on paths under `tests/`). Residual risk: pytest executes test code, so that limit is an
+  accident net, not a sandbox. Dispatch it with the diff and the spec's acceptance criteria;
+  record its review of record in the summary. A non-trivial finding is a
+  `DESIGN-GAP` or goes back to `sdlc-developer`, not fixed silently by the reviewer.
 
 ### 4. Write Summary
 

@@ -11,8 +11,12 @@ name: CodeQL
 on:
   push:
     branches:
-      - claude/civ6-alphazero-implementation-vMnun
+      - dev
+      - qa
       - main
+      # The default branch before the rename to `dev`; kept until the
+      # cut-over (R4) so the rename cannot open a window with no CI.
+      - claude/civ6-alphazero-implementation-vMnun
   pull_request:
   schedule:
     - cron: "41 3 * * 2" # Tuesdays 03:41 UTC
@@ -21,8 +25,17 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}${{ contains(fromJSON('["refs/heads/dev","refs/heads/qa","refs/heads/main","refs/heads/claude/civ6-alphazero-implementation-vMnun"]'), github.ref) && format('-{0}', github.run_id) || '' }}
+  # Never cancel or drop a run on a protected branch: every push there is a state
+  # the promotion and release gates read. `cancel-in-progress: false` alone is not
+  # enough -- a group holds one running and ONE PENDING run, and a third push
+  # cancels the pending one, so a middle commit would get no CI and could never
+  # be released. A protected-branch push therefore gets a group of its own
+  # (`github.run_id`). PR and feature-branch runs keep the shared `github.ref`
+  # group and still supersede each other.
+  # tests/regression/test_workflow_pinning_regression.py holds this list to the
+  # protected-branch list in .claude/settings.json.
+  cancel-in-progress: ${{ !contains(fromJSON('["refs/heads/dev","refs/heads/qa","refs/heads/main","refs/heads/claude/civ6-alphazero-implementation-vMnun"]'), github.ref) }}
 
 jobs:
   analyze:
