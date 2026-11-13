@@ -827,6 +827,10 @@ def _returned_and_final_ranking(
                     seed=seed,
                     policy_target="one_hot",
                 ),
+                # The toy game never passes the move, like the stub env the
+                # other two variants search; MuZero's default turn model is
+                # MicroCiv's (action 0 = END_TURN), which would sign action 0.
+                turn_model=lambda to_play, action: to_play,
             ).search(env.get_observation(), env.get_valid_actions())
     assert rankings, "the search never chose among its survivors"
     return int(np.argmax(probs)), rankings[-1]
