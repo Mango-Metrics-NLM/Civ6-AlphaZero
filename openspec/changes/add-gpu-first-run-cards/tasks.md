@@ -13,10 +13,22 @@
 
 ## 3. Registration
 - [x] 3.1 Section 7.1 commands, "Devices" paragraph, "After a VOID" wording, registration-log row, `REGISTRATION_DIGEST`
-- [x] 3.2 `a1.yaml`, `a1r.yaml`, `t0b.yaml` (612 games); tests and the release-evidence fixture follow the registration
+- [x] 3.2 `a1.yaml`, `a1r.yaml`, `t0b.yaml` (612 games at this step; 660 after 4.5); tests and the release-evidence fixture follow the registration
 - [x] 3.3 Runbook, plan spec notes, CLAUDE.md, CHANGELOG
 
-## 4. On the GPU machine (maintainer)
-- [ ] 4.1 `pytest tests/regression/test_cuda_determinism_regression.py -v` passes with the pinned torch build
-- [ ] 4.2 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED
-- [ ] 4.3 T0b runs; `a1_protocol calibrate` output and the three throughput files go into the slot fill-in PR
+## 4. Review round (QA, architecture, ML science)
+- [x] 4.1 `alpha_zero/local/devices.py` and `card.py` split out of `run_card.py` (877 lines); `cuda_ordinal` in `utils/device.py`; one `hardware_summary`
+- [x] 4.2 Devices read through the runner's own parser; a pinned card names every device; preflight records architectures, cuDNN, driver and one real CUDA op per device; cards name the GPU expected at each ordinal
+- [x] 4.3 Section 7.1 `a1-devices` block; cards held equal to it; the release verifier voids a run on other devices and rejects a `--probe` record
+- [x] 4.4 "After a VOID": a re-run is a reproduction check and a differing one cannot PASS; `evaluation/reproduction.py` (`compare`)
+- [x] 4.5 `scripts/check_determinism.py` as runner `determinism_check`, T0b's first invocation (660 games)
+- [x] 4.6 `a1_protocol digest`, `--arena-throughput`, `make verify-registration`, skill `a1-reregister`
+- [x] 4.7 Negative controls recorded in each test module; debt ratchet passes without a baseline change
+- [ ] 4.8 Follow-up: the release verifier reads the `reproduction compare` record and applies "cannot PASS" itself
+- [ ] 4.9 Follow-up: record the torch wheel's sha256 in `.pinned.json` and `run.json`
+- [ ] 4.10 Follow-up: move a never-launched run directory aside so a preflight refusal does not use up the `card_id`
+
+## 5. On the GPU machine (maintainer)
+- [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order
+- [ ] 5.2 T0b runs; its `determinism` invocation reports REPRODUCED
+- [ ] 5.3 `a1_protocol calibrate` output, `determinism.json`, `run.json` and the three throughput files go into the slot fill-in PR

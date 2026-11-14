@@ -33,9 +33,19 @@ retiring the confirmatory seeds.
 - `calibrate_throughput` refuses an explicit GPU it cannot run and records the
   device it used. Evidence `gpu_model` names the device used.
 - Section 7.1 is re-registered: `cuda:0` for training, `cuda:1` for every arena
-  arm, a "Devices" paragraph, a scoped reproduction claim, a new registration-log
-  row and digest. The A1, A1-R and T0b cards follow; T0b also times `cuda:1` and
-  `cpu` and prices at 612 games.
+  arm; the torch build and the GPU at each ordinal named in a machine-readable
+  `a1-devices` block; GPU determinism made a precondition with a stated
+  consequence; the re-run after an interruption made a reproduction check that a
+  differing re-run cannot pass. Two registration-log rows and digests. The A1,
+  A1-R and T0b cards follow; T0b runs the reproduction check first, also times
+  `cuda:1` and `cpu`, and prices at 660 games.
+- `alpha_zero/evaluation/reproduction.py` compares two run directories;
+  `scripts/check_determinism.py` (runner `determinism_check`) runs an A1-shaped
+  job twice in separate processes and compares them.
+- The device check reads each invocation's device from its runner's own parser,
+  checks the build's architecture list and one real CUDA operation per device,
+  and holds each ordinal to the GPU the card names. The release verifier voids a
+  run whose recorded devices depart from the registration.
 
 ## Impact
 

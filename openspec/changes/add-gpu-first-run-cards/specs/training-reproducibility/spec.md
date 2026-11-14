@@ -30,3 +30,39 @@ another device under its name.
 #### Scenario: A GPU that is not there
 - **WHEN** `calibrate_throughput --device cuda:1` runs on a machine with no such device
 - **THEN** it exits 2, plays no game and writes no file
+
+### Requirement: GPU reproduction is checked where the runs execute, before they count
+
+Before any registered run on GPUs is started, a reproduction check MUST have
+passed on the machine that will run it: a small run of the registered shape,
+trained and judged on the registered devices, executed twice with each repeat in
+its own process inside the pinned environment, and compared checkpoint tensor by
+checkpoint tensor and arena game by arena game. A difference, an error, or the
+check not having run on the registered build and GPUs MUST mean the GPU
+registration does not stand.
+
+#### Scenario: Two repeats agree
+- **WHEN** the check runs twice on the registered devices and every checkpoint tensor and arena game matches
+- **THEN** it reports `REPRODUCED` and exits 0
+
+#### Scenario: A repeat differs
+- **WHEN** any checkpoint tensor or arena game differs between the two repeats
+- **THEN** it reports `DIFFERS`, names what differs and exits non-zero
+
+#### Scenario: Nothing was compared
+- **WHEN** a comparison finds no component to compare
+- **THEN** it does not report a pass
+
+### Requirement: A re-run after an interruption is a reproduction check
+
+When an interrupted registered run is re-run at the same seed, every component
+the interrupted attempt finished MUST be compared with the re-run's. A re-run
+that does not reproduce MUST NOT be read as a PASS.
+
+#### Scenario: The re-run reproduces
+- **WHEN** every checkpoint, iteration record and completed arm of the interrupted attempt equals the re-run's
+- **THEN** the re-run is the attempt that is judged
+
+#### Scenario: The re-run differs
+- **WHEN** a checkpoint tensor, a non-timing field of an iteration record or an arena game differs
+- **THEN** the re-run is reported as non-reproducing and a PASS row is read as INCONCLUSIVE
