@@ -59,11 +59,11 @@ BENCH_PREFIX = ["python", "scripts/benchmark_suite.py"]
 PLAN_TRAINING = (
     "python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 "
     "--num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 "
-    "--device cpu --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\\ckpt"
+    "--device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\\ckpt"
 )
 PLAN_ARENA_PREFIX = (
     "python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 "
-    "--max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu"
+    "--max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1"
 )
 #: Plan §5.2's arms table, with ``…<N>.pt`` written out and the final arm's candidate named.
 PLAN_ARMS = {

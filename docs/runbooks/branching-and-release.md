@@ -73,7 +73,9 @@ Run cards execute on the rc commit (section 4). Results go on branch
 `evidence/vX.Y.Z-rc.N`, cut from the rc tag and merged into `qa` with a merge commit; only
 `docs/evidence/**` may change. The `VALIDATION-RUN` ledger event goes to `dev` in a normal
 PR. Evidence follows `docs/evidence/SCHEMA.md` (`search_epoch: post-2026-09-04`);
-determinism holds on CPU only, so confirmatory runs use CPU and GPU runs are exploratory.
+confirmatory runs execute on the GPUs section 7.1 registers (`cuda:0` for training, `cuda:1`
+for the arena) with deterministic algorithms enforced, so a run repeats on the same machine,
+torch build and device, and not across GPU models.
 
 The release's evidence is `docs/evidence/release_vX_Y_Z/bundle.json` (schema: `SCHEMA.md`,
 "Release evidence bundle"), with `report.md` and an index row. Build it from the run
@@ -157,8 +159,16 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
 - No `MCTS_*` variable is set (section 7.1 VOIDs the run; `run_card` refuses to start).
 - The data root is `E:\civ6az-data` (`--data_root` or `CIV6AZ_DATA_ROOT`): the registered
   commands spell `<D>` as `E:\civ6az-data\runs\<card_id>`.
+- Both GPUs are visible and the card's pinned torch build installs:
+  `python scripts/run_card.py <card> --probe` builds the pinned environment, checks every
+  device the card names and launches nothing. It uses a throwaway `runs/probe-<card_id>-<time>`
+  directory, so the card's own single-use directory stays unclaimed. A card whose device is
+  missing is refused (`run_card` never falls back to CPU).
+- Once per machine and torch build, before T0b:
+  `pytest tests/regression/test_cuda_determinism_regression.py -v` (skipped without CUDA).
+  Quote its result in the T0b registration-log row.
 - The machine is quiet: Windows Update paused, llama-server and WSL stopped (plan section 10,
-  action 8). An existing data root not created by `run_card` keeps its ACL; check it.
+  action 8). GPU0 also drives the display, so leave the desktop idle while a card trains. An existing data root not created by `run_card` keeps its ACL; check it.
 - The card's `sha` is the commit to run. For A1/A1-R that is the rc: edit `sha` **locally
   and do not commit it** on the release line (after an rc only `docs/evidence/**` may change
   before the final tag).
@@ -171,13 +181,16 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
 From the merged default branch to the release (final review section 2; the cut-over itself
 is section 5):
 
-1. **T0b** (`configs/run_cards/t0b.yaml`, 604 games, not an A1-family run): set its `sha`,
+1. **T0b** (`configs/run_cards/t0b.yaml`, 612 games, not an A1-family run): set its `sha`,
    run it, then
    `python -m alpha_zero.evaluation.a1_protocol calibrate <the three arena dirs> --throughput <calibration json>`.
    It prints the reference, P(40) with its 95% interval, P(60), the iid P(40), the branch in
    force and the exact replacement text for section 7.1's two "pending T0b" slots, and exits
-   1 unless the input and bootstrap are the registered ones. GPU timing is exploratory and
-   runs outside `run_card` (the pinned venv has CPU-only torch).
+   1 unless the input and bootstrap are the registered ones. Pass the `cuda:0` file
+   (`calibration\throughput.json`) as `--throughput`; the card also times `cuda:1` and `cpu`
+   (`throughput_cuda1.json`, `throughput_cpu.json`). If CPU search is much faster than GPU
+   search, raise it before step 3: section 7.1 can still be re-registered until the first
+   exploratory run.
 2. A dev PR fills the slots (and, for branch 60, puts the branch commands into both cards),
    adds a registration-log row and updates `a1_registration.REGISTRATION_DIGEST`.
 3. Optional exploratory runs at 1001 and 1002. From the first one on, only the "pending T0b"

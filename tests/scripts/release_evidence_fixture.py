@@ -150,7 +150,8 @@ def _envelope(
             "seed": seed,
             # What cli_command writes for a run_card child: the launched argv.
             "command": shlex.join(["python", "-m", "alpha_zero.evaluation.benchmark", *launched]),
-            "device": "cpu",
+            # What the arena records: the device it was launched with (section 7.1).
+            "device": launched[launched.index("--device") + 1],
             "search": {
                 "mcts_type": "gumbel",
                 "num_simulations": 24,

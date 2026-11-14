@@ -1,7 +1,8 @@
 # Run card: T0b -- the positive-control reference and the wall-clock calibration
 # that section 7.1 of docs/EVALUATION.md leaves "pending T0b" (plan section 8.2).
 #
-#   python scripts/run_card.py configs/run_cards/t0b.yaml --price_only   # prints 604
+#   python scripts/run_card.py configs/run_cards/t0b.yaml --price_only   # prints 612
+#   python scripts/run_card.py configs/run_cards/t0b.yaml --probe        # checks the GPUs, runs nothing
 #
 # T0b runs are NOT A1-family runs (section 7.1, "Amendments"): they use seeds
 # 1001-1003 but lock nothing. Run it on the merged default branch after T7-T10.
@@ -13,14 +14,21 @@
 #   3. the machine is quiet (pause Windows Update; stop llama-server and WSL), or
 #      the throughput figure is not the machine's.
 #
-# Invocations: one wall-clock calibration of A1's search (board 8 / 60 turns,
-# gumbel k=8 n=24, CPU; 4 self-play games), then the registered positive-control
-# command (section 7.1 "positive-control") at seeds 1001, 1002 and 1003 with 200
-# games each -- only --seed, --n-games and --out differ from it.
+# Invocations: three wall-clock calibrations of A1's search (board 8 / 60 turns,
+# gumbel k=8 n=24; 4 self-play games each) -- on cuda:0, the device A1 trains and
+# self-plays on, then on cuda:1 and on cpu for comparison -- then the registered
+# positive-control command (section 7.1 "positive-control") at seeds 1001, 1002
+# and 1003 with 200 games each -- only --seed, --n-games and --out differ from it.
 # tests/scripts/test_t0b_calibration.py holds that, and the price, in place.
 #
-# GPU1 timing is exploratory and runs outside run_card: the pinned venv carries
-# CPU-only torch (final review M-10).
+# The card pins a CUDA torch build and both GPUs (section 7.1 "Devices").
+# `throughput.json` (cuda:0) is the file `calibrate --throughput` reads; the cuda:1
+# and cpu files are there to show what GPU-first costs or buys for single-position
+# search. If cpu is much faster, say so before A1: section 7.1 can still be
+# re-registered, because T0b is not an A1-family run.
+#
+# Before the card, on this machine and with this torch build:
+#   pytest tests/regression/test_cuda_determinism_regression.py -v
 #
 # Then read it with (it never edits docs/EVALUATION.md; exit 1 unless registered):
 #   python -m alpha_zero.evaluation.a1_protocol calibrate
@@ -33,10 +41,55 @@
 # them is a reviewed dev PR with a registration-log row.
 card_id: t0b-20261112
 sha: '0000000000000000000000000000000000000000'
-max_games: 604
-description: T0b positive-control reference (heuristic vs random, 8/60, seeds 1001-1003 x 200) and A1 wall-clock calibration.
+max_games: 612
+cuda_visible_devices: '0,1'
+torch_spec: 'torch==2.11.0'
+torch_index_url: 'https://download.pytorch.org/whl/cu128'
+description: T0b positive-control reference (heuristic vs random, 8/60, seeds 1001-1003 x 200) and A1 wall-clock calibration on cuda:0, cuda:1 and cpu.
 invocations:
   - name: throughput
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cuda:0'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json'
+  - name: throughput-cuda1
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cuda:1'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput_cuda1.json'
+  - name: throughput-cpu
     runner: calibrate_throughput
     argv:
       - '--board_size'
@@ -56,7 +109,7 @@ invocations:
       - '--seed'
       - '1001'
       - '--out'
-      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput_cpu.json'
   - name: seed-1001
     runner: benchmark
     argv:
@@ -74,7 +127,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--candidate'
       - 'heuristic'
       - '--opponents=random'
@@ -99,7 +152,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--candidate'
       - 'heuristic'
       - '--opponents=random'
@@ -124,7 +177,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--candidate'
       - 'heuristic'
       - '--opponents=random'

@@ -305,6 +305,24 @@ outputs land in different trees, and the run is VOID for want of a
 Every arena arm has its own `--out`, because `result.json` is never overwritten
 (T11 review I1).
 
+**Devices.** Every phase runs on a GPU. Training, and the self-play inside it,
+runs on `cuda:0`; every arena arm runs on `cuda:1`. Both cards set
+`cuda_visible_devices: '0,1'`, and `run_card` then sets
+`CUDA_DEVICE_ORDER=PCI_BUS_ID`, so `cuda:N` is the card `nvidia-smi` lists as
+GPU N. The cards pin the torch build (`torch_spec`, `torch_index_url`), and
+`run.json`'s `device_plan` records the pin, the visible devices and each GPU's
+name. `run_card` refuses to launch anything when a named device is missing from
+the pinned environment, because the runners would otherwise fall back to CPU
+with a warning. The positive-control arm loads no network, so its `--device` is
+nominal; it carries the arena's value so that the arm keeps the common prefix.
+
+Seeded runs on a CUDA device enforce deterministic algorithms
+(`utils.seeding.enforce_deterministic_backend`): an operation with no
+deterministic implementation raises. The reproduction this buys is **same
+machine, same pinned torch build, same device**. It is checked on that machine
+by `tests/regression/test_cuda_determinism_regression.py` before T0b, and the
+result is quoted in the T0b registration-log row.
+
 The training command is copied verbatim from the plan. Each arena command is the
 plan's common prefix, then the arm's flags, then `--out`. Two places expand the
 plan's table:
@@ -317,21 +335,21 @@ plan's table:
 <!-- a1-commands:base -->
 ```text
 # train
-python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cpu --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt
+python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt
 # primary
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 200 --out <D>\arena\primary
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 200 --out <D>\arena\primary
 # symmetry
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_0.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 40 --out <D>\arena\symmetry
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_0.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 40 --out <D>\arena\symmetry
 # positive-control
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --candidate heuristic --opponents=random --n-games 40 --out <D>\arena\positive_control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 40 --out <D>\arena\positive_control
 # secondary-5
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_5.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_5
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_5.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_5
 # secondary-10
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_10.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_10
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_10.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_10
 # secondary-15
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_15.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_15
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_15.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_15
 # final-vs-random
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 40 --out <D>\arena\final_vs_random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 40 --out <D>\arena\final_vs_random
 ```
 
 | Invocation | Games |
@@ -358,9 +376,9 @@ point; compare the arguments, not the leading tokens.
 <!-- a1-commands:branch-60 -->
 ```text
 # positive-control
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --candidate heuristic --opponents=random --n-games 60 --out <D>\arena\positive_control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 60 --out <D>\arena\positive_control
 # final-vs-random
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
 ```
 
 - **Branch in force: pending T0b.** T0b replaces "pending T0b" with "40" or
@@ -446,9 +464,12 @@ on it: T14's verifier exits 1 when a role has no non-VOID attempt.
 2. Run the same card again under a **new `card_id`** (for example
    `a1-20261111-r2`, so `<D>` is new) at the **same seed**. This is the one
    exception to "neither has been run before".
-   - After an **interruption**, nothing changed: confirmatory runs are
-     deterministic on CPU, so the re-run reproduces the same games and cannot be
-     used to fish for another result.
+   - After an **interruption**, nothing changed: confirmatory runs enforce
+     deterministic algorithms on their registered devices (see Devices), so on
+     the same machine and pinned torch build the re-run reproduces the same
+     games and cannot be used to fish for another result. If the re-run's
+     checkpoints or arena results differ from what the interrupted attempt left
+     behind, report that in the bundle: the re-run is then a second draw.
    - After a **symmetry or positive-control VOID**, the code changed, so the
      re-run plays different games: it is a **second draw**, made after the VOID
      attempt's arms (its primary arm included, if it ran) were seen. Listing the
@@ -589,6 +610,7 @@ in `run.json` and the release bundle, not here.
 | 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
 | 2026-11-12 | `9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e` | T14 review I-1 (before any A1-family run): "After a VOID" -- a VOID records no learning result; fix the cause and re-run under a new `card_id` at the same seed; the VOID attempt stays in the bundle and exactly one non-VOID attempt per role is judged |
 | 2026-11-12 | `79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b` | T14 rereview N-1/N-2 (before any A1-family run): "After a VOID" says the same-seed re-run is a reproduction only after an interruption; after a symmetry or positive-control VOID it is a second draw, disclosed by the listed VOID attempt, which keeps whatever components it left |
+| 2026-11-14 | `c58abfad89091b37ab2bace9dde820c72894ad3b1e82108297364d29977b4194` | GPU-first re-registration (before any A1-family run): training and self-play on `cuda:0`, every arena arm on `cuda:1` (was `cpu` throughout); new "Devices" paragraph (pinned torch build, PCI device order, `run_card` refuses a missing device, deterministic algorithms enforced); "After a VOID" reproduction claim scoped to the same machine, torch build and device |
 
 ## 8. The LLM advisor gate is not an evaluation
 

@@ -17,6 +17,9 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - The web UI and the inference server bind `127.0.0.1` with loopback-only CORS by default (`alpha_zero/utils/network.py`); a non-loopback bind is opt-in (`WebConfig.host`, `INFERENCE_HOST`) and logged as a warning. The production web preset is loopback; `Dockerfile.inference` sets its container bind explicitly.
 
 ### Changed
+- **Registered runs are GPU-first.** Section 7.1 of `docs/EVALUATION.md` was re-registered before any A1-family run: training and its self-play run on `cuda:0`, every arena arm on `cuda:1` (was `cpu`). `configs/run_cards/a1.yaml`, `a1r.yaml` and `t0b.yaml` follow, pin `torch==2.11.0` from the `cu128` index and make both GPUs visible. T0b now also times `cuda:1` and `cpu` for comparison and prices at 612 games (was 604).
+- Seeded runs on a CUDA device enforce deterministic algorithms (`utils/seeding.enforce_deterministic_backend`, called by `training_civ6`, the benchmark and `calibrate_throughput`). A non-deterministic operation raises. CPU runs are unchanged.
+- `scripts/calibrate_throughput.py` refuses an explicit GPU it cannot run (exit 2) instead of timing the CPU, and its JSON records the device the games ran on. Evidence `hardware.gpu_model` names the GPU used, not always GPU 0.
 - Seeded Gumbel trajectories differ from 2.0.0 at every `(k, n)` except `(8, 24)` and `(16, 64)`, because the halving schedule now spends exactly the configured budget (see Fixed). `--mcts gumbel` honours `--num_simulations` (it silently used 16) unless `--gumbel_sims` is given.
 - In-loop evaluation is decoupled from checkpointing: `--eval_interval` (default `--save_interval`, so an unflagged run evaluates and prices as before) and `--eval_games` (`0` turns it off, also under `--dry_run`). Each evaluation writes `eval_<iter>.json` beside the checkpoints.
 - Deployed images (`Dockerfile.vertex`, `Dockerfile.inference`) move from NGC PyTorch 24.09 (Python 3.10, CUDA 12) to 26.10 (Python 3.12, CUDA 13.4, PyTorch 2.15 pre-release). Supersedes Dependabot #130. `pip install` is constrained to NGC's own torch build so a PyPI wheel cannot replace it.
@@ -25,6 +28,9 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - Charter amendment A-1 (proposed; ratified by the merge that carries it): training runs locally on one workstation, the Vertex/GCP path is frozen and dormant (kept, not deleted, no parity claimed), and branching is dev -> qa -> main.
 
 ### Added — local runs
+- Run cards can pin a torch build: `torch_spec` and `torch_index_url` install an exact torch from a named index before the wheel, and the pinned environment is keyed by that pin (`envs/<sha12>-t<hash>`), so a CPU environment for the same commit is never reused.
+- `run_card` refuses a card whose `--device` names a CUDA device the pinned environment cannot provide, or whose installed torch is not the pinned one; it never falls back to CPU. `run_card --probe` rehearses the pin, the preflight and the device check in a throwaway directory without claiming the card's single-use one. `run.json`'s `device_plan` records the pin, the device order and each GPU's name.
+- `tests/regression/test_cuda_determinism_regression.py`: two seeded trainings and two seeded arenas per visible GPU must be identical. Skipped without CUDA; run it on the card machine before T0b.
 - **Data root and pinned runs:** `CIV6AZ_DATA_ROOT` (`alpha_zero/utils/data_root.py`) holds every run's output outside the repository. `alpha_zero/local/pinned_env.py` runs a card from a `git archive` of its SHA in a venv built from that SHA's wheel, and a preflight proves the child imports the pinned code.
 - **Local isolation** (`alpha_zero/local/isolation.py`): `enter_local_mode` scrubs cloud variables, points `CLOUDSDK_CONFIG` at an empty directory, sets `CIV6AZ_SKIP_DOTENV`, and makes any GCS access raise `LocalModeViolation`.
 - **Run cards** (`configs/run_cards/*.yaml`, `scripts/run_card.py`): every invocation is priced with its runner's own parser and the card refused over its cap before anything is created; then pinned, isolated, run, and recorded in `run.json` (environment variable names, never values). A run directory is single-use; an interrupted or resumed card is VOID, and a card refuses to start while any `MCTS_*` variable is set. Cards: `smoke`, `a1`, `a1r`, `t0b`.
@@ -64,6 +70,7 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - The role-subagent guards deny an empty or multi-document hook payload rather than allow it.
 
 ### Known limitations
+- The GPU path has not run on a GPU yet. CI is CPU-only, so the CUDA torch install, the determinism settings and every timing are first exercised by the maintainer's `--probe`, the CUDA regression test and the T0b card. GPU reproduction is scoped to the same machine, torch build and device.
 - **MuZero search is not two-player sign-correct** (known defect, CLAUDE.md section 5.3; the fix is confirm-first): its backup sums mover-relative rewards with no sign flip, and its value targets use a third frame. A1 does not use MuZero. The alternating forced-win case is a strict `xfail`.
 - The branch model, rulesets and agent identity are not enforced until the maintainer's cut-over; until then the guard is the only barrier, and it is an accident net.
 - Section 7.1's "pending T0b" slots are open, so neither A1 card can run yet.

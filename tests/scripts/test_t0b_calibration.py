@@ -73,8 +73,15 @@ def test_the_slots_the_command_prints_are_verbatim_in_section_7_1() -> None:
 def test_t0b_card_prices_under_the_cap_per_invocation_and_in_total() -> None:
     priced = rc.price_card(rc.load_card(CARD))
     games = {p.invocation.name: p.games for p in priced.invocations}
-    assert games == {"throughput": 4, "seed-1001": 200, "seed-1002": 200, "seed-1003": 200}
-    assert priced.total == 604 <= priced.card.max_games <= 1000
+    assert games == {
+        "throughput": 4,
+        "throughput-cuda1": 4,
+        "throughput-cpu": 4,
+        "seed-1001": 200,
+        "seed-1002": 200,
+        "seed-1003": 200,
+    }
+    assert priced.total == 612 <= priced.card.max_games <= 1000
 
 
 def test_t0b_arms_are_the_registered_positive_control_but_for_seed_games_and_out() -> None:
@@ -103,19 +110,57 @@ def test_t0b_arms_are_the_registered_positive_control_but_for_seed_games_and_out
     assert tuple(seen) == ap.T0B_SEEDS
 
 
-def test_t0b_wall_clock_calibration_is_a1s_search_on_cpu() -> None:
+def test_t0b_wall_clock_calibration_is_a1s_search_on_a1s_training_device() -> None:
+    """``throughput`` is the file ``calibrate --throughput`` reads, so it must time
+    A1's search on the device A1 trains and self-plays on (section 7.1)."""
+    section = ap.registered_protocol(EVALUATION)
+    train_device = flag_value(dict(command_block(section, "base"))["train"], "--device")
+    assert train_device == "cuda:0"
     card = rc.load_card(CARD)
-    (throughput,) = [i for i in card.invocations if i.runner == "calibrate_throughput"]
-    argv = list(throughput.argv)
+    by_name = {i.name: list(i.argv) for i in card.invocations if i.runner == "calibrate_throughput"}
+    argv = by_name["throughput"]
     for flag, value in (
         ("--board_size", "8"),
         ("--max_turns", "60"),
         ("--mcts", "gumbel"),
         ("--k", "8"),
         ("--n", "24"),
-        ("--device", "cpu"),
+        ("--device", train_device),
     ):
         assert flag_value(argv, flag) == value, flag
+
+
+def test_t0b_comparison_timings_differ_from_the_registered_one_only_in_device_and_out() -> None:
+    """cuda:1 and cpu are timed with the same search, so the three numbers compare."""
+    card = rc.load_card(CARD)
+    by_name = {i.name: list(i.argv) for i in card.invocations if i.runner == "calibrate_throughput"}
+    assert set(by_name) == {"throughput", "throughput-cuda1", "throughput-cpu"}
+    base = by_name["throughput"]
+    outs = {flag_value(base, "--out")}
+    for name, device in (("throughput-cuda1", "cuda:1"), ("throughput-cpu", "cpu")):
+        argv = by_name[name]
+        assert flag_value(argv, "--device") == device
+        out = flag_value(argv, "--out")
+        assert out not in outs, "each timing needs its own file"
+        outs.add(out)
+        swapped = [
+            {"--device": flag_value(base, "--device"), "--out": flag_value(base, "--out")}.get(
+                prev, tok
+            )
+            for prev, tok in zip(["", *argv], argv, strict=False)
+        ]
+        assert swapped == base, name
+
+
+def test_cards_pin_a_cuda_torch_and_both_gpus() -> None:
+    """Every registered card names its torch build and makes cuda:0 and cuda:1 visible."""
+    for path in (CARD, CARD.with_name("a1.yaml"), CARD.with_name("a1r.yaml")):
+        card = rc.load_card(path)
+        assert card.torch_pin is not None, path.name
+        assert card.torch_pin.index_url.startswith("https://download.pytorch.org/whl/cu")
+        assert card.cuda_visible_devices == "0,1", path.name
+        devices = set(rc.requested_devices(card).values())
+        assert {"cuda:0", "cuda:1"} <= devices, path.name
 
 
 def test_calibrate_throughput_is_a_run_card_runner_priced_by_its_own_parser() -> None:
