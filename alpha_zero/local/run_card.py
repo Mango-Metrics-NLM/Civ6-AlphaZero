@@ -98,6 +98,7 @@ from alpha_zero.utils.data_root import (
     scoped_temp_env,
     validate_run_id,
 )
+from alpha_zero.utils.seeding import CUBLAS_WORKSPACE_CONFIG, cuda_ordinal
 
 logger = logging.getLogger(__name__)
 
@@ -109,9 +110,6 @@ STATUS_FAILED = "FAILED"
 STATUS_VOID = "VOID"
 #: A ``--probe`` rehearsal: pinned, preflighted, device-checked, nothing launched.
 STATUS_PROBED = "PROBED"
-#: cuBLAS needs this for deterministic matmuls; it must be set before CUDA starts,
-#: so the driver sets it for children instead of leaving it to each runner.
-CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 EXIT_INTERRUPTED = 130
 _CARD_KEYS = frozenset(
     {
@@ -367,16 +365,6 @@ def requested_devices(card: RunCard) -> dict[str, str]:
     return found
 
 
-def _cuda_index(device: str) -> int | None:
-    """The CUDA ordinal ``device`` names (bare ``cuda`` is 0), or ``None`` if it is not CUDA."""
-    name = device.strip().lower()
-    if name == "cuda":
-        return 0
-    if name.startswith("cuda:") and name[5:].isdigit():
-        return int(name[5:])
-    return None
-
-
 def device_problem(card: RunCard, torch_report: Any) -> str | None:
     """Why the pinned venv cannot honour the card's devices, or ``None`` if it can.
 
@@ -401,7 +389,7 @@ def device_problem(card: RunCard, torch_report: Any) -> str | None:
     wanted = {
         name: (device, index)
         for name, device in requested_devices(card).items()
-        if (index := _cuda_index(device)) is not None
+        if (index := cuda_ordinal(device)) is not None
     }
     if not wanted:
         return None
@@ -805,7 +793,8 @@ def run_card(
             elif "CUDA_VISIBLE_DEVICES" in child:
                 device_source = "inherited"
             requested = requested_devices(card)
-            if any(_cuda_index(device) is not None for device in requested.values()):
+            if any(cuda_ordinal(device) is not None for device in requested.values()):
+                # Read when cuBLAS starts, so it must be in the child's environment.
                 child["CUBLAS_WORKSPACE_CONFIG"] = CUBLAS_WORKSPACE_CONFIG
             record.update(
                 sha=env.sha,

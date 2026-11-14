@@ -89,7 +89,7 @@ from alpha_zero.utils.game_budget import (
     add_budget_arguments,
     enforce_cli,
 )
-from alpha_zero.utils.seeding import SeedStream, derive_seed
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger(__name__)
 
@@ -954,6 +954,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         import torch
 
+        if args.seed is not None:
+            # Before any network is built or loaded: a seeded GPU arena must repeat.
+            enforce_deterministic_backend(args.device)
         candidate, candidate_factory, candidate_id = _candidate(args, protocol)
         opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
         opponent_models: dict[str, Any] = {}

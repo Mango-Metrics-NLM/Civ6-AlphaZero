@@ -37,10 +37,23 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["MAX_SEED", "SeedStream", "derive_seed"]
+__all__ = [
+    "CUBLAS_WORKSPACE_CONFIG",
+    "MAX_SEED",
+    "SeedStream",
+    "cuda_ordinal",
+    "derive_seed",
+    "enforce_deterministic_backend",
+]
+
+#: cuBLAS only promises deterministic matmuls with this workspace setting, and it is
+#: read when cuBLAS starts -- so it has to be in the environment before the first
+#: CUDA call. ``run_card`` puts it in every GPU child's environment for that reason.
+CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 
 # numpy's SeedSequence and torch both accept a 32-bit seed; keep well inside it.
 MAX_SEED = 2**31 - 1
@@ -111,3 +124,42 @@ def derive_seed(base_seed: int | None, stream: str, *parts: object) -> int | Non
     derived = int.from_bytes(digest, "big") % (MAX_SEED + 1)
     logger.debug("derived seed %d for stream %r from %r", derived, stream, payload)
     return derived
+
+
+def cuda_ordinal(device: object) -> int | None:
+    """The CUDA ordinal a device string names (bare ``cuda`` is 0), else ``None``."""
+    name = str(device or "").strip().lower()
+    if name == "cuda":
+        return 0
+    if name.startswith("cuda:") and name[5:].isdigit():
+        return int(name[5:])
+    return None
+
+
+def enforce_deterministic_backend(device: object) -> bool:
+    """Make a seeded run on a CUDA ``device`` repeat; a no-op for any other device.
+
+    Seeding the generators is not enough on a GPU: cuDNN picks convolution
+    algorithms by benchmark, and several CUDA kernels are non-deterministic by
+    default, so two runs at one seed drift apart. For a CUDA device this turns on
+
+    * ``torch.use_deterministic_algorithms(True)`` -- an operation with no
+      deterministic implementation **raises** instead of silently drifting;
+    * ``cudnn.deterministic = True`` and ``cudnn.benchmark = False``;
+    * ``CUBLAS_WORKSPACE_CONFIG`` (only if unset; it must precede the first CUDA
+      call, which is why callers invoke this before building the network).
+
+    The guarantee is *same machine, same torch build, same device*: bitwise results
+    are not portable across GPU models or CUDA versions. CPU runs are untouched,
+    so the CPU determinism gates stay byte-identical. Returns whether it applied.
+    """
+    if cuda_ordinal(device) is None:
+        return False
+    import torch
+
+    os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", CUBLAS_WORKSPACE_CONFIG)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+    torch.use_deterministic_algorithms(True)
+    logger.info("deterministic CUDA algorithms enforced for device %s", device)
+    return True

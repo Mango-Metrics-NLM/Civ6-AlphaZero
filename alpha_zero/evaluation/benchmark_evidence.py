@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha_zero.evaluation.scoring import interval_hull, pair_score_interval, score_interval
+from alpha_zero.utils.seeding import cuda_ordinal
 
 __all__ = [
     "EVIDENCE_SCHEMA_VERSION",
@@ -65,14 +66,22 @@ def _cpu_model() -> str | None:
     return fallback
 
 
-def hardware_summary() -> dict[str, Any]:
-    """CPU, GPU, core count and thread cap -- the things that move timings."""
+def hardware_summary(device: object = None) -> dict[str, Any]:
+    """CPU, GPU, core count and thread cap -- the things that move timings.
+
+    ``gpu_model`` names the GPU ``device`` runs on. It used to name GPU 0 always,
+    which on a two-GPU machine labelled a ``cuda:1`` run with the other card.
+    For a non-CUDA ``device`` it still reports GPU 0 (present, not used).
+    """
     gpu_model: str | None = None
     try:
         import torch
 
         if torch.cuda.is_available():
-            gpu_model = torch.cuda.get_device_name(0)
+            ordinal = cuda_ordinal(device) or 0
+            if ordinal >= torch.cuda.device_count():
+                ordinal = 0
+            gpu_model = torch.cuda.get_device_name(ordinal)
     except Exception:  # pragma: no cover - torch missing or CUDA probe failing
         gpu_model = None
     return {
@@ -136,7 +145,8 @@ def collect_evidence(
     """The ``docs/evidence/SCHEMA.md`` block: enough to reproduce or dismiss ``results``.
 
     Beyond the contract it records ``search_semantics``, the torch ``device`` the
-    searches ran on (confirmatory runs are CPU-only) and the ``search`` config, so
+    searches ran on (registered per arm in section 7.1; ``hardware.gpu_model`` names
+    that GPU) and the ``search`` config, so
     shards that differ in any of them cannot be merged.
     """
     block: dict[str, Any] = {
@@ -149,7 +159,7 @@ def collect_evidence(
         "command": command if command is not None else cli_command(),
         "device": device,
         "search": dict(search) if search is not None else None,
-        "hardware": hardware_summary(),
+        "hardware": hardware_summary(device),
         "python": platform.python_version(),
         "torch": _version_of("torch"),
         "numpy": _version_of("numpy"),

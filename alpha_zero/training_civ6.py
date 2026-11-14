@@ -74,7 +74,12 @@ from alpha_zero.utils.game_budget import (
     add_budget_arguments,
     enforce_cli,
 )
-from alpha_zero.utils.seeding import SeedStream, derive_seed
+from alpha_zero.utils.seeding import (
+    SeedStream,
+    cuda_ordinal,
+    derive_seed,
+    enforce_deterministic_backend,
+)
 
 # Configure logging
 logging.basicConfig(
@@ -1205,8 +1210,12 @@ def write_eval_json(
     return result
 
 
-def _hardware_summary() -> dict[str, Any]:
-    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+def _hardware_summary(device: object = None) -> dict[str, Any]:
+    """``gpu_model`` names the GPU ``device`` runs on (GPU 0 when it is not a CUDA device)."""
+    gpu = None
+    if torch.cuda.is_available():
+        ordinal = cuda_ordinal(device) or 0
+        gpu = torch.cuda.get_device_name(ordinal if ordinal < torch.cuda.device_count() else 0)
     return {
         "cpu_model": platform.processor() or None,
         "gpu_model": gpu,
@@ -1237,7 +1246,7 @@ def eval_evidence_block(
         "search_epoch": EVAL_SEARCH_EPOCH,
         "seed": config.seed,
         "command": shlex.join(["python", "-m", "alpha_zero.training_civ6", *sys.argv[1:]]),
-        "hardware": _hardware_summary(),
+        "hardware": _hardware_summary(config.device),
         "python": platform.python_version(),
         "torch": torch.__version__,
         "numpy": np.__version__,
@@ -1407,6 +1416,9 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # parameter init -- and is therefore done once, here, rather than threaded.
     if config.seed is not None:
         torch.manual_seed(config.seed)
+        # A seeded GPU run must repeat too: seeding alone does not make CUDA
+        # kernels deterministic. No-op on CPU (utils.seeding).
+        enforce_deterministic_backend(config.device)
 
     # Initialize network. When num_players > 2, MicroCivNetwork swaps in an
     # NPlayerValueHead that outputs a per-player value vector.
