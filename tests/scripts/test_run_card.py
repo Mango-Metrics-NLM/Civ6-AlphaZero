@@ -624,3 +624,189 @@ def test_parent_reverifies_preflight_report(
     data = _run_json(tmp_path)
     assert reason in data["error"]
     assert data["invocations"] == []
+
+
+# ---------------------------------------------------------------------------
+# Devices: a card that names a GPU must get that GPU, or refuse
+#
+# Negative controls (recorded when these were written, then reverted):
+#   * removing the ``device_problem`` call from ``run_card`` made
+#     ``test_card_asking_for_cuda_without_it_fails_before_launching`` fail: the
+#     card COMPLETED on a venv with no torch at all, which is the silent CPU
+#     fallback this guards against;
+#   * dropping ``torch_pin=card.torch_pin`` from the ``prepare_pinned_run`` call
+#     made ``test_torch_pin_reaches_the_pinned_env_and_run_json`` fail.
+# ---------------------------------------------------------------------------
+
+_CU128 = "https://download.pytorch.org/whl/cu128"
+_TWO_GPUS = {
+    "version": "2.11.0+cu128",
+    "cuda": "12.8",
+    "cuda_available": True,
+    "device_count": 2,
+    "devices": ["GPU A", "GPU B"],
+}
+
+
+def _device_card(*devices: str, **extra: Any) -> rc.RunCard:
+    return rc.RunCard(
+        card_id="t1",
+        sha="0123456",
+        max_games=10,
+        invocations=tuple(
+            rc.Invocation(f"inv{i}", "training_civ6", ("--dry_run", "--device", d))
+            for i, d in enumerate(devices)
+        ),
+        **extra,
+    )
+
+
+def test_requested_devices_reads_both_flag_forms_and_the_last_one_wins() -> None:
+    card = rc.RunCard(
+        card_id="t1",
+        sha="0123456",
+        max_games=10,
+        invocations=(
+            rc.Invocation("a", "training_civ6", ("--device", "cpu", "--device", "cuda:1")),
+            rc.Invocation("b", "benchmark", ("--device=cuda:0",)),
+            rc.Invocation("c", "benchmark", ("--n-games", "4")),
+        ),
+    )
+    assert rc.requested_devices(card) == {"a": "cuda:1", "b": "cuda:0"}
+
+
+@pytest.mark.parametrize(
+    ("devices", "report", "match"),
+    [
+        (("cpu", "auto"), {"error": "ModuleNotFoundError"}, None),  # nothing requested
+        (("cuda:0", "cuda:1"), _TWO_GPUS, None),
+        (("CUDA",), _TWO_GPUS, None),  # bare cuda is ordinal 0, case-insensitive
+        (("cuda:1",), {"error": "ModuleNotFoundError"}, "unavailable"),
+        (("cuda:1",), {**_TWO_GPUS, "cuda_available": False, "cuda": None}, "unavailable"),
+        (("cuda:0", "cuda:2"), _TWO_GPUS, "inv1 asks for cuda:2 but only 2"),
+        (("cuda:1",), None, "unavailable"),  # no report at all
+    ],
+)
+def test_device_problem(devices: tuple[str, ...], report: Any, match: str | None) -> None:
+    problem = rc.device_problem(_device_card(*devices), report)
+    if match is None:
+        assert problem is None
+    else:
+        assert problem is not None and match in problem
+
+
+def test_device_problem_checks_the_torch_pin_even_on_cpu() -> None:
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    card = _device_card("cpu", torch_pin=pin)
+    assert rc.device_problem(card, _TWO_GPUS) is None
+    wrong = rc.device_problem(card, {**_TWO_GPUS, "version": "2.13.0+cpu"})
+    assert wrong is not None and "pins torch==2.11.0" in wrong
+
+
+@pytest.mark.parametrize(
+    ("extra", "match"),
+    [
+        ({"torch_spec": "torch==2.11.0"}, "go together"),
+        ({"torch_index_url": _CU128}, "go together"),
+        ({"torch_spec": "torch>=2", "torch_index_url": _CU128}, "exact pin"),
+        ({"torch_spec": "torch==2.11.0", "torch_index_url": "http://x/whl"}, "https"),
+    ],
+)
+def test_torch_keys_are_validated_at_load(
+    tmp_path: Path, extra: dict[str, Any], match: str
+) -> None:
+    with pytest.raises(rc.RunCardError, match=match):
+        rc.load_card(_card(tmp_path, [_train("a", "--dry_run")], **extra))
+
+
+def test_card_asking_for_cuda_without_it_fails_before_launching(
+    tmp_path: Path, pinned: FakeRunner
+) -> None:
+    """The bare test venv has no torch: ``--device cuda:1`` must not run on CPU."""
+    card = _card(tmp_path, [_train("smoke", "--dry_run", "--device", "cuda:1")])
+    result = _run(card, tmp_path, pinned)
+    assert result.status == rc.STATUS_FAILED
+    data = _run_json(tmp_path)
+    assert data["error"].startswith("devices: ") and "smoke" in data["error"]
+    assert data["invocations"] == []
+    assert not (tmp_path / "root" / "runs" / "t1" / "logs" / "smoke.log").exists()
+
+
+def test_cuda_card_runs_when_the_pinned_venv_has_the_devices(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = rc._preflight
+    monkeypatch.setattr(
+        rc, "_preflight", lambda env, child: {**real(env, child), "torch": _TWO_GPUS}
+    )
+    card = _card(
+        tmp_path,
+        [_train("smoke", "--dry_run", "--device", "cuda:1")],
+        cuda_visible_devices="0,1",
+    )
+    result = _run(card, tmp_path, pinned)
+    assert result.status == rc.STATUS_COMPLETED, _run_json(tmp_path).get("error")
+    plan = _run_json(tmp_path)["device_plan"]
+    assert plan["CUDA_VISIBLE_DEVICES"] == "0,1" and plan["source"] == "card"
+    assert plan["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
+    assert plan["CUBLAS_WORKSPACE_CONFIG"] == rc.CUBLAS_WORKSPACE_CONFIG
+    assert plan["requested"] == {"smoke": "cuda:1"}
+    assert plan["torch"]["devices"] == ["GPU A", "GPU B"]
+
+
+def test_cpu_card_gets_no_cuda_environment(tmp_path: Path, pinned: FakeRunner) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+    assert _run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED
+    data = _run_json(tmp_path)
+    assert "CUBLAS_WORKSPACE_CONFIG" not in data["env_var_names"]
+    assert "CUDA_DEVICE_ORDER" not in data["env_var_names"]
+    assert data["device_plan"]["torch_pin"] is None
+
+
+def test_torch_pin_reaches_the_pinned_env_and_run_json(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = rc._preflight
+    monkeypatch.setattr(
+        rc, "_preflight", lambda env, child: {**real(env, child), "torch": _TWO_GPUS}
+    )
+    card = _card(
+        tmp_path,
+        [_train("smoke", "--dry_run", "--device", "cuda:0")],
+        torch_spec="torch==2.11.0",
+        torch_index_url=_CU128,
+    )
+    assert _run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED
+    installs = [c for c in pinned.calls if "--index-url" in c]
+    assert [c[-3:] for c in installs] == [["torch==2.11.0", "--index-url", _CU128]]
+    data = _run_json(tmp_path)
+    assert data["device_plan"]["torch_pin"] == {"spec": "torch==2.11.0", "index_url": _CU128}
+    assert Path(data["python"]).parents[1].name.startswith(f"{FULL_SHA[:12]}-t")
+
+
+def test_probe_checks_devices_without_claiming_the_card_directory(
+    tmp_path: Path, pinned: FakeRunner
+) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run", "--device", "cuda:1")])
+    result = rc.run_card(
+        card, data_root=tmp_path / "root", pinned_runner=pinned, repo_root=REPO, probe=True
+    )
+    runs = tmp_path / "root" / "runs"
+    assert result.status == rc.STATUS_FAILED  # no torch in the bare venv
+    assert not (runs / "t1").exists(), "a probe must not claim the card's own directory"
+    assert result.run_dir.parent == runs and result.run_dir.name.startswith("probe-t1-")
+    data = json.loads((result.run_dir / "run.json").read_text(encoding="utf-8"))
+    assert data["probe"] is True and data["error"].startswith("devices: ")
+
+
+def test_probe_of_a_cpu_card_is_probed_and_launches_nothing(
+    tmp_path: Path, pinned: FakeRunner
+) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+    result = rc.run_card(
+        card, data_root=tmp_path / "root", pinned_runner=pinned, repo_root=REPO, probe=True
+    )
+    assert result.status == rc.STATUS_PROBED and result.invocations == []
+    assert not (result.run_dir / "logs" / "smoke.log").exists()
+    # The card itself can still run afterwards: its directory was never claimed.
+    assert _run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED

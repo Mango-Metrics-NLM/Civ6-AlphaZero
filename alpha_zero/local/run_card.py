@@ -78,6 +78,7 @@ from alpha_zero.local.pinned_env import (
     PinnedEnv,
     PinnedEnvError,
     Runner,
+    TorchPin,
     _pyproject_version,
     child_env,
     prepare_pinned_run,
@@ -106,6 +107,11 @@ STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
 STATUS_FAILED = "FAILED"
 STATUS_VOID = "VOID"
+#: A ``--probe`` rehearsal: pinned, preflighted, device-checked, nothing launched.
+STATUS_PROBED = "PROBED"
+#: cuBLAS needs this for deterministic matmuls; it must be set before CUDA starts,
+#: so the driver sets it for children instead of leaving it to each runner.
+CUBLAS_WORKSPACE_CONFIG = ":4096:8"
 EXIT_INTERRUPTED = 130
 _CARD_KEYS = frozenset(
     {
@@ -115,6 +121,8 @@ _CARD_KEYS = frozenset(
         "approval_ref",
         "invocations",
         "cuda_visible_devices",
+        "torch_spec",
+        "torch_index_url",
         "description",
     }
 )
@@ -135,6 +143,9 @@ PREFLIGHT_CODE = (
     "    import torch\n"
     "    info['torch'] = {'version': str(torch.__version__), 'cuda': torch.version.cuda,"
     " 'cuda_available': bool(torch.cuda.is_available())}\n"
+    "    count = torch.cuda.device_count() if info['torch']['cuda_available'] else 0\n"
+    "    info['torch']['device_count'] = int(count)\n"
+    "    info['torch']['devices'] = [str(torch.cuda.get_device_name(i)) for i in range(count)]\n"
     "except Exception as exc:\n"
     "    info['torch'] = {'error': type(exc).__name__}\n"
     "print(json.dumps(info))\n"
@@ -228,6 +239,7 @@ class RunCard:
     approval_ref: str | None = None
     cuda_visible_devices: str | None = None
     path: Path | None = None
+    torch_pin: TorchPin | None = None
 
 
 @dataclass(frozen=True)
@@ -313,6 +325,15 @@ def load_card(path: str | Path) -> RunCard:
         raise RunCardError(f"{path}: duplicate invocation names in {names}")
     approval = raw.get("approval_ref")
     cuda = raw.get("cuda_visible_devices")
+    torch_spec, torch_index = raw.get("torch_spec"), raw.get("torch_index_url")
+    torch_pin: TorchPin | None = None
+    if (torch_spec is None) != (torch_index is None):
+        raise RunCardError(f"{path}: torch_spec and torch_index_url go together (both or neither)")
+    if torch_spec is not None:
+        try:
+            torch_pin = TorchPin(str(torch_spec), str(torch_index))
+        except PinnedEnvError as exc:
+            raise RunCardError(f"{path}: {exc}") from exc
     return RunCard(
         card_id=card_id,
         sha=sha.lower(),
@@ -321,7 +342,85 @@ def load_card(path: str | Path) -> RunCard:
         approval_ref=(str(approval).strip() or None) if approval is not None else None,
         cuda_visible_devices=None if cuda is None else str(cuda),
         path=path,
+        torch_pin=torch_pin,
     )
+
+
+# ---------------------------------------------------------------------------
+# Devices
+# ---------------------------------------------------------------------------
+
+
+def requested_devices(card: RunCard) -> dict[str, str]:
+    """``{invocation name: its --device value}`` for every invocation that passes one.
+
+    Both ``--device X`` and ``--device=X`` are read, and the last occurrence wins,
+    as argparse resolves it.
+    """
+    found: dict[str, str] = {}
+    for inv in card.invocations:
+        for i, arg in enumerate(inv.argv):
+            if arg == "--device" and i + 1 < len(inv.argv):
+                found[inv.name] = inv.argv[i + 1]
+            elif arg.startswith("--device="):
+                found[inv.name] = arg.split("=", 1)[1]
+    return found
+
+
+def _cuda_index(device: str) -> int | None:
+    """The CUDA ordinal ``device`` names (bare ``cuda`` is 0), or ``None`` if it is not CUDA."""
+    name = device.strip().lower()
+    if name == "cuda":
+        return 0
+    if name.startswith("cuda:") and name[5:].isdigit():
+        return int(name[5:])
+    return None
+
+
+def device_problem(card: RunCard, torch_report: Any) -> str | None:
+    """Why the pinned venv cannot honour the card's devices, or ``None`` if it can.
+
+    The runners fall back to CPU with a warning when CUDA is missing
+    (``utils.device``), so without this a card that asks for ``cuda:1`` would
+    train on CPU and exit 0. A card is evidence about a named device; it must
+    refuse instead. Checked against the pinned child's own preflight report:
+
+    * the torch pin, when the card has one, is the torch actually installed;
+    * every explicit ``cuda`` / ``cuda:N`` in an argv exists there.
+
+    ``auto`` and ``cpu`` request nothing, so they are not checked.
+    """
+    report = torch_report if isinstance(torch_report, Mapping) else {}
+    if card.torch_pin is not None:
+        installed = str(report.get("version", "")).split("+", 1)[0]
+        if installed != card.torch_pin.version:
+            return (
+                f"the card pins {card.torch_pin.spec} but the pinned venv has torch "
+                f"{report.get('version', report.get('error', 'unknown'))!r}"
+            )
+    wanted = {
+        name: (device, index)
+        for name, device in requested_devices(card).items()
+        if (index := _cuda_index(device)) is not None
+    }
+    if not wanted:
+        return None
+    if not report.get("cuda_available"):
+        names = ", ".join(sorted(wanted))
+        return (
+            f"invocations {names} ask for CUDA but the pinned venv's torch "
+            f"({report.get('version', report.get('error', 'unknown'))}, "
+            f"cuda={report.get('cuda')}) reports it unavailable; "
+            "set torch_spec/torch_index_url to a CUDA build"
+        )
+    count = int(report.get("device_count", 0))
+    for name, (device, index) in sorted(wanted.items()):
+        if index >= count:
+            return (
+                f"invocation {name} asks for {device} but only {count} CUDA device(s) are "
+                f"visible (CUDA_VISIBLE_DEVICES={card.cuda_visible_devices!r})"
+            )
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -609,8 +708,14 @@ def run_card(
     data_root: Path | None = None,
     repo_root: Path | None = None,
     pinned_runner: Runner | None = None,
+    probe: bool = False,
 ) -> CardResult:
     """Price, pin, isolate and run a card; return its :class:`CardResult`.
+
+    ``probe=True`` is a rehearsal: everything up to and including the preflight
+    and the device check runs in a throwaway ``runs/probe-<card_id>-<stamp>``
+    directory, nothing is launched, and the card's own single-use run directory
+    is not claimed. Its status is ``PROBED`` (or ``FAILED`` with the reason).
 
     ``data_root`` defaults to ``CIV6AZ_DATA_ROOT``. ``pinned_runner`` is the
     ``pinned_env`` subprocess seam (tests pass a fake that builds no wheel).
@@ -630,7 +735,11 @@ def run_card(
     if root_arg is None:  # unreachable: required=True raises
         raise RunCardError(f"{DATA_ROOT_ENV} is not set")
     root = prepare_data_root(Path(root_arg), repo_root=repo)
-    run_dir = root / "runs" / card.card_id
+    run_name = card.card_id
+    if probe:
+        stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
+        run_name = validate_run_id(f"probe-{card.card_id}"[:48] + f"-{stamp}")
+    run_dir = root / "runs" / run_name
     _claim_run_dir(run_dir)
     logs = run_dir / "logs"
     logs.mkdir()
@@ -658,6 +767,7 @@ def run_card(
         "status": STATUS_RUNNING,
         "started_at": _now(),
         "invocations": [],
+        "probe": probe,
     }
     _write_record(record_path, record)
 
@@ -672,7 +782,12 @@ def run_card(
         with _signals_interrupt():
             base = enter_local_mode(card.card_id, run_dir)
             env = prepare_pinned_run(
-                card.sha, run_dir, envs_root=root / "envs", runner=pinned_runner, repo_root=repo
+                card.sha,
+                run_dir,
+                envs_root=root / "envs",
+                runner=pinned_runner,
+                repo_root=repo,
+                torch_pin=card.torch_pin,
             )
             child = child_env(base)
             child.update(scoped_temp_env(root))
@@ -683,9 +798,15 @@ def run_card(
             device_source = "unset"
             if card.cuda_visible_devices is not None:
                 child["CUDA_VISIBLE_DEVICES"] = card.cuda_visible_devices
+                # torch's default order is fastest-first; PCI order makes cuda:N the
+                # same card nvidia-smi calls GPU N, so a card's device names are stable.
+                child["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
                 device_source = "card"
             elif "CUDA_VISIBLE_DEVICES" in child:
                 device_source = "inherited"
+            requested = requested_devices(card)
+            if any(_cuda_index(device) is not None for device in requested.values()):
+                child["CUBLAS_WORKSPACE_CONFIG"] = CUBLAS_WORKSPACE_CONFIG
             record.update(
                 sha=env.sha,
                 wheel_sha256=env.wheel_sha256,
@@ -693,7 +814,11 @@ def run_card(
                 src=str(env.src),
                 device_plan={
                     "CUDA_VISIBLE_DEVICES": child.get("CUDA_VISIBLE_DEVICES"),
+                    "CUDA_DEVICE_ORDER": child.get("CUDA_DEVICE_ORDER"),
+                    "CUBLAS_WORKSPACE_CONFIG": child.get("CUBLAS_WORKSPACE_CONFIG"),
                     "source": device_source,
+                    "requested": requested,
+                    "torch_pin": None if card.torch_pin is None else card.torch_pin.as_dict(),
                 },
                 env_var_names=sorted(child),
                 pip_freeze=_pip_freeze(env, child, pinned_runner),
@@ -705,6 +830,11 @@ def run_card(
             problem = verify_preflight(env, preflight)
             if problem is not None:
                 return finish(STATUS_FAILED, error=f"preflight: {problem}")
+            problem = device_problem(card, preflight.get("torch"))
+            if problem is not None:
+                return finish(STATUS_FAILED, error=f"devices: {problem}")
+            if probe:
+                return finish(STATUS_PROBED)
 
             for result in results:
                 log = logs / f"{result.name}.log"
@@ -734,12 +864,21 @@ def run_card(
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """``run_card CARD [--data_root D] [--price_only]``. Exit 0 ok, 1 failed, 2 refused, 130 VOID."""
+    """``run_card CARD [--data_root D] [--price_only | --probe]``.
+
+    Exit 0 ok, 1 failed, 2 refused, 130 VOID.
+    """
     parser = argparse.ArgumentParser(description="Price, pin and run a run card.")
     parser.add_argument("card", type=Path, help="Path to a configs/run_cards/*.yaml card")
     parser.add_argument("--data_root", type=Path, default=None, help=f"Default: ${DATA_ROOT_ENV}")
     parser.add_argument(
         "--price_only", action="store_true", help="Price the card and exit; create nothing"
+    )
+    parser.add_argument(
+        "--probe",
+        action="store_true",
+        help="Rehearse: build the pinned env, preflight it and check the card's devices in a "
+        "throwaway run directory; launch nothing and leave the card's own directory unclaimed",
     )
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -750,7 +889,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"{p.invocation.name:<24} {p.invocation.runner:<16} {p.games:>8,}")
             print(f"{'total':<41} {priced.total:>8,} (max_games {priced.card.max_games:,})")
             return 0
-        result = run_card(args.card, data_root=args.data_root)
+        result = run_card(args.card, data_root=args.data_root, probe=args.probe)
     except (game_budget.GameBudgetExceededError, RunCardError, DataRootError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return game_budget.EXIT_CODE_REFUSED
@@ -761,4 +900,4 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("VOID: interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
     print(f"{result.status}: {result.run_dir / RUN_JSON}")
-    return 0 if result.status == STATUS_COMPLETED else 1
+    return 0 if result.status in (STATUS_COMPLETED, STATUS_PROBED) else 1
