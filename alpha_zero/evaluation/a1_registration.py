@@ -25,6 +25,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from alpha_zero.utils.device import torch_build_matches
+
 __all__ = [
     "A1R_SEED",
     "BENCH_ENTRY",
@@ -46,7 +48,7 @@ __all__ = [
 
 #: The section 7.1 digest the constants below (and the verdict table) were last
 #: confirmed against. Must equal the registration log's last row.
-REGISTRATION_DIGEST = "dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91"
+REGISTRATION_DIGEST = "e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17"
 #: A1-R's seed: "every ``--seed 20261111`` replaced by ``--seed 20261112``".
 A1R_SEED = 20261112
 #: ``<D>`` is ``<DATA_ROOT>\runs\<card>`` ("A card therefore runs with ``--data_root E:\civ6az-data``").
@@ -261,8 +263,7 @@ def device_plan_problems(plan: Any, registered: RegisteredDevices) -> list[str]:
     torch_info = plan.get("torch")
     if not isinstance(torch_info, Mapping):
         torch_info = {}
-    installed = str(torch_info.get("version", "")).split("+", 1)[0]
-    if installed != registered.torch_version:
+    if not torch_build_matches(torch_info.get("version", ""), registered.torch_version):
         problems.append(
             f"device_plan.torch.version {torch_info.get('version')!r} is not the registered "
             f"{registered.torch_version}"

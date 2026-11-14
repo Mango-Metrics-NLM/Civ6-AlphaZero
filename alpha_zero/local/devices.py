@@ -31,7 +31,7 @@ from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from typing import Any
 
 from alpha_zero.local.pinned_env import TorchPin
-from alpha_zero.utils.device import cuda_ordinal
+from alpha_zero.utils.device import cuda_ordinal, torch_build_matches
 from alpha_zero.utils.seeding import CUBLAS_WORKSPACE_DETERMINISTIC, CUBLAS_WORKSPACE_ENV
 
 logger = logging.getLogger(__name__)
@@ -221,6 +221,7 @@ def device_problem(
     anything that is not a mapping counts as "no report". Checked, in order:
 
     1. the torch pin, when there is one, is the torch actually installed (CPU cards too);
+       a pin that names its build (``+cu128``) is compared in full;
     2. every explicit ``cuda`` / ``cuda:N`` exists: CUDA is available and ``N`` is
        below the visible device count;
     3. the build has kernels for that GPU's architecture
@@ -235,8 +236,7 @@ def device_problem(
     """
     report: Mapping[str, Any] = torch_report if isinstance(torch_report, Mapping) else {}
     if torch_pin is not None:
-        installed = str(report.get("version", "")).split("+", 1)[0]
-        if installed != torch_pin.version:
+        if not torch_build_matches(report.get("version", ""), torch_pin.version):
             return (
                 f"the card pins {torch_pin.spec} but the pinned environment has torch "
                 f"{_torch_label(report)!r}"
