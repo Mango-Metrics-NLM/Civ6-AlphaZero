@@ -1,30 +1,35 @@
 {
-    "last_session_id": "session_2157ad15-5aad-45f3-b0a8-9cfc4f486f8d",
-    "last_timestamp": "2026-11-13T02:30:00Z",
-    "current_focus": "MuZero reward-sign fix on draft PR #136 (head 220da9e, CI green); handed off to Pre-PR. PR #135 is merged.",
+    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
+    "last_timestamp": "2026-11-14T18:00:00Z",
+    "current_focus": "GPU-first registered runs on draft PR #138 (cuda:0 trains, cuda:1 judges) and the MuZero reward-sign fix on PR #136; both handed off to Pre-PR and the maintainer",
     "resume_pointers": {
-        "current_task": "Pre-PR review of PR #136; then the maintainer cut-over and T17 (A1/A1-R, v2.1.0)",
+        "current_task": "Pre-PR review of PRs #138 and #136; then the maintainer's T0b probe and run on the GPU machine",
         "blocked_on": [
-            "maintainer: run scripts/maintainer/branch_cutover.sh (rulesets, dev rename); create the civ6az-agent machine user (PR #135 is merged; origin/dev does not exist yet)",
+            "maintainer: review/merge PR #138 (CONFIRM-FIRST items listed in the PR body and the handoff)",
+            "maintainer: review/merge PR #136 (MuZero reward-sign fix)",
+            "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
+            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation",
             "maintainer: live-guard probe in a fresh session after merge (T4 guard + .claude/agents hooks have not run live)",
-            "maintainer: A5/A12 decision (memo kb/specs/20261111-completed-q-alignment-memo.md; Option A registered)",
-            "maintainer: revoke the W&B key and the plan's section 10 actions 1-2",
-            "maintainer: review/merge PR #136 (MuZero reward-sign fix)"
+            "maintainer: A5/A12 decision (memo kb/specs/20261111-completed-q-alignment-memo.md; Option A registered)"
         ],
         "next_steps": [
-            "Run configs/run_cards/t0b.yaml; python -m alpha_zero.evaluation.a1_protocol calibrate; fill the section 7.1 slots + card sha + registration row in one PR",
-            "Then A1 and A1-R cards on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
+            "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
+            "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
+            "Then A1 and A1-R on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
             "After #136 merges: openspec-archive fix-muzero-reward-sign",
-            "Follow-ups: MuZeroTrainingBridge.self_play_game targets + 3-arg select_action; MuZero value-target discount vs search discount 0.997; cloud trainer builds no reward tensor (reward head trains to 0); coordinator pricing (CONFIRM-FIRST); OpenSpec branching-and-release task 5.7"
+            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256; store move counts in arena game records (play-path change)",
+            "Follow-ups (MuZero): MuZeroTrainingBridge.selfplay_step still stores shaped rewards and calls select_action with 3 args; MuZero value-target discount vs search discount 0.997; cloud trainer builds no reward tensor (reward head trains to 0); coordinator pricing (CONFIRM-FIRST); OpenSpec branching-and-release task 5.7"
         ]
     },
     "context_files": [
+        "kb/handoffs/20261114-devsqe-to-prepr-gpu-first-run-cards.md",
+        "openspec/changes/add-gpu-first-run-cards/proposal.md",
         "kb/handoffs/20261113-devsqe-to-prepr-muzero-reward-sign.md",
         "openspec/changes/fix-muzero-reward-sign/proposal.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md",
-        "kb/handoffs/20261112-devsqe-to-prepr-local-first-v2-1.md",
         "docs/EVALUATION.md",
         "docs/runbooks/branching-and-release.md",
+        ".claude/skills/a1-reregister/SKILL.md",
+        "kb/specs/20261111-local-first-and-branching-plan.md",
         "kb/specs/20261111-completed-q-alignment-memo.md"
     ]
 }

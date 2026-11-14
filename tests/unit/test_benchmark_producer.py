@@ -298,7 +298,12 @@ class TestShards:
                 assert seats == {(p, s) for p in range(lo, hi) for s in (0, 1)}, (
                     "a shard must hold whole seat-swapped pairs, and only its own"
                 )
+        # The shards ran on a GPU this (merging) host does not have: the merged
+        # evidence must name the shards' hardware, not the merger's GPU 0.
+        for shard in shards:
+            shard["evidence"]["hardware"] = {**shard["evidence"]["hardware"], "gpu_model": "GPU-1"}
         merged = bench.merge_shards(shards, command="merge")
+        assert merged["evidence"]["hardware"]["gpu_model"] == "GPU-1"
         assert _scrub_rows(merged) == _scrub_rows(full)
         assert merged["evidence"]["games_total"] == full["evidence"]["games_total"] == 20
         assert merged["shard"] is None

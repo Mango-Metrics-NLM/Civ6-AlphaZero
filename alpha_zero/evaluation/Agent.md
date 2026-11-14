@@ -47,6 +47,9 @@ This module provides comprehensive model evaluation:
 | `diversity.py` | DiversityTracker, DiversityMetrics (entropy, game length, victory types) |
 | `evaluation_pipeline.py` | Older evaluation pipeline (EvaluationPipeline) |
 | `muzero_vs_alphazero_benchmark.py` | Architecture comparison benchmarks |
+| `a1_protocol.py` | The registered A1 protocol: section 7.1's digest, verdict table, T0b calibration; CLI `calibrate` and `digest` (the three digests a registration keeps equal) |
+| `a1_registration.py` | The registered commands and the registered devices (`a1-devices` block: torch build, visible devices, GPU names); `device_plan_problems` holds a run to them |
+| `reproduction.py` | Compares an interrupted attempt with its re-run: checkpoints tensor by tensor, arena games, iteration records; CLI `compare` (`REPRODUCED` / `DIFFERS` / `NOTHING TO COMPARE`) |
 
 ---
 

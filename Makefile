@@ -92,6 +92,7 @@ help:
 	@echo "  make test-regression   Run the repository-hygiene regression suite"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
 	@echo "  make verify-fast       Lint, types, governance + regression only (minutes, not an hour)"
+	@echo "  make verify-registration  A1 registration gate: digest, log row, constants, run cards"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
 	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
@@ -359,6 +360,19 @@ validate:
 	$(PYTHON) scripts/validate_skills.py
 	$(PYTHON) scripts/validate_agents.py
 	$(PYTHON) scripts/validate_claude_agents.py
+	$(PYTHON) scripts/check_doc_sync.py
+
+# The A1 registration gate (.claude/skills/a1-reregister): section 7.1's digest, the
+# registration log's last row and REGISTRATION_DIGEST agree; the run cards equal the
+# registered commands and devices; the validators that read the same files pass.
+.PHONY: verify-registration
+verify-registration:
+	$(PYTHON) -m alpha_zero.evaluation.a1_protocol digest
+	OMP_NUM_THREADS=2 $(PYTHON) -m pytest -q -p no:cacheprovider \
+		tests/regression/test_a1_registration_digest_regression.py \
+		tests/scripts/test_a1_registration.py \
+		tests/scripts/test_t0b_calibration.py
+	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/check_doc_sync.py
 
 # Self-installing: pre-commit is not a declared dependency, so the bare

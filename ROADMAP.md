@@ -53,8 +53,12 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   Gumbel search, then a 200-game paired arena of the final checkpoint against its
   own random initialisation, with symmetry and positive controls; 980 games
   priced by `configs/run_cards/a1.yaml`. The verdict is the registered table,
-  whichever way it comes out. Before it runs, T0b measures the positive-control
-  reference and the wall clock.
+  whichever way it comes out. Since 2026-11-14 the registration is GPU-first:
+  training on `cuda:0`, every arena arm on `cuda:1`, on a pinned CUDA build of
+  torch. Before it runs, T0b (`configs/run_cards/t0b.yaml`, on the maintainer's
+  machine) checks that a seeded GPU run reproduces, measures the positive-control
+  reference and times the search on both GPUs and on CPU. If the reproduction
+  check fails, the registration goes back to CPU or to devices where it passes.
 - **A1-R** at seed 20261112 (`configs/run_cards/a1r.yaml`); it must also pass
   before any public claim that the agent learns. A FAIL is followed by A1-P (the
   PUCT search at the same seed).

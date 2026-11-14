@@ -69,7 +69,9 @@ flowchart LR
 ## Install
 
 Requires **Python 3.11+**. Everything runs on CPU; a GPU is an accelerator, never a
-dependency.
+dependency. The one exception is by choice, not need: the registered learning runs
+(A1, A1-R) are pinned to two named GPUs and a named CUDA build of torch, and refuse to
+start on anything else ([`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1, "Devices").
 
 ```bash
 git clone https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero.git
@@ -166,6 +168,13 @@ with the iteration while evaluation stays on a fixed held-out set. Two runs at o
 seed are identical (`tests/regression/test_training_determinism_regression.py`).
 The deployed cloud workers are not yet seeded; that change touches distributed
 coordination and is tracked separately.
+
+On a GPU, seeding is not enough: CUDA kernels are non-deterministic by default. A seeded
+run on a CUDA device therefore enforces deterministic algorithms, and an operation with no
+deterministic implementation raises. That buys repeatability on one machine, one torch build
+and one GPU, not across GPU models. CI has no GPU, so this is checked on the machine that
+runs the registered cards (`scripts/check_determinism.py`, run by the T0b card), and it has
+**not been run yet**.
 
 ## Cloud training
 

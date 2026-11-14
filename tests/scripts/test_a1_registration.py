@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -38,9 +39,12 @@ from alpha_zero.evaluation.a1_registration import (
 )
 from alpha_zero.evaluation.a1_registration import (
     DATA_ROOT,
+    REGISTERED_DEVICE_ORDER,
     RegistrationError,
     branch_in_force,
     command_block,
+    device_plan_problems,
+    registered_devices,
     registered_invocations,
     run_directory,
 )
@@ -59,11 +63,11 @@ BENCH_PREFIX = ["python", "scripts/benchmark_suite.py"]
 PLAN_TRAINING = (
     "python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 "
     "--num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 "
-    "--device cpu --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\\ckpt"
+    "--device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\\ckpt"
 )
 PLAN_ARENA_PREFIX = (
     "python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 "
-    "--max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu"
+    "--max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1"
 )
 #: Plan §5.2's arms table, with ``…<N>.pt`` written out and the final arm's candidate named.
 PLAN_ARMS = {
@@ -480,3 +484,117 @@ def test_prose_constants_match_the_registered_text(section: str) -> None:
 def test_the_parser_fails_closed(section: str, mutate: object) -> None:
     with pytest.raises(RegistrationError):
         registered_invocations(mutate(section), card_id="x", seed=1)  # type: ignore[operator]
+
+
+# ---------------------------------------------------------------------------
+# Registered devices (section 7.1 "Devices", the ``a1-devices`` block)
+#
+# Negative controls (recorded when these were written, then reverted):
+#   * changing ``torch_spec`` in ``configs/run_cards/a1r.yaml`` alone made
+#     ``test_every_card_carries_exactly_the_registered_devices`` fail -- three
+#     hand-kept copies of one pin had nothing holding them together before;
+#   * making ``device_plan_problems`` return ``[]`` made
+#     ``test_a_device_plan_that_departs_from_the_registration_is_reported`` fail.
+# ---------------------------------------------------------------------------
+
+_DEVICE_CARDS = ("a1.yaml", "a1r.yaml", "t0b.yaml")
+
+
+def test_section_7_1_registers_the_torch_build_and_both_gpus() -> None:
+    registered = registered_devices(read_registered_protocol(EVALUATION_MD))
+    assert registered is not None
+    assert registered.torch_spec.startswith("torch==")
+    assert registered.torch_index_url.startswith("https://download.pytorch.org/whl/cu")
+    assert registered.cuda_visible_devices == "0,1"
+    assert sorted(registered.gpus) == [0, 1] and all(registered.gpus.values())
+
+
+@pytest.mark.parametrize("card_name", _DEVICE_CARDS)
+def test_every_card_carries_exactly_the_registered_devices(card_name: str) -> None:
+    """T0b's timings and determinism check speak for A1 only on the same build and GPUs."""
+    registered = registered_devices(read_registered_protocol(EVALUATION_MD))
+    assert registered is not None
+    card = rc.load_card(CARDS / card_name)
+    assert card.torch_pin is not None
+    assert card.torch_pin.as_dict() == registered.torch_pin
+    assert card.cuda_visible_devices == registered.cuda_visible_devices
+    assert dict(card.gpus) == dict(registered.gpus)
+
+
+def test_a_registration_without_a_devices_block_registers_none() -> None:
+    """A commit that predates the GPU-first registration is judged as it was registered."""
+    assert registered_devices("**Devices.** every phase on cpu\n") is None
+
+
+_BLOCK = (
+    "<!-- a1-devices -->\n```text\n"
+    "torch_spec: torch==2.11.0\n"
+    "torch_index_url: https://download.pytorch.org/whl/cu128\n"
+    "cuda_visible_devices: 0,1\n"
+    "cuda:0: GPU A\ncuda:1: GPU B\n```\n"
+)
+
+
+def test_the_devices_block_is_read_key_by_key() -> None:
+    registered = registered_devices(_BLOCK)
+    assert registered is not None
+    assert registered.torch_version == "2.11.0"
+    assert registered.gpus == {0: "GPU A", 1: "GPU B"}
+
+
+@pytest.mark.parametrize(
+    ("edit", "match"),
+    [
+        (lambda b: b + b, "at most once"),
+        (lambda b: b.replace("```text\n", "```\n"), "text fence"),
+        (lambda b: b.replace("cuda:0: GPU A\n", "cuda:0 GPU A\n"), "key: value"),
+        (lambda b: b.replace("cuda:1: GPU B", "cuda:0: GPU B"), "registered twice"),
+        (lambda b: b.replace("torch_spec:", "torch:"), "unknown or repeated"),
+        (lambda b: b.replace("cuda_visible_devices: 0,1\n", ""), "missing"),
+        (lambda b: b.replace("cuda:0: GPU A\ncuda:1: GPU B\n", ""), "every cuda:N line"),
+    ],
+)
+def test_a_malformed_devices_block_is_refused(edit: Any, match: str) -> None:
+    with pytest.raises(RegistrationError, match=match):
+        registered_devices(edit(_BLOCK))
+
+
+def _matching_plan() -> dict[str, Any]:
+    registered = registered_devices(_BLOCK)
+    assert registered is not None
+    return {
+        "CUDA_VISIBLE_DEVICES": "0,1",
+        "CUDA_DEVICE_ORDER": REGISTERED_DEVICE_ORDER,
+        "torch_pin": registered.torch_pin,
+        "torch": {"version": "2.11.0+cu128", "devices": ["GPU A", "GPU B"]},
+    }
+
+
+def test_a_device_plan_on_the_registered_devices_has_no_problems() -> None:
+    registered = registered_devices(_BLOCK)
+    assert registered is not None
+    assert device_plan_problems(_matching_plan(), registered) == []
+
+
+@pytest.mark.parametrize(
+    ("edit", "expected"),
+    [
+        (
+            lambda p: {**p, "torch": {**p["torch"], "devices": ["GPU B", "GPU A"]}},
+            "cuda:0 is 'GPU B'",
+        ),
+        (lambda p: {**p, "torch": {**p["torch"], "devices": ["GPU A"]}}, "cuda:1 is None"),
+        (lambda p: {**p, "torch": {**p["torch"], "version": "2.12.0+cu128"}}, "torch.version"),
+        (lambda p: {**p, "torch_pin": {"spec": "torch==2.11.0", "index_url": "x"}}, "torch_pin"),
+        (lambda p: {**p, "CUDA_DEVICE_ORDER": "FASTEST_FIRST"}, "CUDA_DEVICE_ORDER"),
+        (lambda p: {**p, "CUDA_VISIBLE_DEVICES": "1,0"}, "CUDA_VISIBLE_DEVICES"),
+        (lambda p: None, "records no device_plan"),
+    ],
+)
+def test_a_device_plan_that_departs_from_the_registration_is_reported(
+    edit: Any, expected: str
+) -> None:
+    registered = registered_devices(_BLOCK)
+    assert registered is not None
+    problems = device_plan_problems(edit(_matching_plan()), registered)
+    assert problems and any(expected in problem for problem in problems), problems

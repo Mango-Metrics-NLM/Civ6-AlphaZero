@@ -221,6 +221,7 @@ class TestOtherModels:
             "benchmark_batch_selfplay",
             "local_muzero_launcher",
             "calibrate_throughput",
+            "determinism_check",
         }
 
     def test_calibrate_throughput_prices_one_game_per_game(self) -> None:

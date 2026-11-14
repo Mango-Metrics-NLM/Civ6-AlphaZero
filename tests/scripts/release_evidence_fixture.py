@@ -26,7 +26,9 @@ from typing import Any
 from alpha_zero.evaluation.a1_protocol import compute_verdict, protocol_sha256, registered_protocol
 from alpha_zero.evaluation.a1_registration import (
     A1R_SEED,
+    REGISTERED_DEVICE_ORDER,
     flag_value,
+    registered_devices,
     registered_invocations,
 )
 from alpha_zero.evaluation.benchmark import (
@@ -115,6 +117,10 @@ class RunSpec:
     #: The next arm wrote result.json, but the attempt was interrupted before
     #: run_card recorded its invocation.
     unrecorded_next_arm: bool = False
+    #: Edit the registered ``device_plan`` before it is written (another GPU, torch...).
+    edit_device_plan: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
+    #: Write the record a ``run_card --probe`` leaves.
+    probe: bool = False
 
     @property
     def seed(self) -> int:
@@ -150,7 +156,8 @@ def _envelope(
             "seed": seed,
             # What cli_command writes for a run_card child: the launched argv.
             "command": shlex.join(["python", "-m", "alpha_zero.evaluation.benchmark", *launched]),
-            "device": "cpu",
+            # What the arena records: the device it was launched with (section 7.1).
+            "device": launched[launched.index("--device") + 1],
             "search": {
                 "mcts_type": "gumbel",
                 "num_simulations": 24,
@@ -193,6 +200,32 @@ def _results(name: str, n: int, spec: RunSpec) -> list[dict[str, Any]]:
     if name.startswith("secondary"):
         return games(EVEN, n)
     return games(WIN, n)
+
+
+def registered_device_plan(section: str) -> dict[str, Any] | None:
+    """``run.json``'s ``device_plan`` for a run on exactly the registered devices.
+
+    ``None`` when the section registers no devices (a pre-GPU registration), which
+    is what ``run_card`` wrote then.
+    """
+    registered = registered_devices(section)
+    if registered is None:
+        return None
+    names = [registered.gpus[i] for i in sorted(registered.gpus)]
+    return {
+        "CUDA_VISIBLE_DEVICES": registered.cuda_visible_devices,
+        "CUDA_DEVICE_ORDER": REGISTERED_DEVICE_ORDER,
+        "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+        "source": "card",
+        "torch_pin": registered.torch_pin,
+        "torch": {
+            "version": f"{registered.torch_version}+cu128",
+            "cuda": "12.8",
+            "cuda_available": True,
+            "device_count": len(names),
+            "devices": names,
+        },
+    }
 
 
 def _write(path: Path, text: str) -> dict[str, str]:
@@ -241,6 +274,13 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
         "total_priced_games": total,
         "invocations": invocations,
     }
+    plan = registered_device_plan(section)
+    if plan is not None and spec.edit_device_plan is not None:
+        plan = spec.edit_device_plan(plan)
+    if plan is not None:
+        run_json["device_plan"] = plan
+    if spec.probe:
+        run_json["probe"] = True
     entry: dict[str, Any] = {
         "run_id": spec.run_id,
         "role": spec.role,

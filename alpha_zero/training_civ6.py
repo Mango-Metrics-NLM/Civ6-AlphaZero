@@ -43,6 +43,7 @@ from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
 from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.evaluation.benchmark_evidence import hardware_summary
 from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
@@ -74,7 +75,7 @@ from alpha_zero.utils.game_budget import (
     add_budget_arguments,
     enforce_cli,
 )
-from alpha_zero.utils.seeding import SeedStream, derive_seed
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 # Configure logging
 logging.basicConfig(
@@ -1205,16 +1206,6 @@ def write_eval_json(
     return result
 
 
-def _hardware_summary() -> dict[str, Any]:
-    gpu = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
-    return {
-        "cpu_model": platform.processor() or None,
-        "gpu_model": gpu,
-        "logical_cores": os.cpu_count(),
-        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
-    }
-
-
 def eval_evidence_block(
     config: TrainingConfig,
     provenance: dict[str, Any],
@@ -1237,7 +1228,7 @@ def eval_evidence_block(
         "search_epoch": EVAL_SEARCH_EPOCH,
         "seed": config.seed,
         "command": shlex.join(["python", "-m", "alpha_zero.training_civ6", *sys.argv[1:]]),
-        "hardware": _hardware_summary(),
+        "hardware": hardware_summary(config.device),
         "python": platform.python_version(),
         "torch": torch.__version__,
         "numpy": np.__version__,
@@ -1407,6 +1398,9 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # parameter init -- and is therefore done once, here, rather than threaded.
     if config.seed is not None:
         torch.manual_seed(config.seed)
+        # A seeded GPU run must repeat too: seeding alone does not make CUDA
+        # kernels deterministic. No-op on CPU (utils.seeding).
+        enforce_deterministic_backend(config.device)
 
     # Initialize network. When num_players > 2, MicroCivNetwork swaps in an
     # NPlayerValueHead that outputs a per-player value vector.

@@ -271,6 +271,17 @@ def _calibrate_throughput(r: Mapping[str, Any]) -> int:
     return _nonneg(r["games"])
 
 
+def _determinism_check(r: Mapping[str, Any]) -> int:
+    """``repeats * (iterations * games + arena_games)`` for ``scripts/check_determinism.py``.
+
+    Each repeat is the same pipeline in its own process: ``iterations`` rounds of
+    ``games`` self-play games (in-loop evaluation is off) and then one arena of
+    ``arena_games`` games against a single checkpoint opponent.
+    """
+    per_repeat = _nonneg(r["iterations"]) * _nonneg(r["games"]) + _nonneg(r["arena_games"])
+    return _nonneg(r["repeats"]) * per_repeat
+
+
 def _probe_target_sharpness(r: Mapping[str, Any]) -> int:
     """No games: it searches positions from random play and steps only clones.
 
@@ -310,6 +321,7 @@ _MODELS: dict[str, Callable[[Mapping[str, Any]], int]] = {
     "benchmark_batch_selfplay": _benchmark_batch_selfplay,
     "local_muzero_launcher": _local_muzero_launcher,
     "calibrate_throughput": _calibrate_throughput,
+    "determinism_check": _determinism_check,
     "probe_target_sharpness": _probe_target_sharpness,
     "enhanced_env_smoke_test": _enhanced_env_smoke_test,
 }
