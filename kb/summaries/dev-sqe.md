@@ -1,5 +1,16 @@
 # DEV-SQE Log
 
+## 2026-11-14 - GPU-first registered runs (PR #138)
+- **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
+- **Task:** Made registered runs GPU-first on the maintainer's instruction (`cuda:0` trains, `cuda:1` judges, pinned `torch==2.11.0` from the cu128 index), then hardened it after four independent reviews (QA, `sdlc-architect`, `sdlc-ml-scientist`, and `sdlc-developer` building the reproduction tooling).
+  - Driver: torch pin in the venv identity, `--probe`, devices read through each runner's own parser, a real CUDA operation per device in the preflight, expected GPU name per ordinal.
+  - Science: section 7.1 re-registered (digest `dba90481…5d91`) with a machine-readable `a1-devices` block; a re-run after an interruption is a reproduction check and one that differs cannot PASS; T0b's first invocation is the GPU determinism check (`scripts/check_determinism.py`).
+  - Structure and harness: `alpha_zero/local/` split into `card.py` / `devices.py` / `run_card.py`; skill `a1-reregister`; `make verify-registration`; `a1_protocol digest`; C4 component view.
+- **Files Changed:** 6 commits, 52 files (+6,391 / −299) on `claude/cool-lovelace-o02vn9`; 14 test files added or changed.
+- **Tests:** at `68b6c5c`: unit 10,468 passed; regression + governance + scripts + security 1,927; integration + e2e + cloud + smoke + sanity + inference 1,559. Eight failures, all also failing on the base commit in this container (`.env`, Google credentials, running as root). ruff, format and mypy (345 files) clean; validators, debt ratchet (no baseline change) and gitleaks clean; coverage on changed modules 90–100% (path-based; CI is the gate for the global figure). Every new gate has a recorded negative control.
+- **Status:** complete; handed to Pre-PR. **Nothing on this path has run on a GPU or on Windows.**
+- **Next:** maintainer, on the GPU machine: `run_card.py configs/run_cards/t0b.yaml --probe`, then the T0b card (its `determinism` invocation must report `REPRODUCED`), then `a1_protocol calibrate` with `--throughput` and `--arena-throughput`; the slot fill-in and card `sha` pin are one PR through `a1-reregister`. Open: the release verifier does not yet read the reproduction-compare record; the torch wheel hash is not recorded.
+
 ## 2026-11-12 - Local-first v2.1 implementation (T0a–T16, T18; PR #135)
 - **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
 - **Task:** Implemented every v2.1 task of `kb/specs/20261111-local-first-and-branching-plan.md` except T17 (the maintainer-gated release). The work was run subagent-driven: per task, an implementer, an independent task review and fix rounds until approved, then a whole-branch review with one fix wave and a re-review (READY TO FINISH).
