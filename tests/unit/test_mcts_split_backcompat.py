@@ -190,7 +190,9 @@ def test_muzero_does_not_import_gumbel_variant() -> None:
 # `base` without re-creating that dependency.
 MCTS_LAYERS: tuple[tuple[str, ...], ...] = (
     ("backup", "mcts_protocols", "gumbel_ops"),
-    ("base",),
+    # `muzero_tree` (MuZero's node, mover model and signed reward backup) sits
+    # beside `base`: it needs `backup`'s sign rule and nothing above it.
+    ("base", "muzero_tree"),
     ("puct", "simple", "gumbel", "muzero"),
 )
 

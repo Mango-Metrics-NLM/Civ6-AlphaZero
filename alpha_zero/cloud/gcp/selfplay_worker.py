@@ -31,6 +31,8 @@ import torch
 if TYPE_CHECKING:
     import numpy as np
 
+    from alpha_zero.core.mcts.muzero import MuZeroMCTS
+
 try:
     import psutil
 
@@ -902,12 +904,14 @@ def run_muzero_selfplay(
     Returns:
         List of trajectory dictionaries with MuZero-specific fields:
         - spatial, vector, policies, actions, players, rewards (same as AlphaZero)
-        - reward_targets: per-step reward predictions for training
-        - value_targets: per-step value targets for training
+        - rewards / reward_targets: outcome-only targets (``training/muzero_targets``)
+        - value_targets: root search values, a diagnostic no trainer reads
     """
     if dry_run:
         logger.info("Dry run: creating dummy MuZero trajectories")
         return [dummy_trajectory(board_size, algorithm="muzero") for _ in range(num_games)]
+
+    from alpha_zero.training.muzero_targets import outcome_only_targets
 
     # Extract temperature params
     sel_temperature = 1.0
@@ -952,12 +956,8 @@ def run_muzero_selfplay(
                 if v is not None:
                     mcts_kwargs[k] = v
 
-        mcts = create_mcts(
-            variant="muzero",
-            network=model,
-            device=device,
-            **mcts_kwargs,
-        )
+        created = create_mcts(variant="muzero", network=model, device=device, **mcts_kwargs)
+        mcts = cast("MuZeroMCTS", created)  # the factory returns the generic protocol
 
         trajectory: dict[str, Any] = new_trajectory(algorithm="muzero")
 
@@ -973,7 +973,7 @@ def run_muzero_selfplay(
                 # env.get_observation() above, so reuse it instead of calling
                 # env.get_valid_actions() a second time.
                 action_mask = obs["action_mask"]
-                policy, value_estimate = mcts.search(obs, action_mask)
+                policy, value_estimate = mcts.search(obs, action_mask, to_play=env.current_player)
                 turn = len(trajectory["spatial"])
                 temp = compute_temperature(
                     turn=turn,
@@ -1010,10 +1010,9 @@ def run_muzero_selfplay(
 
             # Take action
             step_result = env.step(action)
-            reward = float(step_result[1])
             done = bool(step_result[2]) or bool(step_result[3])
             final_info = step_result[4] if len(step_result) > 4 else {}
-            trajectory["reward_targets"].append(reward)
+            trajectory["reward_targets"].append(0.0)  # replaced once the game ends
 
         # Handle completed game
         if game_failed:
@@ -1021,9 +1020,10 @@ def run_muzero_selfplay(
             logger.warning("MuZero game %d/%d failed", game_idx + 1, num_games)
         elif trajectory["spatial"]:
             winner = final_info.get("winner", getattr(env, "winner", None))
-            trajectory["rewards"] = [
-                outcome_value_for_player(winner, player) for player in trajectory["players"]
-            ]
+            # Outcome-only targets in the search's frames (training/muzero_targets).
+            trajectory["reward_targets"], trajectory["rewards"] = outcome_only_targets(
+                winner, trajectory["players"], int(env.current_player)
+            )
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time

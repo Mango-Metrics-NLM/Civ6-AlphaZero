@@ -1,27 +1,35 @@
 {
     "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
     "last_timestamp": "2026-11-14T18:00:00Z",
-    "current_focus": "GPU-first registered runs on draft PR #138 (cuda:0 trains, cuda:1 judges); handed off to Pre-PR and the maintainer",
+    "current_focus": "GPU-first registered runs on draft PR #138 (cuda:0 trains, cuda:1 judges) and the MuZero reward-sign fix on PR #136; both handed off to Pre-PR and the maintainer",
     "resume_pointers": {
-        "current_task": "Pre-PR review of PR #138; then the maintainer's T0b probe and run on the GPU machine",
+        "current_task": "Pre-PR review of PRs #138 and #136; then the maintainer's T0b probe and run on the GPU machine",
         "blocked_on": [
             "maintainer: review/merge PR #138 (CONFIRM-FIRST items listed in the PR body and the handoff)",
+            "maintainer: review/merge PR #136 (MuZero reward-sign fix)",
             "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
-            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation"
+            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation",
+            "maintainer: live-guard probe in a fresh session after merge (T4 guard + .claude/agents hooks have not run live)",
+            "maintainer: A5/A12 decision (memo kb/specs/20261111-completed-q-alignment-memo.md; Option A registered)"
         ],
         "next_steps": [
             "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
             "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
             "Then A1 and A1-R on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
-            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256; store move counts in arena game records (play-path change)"
+            "After #136 merges: openspec-archive fix-muzero-reward-sign",
+            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256; store move counts in arena game records (play-path change)",
+            "Follow-ups (MuZero): MuZeroTrainingBridge.selfplay_step still stores shaped rewards and calls select_action with 3 args; MuZero value-target discount vs search discount 0.997; cloud trainer builds no reward tensor (reward head trains to 0); coordinator pricing (CONFIRM-FIRST); OpenSpec branching-and-release task 5.7"
         ]
     },
     "context_files": [
         "kb/handoffs/20261114-devsqe-to-prepr-gpu-first-run-cards.md",
         "openspec/changes/add-gpu-first-run-cards/proposal.md",
+        "kb/handoffs/20261113-devsqe-to-prepr-muzero-reward-sign.md",
+        "openspec/changes/fix-muzero-reward-sign/proposal.md",
         "docs/EVALUATION.md",
         "docs/runbooks/branching-and-release.md",
         ".claude/skills/a1-reregister/SKILL.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md"
+        "kb/specs/20261111-local-first-and-branching-plan.md",
+        "kb/specs/20261111-completed-q-alignment-memo.md"
     ]
 }

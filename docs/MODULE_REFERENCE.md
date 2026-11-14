@@ -12,7 +12,7 @@ or removed.
 
 | Module | Files | Responsibility |
 |--------|------:|----------------|
-| `core` | 36 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero) sharing one sign-correct value backup (`mcts/backup.py`), action space |
+| `core` | 37 | Neural networks (ResNet/transformer), MCTS variants in `mcts/` (PUCT/Simple/Gumbel/MuZero) sharing one sign-correct value backup (`mcts/backup.py`; MuZero's latent tree signs by a turn model in `mcts/muzero_tree.py`), action space |
 | `utils` | 29 | Logging, config, LLM client, factories, test runner, `agent_tools`, `.env` loader, device resolution, safe checkpoint loading (`safe_load.py`), per-stream seed derivation (`seeding.py`), worst-case game-count cost models and the 1,000-game cap (`game_budget.py`), the `CIV6AZ_DATA_ROOT` resolver and ACL hardening (`data_root.py`), loopback bind and CORS helpers for the local-first posture (`network.py`) |
 | `rag` | 22 | Retrieval-augmented generation pipeline: vector stores, processors, agent integration (§11) |
 | `hierarchical` | 19 | Hierarchical goal planning: decomposition, controllers, encoders |
@@ -22,7 +22,7 @@ or removed.
 | `hub` | 5 | Hugging Face Hub integration: model card generation, dataset exporter, upload utility, hub mixins (`hub` extra) |
 | `envs` | 11 | MicroCiv environment, vectorized env, state→tensor encoders |
 | `mechanics` | 12 | Game mechanics: diplomacy, trade, espionage, religion, government, climate, eras |
-| `training` | 10 | MuZero trainer/integration, training safeguards, convergence monitor, diagnostics and the local run record |
+| `training` | 11 | MuZero trainer/integration and mover-frame self-play targets, training safeguards, convergence monitor, diagnostics and the local run record |
 | `cloud` | 28 | `gcp/` Vertex AI orchestration and the deployed self-play / training / arena workers |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
