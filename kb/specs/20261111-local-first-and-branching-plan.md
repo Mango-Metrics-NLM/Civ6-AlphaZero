@@ -66,7 +66,7 @@
 - **Evidence:**
   - Follows `docs/evidence/SCHEMA.md`, with `search_epoch: post-2026-09-04`.
   - Evidence directory names use underscores.
-  - Determinism holds on CPU only, so confirmatory runs use CPU and GPU runs are exploratory.
+  - *(Superseded 2026-11-14 by the GPU-first re-registration of section 7.1: confirmatory runs use `cuda:0` / `cuda:1` with deterministic algorithms enforced.)* Originally: determinism holds on CPU only, so confirmatory runs use CPU and GPU runs are exploratory.
 - **Vertex/GCP code is frozen, not deleted** (§12).
 
 ## 2. Review focus — five failure modes
@@ -339,8 +339,9 @@
 - **Interruptions:** an interrupted or resumed confirmatory run is **VOID**.
 
 **Registered commands** (copied verbatim into section 7.1; `<D>` = `E:\civ6az-data\runs\<card>`; executed by `scripts/run_card.py`, T1b):
-- **Training (480 games):** `python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cpu --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt`
-- **Arena calls** use `python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu` plus:
+- **Training (480 games):** `python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt`
+- **Arena calls** use `python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1` plus:
+- *(Devices re-registered 2026-11-14, before any A1-family run: `cpu` became `cuda:0` for training and `cuda:1` for the arena. See `docs/EVALUATION.md` section 7.1 "Devices" and its registration log.)*
 
 | Arm | Flags | Games |
 |---|---|---|
@@ -483,7 +484,7 @@
 | Sprint | Code | Overnight card |
 |---|---|---|
 | 0 (3–4 d) | T0a Windows baseline and harness smoke (no ETA claim); T1; T2; T3a†; T4 (R1); maintainer actions 1–6; cut-over with T6 (R2) | `s0-timing` harness card only |
-| 1 | T1b run-card driver; T5; T7 (B1); T8 (CF); T9; T10 (A3 CF); T3 (R3); T15 role agents | **T0b** calibration at 8/60, k=8, n=24, CPU (GPU1 is exploratory and runs outside run_card: the pinned venv has CPU-only torch), after T7–T10 merge. Also the positive-control reference, heuristic vs random, seeds 1001–1003 × 200 games |
+| 1 | T1b run-card driver; T5; T7 (B1); T8 (CF); T9; T10 (A3 CF); T3 (R3); T15 role agents | **T0b** calibration at 8/60, k=8, n=24 *(since 2026-11-14 on cuda:0, with cuda:1 and CPU timed for comparison; originally:)* CPU (GPU1 is exploratory and runs outside run_card: the pinned venv has CPU-only torch), after T7–T10 merge. Also the positive-control reference, heuristic vs random, seeds 1001–1003 × 200 games |
 | 2 | T11; T12 → **your A5 decision**; T13 section 7.1 + docs + OpenSpec archives; T16; T18 | only after T11 and T13 merge: exploratory seeds 1001, then 1002 |
 | 3 | T14 (+ Release Evidence in `main.json`); release prep as the last dev PR; promote rc.1 | **A1 → A1-R** → evidence PR → v2.1.0 |
 | 4–6 | v2.2 (own plan) | nightly smokes; 3-night soak |

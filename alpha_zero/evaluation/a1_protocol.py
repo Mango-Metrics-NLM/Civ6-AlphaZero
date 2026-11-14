@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -128,6 +129,71 @@ def registered_protocol(text: str) -> str:
     if end <= begin:
         raise ProtocolMarkerError("the protocol end marker precedes its begin marker")
     return "".join(f"{line}\n" for line in lines[begin + 1 : end])
+
+
+#: The registered protocol's document, relative to a source root.
+PROTOCOL_DOCUMENT = Path("docs") / "EVALUATION.md"
+#: The table that follows the hashed region: one row per registered digest, newest last.
+REGISTRATION_LOG_HEADING = "**Registration log.**"
+_LOG_ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*`([0-9a-f]{64})`\s*\|(.+)\|\s*$")
+
+
+def default_protocol_path() -> Path:
+    """``docs/EVALUATION.md`` of the source tree this module was imported from."""
+    return Path(__file__).resolve().parents[2] / PROTOCOL_DOCUMENT
+
+
+def registration_log(text: str) -> list[tuple[str, str, str]]:
+    """``[(date, digest, change)]`` from the registration log after the end marker.
+
+    Raises:
+        ProtocolMarkerError: if the end marker or the log heading is missing.
+    """
+    text = text.replace("\r\n", "\n")
+    if PROTOCOL_END not in text:
+        raise ProtocolMarkerError("the section 7.1 end marker is missing")
+    tail = text[text.index(PROTOCOL_END) :]
+    if REGISTRATION_LOG_HEADING not in tail:
+        raise ProtocolMarkerError("the registration log must follow the end marker")
+    rows = []
+    for line in tail[tail.index(REGISTRATION_LOG_HEADING) :].splitlines():
+        match = _LOG_ROW_RE.match(line)
+        if match:
+            rows.append((match.group(1), match.group(2), match.group(3).strip()))
+    return rows
+
+
+def digest_report(text: str, confirmed_digest: str) -> tuple[list[str], bool]:
+    """The three digests a registration keeps equal, and whether they are.
+
+    * the digest of section 7.1 as the text stands;
+    * the digest in the registration log's last row;
+    * ``confirmed_digest`` (``a1_registration.REGISTRATION_DIGEST``): the digest the
+      constants read from prose were last confirmed against.
+
+    A re-registration is complete only when all three agree. Returns the report
+    lines and that verdict.
+    """
+    current = protocol_sha256(text)
+    rows = registration_log(text)
+    logged = rows[-1][1] if rows else None
+    agree = current == logged == confirmed_digest
+    lines = [
+        f"section 7.1 as it stands  {current}",
+        f"registration log, last row {logged}" + (f" ({rows[-1][0]})" if rows else ""),
+        f"REGISTRATION_DIGEST        {confirmed_digest}",
+    ]
+    if agree:
+        lines.append("AGREE: the registration is consistent")
+    else:
+        if current != logged:
+            lines.append("DISAGREE: add a registration-log row carrying the current digest")
+        if confirmed_digest != current:
+            lines.append(
+                "DISAGREE: re-confirm the constants in a1_registration against the text, "
+                "then set REGISTRATION_DIGEST to the current digest"
+            )
+    return lines, agree
 
 
 def read_registered_protocol(path: str | Path) -> str:
@@ -499,6 +565,9 @@ BRANCH_SLOT = "**Branch in force: pending T0b.**"
 #: The A1 card's 980 games less the heuristic-vs-random positive control: the
 #: games that search with a network (training self-play and every other arm).
 _A1_SEARCH_GAMES = {40: 980 - 40, 60: 980 - 60}
+#: Self-play games in the registered training command (20 iterations x 24 games).
+A1_TRAINING_GAMES = 480
+SECONDS_PER_HOUR = 3600.0
 
 
 @dataclass
@@ -639,18 +708,93 @@ def t0b_slot_text(ref: T0bReference) -> tuple[str, str]:
     return reference, f"**Branch in force: {ref.branch}.**"
 
 
-def _throughput_lines(path: Path, branch: int) -> list[str]:
-    """T0b's wall-clock calibration (``scripts/calibrate_throughput.py`` JSON) as an A1 ETA."""
-    results = json.loads(path.read_text(encoding="utf-8"))["results"]
-    s_per_game = float(results["s_per_game"])
+def _throughput(path: Path) -> tuple[float, float, str | None]:
+    """``(seconds per game, ms per evaluation, device)`` from a calibrate_throughput JSON."""
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    results = payload["results"]
+    device = payload.get("device")
+    return (
+        float(results["s_per_game"]),
+        float(results.get("ms_per_eval", 0.0)),
+        None if device is None else str(device),
+    )
+
+
+def _throughput_lines(
+    path: Path,
+    branch: int,
+    *,
+    arena_path: Path | None = None,
+    train_device: str | None = None,
+    arena_device: str | None = None,
+) -> list[str]:
+    """T0b's wall-clock calibration (``scripts/calibrate_throughput.py`` JSON) as an A1 ETA.
+
+    ``path`` times self-play on the device A1 trains on. With ``arena_path`` (the
+    timing on the arena's device) the arena's games are costed at that rate;
+    without it, every search game is costed at the training device's rate.
+    ``train_device`` / ``arena_device`` are the registered devices: a file timed on
+    another device is called out, because it is not an estimate of the registered card.
+    """
+    s_train, ms_train, device = _throughput(path)
     games = _A1_SEARCH_GAMES[branch]
-    return [
-        f"throughput: {s_per_game:.1f} s per self-play game, "
-        f"{float(results.get('ms_per_eval', 0.0)):.2f} ms per evaluation ({path})",
-        f"A1 card at branch {branch}: {games} search games x {s_per_game:.1f} s = "
-        f"{games * s_per_game / 3600.0:.1f} h, training epochs not included "
-        "(section 7.1: over 12 h needs the two-card form registered first)",
+    lines = [
+        f"throughput: {s_train:.1f} s per self-play game, {ms_train:.2f} ms per evaluation "
+        f"on {device or 'an unrecorded device'} ({path})"
     ]
+    if train_device and device and device != train_device:
+        lines.append(
+            f"WARNING: that file was timed on {device}, but section 7.1 trains on "
+            f"{train_device}; the estimate below is not the registered card's"
+        )
+    if arena_path is None:
+        hours = games * s_train / SECONDS_PER_HOUR
+        cost = f"{games} search games x {s_train:.1f} s"
+    else:
+        s_arena, _, arena_timed_on = _throughput(arena_path)
+        arena_games = games - A1_TRAINING_GAMES
+        hours = (A1_TRAINING_GAMES * s_train + arena_games * s_arena) / SECONDS_PER_HOUR
+        cost = (
+            f"{A1_TRAINING_GAMES} self-play games x {s_train:.1f} s + {arena_games} arena games "
+            f"x {s_arena:.1f} s on {arena_timed_on or 'an unrecorded device'}"
+        )
+        if arena_device and arena_timed_on and arena_timed_on != arena_device:
+            lines.append(
+                f"WARNING: the arena file was timed on {arena_timed_on}, but section 7.1 "
+                f"judges on {arena_device}"
+            )
+    lines.append(
+        f"A1 card at branch {branch}: {cost} = {hours:.1f} h, training epochs not included "
+        "(section 7.1: over 12 h needs the two-card form registered first)"
+    )
+    return lines
+
+
+def _registered_devices_or_none() -> tuple[str | None, str | None]:
+    """The registered training and arena devices, or ``(None, None)`` if they cannot be read."""
+    from alpha_zero.evaluation.a1_registration import RegistrationError, command_block, flag_value
+
+    try:
+        commands = dict(command_block(read_registered_protocol(default_protocol_path()), "base"))
+        return flag_value(commands["train"], "--device"), flag_value(
+            commands["primary"], "--device"
+        )
+    except (OSError, KeyError, RegistrationError, ProtocolMarkerError):
+        return None, None
+
+
+def _digest_main(args: argparse.Namespace) -> int:
+    from alpha_zero.evaluation.a1_registration import REGISTRATION_DIGEST
+
+    path = args.file if args.file is not None else default_protocol_path()
+    try:
+        lines, agree = digest_report(path.read_text(encoding="utf-8"), REGISTRATION_DIGEST)
+    except (OSError, ProtocolMarkerError) as exc:
+        print(f"cannot read the registration in {path}: {exc}", file=sys.stderr)
+        return 2
+    for line in lines:
+        print(line)
+    return 0 if agree else 1
 
 
 def _calibrate_main(args: argparse.Namespace) -> int:
@@ -674,7 +818,14 @@ def _calibrate_main(args: argparse.Namespace) -> int:
     if ref.branch == 60 and ref.p60 > BRANCH_VOID_RISK:
         print(f"P(60) {ref.p60:.4f} > {BRANCH_VOID_RISK}: record it as the VOID risk A1 accepts")
     if args.throughput is not None:
-        for line in _throughput_lines(args.throughput, ref.branch):
+        train_device, arena_device = _registered_devices_or_none()
+        for line in _throughput_lines(
+            args.throughput,
+            ref.branch,
+            arena_path=args.arena_throughput,
+            train_device=train_device,
+            arena_device=arena_device,
+        ):
             print(line)
     reference, branch = t0b_slot_text(ref)
     print("\nSection 7.1 slot text (replace each slot verbatim and add a registration-log row):")
@@ -703,7 +854,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "results", nargs="+", type=Path, help="T0b result.json files or their --out directories"
     )
     cal.add_argument(
-        "--throughput", type=Path, default=None, help="scripts/calibrate_throughput.py JSON"
+        "--throughput",
+        type=Path,
+        default=None,
+        help="scripts/calibrate_throughput.py JSON timed on the training device",
+    )
+    cal.add_argument(
+        "--arena-throughput",
+        type=Path,
+        default=None,
+        help="the same harness timed on the arena's device; costs the arena games at that rate",
     )
     cal.add_argument("--reps", type=int, default=REGISTERED_METHOD["reps"])
     cal.add_argument("--outer", type=int, default=REGISTERED_METHOD["outer"])
@@ -714,7 +874,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=REGISTERED_METHOD["seed"],
         help="bootstrap seed, not a game seed",
     )
-    return _calibrate_main(parser.parse_args(argv))
+    dig = sub.add_parser(
+        "digest",
+        help="section 7.1's digest, the registration log's last row and REGISTRATION_DIGEST",
+    )
+    dig.add_argument("--file", type=Path, default=None, help="default: docs/EVALUATION.md")
+    args = parser.parse_args(argv)
+    if args.command == "digest":
+        return _digest_main(args)
+    return _calibrate_main(args)
 
 
 if __name__ == "__main__":

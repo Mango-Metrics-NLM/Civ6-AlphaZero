@@ -31,9 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.training_civ6 import TrainingConfig, run_self_play
-from alpha_zero.utils.device import resolve_device_str
-from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
-from alpha_zero.utils.seeding import derive_seed
+from alpha_zero.utils.device import cuda_ordinal, resolve_device_str
+from alpha_zero.utils.game_budget import EXIT_CODE_REFUSED, add_budget_arguments, enforce_cli
+from alpha_zero.utils.seeding import derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger("calibrate_throughput")
 
@@ -59,7 +59,9 @@ def calibrate(
         mcts: ``civ6`` (PUCT) or ``gumbel``.
         k: Gumbel sampled actions (ignored for ``civ6``).
         n: Simulations per move.
-        device: Torch device string.
+        device: Torch device string. An explicit ``cuda`` / ``cuda:N`` that this
+            machine cannot run raises :class:`DeviceUnavailableError` rather than
+            timing the CPU under a GPU's name.
         games: Number of complete games to play.
         seed: Base seed; ``None`` leaves the run unseeded.
 
@@ -72,8 +74,17 @@ def calibrate(
         raise ValueError(f"mcts must be one of {MCTS_CHOICES}, got {mcts!r}")
     if games < 1:
         raise ValueError("games must be >= 1")
+    requested = device
     device = resolve_device_str(device)
+    if cuda_ordinal(requested) is not None and device != str(requested).strip().lower():
+        # resolve_device_str falls back to CPU with a warning. A timing labelled
+        # with a GPU it never ran on is worse than no timing.
+        raise DeviceUnavailableError(
+            f"--device {requested} was requested but {device!r} is what this machine can run"
+        )
     run_seed = derive_seed(seed, CALIBRATION_STREAM)
+    if run_seed is not None:
+        enforce_deterministic_backend(device)
     config = TrainingConfig(
         board_size=board_size,
         max_turns=max_turns,
@@ -117,6 +128,10 @@ def calibrate(
     }
 
 
+class DeviceUnavailableError(RuntimeError):
+    """An explicit CUDA device was requested and cannot be used."""
+
+
 def _build_network(config: TrainingConfig, env: MicroCivEnv, obs: Any) -> torch.nn.Module:
     from alpha_zero.core.civ6_network import MicroCivNetwork
 
@@ -152,19 +167,26 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     # Game budget: refuse before the network is built or any game is played.
     enforce_cli("calibrate_throughput", {"games": args.games}, args)
-    result = calibrate(
-        args.board_size,
-        args.max_turns,
-        args.mcts,
-        args.k,
-        args.n,
-        args.device,
-        games=args.games,
-        seed=args.seed,
-    )
+    try:
+        result = calibrate(
+            args.board_size,
+            args.max_turns,
+            args.mcts,
+            args.k,
+            args.n,
+            args.device,
+            games=args.games,
+            seed=args.seed,
+        )
+    except DeviceUnavailableError as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return EXIT_CODE_REFUSED
     payload: dict[str, Any] = {
         "harness": "calibrate_throughput",
         "args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},
+        # The device the games ran on, not the one asked for (``args.device``):
+        # ``auto`` resolves, and an unavailable explicit GPU was refused above.
+        "device": resolve_device_str(args.device),
         "results": result,
     }
     text = json.dumps(payload, indent=2, sort_keys=True)

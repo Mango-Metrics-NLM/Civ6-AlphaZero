@@ -21,24 +21,32 @@ a person re-confirm them in the same change.
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from typing import Any
 
 __all__ = [
     "A1R_SEED",
     "BENCH_ENTRY",
     "DATA_ROOT",
+    "DEVICES_MARKER",
+    "REGISTERED_DEVICE_ORDER",
     "REGISTRATION_DIGEST",
     "TRAIN_ENTRY",
+    "RegisteredDevices",
     "RegistrationError",
     "branch_in_force",
     "command_block",
+    "device_plan_problems",
     "flag_value",
+    "registered_devices",
     "registered_invocations",
     "run_directory",
 ]
 
 #: The section 7.1 digest the constants below (and the verdict table) were last
 #: confirmed against. Must equal the registration log's last row.
-REGISTRATION_DIGEST = "79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b"
+REGISTRATION_DIGEST = "dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91"
 #: A1-R's seed: "every ``--seed 20261111`` replaced by ``--seed 20261112``".
 A1R_SEED = 20261112
 #: ``<D>`` is ``<DATA_ROOT>\runs\<card>`` ("A card therefore runs with ``--data_root E:\civ6az-data``").
@@ -47,6 +55,12 @@ DATA_ROOT = "E:\\civ6az-data"
 TRAIN_ENTRY = ("python", "-m", "alpha_zero.training_civ6")
 BENCH_ENTRY = ("python", "scripts/benchmark_suite.py")
 _BRANCH_RE = re.compile(r"\*\*Branch in force: ([^*]+?)\.\*\*")
+#: The machine-readable block naming the torch build and the GPUs (section 7.1 "Devices").
+DEVICES_MARKER = "<!-- a1-devices -->"
+#: The device order ``run_card`` sets, so ``cuda:N`` is the card ``nvidia-smi`` lists as GPU N.
+REGISTERED_DEVICE_ORDER = "PCI_BUS_ID"
+_DEVICE_KEY_RE = re.compile(r"^cuda:(\d+)$")
+_TEXT_FENCE = "```text\n"
 
 
 class RegistrationError(ValueError):
@@ -153,3 +167,119 @@ def flag_value(args: list[str], flag: str) -> str | None:
         if arg == flag:
             value = args[i + 1]
     return value
+
+
+@dataclass(frozen=True)
+class RegisteredDevices:
+    """The torch build and the GPUs section 7.1 registers (its ``a1-devices`` block)."""
+
+    torch_spec: str
+    torch_index_url: str
+    cuda_visible_devices: str
+    #: CUDA ordinal -> the GPU's name as ``torch.cuda.get_device_name`` reports it.
+    gpus: Mapping[int, str] = field(default_factory=dict)
+
+    @property
+    def torch_version(self) -> str:
+        return self.torch_spec.split("==", 1)[1]
+
+    @property
+    def torch_pin(self) -> dict[str, str]:
+        """The pin as ``run.json``'s ``device_plan.torch_pin`` records it."""
+        return {"spec": self.torch_spec, "index_url": self.torch_index_url}
+
+
+_DEVICE_SCALARS = ("torch_spec", "torch_index_url", "cuda_visible_devices")
+
+
+def registered_devices(section: str) -> RegisteredDevices | None:
+    """The devices section 7.1 registers, or ``None`` if it registers none.
+
+    ``None`` is a registration that predates the GPU-first re-registration (no
+    ``a1-devices`` block): its runs are judged without a device check, as they
+    were registered. The block is ``key: value`` lines in a ``text`` fence --
+    ``torch_spec``, ``torch_index_url``, ``cuda_visible_devices`` and one
+    ``cuda:N: <GPU name>`` line per registered ordinal.
+
+    Raises:
+        RegistrationError: if the marker occurs more than once, has no ``text``
+            fence, a line is not ``key: value``, a key is unknown or repeated, or
+            a required key or every ``cuda:N`` line is missing.
+    """
+    section = section.replace("\r\n", "\n")
+    occurrences = section.count(DEVICES_MARKER)
+    if occurrences == 0:
+        return None
+    if occurrences != 1:
+        raise RegistrationError(f"{DEVICES_MARKER} must occur at most once in section 7.1")
+    fence = section.find(_TEXT_FENCE, section.index(DEVICES_MARKER))
+    if fence < 0:
+        raise RegistrationError(f"{DEVICES_MARKER} is not followed by a text fence")
+    start = fence + len(_TEXT_FENCE)
+    scalars: dict[str, str] = {}
+    gpus: dict[int, str] = {}
+    for line in section[start : section.find("```", start)].splitlines():
+        if not line.strip():
+            continue
+        # Split on the LAST ": " so a ``cuda:0: name`` key keeps its own colon.
+        key, sep, value = line.strip().rpartition(": ")
+        if not sep or not key or not value.strip():
+            raise RegistrationError(f"{DEVICES_MARKER}: {line!r} is not 'key: value'")
+        ordinal = _DEVICE_KEY_RE.match(key)
+        if ordinal:
+            if int(ordinal.group(1)) in gpus:
+                raise RegistrationError(f"{DEVICES_MARKER}: {key} is registered twice")
+            gpus[int(ordinal.group(1))] = value.strip()
+        elif key in _DEVICE_SCALARS and key not in scalars:
+            scalars[key] = value.strip()
+        else:
+            raise RegistrationError(f"{DEVICES_MARKER}: unknown or repeated key {key!r}")
+    missing = [key for key in _DEVICE_SCALARS if key not in scalars]
+    if missing or not gpus:
+        raise RegistrationError(
+            f"{DEVICES_MARKER}: missing {missing or 'every cuda:N line'}; a device "
+            "registration names the torch build, the visible devices and each GPU"
+        )
+    return RegisteredDevices(gpus=gpus, **scalars)
+
+
+def device_plan_problems(plan: Any, registered: RegisteredDevices) -> list[str]:
+    """How a run's ``device_plan`` (``run.json``) departs from the registered devices.
+
+    Empty when the run used the registered torch build, device order and GPUs. Any
+    entry makes the run VOID under section 7.1 "Devices": it is evidence about
+    other hardware or another build than the one registered.
+    """
+    if not isinstance(plan, Mapping):
+        return ["run.json records no device_plan, but section 7.1 registers devices"]
+    problems: list[str] = []
+    if plan.get("torch_pin") != registered.torch_pin:
+        problems.append(
+            f"device_plan.torch_pin {plan.get('torch_pin')!r} is not the registered "
+            f"{registered.torch_pin!r}"
+        )
+    torch_info = plan.get("torch")
+    if not isinstance(torch_info, Mapping):
+        torch_info = {}
+    installed = str(torch_info.get("version", "")).split("+", 1)[0]
+    if installed != registered.torch_version:
+        problems.append(
+            f"device_plan.torch.version {torch_info.get('version')!r} is not the registered "
+            f"{registered.torch_version}"
+        )
+    if plan.get("CUDA_DEVICE_ORDER") != REGISTERED_DEVICE_ORDER:
+        problems.append(
+            f"device_plan.CUDA_DEVICE_ORDER {plan.get('CUDA_DEVICE_ORDER')!r} is not "
+            f"{REGISTERED_DEVICE_ORDER}"
+        )
+    if plan.get("CUDA_VISIBLE_DEVICES") != registered.cuda_visible_devices:
+        problems.append(
+            f"device_plan.CUDA_VISIBLE_DEVICES {plan.get('CUDA_VISIBLE_DEVICES')!r} is not the "
+            f"registered {registered.cuda_visible_devices!r}"
+        )
+    names = list(torch_info.get("devices") or [])
+    for ordinal, name in sorted(registered.gpus.items()):
+        found = names[ordinal] if ordinal < len(names) else None
+        if found != name:
+            problems.append(f"cuda:{ordinal} is {found!r}, but section 7.1 registers {name!r}")
+    return problems

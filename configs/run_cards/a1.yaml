@@ -2,7 +2,7 @@
 #
 #   python scripts/run_card.py configs/run_cards/a1.yaml --price_only   # prints 980
 #
-# DO NOT RUN until all four hold:
+# DO NOT RUN until all five hold:
 #   1. `sha` is the merged commit that carries this registration (with the digest
 #      in section 7.1's registration log). The all-zero placeholder below is
 #      refused by run_card after pricing and before anything is created, so the
@@ -14,6 +14,12 @@
 #      run_card refuses to start);
 #   4. the data root is E:\civ6az-data (--data_root or CIV6AZ_DATA_ROOT), so that
 #      run.json lands in <D> beside the run's outputs.
+#   5. both GPUs are visible and the pinned torch build installs: rehearse with
+#      `python scripts/run_card.py <this card> --probe`, which builds the pinned
+#      environment and checks cuda:0 and cuda:1 without claiming <D>.
+#
+# Devices (section 7.1 "Devices"): training and its self-play on cuda:0, every
+# arena arm on cuda:1. run_card refuses to launch if either is missing.
 #
 # Set `sha` to the rc LOCALLY and do not commit that edit on the release line:
 # after an rc only docs/evidence/** may change before the final tag.
@@ -26,6 +32,12 @@
 card_id: a1-20261111
 sha: '0000000000000000000000000000000000000000'
 max_games: 980
+cuda_visible_devices: '0,1'
+torch_spec: 'torch==2.11.0'
+torch_index_url: 'https://download.pytorch.org/whl/cu128'
+gpus:
+  'cuda:0': 'NVIDIA GeForce RTX 5060 Ti'
+  'cuda:1': 'NVIDIA GeForce RTX 5060'
 description: A1 learning run at seed 20261111 (LF-A1), registered in docs/EVALUATION.md section 7.1.
 invocations:
   - name: train
@@ -48,7 +60,7 @@ invocations:
       - '--gumbel_sims'
       - '24'
       - '--device'
-      - 'cpu'
+      - 'cuda:0'
       - '--bootstrap'
       - 'none'
       - '--save_interval'
@@ -74,7 +86,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_20.pt'
       - '--opponent-checkpoint'
@@ -100,7 +112,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_0.pt'
       - '--opponent-checkpoint'
@@ -126,7 +138,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--candidate'
       - 'heuristic'
       - '--opponents=random'
@@ -151,7 +163,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_5.pt'
       - '--opponent-checkpoint'
@@ -177,7 +189,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_10.pt'
       - '--opponent-checkpoint'
@@ -203,7 +215,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_15.pt'
       - '--opponent-checkpoint'
@@ -229,7 +241,7 @@ invocations:
       - '--mcts-type'
       - 'gumbel'
       - '--device'
-      - 'cpu'
+      - 'cuda:1'
       - '--checkpoint'
       - 'E:\civ6az-data\runs\a1-20261111\ckpt\checkpoint_20.pt'
       - '--opponents=random'

@@ -89,7 +89,7 @@ from alpha_zero.utils.game_budget import (
     add_budget_arguments,
     enforce_cli,
 )
-from alpha_zero.utils.seeding import SeedStream, derive_seed
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger(__name__)
 
@@ -631,8 +631,11 @@ def merge_shards(
         non_claims=non_claims,
     )
     # The games were played by the shards' commit and stack, not by whoever merges them.
-    for key in ("git_sha", "device", "search", "torch", "numpy"):
-        evidence[key] = first["evidence"][key]
+    # That includes the hardware: ``gpu_model`` names the GPU ``device`` ran on, and the
+    # merging host's GPU 0 is not it.
+    for key in ("git_sha", "device", "search", "torch", "numpy", "hardware"):
+        if key in first["evidence"]:
+            evidence[key] = first["evidence"][key]
     evidence.pop("git_sha_null_reason", None)
     if evidence["git_sha"] is None:
         evidence["git_sha_null_reason"] = first["evidence"].get("git_sha_null_reason")
@@ -954,6 +957,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         import torch
 
+        if args.seed is not None:
+            # Before any network is built or loaded: a seeded GPU arena must repeat.
+            enforce_deterministic_backend(args.device)
         candidate, candidate_factory, candidate_id = _candidate(args, protocol)
         opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
         opponent_models: dict[str, Any] = {}

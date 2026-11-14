@@ -21,7 +21,13 @@ Design notes
   ``*.egg-info`` are removed afterwards, so setuptools never needs to write
   into read-only source and the extracted tree stays byte-identical to the SHA.
 * A venv is reused when its marker file (``.pinned.json``) names the same full
-  SHA; the marker also carries the wheel hash that ``run.json`` records.
+  SHA **and the same torch pin**; the marker also carries the wheel hash that
+  ``run.json`` records.
+* torch comes from PyPI by default, which on Windows is the CPU-only build. A
+  :class:`TorchPin` installs an exact torch from a named index first (a CUDA
+  build), and is part of the venv's identity: its directory is
+  ``<sha12>-t<pin hash>`` rather than ``<sha12>``, so a CPU venv for the same
+  SHA is never mistaken for the CUDA one.
 """
 
 from __future__ import annotations
@@ -48,12 +54,51 @@ logger = logging.getLogger(__name__)
 
 MARKER_NAME = ".pinned.json"
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$|^HEAD$")
+# An exact pin only: a range would let two builds of one card resolve differently.
+_TORCH_SPEC_RE = re.compile(r"^torch==[0-9]+(\.[0-9]+){1,3}$")
+_INDEX_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$")
 
 Runner = Callable[..., str]
 
 
 class PinnedEnvError(RuntimeError):
     """Pinned source/env could not be prepared, or the process is not running from it."""
+
+
+@dataclass(frozen=True)
+class TorchPin:
+    """An exact torch build for a pinned venv: ``torch==X.Y.Z`` from ``index_url``.
+
+    Both parts are validated because they become ``pip`` arguments: the spec must
+    be an exact ``torch==`` pin and the index an ``https`` URL with no query,
+    credentials or whitespace.
+    """
+
+    spec: str
+    index_url: str
+
+    def __post_init__(self) -> None:
+        if not _TORCH_SPEC_RE.fullmatch(self.spec):
+            raise PinnedEnvError(
+                f"torch_spec must be an exact pin such as 'torch==2.11.0', got {self.spec!r}"
+            )
+        if not _INDEX_URL_RE.fullmatch(self.index_url):
+            raise PinnedEnvError(
+                f"torch_index_url must be a plain https URL, got {self.index_url!r}"
+            )
+
+    @property
+    def version(self) -> str:
+        return self.spec.split("==", 1)[1]
+
+    @property
+    def variant(self) -> str:
+        """Short stable tag for the venv directory name."""
+        digest = hashlib.sha256(f"{self.spec}\n{self.index_url}".encode()).hexdigest()
+        return digest[:8]
+
+    def as_dict(self) -> dict[str, str]:
+        return {"spec": self.spec, "index_url": self.index_url}
 
 
 @dataclass(frozen=True)
@@ -64,6 +109,7 @@ class PinnedEnv:
     src: Path
     sha: str = ""
     wheel_sha256: str = ""
+    torch_pin: TorchPin | None = None
 
     def __post_init__(self) -> None:
         if self.python.parent.name not in {"Scripts", "bin"}:
@@ -148,11 +194,38 @@ def _sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _build_venv(venv: Path, src: Path, wheel_dir: Path, full_sha: str, runner: Runner) -> str:
-    """Create ``venv`` and install a non-editable wheel of ``src``. Returns the wheel sha256."""
+def _marker_torch(torch_pin: TorchPin | None) -> dict[str, str] | None:
+    return None if torch_pin is None else torch_pin.as_dict()
+
+
+def _build_venv(
+    venv: Path,
+    src: Path,
+    wheel_dir: Path,
+    full_sha: str,
+    runner: Runner,
+    torch_pin: TorchPin | None = None,
+) -> str:
+    """Create ``venv`` and install a non-editable wheel of ``src``. Returns the wheel sha256.
+
+    With ``torch_pin`` the exact torch is installed from its index *first*; the
+    wheel's own ``torch>=2.0.0`` requirement is then already satisfied, so pip
+    keeps that build instead of pulling the default (CPU-only on Windows) one.
+    """
     env = child_env()
     runner([sys.executable, "-m", "venv", str(venv)], env=env)
     py = _venv_python(venv)
+    if torch_pin is not None:
+        logger.info(
+            "installing %s from %s into %s (a large download; pip's output is captured)",
+            torch_pin.spec,
+            torch_pin.index_url,
+            venv,
+        )
+        runner(
+            [py, "-m", "pip", "install", torch_pin.spec, "--index-url", torch_pin.index_url],
+            env=env,
+        )
     runner([py, "-m", "pip", "wheel", str(src), "--no-deps", "-w", str(wheel_dir)], env=env)
     wheels = sorted(wheel_dir.glob("alpha_zero-*.whl"))
     if not wheels:
@@ -162,7 +235,10 @@ def _build_venv(venv: Path, src: Path, wheel_dir: Path, full_sha: str, runner: R
     runner([py, "-m", "pip", "install", str(wheel)], env=env)
     wheel_hash = _sha256_file(wheel)
     (venv / MARKER_NAME).write_text(
-        json.dumps({"sha": full_sha, "wheel_sha256": wheel_hash}), encoding="utf-8"
+        json.dumps(
+            {"sha": full_sha, "wheel_sha256": wheel_hash, "torch": _marker_torch(torch_pin)}
+        ),
+        encoding="utf-8",
     )
     return wheel_hash
 
@@ -188,12 +264,14 @@ def prepare_pinned_run(
     envs_root: Path | None = None,
     runner: Runner | None = None,
     repo_root: Path | None = None,
+    torch_pin: TorchPin | None = None,
 ) -> PinnedEnv:
     """Extract ``sha`` to ``<run_dir>/src`` (read-only) and ensure its venv exists.
 
     ``envs_root`` defaults to ``<CIV6AZ_DATA_ROOT>/envs``. The venv is reused when
-    its marker already names this SHA. Raises :class:`PinnedEnvError` on any
-    failure, including an unset data root when ``envs_root`` is not given.
+    its marker already names this SHA and this ``torch_pin``. Raises
+    :class:`PinnedEnvError` on any failure, including an unset data root when
+    ``envs_root`` is not given.
     """
     if not _SHA_RE.match(sha):
         raise PinnedEnvError(f"not a git SHA: {sha!r}")
@@ -210,7 +288,8 @@ def prepare_pinned_run(
         envs_root = root / "envs"
 
     full_sha = resolve_commit(sha, runner=run, repo_root=repo)
-    venv = Path(envs_root) / full_sha[:12]
+    venv_name = full_sha[:12] if torch_pin is None else f"{full_sha[:12]}-t{torch_pin.variant}"
+    venv = Path(envs_root) / venv_name
     src = run_dir / "src"
     if src.exists():
         raise PinnedEnvError(f"{src} already exists; a run directory is single-use")
@@ -221,18 +300,24 @@ def prepare_pinned_run(
     wheel_hash = ""
     if marker.is_file() and _venv_python(venv).exists():
         data = json.loads(marker.read_text(encoding="utf-8"))
-        if data.get("sha") == full_sha:
+        if data.get("sha") == full_sha and data.get("torch") == _marker_torch(torch_pin):
             wheel_hash = str(data.get("wheel_sha256", ""))
             logger.info("reusing pinned venv %s", venv)
     if not wheel_hash:
         if venv.exists():
             shutil.rmtree(venv, ignore_errors=True)
         try:
-            wheel_hash = _build_venv(venv, src, run_dir / "wheel", full_sha, run)
+            wheel_hash = _build_venv(venv, src, run_dir / "wheel", full_sha, run, torch_pin)
         finally:
             _clean_build_artifacts(src)
     _make_read_only(src)
-    return PinnedEnv(python=_venv_python(venv), src=src, sha=full_sha, wheel_sha256=wheel_hash)
+    return PinnedEnv(
+        python=_venv_python(venv),
+        src=src,
+        sha=full_sha,
+        wheel_sha256=wheel_hash,
+        torch_pin=torch_pin,
+    )
 
 
 def _pyproject_version(src: Path) -> str:

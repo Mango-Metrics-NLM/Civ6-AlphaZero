@@ -14,7 +14,7 @@ caveats in *Threat model* below.
 | `settings.local.json` | gitignored | Personal overrides (tokens, machine-specific paths). Never committed. |
 | `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`, plus `readonly_shell_guard.sh` and `tests_only_write_guard.sh`, which role subagents attach in their own frontmatter. |
 | `agents/sdlc-*.md` | committed | The eight SDLC role subagents (product-owner, scrum-master, architect, ml-scientist, ai-engineer, developer, qa-sdet, release-manager). Validated by `scripts/validate_claude_agents.py`. |
-| `skills/*/SKILL.md` | committed | Ten skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`. Each has frontmatter validated by `scripts/validate_skills.py`. |
+| `skills/*/SKILL.md` | committed | Eleven skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`, `a1-reregister` (the section 7.1 re-registration procedure; gate: `make verify-registration`). Each has frontmatter validated by `scripts/validate_skills.py`. |
 
 `.agents/skills/` (a sibling directory, three entries) is **validated but never
 loaded**: `validate_skills.py` scans it, the PostToolUse hook routes it, and

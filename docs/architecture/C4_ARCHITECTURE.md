@@ -445,7 +445,81 @@ flowchart TD
 
 ---
 
-*Last revised: 2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search package
+## Level 3 — Component Diagram (Run Cards, Pinned Environment & Devices)
+
+> **Scope:** `alpha_zero/local/` — how a registered run executes on one machine. A run card
+> (`configs/run_cards/*.yaml`) names a commit, a game budget, a torch build, the GPUs it
+> expects and a list of invocations; `scripts/run_card.py` is the only way a card runs.
+
+A card is evidence about a named commit on named hardware, so every step either proves a claim
+or refuses. Nothing is launched until the pinned child has reported what it actually has, and
+the driver never substitutes another device: the runners themselves fall back to CPU with a
+warning, which is exactly what a card must not do silently.
+
+```mermaid
+flowchart TD
+    classDef util fill:#067D26,color:#fff,stroke:#055E1C
+    classDef comp fill:#1168BD,color:#fff,stroke:#0E5EA8
+    classDef ext fill:#999,color:#fff,stroke:#6B6B6B
+    classDef stop fill:#B42318,color:#fff,stroke:#7A1711
+
+    Card["Run card (YAML)\nsha · max_games · torch_spec + index\ncuda_visible_devices · gpus · invocations"]:::ext
+    Registration["docs/EVALUATION.md section 7.1\ncommands · a1-devices block · digest"]:::ext
+
+    subgraph Driver["alpha_zero/local/run_card.py"]
+        Price["price_card\neach argv through its runner's own parser\n(utils/game_budget.py)"]:::comp
+        Static["refuse_*\nplaceholder sha · MCTS_* override\nimplicit device on a pinned card"]:::comp
+        Preflight["preflight in the pinned child\nassert_running_pinned + TORCH_REPORT_CODE"]:::comp
+        Launch["run invocations in order\nrun.json · logs · error_tail"]:::comp
+        Probe["--probe\nthrowaway run directory, launches nothing"]:::comp
+    end
+
+    subgraph Pinned["alpha_zero/local/pinned_env.py"]
+        Src["git archive sha -> src (read-only)"]:::util
+        Venv["venv envs/sha12[-t pin]\ntorch pin first, then the wheel"]:::util
+    end
+
+    subgraph Devices["alpha_zero/local/devices.py"]
+        Env["apply_device_environment\nCUDA_VISIBLE_DEVICES · PCI_BUS_ID order\nCUBLAS_WORKSPACE_CONFIG -> device_plan"]:::util
+        Problem["device_problem\npin installed · ordinal exists · kernels for the GPU\none real CUDA op · expected GPU at each ordinal"]:::util
+    end
+
+    Refuse["REFUSED / FAILED\nnothing launched"]:::stop
+    Runners["training_civ6 · evaluation.benchmark\ncalibrate_throughput · check_determinism\n(seeded GPU runs: utils/seeding\nenforce_deterministic_backend)"]:::ext
+    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices"]:::comp
+
+    Registration -. "tests hold cards equal to it" .-> Card
+    Card --> Price --> Static
+    Static -->|"problem"| Refuse
+    Static --> Src --> Venv --> Env --> Preflight --> Problem
+    Problem -->|"problem"| Refuse
+    Problem --> Probe
+    Problem --> Launch --> Runners
+    Launch -->|"run.json"| Verify
+    Registration --> Verify
+```
+
+**Why the device comes from the runner's parser.** `run_card.invocation_devices` reads the parsed
+namespace, not the argv tokens: argparse accepts `--dev cuda:1`, and the benchmark defaults to
+`cpu` while the trainer leaves its device unset. A token scan disagrees with the child in both
+cases. A card that pins a torch build must name every invocation's device explicitly.
+
+**Why `is_available()` is not enough.** A torch build can report CUDA as available and still have
+no kernels for the GPU's architecture. The preflight records the build's architecture list, each
+GPU's compute capability and the result of one real operation per device; `device_problem` reads
+all three.
+
+**Reproduction.** Seeded runs on a CUDA device enforce deterministic algorithms, which is what
+lets a re-run of an interrupted card be a *reproduction check* instead of a second draw:
+`alpha_zero/evaluation/reproduction.py` compares the two attempts' checkpoints tensor by tensor
+and their arena games one by one. `scripts/check_determinism.py` runs the same comparison on two
+fresh A1-shaped runs, each in its own process, as T0b's precondition for the GPU registration.
+
+---
+
+*Last revised: 2026-11-14 — run cards, the pinned environment and the device check
+(`alpha_zero/local/`) added as a component view, with the reproduction check. Previously
+2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search package
 (one sign-correct value backup for all five variants), `utils/seeding.py` and the local
 training loop added to the container and component views. Previously 2026-09-02: Tier A
 dead-code removal (44 modules / 21,903 lines; the four per-role Dockerfiles and

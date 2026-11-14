@@ -73,7 +73,9 @@ Run cards execute on the rc commit (section 4). Results go on branch
 `evidence/vX.Y.Z-rc.N`, cut from the rc tag and merged into `qa` with a merge commit; only
 `docs/evidence/**` may change. The `VALIDATION-RUN` ledger event goes to `dev` in a normal
 PR. Evidence follows `docs/evidence/SCHEMA.md` (`search_epoch: post-2026-09-04`);
-determinism holds on CPU only, so confirmatory runs use CPU and GPU runs are exploratory.
+confirmatory runs execute on the GPUs section 7.1 registers (`cuda:0` for training, `cuda:1`
+for the arena) with deterministic algorithms enforced, so a run repeats on the same machine,
+torch build and device, and not across GPU models.
 
 The release's evidence is `docs/evidence/release_vX_Y_Z/bundle.json` (schema: `SCHEMA.md`,
 "Release evidence bundle"), with `report.md` and an index row. Build it from the run
@@ -157,29 +159,64 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
 - No `MCTS_*` variable is set (section 7.1 VOIDs the run; `run_card` refuses to start).
 - The data root is `E:\civ6az-data` (`--data_root` or `CIV6AZ_DATA_ROOT`): the registered
   commands spell `<D>` as `E:\civ6az-data\runs\<card_id>`.
+- Both GPUs are visible, in the registered order, and the card's pinned torch build installs:
+  `python scripts/run_card.py <card> --probe` builds the pinned environment, checks every
+  device the card names and launches nothing. It prints the torch build and which GPU each
+  invocation will use. It uses a throwaway `runs/probe-<card_id>-<time>` directory, so the
+  card's own single-use directory stays unclaimed. **Probe first:** a card refused at its
+  preflight still uses up its run directory and then needs a new `card_id`.
+- What the probe (and every run) refuses: a device that does not exist, a torch build with no
+  kernels for the GPU, a CUDA operation that fails on the device, a GPU other than the one the
+  card expects at that ordinal, a torch other than the pinned one, and, on a card that pins
+  torch, any invocation whose device is left to `auto` or a default. A card that pins torch
+  therefore cannot fall back to CPU.
+- GPU reproduction is checked by the T0b card itself: its first invocation, `determinism`
+  (`scripts/check_determinism.py`), trains and judges a small A1-shaped run twice in the
+  pinned environment, each repeat in its own process, and must report `REPRODUCED`. Section
+  7.1 makes that the precondition for every A1-family run.
+  `pytest tests/regression/test_cuda_determinism_regression.py -v` is a quicker developer-side
+  check (same process, tiny shapes; a skip is not a pass) and is not the gate.
 - The machine is quiet: Windows Update paused, llama-server and WSL stopped (plan section 10,
-  action 8). An existing data root not created by `run_card` keeps its ACL; check it.
+  action 8). GPU0 also drives the display, so leave the desktop idle while a card trains. An existing data root not created by `run_card` keeps its ACL; check it.
 - The card's `sha` is the commit to run. For A1/A1-R that is the rc: edit `sha` **locally
   and do not commit it** on the release line (after an rc only `docs/evidence/**` may change
   before the final tag).
 - A re-run after a VOID gets a new `card_id`, and every `<D>` path in the card must be
   rewritten to `E:\civ6az-data\runs\<new card_id>` (13 paths in `a1.yaml`);
   `tests/scripts/test_a1_registration.py` shows the registered form.
+- A re-run after an **interruption** is first a reproduction check (section 7.1 "After a
+  VOID"). Same `sha`, same torch pin, same GPUs in the same order, same NVIDIA driver; then
+  `python -m alpha_zero.evaluation.reproduction compare <VOID attempt's run dir> <re-run's run dir> --out compare.json`.
+  `REPRODUCED` (exit 0): the re-run is judged. `NOTHING TO COMPARE` (exit 2): the attempt
+  finished nothing beyond `checkpoint_0`; the re-run is judged and the bundle says the
+  comparison was empty. `DIFFERS` (exit 1): the re-run cannot PASS and no further A1-family
+  run starts until section 7.1 is re-registered with a new seed pair. `compare.json` goes in
+  the bundle beside both attempts. The release verifier does not read it yet, so a reviewer
+  must.
 
 ### The A1 sequence
 
 From the merged default branch to the release (final review section 2; the cut-over itself
 is section 5):
 
-1. **T0b** (`configs/run_cards/t0b.yaml`, 604 games, not an A1-family run): set its `sha`,
-   run it, then
+1. **T0b** (`configs/run_cards/t0b.yaml`, 660 games, not an A1-family run): set its `sha`,
+   probe it, run it, then
    `python -m alpha_zero.evaluation.a1_protocol calibrate <the three arena dirs> --throughput <calibration json>`.
    It prints the reference, P(40) with its 95% interval, P(60), the iid P(40), the branch in
    force and the exact replacement text for section 7.1's two "pending T0b" slots, and exits
-   1 unless the input and bootstrap are the registered ones. GPU timing is exploratory and
-   runs outside `run_card` (the pinned venv has CPU-only torch).
+   1 unless the input and bootstrap are the registered ones. Pass the `cuda:0` file
+   (`calibration\throughput.json`) as `--throughput` and the `cuda:1` file
+   (`throughput_cuda1.json`) as `--arena-throughput`; the ETA then costs self-play and arena
+   games at their own devices' rates, and warns if a file was timed on another device. The
+   `cpu` timing (`throughput_cpu.json`) is informational and triggers nothing: changing device
+   after T0b is the maintainer's decision and a re-registration
+   (`.claude/skills/a1-reregister`), allowed until the first exploratory run. If
+   `determinism` did not report `REPRODUCED`, stop here: the GPU registration does not stand.
 2. A dev PR fills the slots (and, for branch 60, puts the branch commands into both cards),
-   adds a registration-log row and updates `a1_registration.REGISTRATION_DIGEST`.
+   adds a registration-log row and updates `a1_registration.REGISTRATION_DIGEST`
+   (`make verify-registration` is the gate). Commit T0b's `determinism.json`, its `run.json`
+   (`device_plan` names the torch build, the GPUs and the driver) and the three throughput
+   files under `docs/evidence/` in the same PR.
 3. Optional exploratory runs at 1001 and 1002. From the first one on, only the "pending T0b"
    slots may change.
 4. Release prep, promote to `qa`, `tag_release vX.Y.Z-rc.1 --execute` (maintainer).

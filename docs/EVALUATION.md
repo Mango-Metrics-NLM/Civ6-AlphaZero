@@ -180,15 +180,17 @@ digest is logged after this section ("Registration log").
 **Amendments.** An **A1-family run** is any execution of a command
 registered below (the training command or an arena arm) at a registered seed
 (1001, 1002, 1003, 20261111 or 20261112); an exploratory run is an A1-family
-run at 1001–1003. T0b's wall-clock calibration and its positive-control
-reference runs are **not** A1-family runs, although they use seeds 1001–1003,
-so they lock nothing. Before any A1-family run starts, this section may be
+run at 1001–1003. T0b is the card `configs/run_cards/t0b.yaml`. Its wall-clock
+calibrations, its determinism check and its positive-control reference runs are
+**not** A1-family runs, although they use seeds 1001–1003, so they lock
+nothing. Before any A1-family run starts, this section may be
 re-registered, with a new log row. **Once any exploratory run has started**,
 the only amendments allowed are the slots marked "pending T0b": the measured
 positive-control reference with its P values and P(40) interval, the 40/60
 branch in force, and the cards' `sha`. Any other change (an arm, a threshold, a verdict row, the
-search settings, the card form) is a **new registration with a new
-confirmatory seed pair**; 20261111 and 20261112 are then retired unrun.
+search settings, the devices or the torch build, the card form) is a **new
+registration with a new confirmatory seed pair**; 20261111 and 20261112 are then
+retired unrun.
 
 **Code binding.** The card's pinned `sha` must contain this section with the
 digest the A1 artifact records; T14 checks `protocol_sha256` of
@@ -205,8 +207,10 @@ same search? A1 answers it once at seed 20261111. A1-R repeats it at seed
 - **Exploratory:** 1001, 1002, 1003. Exploratory runs use the registered
   commands with every `--seed 20261111` replaced. They are never quoted as the
   verdict.
-- **Confirmatory:** **20261111** (A1) and **20261112** (A1-R). Neither has been
-  run before this registration.
+- **Confirmatory:** **20261111** (A1) and **20261112** (A1-R). No A1-family run
+  has used either. (A board-4 harness smoke on 2026-11-11 passed 20261111 to
+  `calibrate_throughput`, which derives its own stream and shares no map or
+  search stream with A1.)
 - **Disjointness** (LF-A17, `kb/specs/20261111-seed-overlap-memo.md`). Every
   map, search and sampling stream is `derive_seed(base, <stream name>,
   *coords)`; network initialisation is `torch.manual_seed(base)`. At A1's sizes, the 480
@@ -305,6 +309,46 @@ outputs land in different trees, and the run is VOID for want of a
 Every arena arm has its own `--out`, because `result.json` is never overwritten
 (T11 review I1).
 
+**Devices.** Every phase that evaluates a network runs on a GPU. Training, and
+the self-play inside it, runs on `cuda:0`; every arena arm runs on `cuda:1`.
+The torch build and the two GPUs are registered here. The cards carry the same
+values, and `tests/scripts/test_a1_registration.py` holds them equal:
+
+<!-- a1-devices -->
+```text
+torch_spec: torch==2.11.0
+torch_index_url: https://download.pytorch.org/whl/cu128
+cuda_visible_devices: 0,1
+cuda:0: NVIDIA GeForce RTX 5060 Ti
+cuda:1: NVIDIA GeForce RTX 5060
+```
+
+`run_card` sets `CUDA_DEVICE_ORDER=PCI_BUS_ID`, so `cuda:N` is the card
+`nvidia-smi` lists as GPU N, and records the pin, the device order and each
+GPU's name in `run.json`'s `device_plan`. It launches nothing when a named
+device is missing from the pinned environment, when that torch build has no
+kernels for the GPU, or when a GPU is not the one the card expects at that
+ordinal; the runners would otherwise fall back to CPU with a warning. A run
+whose `device_plan` shows another torch build, device order or GPU than the
+block above is VOID (T14 reads `device_plan`). The positive-control arm loads no
+network, so its `--device` is nominal; it carries the arena's value so that the
+arm keeps the common prefix.
+
+Seeded runs on a CUDA device enforce deterministic algorithms
+(`utils.seeding.enforce_deterministic_backend`): an operation with no
+deterministic implementation raises. What this buys is narrow: a re-run
+reproduces a run **at the same `sha`, with the same torch wheel, NVIDIA driver,
+GPU at each ordinal and `CUBLAS_WORKSPACE_CONFIG`**. It does not hold across GPU
+models, drivers or torch builds. It is a precondition, checked on the machine
+before any A1-family run: T0b's `determinism` invocation
+(`scripts/check_determinism.py`) trains and judges a small A1-shaped run twice
+on the registered devices, each repeat in its own process inside the card's
+pinned environment, and compares every checkpoint tensor by tensor and every
+arena game by game. If it reports a difference, raises, or has not run on the
+registered build and GPUs, the GPU registration does not stand: no A1-family
+run starts until this section is re-registered, on `cpu` or on devices where
+the check passes.
+
 The training command is copied verbatim from the plan. Each arena command is the
 plan's common prefix, then the arm's flags, then `--out`. Two places expand the
 plan's table:
@@ -317,21 +361,21 @@ plan's table:
 <!-- a1-commands:base -->
 ```text
 # train
-python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cpu --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt
+python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt
 # primary
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 200 --out <D>\arena\primary
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 200 --out <D>\arena\primary
 # symmetry
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_0.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 40 --out <D>\arena\symmetry
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_0.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 40 --out <D>\arena\symmetry
 # positive-control
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --candidate heuristic --opponents=random --n-games 40 --out <D>\arena\positive_control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 40 --out <D>\arena\positive_control
 # secondary-5
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_5.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_5
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_5.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_5
 # secondary-10
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_10.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_10
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_10.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_10
 # secondary-15
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_15.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_15
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_15.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_15
 # final-vs-random
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 40 --out <D>\arena\final_vs_random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 40 --out <D>\arena\final_vs_random
 ```
 
 | Invocation | Games |
@@ -358,9 +402,9 @@ point; compare the arguments, not the leading tokens.
 <!-- a1-commands:branch-60 -->
 ```text
 # positive-control
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --candidate heuristic --opponents=random --n-games 60 --out <D>\arena\positive_control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 60 --out <D>\arena\positive_control
 # final-vs-random
-python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cpu --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
 ```
 
 - **Branch in force: pending T0b.** T0b replaces "pending T0b" with "40" or
@@ -438,7 +482,11 @@ The verdict is VOID unless `run.json` says `COMPLETED`. The same applies if any
 variable.
 
 **After a VOID.** A VOID records no learning result, so a release cannot rest
-on it: T14's verifier exits 1 when a role has no non-VOID attempt.
+on it: T14's verifier exits 1 when a role has no non-VOID attempt. A `FAILED`
+`run.json` is VOID like any other that is not `COMPLETED`. An attempt whose
+`run.json` records no launched invocation (a refused device, a failed
+preflight) played nothing: it is not an attempt, is not listed, and needs no
+re-run under this rule, only a new `card_id`.
 
 1. Fix the cause. An interruption needs nothing fixed. A symmetry or
    positive-control VOID needs the arena or harness fixed; that is a play-path
@@ -446,9 +494,26 @@ on it: T14's verifier exits 1 when a role has no non-VOID attempt.
 2. Run the same card again under a **new `card_id`** (for example
    `a1-20261111-r2`, so `<D>` is new) at the **same seed**. This is the one
    exception to "neither has been run before".
-   - After an **interruption**, nothing changed: confirmatory runs are
-     deterministic on CPU, so the re-run reproduces the same games and cannot be
-     used to fish for another result.
+   - After an **interruption**, or a `FAILED` run whose cause needs no code
+     change, nothing changed, and the re-run is first a **reproduction check**.
+     It runs at the VOID attempt's `sha` with the same `device_plan` (torch
+     pin, device order, GPUs) and the same NVIDIA driver. Every component the
+     VOID attempt finished is then compared with the re-run's, by
+     `python -m alpha_zero.evaluation.reproduction compare <VOID attempt's <D>>
+     <re-run's <D>> --out <file>`: each checkpoint it saved, tensor by tensor;
+     each iteration record it wrote, timings excepted; each arm it completed,
+     game by game. That file goes in the bundle beside both attempts.
+     - `REPRODUCED`: the re-run is judged.
+     - `NOTHING TO COMPARE` (the attempt finished nothing beyond
+       `checkpoint_0`, which is fixed by the seed alone): nothing of the result
+       had been seen, so the re-run is judged, and the bundle says the
+       comparison was empty.
+     - `DIFFERS`, or a different `sha`, `device_plan` or driver: the
+       reproduction claim under Devices has failed on this machine. The re-run
+       is reported, labelled "non-reproducing re-run", and **cannot PASS**: a
+       PASS row is read as INCONCLUSIVE. No further A1-family run starts until
+       this section is re-registered with a new confirmatory seed pair, and
+       that registration's bundle lists both attempts.
    - After a **symmetry or positive-control VOID**, the code changed, so the
      re-run plays different games: it is a **second draw**, made after the VOID
      attempt's arms (its primary arm included, if it ran) were seen. Listing the
@@ -589,6 +654,8 @@ in `run.json` and the release bundle, not here.
 | 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
 | 2026-11-12 | `9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e` | T14 review I-1 (before any A1-family run): "After a VOID" -- a VOID records no learning result; fix the cause and re-run under a new `card_id` at the same seed; the VOID attempt stays in the bundle and exactly one non-VOID attempt per role is judged |
 | 2026-11-12 | `79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b` | T14 rereview N-1/N-2 (before any A1-family run): "After a VOID" says the same-seed re-run is a reproduction only after an interruption; after a symmetry or positive-control VOID it is a second draw, disclosed by the listed VOID attempt, which keeps whatever components it left |
+| 2026-11-14 | `c58abfad89091b37ab2bace9dde820c72894ad3b1e82108297364d29977b4194` | GPU-first re-registration (before any A1-family run; maintainer instruction, PR #138): training and self-play on `cuda:0`, every arena arm on `cuda:1` (was `cpu` throughout); new "Devices" paragraph (pinned torch build, PCI device order, `run_card` refuses a missing device, deterministic algorithms enforced); "After a VOID" reproduction claim scoped to the same machine, torch build and device |
+| 2026-11-14 | `dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91` | Review round on the GPU registration (before any A1-family run; PR #138, ML-science, QA and architecture reviews): the torch build and both GPUs are named in a machine-readable `a1-devices` block and a run on anything else is VOID; GPU determinism is a precondition checked by T0b's `determinism` invocation in the pinned environment, each repeat in its own process, with a stated consequence; "After a VOID" makes the re-run a reproduction check (`evaluation.reproduction compare`) and a non-reproducing re-run cannot PASS; a never-launched attempt is not an attempt; T0b is named as a card; "the devices or the torch build" added to what a later amendment may not change; the confirmatory-seed sentence corrected for the 2026-11-11 harness smoke |
 
 ## 8. The LLM advisor gate is not an evaluation
 

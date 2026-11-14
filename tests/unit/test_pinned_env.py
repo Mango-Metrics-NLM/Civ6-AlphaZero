@@ -156,3 +156,103 @@ def test_pinned_env_rejects_non_venv_interpreter(tmp_path: Path) -> None:
     """A system python.exe would make venv its drive root and allow everything."""
     with pytest.raises(pe.PinnedEnvError, match="venv interpreter"):
         pe.PinnedEnv(python=tmp_path / "python.exe", src=tmp_path)
+
+
+# --------------------------------------------------------------------------
+# Torch pin (GPU-first run cards)
+#
+# Negative controls (recorded when these were written, then reverted):
+#   * dropping the ``pip install <spec> --index-url`` step made
+#     ``test_torch_pin_is_installed_from_its_index_before_the_wheel`` fail;
+#   * keying the venv on the SHA alone made
+#     ``test_cpu_venv_is_not_reused_for_a_cuda_pin`` fail (the second run reused
+#     the first run's venv and no torch install ran).
+# --------------------------------------------------------------------------
+
+_CU128 = "https://download.pytorch.org/whl/cu128"
+
+
+def _pinned_kwargs(tmp_path: Path, runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> dict:
+    fake = _fake_src_tree(tmp_path / "fake")
+    monkeypatch.setattr(
+        pe, "_extract_archive", lambda sha, repo_root, dest, runner: shutil.copytree(fake, dest)
+    )
+    return {"envs_root": tmp_path / "envs", "runner": runner, "repo_root": tmp_path}
+
+
+def _torch_installs(runner: FakeRunner) -> list[list[str]]:
+    return [c for c in runner.calls if "--index-url" in c]
+
+
+def test_torch_pin_is_installed_from_its_index_before_the_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef",
+        tmp_path / "r1",
+        torch_pin=pin,
+        **_pinned_kwargs(tmp_path, runner, monkeypatch),
+    )
+    installs = _torch_installs(runner)
+    assert len(installs) == 1
+    assert installs[0][-4:] == ["install", "torch==2.11.0", "--index-url", _CU128]
+    wheel_install = next(
+        i for i, c in enumerate(runner.calls) if c[-2] == "install" and c[-1].endswith(".whl")
+    )
+    assert runner.calls.index(installs[0]) < wheel_install, "torch must be installed first"
+    assert env.torch_pin == pin
+    assert env.venv.name == f"0123456789ab-t{pin.variant}"
+
+
+def test_no_torch_pin_keeps_the_original_venv_and_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef", tmp_path / "r1", **_pinned_kwargs(tmp_path, runner, monkeypatch)
+    )
+    assert _torch_installs(runner) == []
+    assert env.venv.name == "0123456789ab" and env.torch_pin is None
+
+
+def test_cpu_venv_is_not_reused_for_a_cuda_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    cpu = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    gpu = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+    assert gpu.venv != cpu.venv
+    assert runner.count("venv") == 2 and len(_torch_installs(runner)) == 1
+    # Same SHA and same pin: reused, no third build.
+    pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r3", torch_pin=pin, **kwargs)
+    assert runner.count("venv") == 2
+    # Same SHA, another index: a different venv again.
+    other = pe.TorchPin("torch==2.11.0", "https://download.pytorch.org/whl/cu130")
+    assert other.variant != pin.variant
+
+
+@pytest.mark.parametrize(
+    ("spec", "url"),
+    [
+        ("torch>=2.0", _CU128),  # a range, not a pin
+        ("torch", _CU128),
+        ("torch==2.11.0 --pre", _CU128),  # smuggled pip flag
+        ("numpy==2.0.0", _CU128),  # not torch
+        ("torch==2.11.0", "http://download.pytorch.org/whl/cu128"),  # not https
+        ("torch==2.11.0", "https://user:pw@example.com/whl"),  # credentials
+        ("torch==2.11.0", "https://example.com/whl?x=1"),  # query
+        ("torch==2.11.0", "https://example.com/whl --extra-index-url https://evil"),
+        ("torch==2.11.0\n", _CU128),  # a YAML block scalar's trailing newline
+        ("torch==2.11.0", _CU128 + "\n"),
+        ("torch==2.11.0+cu128", _CU128),  # the index selects the variant, not a local tag
+    ],
+)
+def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(
+    spec: str, url: str
+) -> None:
+    with pytest.raises(pe.PinnedEnvError):
+        pe.TorchPin(spec, url)
