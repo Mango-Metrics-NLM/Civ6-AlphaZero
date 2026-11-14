@@ -202,6 +202,11 @@ def _results(name: str, n: int, spec: RunSpec) -> list[dict[str, Any]]:
     return games(WIN, n)
 
 
+def _installed_version(pinned: str) -> str:
+    """``torch.__version__`` of the registered build (a tag-less pin installs a cu128 wheel)."""
+    return pinned if "+" in pinned else f"{pinned}+cu128"
+
+
 def registered_device_plan(section: str) -> dict[str, Any] | None:
     """``run.json``'s ``device_plan`` for a run on exactly the registered devices.
 
@@ -219,7 +224,7 @@ def registered_device_plan(section: str) -> dict[str, Any] | None:
         "source": "card",
         "torch_pin": registered.torch_pin,
         "torch": {
-            "version": f"{registered.torch_version}+cu128",
+            "version": _installed_version(registered.torch_version),
             "cuda": "12.8",
             "cuda_available": True,
             "device_count": len(names),

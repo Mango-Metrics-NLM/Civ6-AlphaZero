@@ -55,7 +55,8 @@ logger = logging.getLogger(__name__)
 MARKER_NAME = ".pinned.json"
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$|^HEAD$")
 # An exact pin only: a range would let two builds of one card resolve differently.
-_TORCH_SPEC_RE = re.compile(r"^torch==[0-9]+(\.[0-9]+){1,3}$")
+# ``torch==X.Y.Z`` with an optional build tag (PEP 440 local version, ``+cu128``).
+_TORCH_SPEC_RE = re.compile(r"^torch==[0-9]+(\.[0-9]+){1,3}(\+[A-Za-z0-9]+(\.[A-Za-z0-9]+)*)?$")
 _INDEX_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$")
 
 Runner = Callable[..., str]
@@ -67,11 +68,17 @@ class PinnedEnvError(RuntimeError):
 
 @dataclass(frozen=True)
 class TorchPin:
-    """An exact torch build for a pinned venv: ``torch==X.Y.Z`` from ``index_url``.
+    """An exact torch build for a pinned venv: ``torch==X.Y.Z[+tag]`` from ``index_url``.
 
     Both parts are validated because they become ``pip`` arguments: the spec must
     be an exact ``torch==`` pin and the index an ``https`` URL with no query,
     credentials or whitespace.
+
+    The optional ``+tag`` names the build (``torch==2.11.0+cu128``). With it, the
+    device check compares the installed ``torch.__version__`` in full
+    (:func:`alpha_zero.utils.device.torch_build_matches`), so a cached venv whose
+    torch was replaced by another CUDA variant of the same release is refused.
+    Without it only the public version is compared.
     """
 
     spec: str
@@ -80,7 +87,8 @@ class TorchPin:
     def __post_init__(self) -> None:
         if not _TORCH_SPEC_RE.fullmatch(self.spec):
             raise PinnedEnvError(
-                f"torch_spec must be an exact pin such as 'torch==2.11.0', got {self.spec!r}"
+                "torch_spec must be an exact pin such as 'torch==2.11.0' or "
+                f"'torch==2.11.0+cu128', got {self.spec!r}"
             )
         if not _INDEX_URL_RE.fullmatch(self.index_url):
             raise PinnedEnvError(

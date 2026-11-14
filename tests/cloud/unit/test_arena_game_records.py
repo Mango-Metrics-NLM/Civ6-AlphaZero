@@ -8,7 +8,9 @@ arena: ``ArenaResult`` keeps its fields and ``to_dict`` keeps its keys.
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import re
 from typing import Any
 
 import pytest
@@ -40,6 +42,19 @@ def _arena(**kwargs: Any) -> ArenaResult:
         player_b_factory=lambda s: RandomAgent(seed=s),
         **kwargs,
     )
+
+
+class _Recording:
+    """A player that plays as ``inner`` does and logs every action it returns."""
+
+    def __init__(self, inner: Any, log: list[int]) -> None:
+        self._inner = inner
+        self._log = log
+
+    def select_action(self, env: Any, observation: Any) -> int:
+        action = int(self._inner.select_action(env, observation))
+        self._log.append(action)
+        return action
 
 
 class TestGameRecords:
@@ -74,6 +89,49 @@ class TestGameRecords:
             result.draws,
             result.losses,
         )
+
+    def test_every_record_carries_the_games_length_and_a_digest_of_its_actions(self) -> None:
+        result = _arena()
+        assert result.games, "no games were played"
+        for game in result.games:
+            assert set(game) == {"pair", "seat", "result", "moves", "actions_sha256"}
+            assert game["moves"] > 0
+            assert re.fullmatch(r"[0-9a-f]{64}", game["actions_sha256"])
+
+    def test_the_digest_is_every_action_of_the_game_in_order(self) -> None:
+        """Recomputed here from what the players actually returned, both sides interleaved.
+
+        Negative control: dropping ``actions.update`` from the arena loop, or hashing
+        only one side's moves, fails this; so does counting moves any other way.
+        """
+        logs: list[list[int]] = []
+
+        def player_a(seed: int) -> _Recording:
+            logs.append([])  # the arena builds model_a's player first, once per game
+            return _Recording(GreedyHeuristicAgent(seed=seed), logs[-1])
+
+        def player_b(seed: int) -> _Recording:
+            return _Recording(RandomAgent(seed=seed), logs[-1])
+
+        result = run_arena(
+            model_a=None,
+            model_b=None,
+            num_games=4,
+            board_size=5,
+            max_turns=6,
+            seed=_SEED,
+            player_a_factory=player_a,
+            player_b_factory=player_b,
+        )
+        assert len(logs) == len(result.games) == 4
+        for game, actions in zip(result.games, logs, strict=True):
+            assert game["moves"] == len(actions) > 0
+            text = "".join(f"{action}," for action in actions)
+            assert game["actions_sha256"] == hashlib.sha256(text.encode()).hexdigest()
+        assert len({game["actions_sha256"] for game in result.games}) > 1, "one digest for all"
+
+    def test_a_seeded_arena_repeats_move_for_move(self) -> None:
+        assert _arena().games == _arena().games
 
     def test_a_subset_replays_those_games_of_the_full_run(self) -> None:
         full = _arena()

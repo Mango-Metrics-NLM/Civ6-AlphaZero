@@ -505,6 +505,11 @@ def test_section_7_1_registers_the_torch_build_and_both_gpus() -> None:
     assert registered is not None
     assert registered.torch_spec.startswith("torch==")
     assert registered.torch_index_url.startswith("https://download.pytorch.org/whl/cu")
+    # The pin names its build, and the tag is the index it is installed from: a pin
+    # without a tag is compared on the public version alone, which would let another
+    # CUDA variant of the same release stand in for the registered build.
+    tag = registered.torch_index_url.rsplit("/", 1)[1]
+    assert registered.torch_spec.endswith(f"+{tag}"), registered.torch_spec
     assert registered.cuda_visible_devices == "0,1"
     assert sorted(registered.gpus) == [0, 1] and all(registered.gpus.values())
 
@@ -528,7 +533,7 @@ def test_a_registration_without_a_devices_block_registers_none() -> None:
 
 _BLOCK = (
     "<!-- a1-devices -->\n```text\n"
-    "torch_spec: torch==2.11.0\n"
+    "torch_spec: torch==2.11.0+cu128\n"
     "torch_index_url: https://download.pytorch.org/whl/cu128\n"
     "cuda_visible_devices: 0,1\n"
     "cuda:0: GPU A\ncuda:1: GPU B\n```\n"
@@ -538,7 +543,7 @@ _BLOCK = (
 def test_the_devices_block_is_read_key_by_key() -> None:
     registered = registered_devices(_BLOCK)
     assert registered is not None
-    assert registered.torch_version == "2.11.0"
+    assert registered.torch_version == "2.11.0+cu128"
     assert registered.gpus == {0: "GPU A", 1: "GPU B"}
 
 
@@ -570,6 +575,16 @@ def _matching_plan() -> dict[str, Any]:
     }
 
 
+def test_a_registration_whose_pin_names_no_build_is_judged_on_the_public_version() -> None:
+    """Backwards compatible: a registration without a build tag is judged as registered."""
+    registered = registered_devices(_BLOCK.replace("+cu128", ""))
+    assert registered is not None and registered.torch_version == "2.11.0"
+    plan = {**_matching_plan(), "torch_pin": registered.torch_pin}
+    assert device_plan_problems(plan, registered) == []
+    other = {**plan, "torch": {**plan["torch"], "version": "2.11.0+cu130"}}
+    assert device_plan_problems(other, registered) == []
+
+
 def test_a_device_plan_on_the_registered_devices_has_no_problems() -> None:
     registered = registered_devices(_BLOCK)
     assert registered is not None
@@ -585,7 +600,11 @@ def test_a_device_plan_on_the_registered_devices_has_no_problems() -> None:
         ),
         (lambda p: {**p, "torch": {**p["torch"], "devices": ["GPU A"]}}, "cuda:1 is None"),
         (lambda p: {**p, "torch": {**p["torch"], "version": "2.12.0+cu128"}}, "torch.version"),
+        # Another CUDA variant of the registered release, and an untagged build.
+        (lambda p: {**p, "torch": {**p["torch"], "version": "2.11.0+cu130"}}, "torch.version"),
+        (lambda p: {**p, "torch": {**p["torch"], "version": "2.11.0"}}, "torch.version"),
         (lambda p: {**p, "torch_pin": {"spec": "torch==2.11.0", "index_url": "x"}}, "torch_pin"),
+        (lambda p: {**p, "torch_pin": {**p["torch_pin"], "spec": "torch==2.11.0"}}, "torch_pin"),
         (lambda p: {**p, "CUDA_DEVICE_ORDER": "FASTEST_FIRST"}, "CUDA_DEVICE_ORDER"),
         (lambda p: {**p, "CUDA_VISIBLE_DEVICES": "1,0"}, "CUDA_VISIBLE_DEVICES"),
         (lambda p: None, "records no device_plan"),

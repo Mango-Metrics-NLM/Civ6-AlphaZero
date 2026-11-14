@@ -2,10 +2,11 @@
 
 ## 2026-11-14 - GPU-first registered runs (PR #138)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
-- **Task:** Made registered runs GPU-first on the maintainer's instruction (`cuda:0` trains, `cuda:1` judges, pinned `torch==2.11.0` from the cu128 index), then hardened it after four independent reviews (QA, `sdlc-architect`, `sdlc-ml-scientist`, and `sdlc-developer` building the reproduction tooling).
+- **Task:** Made registered runs GPU-first on the maintainer's instruction (`cuda:0` trains, `cuda:1` judges, pinned `torch==2.11.0+cu128` from the cu128 index), then hardened it after four independent reviews (QA, `sdlc-architect`, `sdlc-ml-scientist`, and `sdlc-developer` building the reproduction tooling).
   - Driver: torch pin in the venv identity, `--probe`, devices read through each runner's own parser, a real CUDA operation per device in the preflight, expected GPU name per ordinal.
   - Science: section 7.1 re-registered (digest `dba90481…5d91`) with a machine-readable `a1-devices` block; a re-run after an interruption is a reproduction check and one that differs cannot PASS; T0b's first invocation is the GPU determinism check (`scripts/check_determinism.py`).
   - Structure and harness: `alpha_zero/local/` split into `card.py` / `devices.py` / `run_card.py`; skill `a1-reregister`; `make verify-registration`; `a1_protocol digest`; C4 component view.
+  - After the handoff, an automated review (Copilot) of the PR: three findings were already fixed; two were real and are fixed (the pin names its build and is compared in full; arena records carry `moves` and `actions_sha256`, so games are compared move for move). Section 7.1 re-registered again (digest `e460a353…7c17`); `coverage_omitted_lines` baseline 66,852 -> 66,858.
 - **Files Changed:** 6 commits, 52 files (+6,391 / −299) on `claude/cool-lovelace-o02vn9`; 14 test files added or changed.
 - **Tests:** at `68b6c5c`: unit 10,468 passed; regression + governance + scripts + security 1,927; integration + e2e + cloud + smoke + sanity + inference 1,559. Eight failures, all also failing on the base commit in this container (`.env`, Google credentials, running as root). ruff, format and mypy (345 files) clean; validators, debt ratchet (no baseline change) and gitleaks clean; coverage on changed modules 90–100% (path-based; CI is the gate for the global figure). Every new gate has a recorded negative control.
 - **Status:** complete; handed to Pre-PR. **Nothing on this path has run on a GPU or on Windows.**

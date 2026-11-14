@@ -122,12 +122,26 @@ def test_a_missing_or_malformed_report_refuses_cuda_and_allows_cpu(report: Any) 
     assert devices.device_problem({"train": "cpu", "eval": "auto"}, report) is None
 
 
-def test_the_torch_pin_is_checked_ignoring_the_local_version_tag() -> None:
+def test_a_pin_without_a_build_tag_is_checked_on_the_public_version() -> None:
     pin = TorchPin("torch==2.11.0", _CU128)
     assert devices.device_problem({}, {"version": "2.11.0+cu128"}, torch_pin=pin) is None
     assert devices.device_problem({}, {"version": "2.11.0"}, torch_pin=pin) is None
     wrong = devices.device_problem({}, {"version": "2.11.1+cu128"}, torch_pin=pin)
     assert wrong is not None and "pins torch==2.11.0" in wrong
+
+
+@pytest.mark.parametrize("installed", ["2.11.0+cu130", "2.11.0+cpu", "2.11.0", "2.11.1+cu128", ""])
+def test_a_pin_that_names_its_build_refuses_any_other_build(installed: str) -> None:
+    """A cached venv whose torch was swapped for another CUDA variant must not run.
+
+    Negative control: comparing only the public version (the code before the
+    Copilot review of PR #138) accepts the first three of these.
+    """
+    pin = TorchPin("torch==2.11.0+cu128", _CU128)
+    assert devices.device_problem({}, {"version": "2.11.0+cu128"}, torch_pin=pin) is None
+    wrong = devices.device_problem({}, {"version": installed}, torch_pin=pin)
+    assert wrong is not None and "pins torch==2.11.0+cu128" in wrong
+    assert repr(installed) in wrong or not installed
 
 
 # --------------------------------------------------------------------------

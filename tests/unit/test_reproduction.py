@@ -488,6 +488,35 @@ def test_one_changed_game_is_named_by_arm_and_index(runs: tuple[Path, Path]) -> 
     assert '"result": "loss"' in found and '"result": "win"' in found
 
 
+def _stamp_actions(run: Path, extra_move_in_game: int | None) -> None:
+    """Give every game record a length and an action digest, as the arena writes them."""
+    path = run / rp.ARENA_DIR_NAME / ARM / rp.ARENA_RESULT_FILE
+    envelope = json.loads(path.read_text(encoding="utf-8"))
+    for index, game in enumerate(envelope["results"][0]["games"]):
+        actions = f"{index},1,2," + ("3," if index == extra_move_in_game else "")
+        game["moves"] = actions.count(",")
+        game["actions_sha256"] = hashlib.sha256(actions.encode()).hexdigest()
+    path.write_text(json.dumps(envelope), encoding="utf-8")
+
+
+def test_other_moves_with_the_same_outcome_are_a_difference(runs: tuple[Path, Path]) -> None:
+    """Win/draw/loss alone cannot see a game that was played differently (PR #138 review).
+
+    Negative control: with the records cut back to ``{pair, seat, result}``, which is
+    what the arena wrote before it recorded ``moves`` and ``actions_sha256``, the two
+    runs below compare equal.
+    """
+    attempt, rerun = runs
+    _stamp_actions(attempt, None)
+    _stamp_actions(rerun, None)
+    assert differences(attempt, rerun) == []
+    _stamp_actions(rerun, 1)
+    (found,) = differences(attempt, rerun)
+    assert f"arena {ARM}" in found
+    assert "game index 1" in found and "1 of 4 games differ" in found
+    assert "actions_sha256" in found and '"moves": 4' in found
+
+
 def test_arena_shape_differences_are_reported(runs: tuple[Path, Path]) -> None:
     attempt, rerun = runs
     write_arena(rerun, ARM, RESULTS[:2], stamp="bb", seed=SEED + 1)

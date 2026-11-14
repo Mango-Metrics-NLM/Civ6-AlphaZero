@@ -30,7 +30,7 @@ import pytest
 import torch
 
 from alpha_zero.utils import seeding
-from alpha_zero.utils.device import cuda_ordinal
+from alpha_zero.utils.device import cuda_ordinal, torch_build_matches
 
 REPO = Path(__file__).resolve().parents[2]
 #: An ordinal no test machine has, so "unavailable" holds with or without a GPU.
@@ -82,6 +82,27 @@ def restore_backend_flags() -> Any:
 )
 def test_cuda_ordinal(device: object, ordinal: int | None) -> None:
     assert cuda_ordinal(device) == ordinal
+
+
+@pytest.mark.parametrize(
+    ("installed", "pinned", "same"),
+    [
+        ("2.11.0+cu128", "2.11.0+cu128", True),
+        ("2.11.0+cu130", "2.11.0+cu128", False),  # another CUDA variant of the release
+        ("2.11.0+cpu", "2.11.0+cu128", False),
+        ("2.11.0", "2.11.0+cu128", False),  # an untagged build is not the named one
+        ("2.11.1+cu128", "2.11.0+cu128", False),
+        ("2.11.0+cu128", "2.11.0", True),  # a pin with no tag names no build
+        ("2.11.0", "2.11.0", True),
+        ("2.11.1", "2.11.0", False),
+        (" 2.11.0+cu128\n", "2.11.0+cu128", True),
+        (None, "2.11.0", False),
+        ("", "2.11.0+cu128", False),
+    ],
+)
+def test_torch_build_matches(installed: object, pinned: str, same: bool) -> None:
+    """Negative control: stripping the tag from both sides makes rows 2-4 pass."""
+    assert torch_build_matches(installed, pinned) is same
 
 
 @pytest.mark.parametrize("device", ["cpu", "auto", "mps", None])

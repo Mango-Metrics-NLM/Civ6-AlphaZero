@@ -34,6 +34,22 @@ environment built for the same commit with a different torch pin or none.
 - **WHEN** a card gives a torch range, a non-`torch` requirement, a non-https index, or an index URL carrying credentials, a query or extra arguments
 - **THEN** the card is refused at load
 
+### Requirement: A pin that names its build is compared in full
+
+A torch pin MAY name its build with a local version tag (`torch==2.11.0+cu128`).
+When it does, the device check and the release verifier MUST compare the
+installed `torch.__version__` with the pinned version in full. A pin with no tag
+MUST be compared on the public version alone. The registered pin MUST name its
+build.
+
+#### Scenario: Another CUDA variant of the same release
+- **WHEN** a card pins `torch==2.11.0+cu128` and the pinned environment holds `2.11.0+cu130`
+- **THEN** the card is refused, and a run recorded with that build is VOID
+
+#### Scenario: A pin without a tag
+- **WHEN** a card pins `torch==2.11.0` and the pinned environment holds `2.11.0+cu128`
+- **THEN** the pin is satisfied
+
 ### Requirement: A card that pins a torch build names every device
 
 A run card that pins a torch build MUST give every invocation an explicit device.
