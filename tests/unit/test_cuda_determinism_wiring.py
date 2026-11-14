@@ -30,6 +30,7 @@ import pytest
 import torch
 
 from alpha_zero.utils import seeding
+from alpha_zero.utils.device import cuda_ordinal
 
 REPO = Path(__file__).resolve().parents[2]
 #: An ordinal no test machine has, so "unavailable" holds with or without a GPU.
@@ -80,7 +81,7 @@ def restore_backend_flags() -> Any:
     ],
 )
 def test_cuda_ordinal(device: object, ordinal: int | None) -> None:
-    assert seeding.cuda_ordinal(device) == ordinal
+    assert cuda_ordinal(device) == ordinal
 
 
 @pytest.mark.parametrize("device", ["cpu", "auto", "mps", None])
@@ -105,7 +106,7 @@ def test_cuda_device_gets_every_determinism_switch(
     assert torch.backends.cudnn.deterministic is True
     assert torch.backends.cudnn.benchmark is False
     assert torch.are_deterministic_algorithms_enabled() is True
-    assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == seeding.CUBLAS_WORKSPACE_CONFIG
+    assert os.environ[seeding.CUBLAS_WORKSPACE_ENV] == seeding.CUBLAS_WORKSPACE_DETERMINISTIC
 
 
 def test_an_operators_cublas_setting_is_not_overwritten(
@@ -114,6 +115,19 @@ def test_an_operators_cublas_setting_is_not_overwritten(
     monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":16:8")
     seeding.enforce_deterministic_backend("cuda")
     assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":16:8"
+
+
+def test_an_inherited_cublas_setting_cublas_will_reject_is_warned_about(
+    restore_backend_flags: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """cuBLAS raises at the first matmul with no hint where the value came from; say it early."""
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":0:0")
+    with caplog.at_level("WARNING", logger="alpha_zero.utils.seeding"):
+        seeding.enforce_deterministic_backend("cuda:1")
+    assert any("inherited" in r.message and ":0:0" in r.getMessage() for r in caplog.records)
+    assert os.environ["CUBLAS_WORKSPACE_CONFIG"] == ":0:0", "an operator's value is never rewritten"
 
 
 # --------------------------------------------------------------------------
@@ -269,14 +283,21 @@ def test_calibration_payload_records_the_device_it_ran_on(tmp_path: Path) -> Non
 def test_evidence_gpu_model_is_the_device_used(
     monkeypatch: pytest.MonkeyPatch, device: object, expected: str
 ) -> None:
-    from alpha_zero import training_civ6
     from alpha_zero.evaluation import benchmark_evidence
 
     monkeypatch.setattr(torch.cuda, "is_available", lambda: True)
     monkeypatch.setattr(torch.cuda, "device_count", lambda: 2)
     monkeypatch.setattr(torch.cuda, "get_device_name", lambda index=0: f"GPU-{index}")
     assert benchmark_evidence.hardware_summary(device)["gpu_model"] == expected
-    assert training_civ6._hardware_summary(device)["gpu_model"] == expected
+
+
+def test_the_trainer_uses_the_same_hardware_summary_as_the_benchmark() -> None:
+    """One definition: the trainer's evidence block calls the evidence module's function."""
+    from alpha_zero import training_civ6
+    from alpha_zero.evaluation import benchmark_evidence
+
+    assert training_civ6.hardware_summary is benchmark_evidence.hardware_summary
+    assert not hasattr(training_civ6, "_hardware_summary")
 
 
 def test_evidence_gpu_model_is_none_without_cuda(monkeypatch: pytest.MonkeyPatch) -> None:

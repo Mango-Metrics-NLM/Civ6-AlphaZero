@@ -78,11 +78,11 @@ class TorchPin:
     index_url: str
 
     def __post_init__(self) -> None:
-        if not _TORCH_SPEC_RE.match(self.spec):
+        if not _TORCH_SPEC_RE.fullmatch(self.spec):
             raise PinnedEnvError(
                 f"torch_spec must be an exact pin such as 'torch==2.11.0', got {self.spec!r}"
             )
-        if not _INDEX_URL_RE.match(self.index_url):
+        if not _INDEX_URL_RE.fullmatch(self.index_url):
             raise PinnedEnvError(
                 f"torch_index_url must be a plain https URL, got {self.index_url!r}"
             )
@@ -216,6 +216,12 @@ def _build_venv(
     runner([sys.executable, "-m", "venv", str(venv)], env=env)
     py = _venv_python(venv)
     if torch_pin is not None:
+        logger.info(
+            "installing %s from %s into %s (a large download; pip's output is captured)",
+            torch_pin.spec,
+            torch_pin.index_url,
+            venv,
+        )
         runner(
             [py, "-m", "pip", "install", torch_pin.spec, "--index-url", torch_pin.index_url],
             env=env,

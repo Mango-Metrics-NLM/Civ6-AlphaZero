@@ -18,30 +18,19 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 from alpha_zero.evaluation.a1_protocol import (
-    PROTOCOL_END,
+    REGISTRATION_LOG_HEADING,
+    digest_report,
     protocol_sha256,
     registered_protocol,
+    registration_log,
 )
+from alpha_zero.evaluation.a1_protocol import main as a1_protocol_main
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EVALUATION_MD = REPO_ROOT / "docs" / "EVALUATION.md"
-
-_LOG_HEADING = "**Registration log.**"
-_ROW_RE = re.compile(r"^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*`([0-9a-f]{64})`\s*\|(.+)\|\s*$")
-
-
-def registration_log(text: str) -> list[tuple[str, str, str]]:
-    """``[(date, digest, change)]`` from the log table after the end marker."""
-    text = text.replace("\r\n", "\n")
-    tail = text[text.index(PROTOCOL_END) :]
-    assert _LOG_HEADING in tail, "the registration log must follow the end marker"
-    rows = []
-    for line in tail[tail.index(_LOG_HEADING) :].splitlines():
-        match = _ROW_RE.match(line)
-        if match:
-            rows.append((match.group(1), match.group(2), match.group(3).strip()))
-    return rows
 
 
 def _text() -> str:
@@ -68,7 +57,7 @@ def test_every_logged_change_says_what_changed() -> None:
 def test_the_log_is_outside_the_hashed_region() -> None:
     text = _text()
     region = registered_protocol(text)
-    assert _LOG_HEADING not in region
+    assert REGISTRATION_LOG_HEADING not in region
     for _date, digest, _change in registration_log(text):
         assert digest not in region
 
@@ -100,3 +89,42 @@ def test_the_registration_constants_were_confirmed_against_the_last_row() -> Non
     from alpha_zero.evaluation.a1_registration import REGISTRATION_DIGEST
 
     assert registration_log(_text())[-1][1] == REGISTRATION_DIGEST
+
+
+# ---------------------------------------------------------------------------
+# ``python -m alpha_zero.evaluation.a1_protocol digest`` -- the re-registration gate
+#
+# Negative control (recorded, then reverted): making ``digest_report`` return
+# ``agree=True`` unconditionally made the two "disagree" tests below fail.
+# ---------------------------------------------------------------------------
+
+
+def test_the_digest_command_agrees_on_the_committed_registration(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert a1_protocol_main(["digest"]) == 0
+    out = capsys.readouterr().out
+    assert protocol_sha256(_text()) in out and "AGREE" in out
+
+
+def test_the_digest_command_fails_when_the_region_changed_without_a_log_row(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    edited = tmp_path / "EVALUATION.md"
+    text = _text()
+    region = registered_protocol(text)
+    edited.write_text(text.replace(region, region + "An unlogged edit.\n", 1), encoding="utf-8")
+    assert a1_protocol_main(["digest", "--file", str(edited)]) == 1
+    out = capsys.readouterr().out
+    assert "add a registration-log row" in out and "REGISTRATION_DIGEST" in out
+
+
+def test_digest_report_names_a_stale_constant() -> None:
+    lines, agree = digest_report(_text(), "0" * 64)
+    assert not agree
+    assert any("re-confirm the constants" in line for line in lines)
+    assert not any("add a registration-log row" in line for line in lines)
+
+
+def test_the_digest_command_reports_an_unreadable_file(tmp_path: Path) -> None:
+    assert a1_protocol_main(["digest", "--file", str(tmp_path / "missing.md")]) == 2

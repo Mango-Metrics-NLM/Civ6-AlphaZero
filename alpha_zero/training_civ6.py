@@ -43,6 +43,7 @@ from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
 from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.evaluation.benchmark_evidence import hardware_summary
 from alpha_zero.evaluation.scoring import ScoreSummary, summarize
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
@@ -74,12 +75,7 @@ from alpha_zero.utils.game_budget import (
     add_budget_arguments,
     enforce_cli,
 )
-from alpha_zero.utils.seeding import (
-    SeedStream,
-    cuda_ordinal,
-    derive_seed,
-    enforce_deterministic_backend,
-)
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 # Configure logging
 logging.basicConfig(
@@ -1210,20 +1206,6 @@ def write_eval_json(
     return result
 
 
-def _hardware_summary(device: object = None) -> dict[str, Any]:
-    """``gpu_model`` names the GPU ``device`` runs on (GPU 0 when it is not a CUDA device)."""
-    gpu = None
-    if torch.cuda.is_available():
-        ordinal = cuda_ordinal(device) or 0
-        gpu = torch.cuda.get_device_name(ordinal if ordinal < torch.cuda.device_count() else 0)
-    return {
-        "cpu_model": platform.processor() or None,
-        "gpu_model": gpu,
-        "logical_cores": os.cpu_count(),
-        "omp_num_threads": os.environ.get("OMP_NUM_THREADS"),
-    }
-
-
 def eval_evidence_block(
     config: TrainingConfig,
     provenance: dict[str, Any],
@@ -1246,7 +1228,7 @@ def eval_evidence_block(
         "search_epoch": EVAL_SEARCH_EPOCH,
         "seed": config.seed,
         "command": shlex.join(["python", "-m", "alpha_zero.training_civ6", *sys.argv[1:]]),
-        "hardware": _hardware_summary(config.device),
+        "hardware": hardware_summary(config.device),
         "python": platform.python_version(),
         "torch": torch.__version__,
         "numpy": np.__version__,

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from alpha_zero.evaluation.scoring import interval_hull, pair_score_interval, score_interval
-from alpha_zero.utils.seeding import cuda_ordinal
+from alpha_zero.utils.device import cuda_ordinal
 
 __all__ = [
     "EVIDENCE_SCHEMA_VERSION",

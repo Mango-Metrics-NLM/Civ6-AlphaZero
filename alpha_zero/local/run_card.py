@@ -71,14 +71,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import yaml
-
+from alpha_zero.local import devices
+from alpha_zero.local.card import Invocation, RunCard, RunCardError, load_card
+from alpha_zero.local.devices import TORCH_REPORT_CODE
 from alpha_zero.local.isolation import enter_local_mode
 from alpha_zero.local.pinned_env import (
     PinnedEnv,
     PinnedEnvError,
     Runner,
-    TorchPin,
     _pyproject_version,
     child_env,
     prepare_pinned_run,
@@ -90,6 +90,7 @@ from alpha_zero.utils.data_root import (
     ENV_VAR as DATA_ROOT_ENV,
 )
 from alpha_zero.utils.data_root import (
+    RUN_ID_MAX_LENGTH,
     SUBDIRS,
     DataRootError,
     assert_safe_data_root,
@@ -98,11 +99,14 @@ from alpha_zero.utils.data_root import (
     scoped_temp_env,
     validate_run_id,
 )
-from alpha_zero.utils.seeding import CUBLAS_WORKSPACE_CONFIG, cuda_ordinal
+from alpha_zero.utils.device import cuda_ordinal
 
 logger = logging.getLogger(__name__)
 
 RUN_JSON = "run.json"
+#: ``run.json`` schema. Additive keys (``probe``, ``device_plan.*``, ``error_tail``)
+#: do not bump it: readers accept unknown keys and ``verify_release_evidence``
+#: requires exactly this value.
 SCHEMA_VERSION = 1
 STATUS_RUNNING = "RUNNING"
 STATUS_COMPLETED = "COMPLETED"
@@ -110,23 +114,17 @@ STATUS_FAILED = "FAILED"
 STATUS_VOID = "VOID"
 #: A ``--probe`` rehearsal: pinned, preflighted, device-checked, nothing launched.
 STATUS_PROBED = "PROBED"
+#: The attribute every runner's parser stores its ``--device`` under.
+DEVICE_ATTRIBUTE = "device"
+#: The logger whose "using cpu" fallback warnings are about the driver, not the run.
+DEVICE_LOGGER_NAME = "alpha_zero.utils.device"
+PROBE_PREFIX = "probe-"
+PROBE_STAMP_FORMAT = "%Y%m%dT%H%M%S%f"
+#: Lines of a failed child's log copied into ``run.json`` (``error_tail``) and printed,
+#: so the reason -- a deterministic-algorithm error names the offending op -- is not
+#: left in a log file the operator has to find.
+ERROR_TAIL_LINES = 40
 EXIT_INTERRUPTED = 130
-_CARD_KEYS = frozenset(
-    {
-        "card_id",
-        "sha",
-        "max_games",
-        "approval_ref",
-        "invocations",
-        "cuda_visible_devices",
-        "torch_spec",
-        "torch_index_url",
-        "description",
-    }
-)
-_INVOCATION_KEYS = frozenset({"name", "runner", "argv"})
-_SHA_CHARS = frozenset("0123456789abcdefABCDEF")
-
 #: Run in the pinned child. Imports the PINNED ``assert_running_pinned`` -- a SHA
 #: that predates it cannot pass, which is the fail-closed answer for a card.
 PREFLIGHT_CODE = (
@@ -137,21 +135,9 @@ PREFLIGHT_CODE = (
     "assert_running_pinned(PinnedEnv(python=Path(sys.argv[1]), src=Path(sys.argv[2])))\n"
     "info = {'alpha_zero_file': alpha_zero.__file__,"
     " 'version': str(alpha_zero.__version__), 'prefix': sys.prefix}\n"
-    "try:\n"
-    "    import torch\n"
-    "    info['torch'] = {'version': str(torch.__version__), 'cuda': torch.version.cuda,"
-    " 'cuda_available': bool(torch.cuda.is_available())}\n"
-    "    count = torch.cuda.device_count() if info['torch']['cuda_available'] else 0\n"
-    "    info['torch']['device_count'] = int(count)\n"
-    "    info['torch']['devices'] = [str(torch.cuda.get_device_name(i)) for i in range(count)]\n"
-    "except Exception as exc:\n"
-    "    info['torch'] = {'error': type(exc).__name__}\n"
-    "print(json.dumps(info))\n"
+    + TORCH_REPORT_CODE
+    + "print(json.dumps(info))\n"
 )
-
-
-class RunCardError(RuntimeError):
-    """The card is malformed, unpriceable or cannot be run."""
 
 
 class CardResumedError(RunCardError):
@@ -196,12 +182,22 @@ def _calibrate_throughput_inputs(argv: Sequence[str]) -> BudgetInputs:
     return {"games": args.games}, args
 
 
+def _determinism_check_inputs(argv: Sequence[str]) -> BudgetInputs:
+    # By name: scripts/ is outside the type-checked package (``mypy alpha_zero/``).
+    check_determinism = importlib.import_module("scripts.check_determinism")
+    args = check_determinism._parse_args(list(argv))
+    return check_determinism.budget_inputs(args), args
+
+
 @dataclass(frozen=True)
 class RunnerSpec:
     """A runner the driver can price and launch: ``python -m <module> <argv>``."""
 
     module: str
     budget_inputs: Callable[[Sequence[str]], BudgetInputs]
+    #: The parser attributes that hold this runner's device(s). One for most
+    #: runners; a runner that trains on one device and judges on another has two.
+    device_attributes: tuple[str, ...] = (DEVICE_ATTRIBUTE,)
 
 
 #: Runners a card may name. A ``game_budget`` runner absent here is refused.
@@ -213,31 +209,19 @@ RUNNERS: dict[str, RunnerSpec] = {
     "calibrate_throughput": RunnerSpec(
         "scripts.calibrate_throughput", _calibrate_throughput_inputs
     ),
+    # T0b's cross-process reproduction check (section 7.1 "Devices"): it trains on one
+    # device and judges on another, so both are read and both are held to the device check.
+    "determinism_check": RunnerSpec(
+        "scripts.check_determinism",
+        _determinism_check_inputs,
+        device_attributes=("train_device", "arena_device"),
+    ),
 }
 
 
 # ---------------------------------------------------------------------------
 # Card model
 # ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class Invocation:
-    name: str
-    runner: str
-    argv: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class RunCard:
-    card_id: str
-    sha: str
-    max_games: int
-    invocations: tuple[Invocation, ...]
-    approval_ref: str | None = None
-    cuda_visible_devices: str | None = None
-    path: Path | None = None
-    torch_pin: TorchPin | None = None
 
 
 @dataclass(frozen=True)
@@ -275,140 +259,117 @@ class CardResult:
     run_dir: Path
     total_priced_games: int
     invocations: list[InvocationResult] = field(default_factory=list)
+    error: str | None = None
+    error_tail: list[str] = field(default_factory=list)
+    device_plan: dict[str, Any] | None = None
 
 
-def _scalar_arg(value: Any, where: str) -> str:
-    if isinstance(value, bool) or not isinstance(value, (str, int, float)):
-        raise RunCardError(f"{where}: argv entries must be strings or numbers, got {value!r}")
-    return str(value)
+# ---------------------------------------------------------------------------
+# Devices (the logic lives in alpha_zero.local.devices; these bind it to a card)
+# ---------------------------------------------------------------------------
 
 
-def load_card(path: str | Path) -> RunCard:
-    """Parse and validate a run card. Raises :class:`RunCardError` (or ``DataRootError``)."""
-    path = Path(path)
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise RunCardError(f"{path}: a run card is a YAML mapping")
-    unknown = set(raw) - _CARD_KEYS
-    if unknown:
-        raise RunCardError(f"{path}: unknown card keys {sorted(unknown)}")
-    card_id = validate_run_id(str(raw.get("card_id", "")))
-    sha = str(raw.get("sha", ""))
-    if not (7 <= len(sha) <= 40 and set(sha) <= _SHA_CHARS):
-        raise RunCardError(f"{path}: sha must be a 7-40 hex-digit commit, got {sha!r}")
-    max_games = raw.get("max_games")
-    if isinstance(max_games, bool) or not isinstance(max_games, int) or max_games < 0:
-        raise RunCardError(f"{path}: max_games must be a non-negative integer")
-    items = raw.get("invocations")
-    if not isinstance(items, list) or not items:
-        raise RunCardError(f"{path}: invocations must be a non-empty list")
-    invocations: list[Invocation] = []
-    for i, item in enumerate(items):
-        where = f"{path}: invocations[{i}]"
-        if not isinstance(item, dict) or set(item) - _INVOCATION_KEYS:
-            raise RunCardError(f"{where} must be a mapping of {sorted(_INVOCATION_KEYS)}")
-        name = validate_run_id(str(item.get("name", "")))
-        argv = item.get("argv") or []
-        if not isinstance(argv, list):
-            raise RunCardError(f"{where}: argv must be a list")
-        invocations.append(
-            Invocation(
-                name=name,
-                runner=str(item.get("runner", "")),
-                argv=tuple(_scalar_arg(a, where) for a in argv),
-            )
+def _parsed(inv: Invocation) -> BudgetInputs:
+    """``inv``'s argv through its runner's own parser. Raises :class:`RunCardError`."""
+    if inv.runner not in game_budget.priced_runners():
+        raise RunCardError(
+            f"invocation {inv.name!r}: unknown runner {inv.runner!r}; "
+            f"supported: {', '.join(sorted(RUNNERS))}"
         )
-    names = [inv.name for inv in invocations]
-    if len(set(names)) != len(names):
-        raise RunCardError(f"{path}: duplicate invocation names in {names}")
-    approval = raw.get("approval_ref")
-    cuda = raw.get("cuda_visible_devices")
-    torch_spec, torch_index = raw.get("torch_spec"), raw.get("torch_index_url")
-    torch_pin: TorchPin | None = None
-    if (torch_spec is None) != (torch_index is None):
-        raise RunCardError(f"{path}: torch_spec and torch_index_url go together (both or neither)")
-    if torch_spec is not None:
-        try:
-            torch_pin = TorchPin(str(torch_spec), str(torch_index))
-        except PinnedEnvError as exc:
-            raise RunCardError(f"{path}: {exc}") from exc
-    return RunCard(
-        card_id=card_id,
-        sha=sha.lower(),
-        max_games=max_games,
-        invocations=tuple(invocations),
-        approval_ref=(str(approval).strip() or None) if approval is not None else None,
-        cuda_visible_devices=None if cuda is None else str(cuda),
-        path=path,
-        torch_pin=torch_pin,
-    )
+    spec = RUNNERS.get(inv.runner)
+    if spec is None:
+        raise RunCardError(
+            f"invocation {inv.name!r}: runner {inv.runner!r} has a cost model but run cards "
+            f"cannot resolve its argv yet; supported: {', '.join(sorted(RUNNERS))}"
+        )
+    try:
+        with _driver_device_warnings_silenced():
+            return spec.budget_inputs(inv.argv)
+    except SystemExit as exc:  # argparse rejected the argv
+        raise RunCardError(
+            f"invocation {inv.name!r}: {inv.runner} rejected argv {list(inv.argv)} ({exc})"
+        ) from None
 
 
-# ---------------------------------------------------------------------------
-# Devices
-# ---------------------------------------------------------------------------
+@contextlib.contextmanager
+def _driver_device_warnings_silenced() -> Iterator[None]:
+    """Mute ``utils.device``'s fallback warnings while the DRIVER resolves an argv.
 
-
-def requested_devices(card: RunCard) -> dict[str, str]:
-    """``{invocation name: its --device value}`` for every invocation that passes one.
-
-    Both ``--device X`` and ``--device=X`` are read, and the last occurrence wins,
-    as argparse resolves it.
+    Pricing the trainer builds its config, which resolves the device in this
+    interpreter. The driver's torch is not the run's: on a CPU-only driver that
+    prints "device 'cuda:0' requested but CUDA is unavailable; using cpu" for a
+    card that will run on the GPU in its pinned environment -- the very message
+    this module exists to make trustworthy. What the run really has is decided by
+    the pinned child's preflight (``devices.device_problem``), not here.
     """
-    found: dict[str, str] = {}
-    for inv in card.invocations:
-        for i, arg in enumerate(inv.argv):
-            if arg == "--device" and i + 1 < len(inv.argv):
-                found[inv.name] = inv.argv[i + 1]
-            elif arg.startswith("--device="):
-                found[inv.name] = arg.split("=", 1)[1]
+    device_logger = logging.getLogger(DEVICE_LOGGER_NAME)
+    previous = device_logger.level
+    device_logger.setLevel(logging.ERROR)
+    try:
+        yield
+    finally:
+        device_logger.setLevel(previous)
+
+
+def invocation_devices(inv: Invocation) -> dict[str, str | None]:
+    """The device(s) ``inv`` will run on, as its runner's own parser resolves them.
+
+    Reading the parsed namespace -- not the argv tokens -- is what makes this
+    agree with the child: argparse accepts abbreviations (``--dev cuda:1``) and
+    applies defaults (the benchmark's is ``cpu``; the trainer's is unset, which
+    it resolves to ``auto``). ``None`` means the runner leaves that device unset.
+
+    Keys are the invocation's name for a single-device runner and
+    ``<name>.<attribute>`` when a runner has several
+    (:attr:`RunnerSpec.device_attributes`), so each one is checked and recorded.
+    """
+    _, args = _parsed(inv)
+    attributes = RUNNERS[inv.runner].device_attributes
+    found: dict[str, str | None] = {}
+    for attribute in attributes:
+        key = inv.name if len(attributes) == 1 else f"{inv.name}.{attribute}"
+        device = getattr(args, attribute, None)
+        found[key] = None if device is None else str(device)
     return found
 
 
-def device_problem(card: RunCard, torch_report: Any) -> str | None:
-    """Why the pinned venv cannot honour the card's devices, or ``None`` if it can.
+def resolved_devices(card: RunCard) -> dict[str, str | None]:
+    """``{invocation (or invocation.attribute): its parser-resolved device, or None}``."""
+    resolved: dict[str, str | None] = {}
+    for inv in card.invocations:
+        resolved.update(invocation_devices(inv))
+    return resolved
 
-    The runners fall back to CPU with a warning when CUDA is missing
-    (``utils.device``), so without this a card that asks for ``cuda:1`` would
-    train on CPU and exit 0. A card is evidence about a named device; it must
-    refuse instead. Checked against the pinned child's own preflight report:
 
-    * the torch pin, when the card has one, is the torch actually installed;
-    * every explicit ``cuda`` / ``cuda:N`` in an argv exists there.
+def requested_devices(card: RunCard) -> dict[str, str]:
+    """The devices of ``card`` that resolve to a value, by invocation."""
+    return {name: device for name, device in resolved_devices(card).items() if device is not None}
 
-    ``auto`` and ``cpu`` request nothing, so they are not checked.
+
+def refuse_implicit_devices(card: RunCard) -> None:
+    """Refuse a torch-pinned card that leaves any invocation's device to ``auto`` or a default.
+
+    A static property of the card, so it is refused before anything is created
+    (see :func:`alpha_zero.local.devices.implicit_device_problem`).
     """
-    report = torch_report if isinstance(torch_report, Mapping) else {}
-    if card.torch_pin is not None:
-        installed = str(report.get("version", "")).split("+", 1)[0]
-        if installed != card.torch_pin.version:
-            return (
-                f"the card pins {card.torch_pin.spec} but the pinned venv has torch "
-                f"{report.get('version', report.get('error', 'unknown'))!r}"
-            )
-    wanted = {
-        name: (device, index)
-        for name, device in requested_devices(card).items()
-        if (index := cuda_ordinal(device)) is not None
-    }
-    if not wanted:
-        return None
-    if not report.get("cuda_available"):
-        names = ", ".join(sorted(wanted))
-        return (
-            f"invocations {names} ask for CUDA but the pinned venv's torch "
-            f"({report.get('version', report.get('error', 'unknown'))}, "
-            f"cuda={report.get('cuda')}) reports it unavailable; "
-            "set torch_spec/torch_index_url to a CUDA build"
-        )
-    count = int(report.get("device_count", 0))
-    for name, (device, index) in sorted(wanted.items()):
-        if index >= count:
-            return (
-                f"invocation {name} asks for {device} but only {count} CUDA device(s) are "
-                f"visible (CUDA_VISIBLE_DEVICES={card.cuda_visible_devices!r})"
-            )
-    return None
+    problem = devices.implicit_device_problem(resolved_devices(card), torch_pin=card.torch_pin)
+    if problem is not None:
+        raise RunCardError(f"card {card.card_id!r}: {problem}")
+
+
+def device_problem(card: RunCard, torch_report: Any, *, visible: str | None = None) -> str | None:
+    """Why the pinned environment cannot honour the card's devices, or ``None``.
+
+    ``visible`` is the ``CUDA_VISIBLE_DEVICES`` in force for the children; it
+    defaults to the card's own value. See :func:`alpha_zero.local.devices.device_problem`.
+    """
+    return devices.device_problem(
+        requested_devices(card),
+        torch_report,
+        torch_pin=card.torch_pin,
+        visible=card.cuda_visible_devices if visible is None else visible,
+        expected_gpus=card.gpus,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -423,23 +384,7 @@ def price_invocation(inv: Invocation) -> int:
     way this module does. Raises :class:`RunCardError` for an unknown runner or
     an argv the parser rejects.
     """
-    if inv.runner not in game_budget.priced_runners():
-        raise RunCardError(
-            f"invocation {inv.name!r}: unknown runner {inv.runner!r}; "
-            f"supported: {', '.join(sorted(RUNNERS))}"
-        )
-    spec = RUNNERS.get(inv.runner)
-    if spec is None:
-        raise RunCardError(
-            f"invocation {inv.name!r}: runner {inv.runner!r} has a cost model but run cards "
-            f"cannot resolve its argv yet; supported: {', '.join(sorted(RUNNERS))}"
-        )
-    try:
-        resolved, args = spec.budget_inputs(inv.argv)
-    except SystemExit as exc:  # argparse rejected the argv
-        raise RunCardError(
-            f"invocation {inv.name!r}: {inv.runner} rejected argv {list(inv.argv)} ({exc})"
-        ) from None
+    resolved, args = _parsed(inv)
     # The cap the child itself will enforce with this argv -- refuse now, not mid-card.
     games = game_budget.enforce(
         inv.runner,
@@ -563,6 +508,18 @@ def _write_record(path: Path, record: Mapping[str, Any]) -> None:
     os.replace(tmp, path)
 
 
+def probe_run_name(card_id: str, *, now: datetime | None = None) -> str:
+    """The throwaway run directory name for a ``--probe`` of ``card_id``.
+
+    ``probe-<card_id>-<UTC stamp to the microsecond>``, so two probes of one card
+    never collide and neither can be mistaken for (or claim) the card's own
+    directory. The card id is shortened if needed to keep the name a valid run id.
+    """
+    stamp = (now or datetime.now(UTC)).strftime(PROBE_STAMP_FORMAT)
+    budget = RUN_ID_MAX_LENGTH - len(PROBE_PREFIX) - len(stamp) - 1  # 1 for the separator
+    return validate_run_id(f"{PROBE_PREFIX}{card_id[:budget]}-{stamp}")
+
+
 def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -605,6 +562,36 @@ def _run_invocation(cmd: list[str], *, cwd: Path, env: Mapping[str, str], log: P
             proc.kill()
             proc.wait()
             raise
+
+
+def _log_tail(log: Path, lines: int = ERROR_TAIL_LINES) -> list[str]:
+    """The last ``lines`` lines of a child's log, or ``[]`` if it cannot be read."""
+    try:
+        text = log.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    return text.splitlines()[-lines:]
+
+
+def device_report_lines(plan: Mapping[str, Any] | None) -> list[str]:
+    """Human-readable lines for a ``device_plan``: the torch build, then each invocation's GPU."""
+    if not plan:
+        return []
+    torch_info = plan.get("torch")
+    if not isinstance(torch_info, Mapping):
+        torch_info = {}
+    names = list(torch_info.get("devices") or [])
+    lines = [
+        f"torch {torch_info.get('version', torch_info.get('error', 'unknown'))} "
+        f"(cuda {torch_info.get('cuda')}); "
+        f"{devices.ENV_CUDA_VISIBLE_DEVICES}={plan.get(devices.ENV_CUDA_VISIBLE_DEVICES)!r} "
+        f"({plan.get('source')}), order {plan.get(devices.ENV_CUDA_DEVICE_ORDER)}"
+    ]
+    for name, device in (plan.get("requested") or {}).items():
+        index = cuda_ordinal(device)
+        gpu = names[index] if index is not None and index < len(names) else "-"
+        lines.append(f"  {name:<24} {device:<8} {gpu}")
+    return lines
 
 
 def _preflight(env: PinnedEnv, child: Mapping[str, str]) -> dict[str, Any]:
@@ -715,6 +702,7 @@ def run_card(
     repo = Path(repo_root) if repo_root is not None else _default_repo_root()
     card = load_card(card_path)
     priced = price_card(card)  # refuses before anything exists
+    refuse_implicit_devices(card)  # a card that pins torch must name every device
     refuse_placeholder_sha(card)  # likewise: a placeholder must not claim the run dir
     refuse_mcts_overrides()  # an MCTS_* override would VOID the run only after it ran
     refuse_unresolvable_sha(card, repo_root=repo, runner=pinned_runner)  # nor a typo
@@ -723,10 +711,7 @@ def run_card(
     if root_arg is None:  # unreachable: required=True raises
         raise RunCardError(f"{DATA_ROOT_ENV} is not set")
     root = prepare_data_root(Path(root_arg), repo_root=repo)
-    run_name = card.card_id
-    if probe:
-        stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
-        run_name = validate_run_id(f"probe-{card.card_id}"[:48] + f"-{stamp}")
+    run_name = probe_run_name(card.card_id) if probe else card.card_id
     run_dir = root / "runs" / run_name
     _claim_run_dir(run_dir)
     logs = run_dir / "logs"
@@ -764,7 +749,16 @@ def run_card(
         _write_record(record_path, record)
         logger.info("run card %s: %s (%s)", card.card_id, status, record_path)
         ran = [r for r in results if r.exit_code is not None]
-        return CardResult(card.card_id, status, run_dir, priced.total, ran)
+        return CardResult(
+            card.card_id,
+            status,
+            run_dir,
+            priced.total,
+            ran,
+            error=record.get("error"),
+            error_tail=list(record.get("error_tail") or []),
+            device_plan=record.get("device_plan"),
+        )
 
     try:
         with _signals_interrupt():
@@ -783,32 +777,19 @@ def run_card(
             # The child runs from a `git archive` export with no .git; this is how its
             # checkpoints and evaluations learn their commit (utils.checkpoint.read_git_sha).
             child[GIT_SHA_ENV] = env.sha
-            device_source = "unset"
-            if card.cuda_visible_devices is not None:
-                child["CUDA_VISIBLE_DEVICES"] = card.cuda_visible_devices
-                # torch's default order is fastest-first; PCI order makes cuda:N the
-                # same card nvidia-smi calls GPU N, so a card's device names are stable.
-                child["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-                device_source = "card"
-            elif "CUDA_VISIBLE_DEVICES" in child:
-                device_source = "inherited"
-            requested = requested_devices(card)
-            if any(cuda_ordinal(device) is not None for device in requested.values()):
-                # Read when cuBLAS starts, so it must be in the child's environment.
-                child["CUBLAS_WORKSPACE_CONFIG"] = CUBLAS_WORKSPACE_CONFIG
+            device_plan = devices.apply_device_environment(
+                child,
+                cuda_visible_devices=card.cuda_visible_devices,
+                requested=requested_devices(card),
+                torch_pin=card.torch_pin,
+                expected_gpus=card.gpus,
+            )
             record.update(
                 sha=env.sha,
                 wheel_sha256=env.wheel_sha256,
                 python=str(env.python),
                 src=str(env.src),
-                device_plan={
-                    "CUDA_VISIBLE_DEVICES": child.get("CUDA_VISIBLE_DEVICES"),
-                    "CUDA_DEVICE_ORDER": child.get("CUDA_DEVICE_ORDER"),
-                    "CUBLAS_WORKSPACE_CONFIG": child.get("CUBLAS_WORKSPACE_CONFIG"),
-                    "source": device_source,
-                    "requested": requested,
-                    "torch_pin": None if card.torch_pin is None else card.torch_pin.as_dict(),
-                },
+                device_plan=device_plan,
                 env_var_names=sorted(child),
                 pip_freeze=_pip_freeze(env, child, pinned_runner),
             )
@@ -819,9 +800,15 @@ def run_card(
             problem = verify_preflight(env, preflight)
             if problem is not None:
                 return finish(STATUS_FAILED, error=f"preflight: {problem}")
-            problem = device_problem(card, preflight.get("torch"))
+            problem = device_problem(
+                card,
+                preflight.get("torch"),
+                visible=device_plan[devices.ENV_CUDA_VISIBLE_DEVICES],
+            )
             if problem is not None:
+                logger.error("run card %s: devices: %s", card.card_id, problem)
                 return finish(STATUS_FAILED, error=f"devices: {problem}")
+            logger.info("run card %s: devices ok -- torch %s", card.card_id, preflight.get("torch"))
             if probe:
                 return finish(STATUS_PROBED)
 
@@ -837,7 +824,11 @@ def run_card(
                 record["invocations"].append(asdict(result))
                 _write_record(record_path, record)
                 if result.exit_code != 0:
-                    return finish(STATUS_FAILED, error=f"{result.name} exited {result.exit_code}")
+                    return finish(
+                        STATUS_FAILED,
+                        error=f"{result.name} exited {result.exit_code} (see {result.log})",
+                        error_tail=_log_tail(log),
+                    )
             return finish(STATUS_COMPLETED)
     except KeyboardInterrupt:
         finish(STATUS_VOID, void_reason="interrupted (KeyboardInterrupt/SIGBREAK/SIGTERM)")
@@ -860,10 +851,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Price, pin and run a run card.")
     parser.add_argument("card", type=Path, help="Path to a configs/run_cards/*.yaml card")
     parser.add_argument("--data_root", type=Path, default=None, help=f"Default: ${DATA_ROOT_ENV}")
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--price_only", action="store_true", help="Price the card and exit; create nothing"
     )
-    parser.add_argument(
+    mode.add_argument(
         "--probe",
         action="store_true",
         help="Rehearse: build the pinned env, preflight it and check the card's devices in a "
@@ -889,4 +881,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         print("VOID: interrupted", file=sys.stderr)
         return EXIT_INTERRUPTED
     print(f"{result.status}: {result.run_dir / RUN_JSON}")
+    if result.error:
+        print(f"  reason: {result.error}", file=sys.stderr)
+    for line in result.error_tail:
+        print(f"  | {line}", file=sys.stderr)
+    if args.probe:
+        for line in device_report_lines(result.device_plan):
+            print(line)
     return 0 if result.status in (STATUS_COMPLETED, STATUS_PROBED) else 1

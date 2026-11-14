@@ -297,6 +297,8 @@ class Registration:
 
     invocations: dict[str, list[str]]
     seed: int
+    #: The registered torch build and GPUs; ``None`` for a registration without them.
+    devices: Any = None
 
     def flag(self, invocation: str, name: str) -> str | None:
         from alpha_zero.evaluation.a1_registration import flag_value
@@ -328,11 +330,15 @@ def role_seed(section: str, role: str) -> int:
 
 def read_registration(git: Git, sha: str, run_id: str, role: str) -> Registration:
     from alpha_zero.evaluation.a1_protocol import registered_protocol
-    from alpha_zero.evaluation.a1_registration import registered_invocations
+    from alpha_zero.evaluation.a1_registration import registered_devices, registered_invocations
 
     section = registered_protocol(git.out("show", f"{sha}:{EVALUATION_MD}"))
     seed = role_seed(section, role)
-    return Registration(registered_invocations(section, card_id=run_id, seed=seed), seed)
+    return Registration(
+        registered_invocations(section, card_id=run_id, seed=seed),
+        seed,
+        registered_devices(section),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +361,8 @@ class RunFacts:
     #: Invocation name -> its recorded ``exit_code``.
     exit_codes: dict[str, Any] = field(default_factory=dict)
     interruptions: list[str] = field(default_factory=list)
+    #: ``run.json``'s ``device_plan`` (the torch pin, device order and GPU names).
+    device_plan: Any = None
     #: ``run.json`` says COMPLETED. Anything else (VOID, FAILED, a lingering
     #: RUNNING) is VOID by status and is checked for honesty, not completeness:
     #: run_card appends an invocation only once it finishes, so an interrupted
@@ -371,6 +379,10 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
         f.problems.append(f"{label}: run.json schema_version {record.get('schema_version')!r} != 1")
     if record.get("card_id") != run_id:
         f.problems.append(f"{label}: run.json card_id {record.get('card_id')!r} != run_id")
+    if record.get("probe"):
+        # A --probe launches nothing: it is a rehearsal, never an attempt (VOID or otherwise).
+        f.problems.append(f"{label}: run.json is a run_card --probe rehearsal, not an attempt")
+    facts.device_plan = record.get("device_plan")
     sha = record.get("sha")
     if isinstance(sha, str) and _SHA40.match(sha):
         facts.sha = sha
@@ -469,6 +481,23 @@ def check_registered(facts: RunFacts, reg: Registration, label: str, f: Findings
                 f"{label}: invocation {name!r} is not the registered command "
                 f"({', '.join(diff[:3]) or 'different length'}): an unregistered card"
             )
+
+
+def check_registered_devices(facts: RunFacts, reg: Registration) -> None:
+    """A run on another torch build, device order or GPU than registered is VOID.
+
+    Section 7.1 "Devices" registers the build and the GPUs by name, and
+    ``run.json``'s ``device_plan`` records what the pinned environment actually
+    had. A departure is recorded as an interruption -- the VOID-by-status route
+    an ``MCTS_*`` override takes -- not as a bundle problem, because the attempt
+    is honest evidence that simply does not count. A registration without a
+    devices block (one that predates GPU-first) is not checked.
+    """
+    if reg.devices is None:
+        return
+    from alpha_zero.evaluation.a1_registration import device_plan_problems
+
+    facts.interruptions.extend(device_plan_problems(facts.device_plan, reg.devices))
 
 
 def registered_price(reg: Registration) -> dict[str, int]:
@@ -794,6 +823,7 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     if run.get("seed") != reg.seed:
         f.problems.append(f"{label}: seed {run.get('seed')!r} != {reg.seed} for {role}")
     check_registered(facts, reg, label, f)
+    check_registered_devices(facts, reg)
     # What run.json records as finished must be listed (T14 rereview N-4): a VOID
     # attempt discloses what preceded a re-run, so it cannot drop a finished arm.
     finished = [n for n in facts.names if facts.exit_codes.get(n) == 0]

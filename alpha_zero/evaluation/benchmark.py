@@ -631,8 +631,11 @@ def merge_shards(
         non_claims=non_claims,
     )
     # The games were played by the shards' commit and stack, not by whoever merges them.
-    for key in ("git_sha", "device", "search", "torch", "numpy"):
-        evidence[key] = first["evidence"][key]
+    # That includes the hardware: ``gpu_model`` names the GPU ``device`` ran on, and the
+    # merging host's GPU 0 is not it.
+    for key in ("git_sha", "device", "search", "torch", "numpy", "hardware"):
+        if key in first["evidence"]:
+            evidence[key] = first["evidence"][key]
     evidence.pop("git_sha_null_reason", None)
     if evidence["git_sha"] is None:
         evidence["git_sha_null_reason"] = first["evidence"].get("git_sha_null_reason")

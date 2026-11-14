@@ -74,6 +74,7 @@ def test_t0b_card_prices_under_the_cap_per_invocation_and_in_total() -> None:
     priced = rc.price_card(rc.load_card(CARD))
     games = {p.invocation.name: p.games for p in priced.invocations}
     assert games == {
+        "determinism": 48,
         "throughput": 4,
         "throughput-cuda1": 4,
         "throughput-cpu": 4,
@@ -81,7 +82,47 @@ def test_t0b_card_prices_under_the_cap_per_invocation_and_in_total() -> None:
         "seed-1002": 200,
         "seed-1003": 200,
     }
-    assert priced.total == 612 <= priced.card.max_games <= 1000
+    assert priced.total == 660 <= priced.card.max_games <= 1000
+
+
+def test_t0b_checks_gpu_reproduction_first_on_the_registered_devices_at_a1s_shape() -> None:
+    """Section 7.1 makes this check the precondition for the GPU registration.
+
+    It must run before anything else is measured, on the devices A1 trains and
+    judges on, at A1's board and search, and both devices must be explicit so the
+    driver's device check holds each of them.
+    """
+    section = ap.registered_protocol(EVALUATION)
+    commands = dict(command_block(section, "base"))
+    card = rc.load_card(CARD)
+    first = card.invocations[0]
+    assert (first.name, first.runner) == ("determinism", "determinism_check")
+    argv = list(first.argv)
+    assert flag_value(argv, "--train-device") == flag_value(commands["train"], "--device")
+    assert flag_value(argv, "--arena-device") == flag_value(commands["primary"], "--device")
+    for ours, registered in (
+        ("--board_size", "--board_size"),
+        ("--max_turns", "--max_turns"),
+        ("--k", "--gumbel_k"),
+        ("--n", "--gumbel_sims"),
+    ):
+        assert flag_value(argv, ours) == flag_value(commands["train"], registered), ours
+    run_dir = f"E:\\civ6az-data\\runs\\{card.card_id}"
+    assert (flag_value(argv, "--work-dir") or "").startswith(run_dir)
+    assert (flag_value(argv, "--out") or "").startswith(run_dir)
+    assert rc.invocation_devices(first) == {
+        "determinism.train_device": "cuda:0",
+        "determinism.arena_device": "cuda:1",
+    }
+
+
+def test_the_determinism_check_never_uses_a_registered_seed() -> None:
+    """An A1-family run is a registered command at a registered seed; this is neither."""
+    card = rc.load_card(CARD)
+    argv = list(card.invocations[0].argv)
+    args = rc._parsed(card.invocations[0])[1]
+    assert flag_value(argv, "--seed") is None, "the card leaves the check's own seed in place"
+    assert args.seed not in (1001, 1002, 1003, 20261111, 20261112)
 
 
 def test_t0b_arms_are_the_registered_positive_control_but_for_seed_games_and_out() -> None:
@@ -260,3 +301,67 @@ def test_cli_prints_the_slots_and_refuses_a_quick_look(
     assert "**Branch in force: 40.**" in out
     # 940 search games at 36 s.
     assert "9.4 h" in out
+
+
+# ---------------------------------------------------------------------------
+# The ETA names the device it was timed on (GPU-first registration)
+#
+# Negative control (recorded, then reverted): dropping the device comparison from
+# ``_throughput_lines`` made ``test_a_timing_on_the_wrong_device_is_called_out``
+# fail -- a CPU timing was presented as the registered GPU card's ETA.
+# ---------------------------------------------------------------------------
+
+
+def _timing(tmp_path: Path, name: str, s_per_game: float, device: str | None) -> Path:
+    payload: dict[str, Any] = {"results": {"s_per_game": s_per_game, "ms_per_eval": 5.0}}
+    if device is not None:
+        payload["device"] = device
+    path = tmp_path / name
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    return path
+
+
+def test_the_eta_says_which_device_was_timed(tmp_path: Path) -> None:
+    lines = ap._throughput_lines(_timing(tmp_path, "t.json", 36.0, "cuda:0"), 40)
+    assert "on cuda:0" in lines[0]
+    assert not any("WARNING" in line for line in lines)
+    assert "9.4 h" in lines[-1]  # 940 search games at 36 s
+
+
+def test_a_timing_on_the_wrong_device_is_called_out(tmp_path: Path) -> None:
+    lines = ap._throughput_lines(
+        _timing(tmp_path, "cpu.json", 36.0, "cpu"), 40, train_device="cuda:0"
+    )
+    assert any("WARNING" in line and "timed on cpu" in line and "cuda:0" in line for line in lines)
+
+
+def test_an_old_timing_without_a_device_is_not_warned_about(tmp_path: Path) -> None:
+    lines = ap._throughput_lines(
+        _timing(tmp_path, "old.json", 36.0, None), 40, train_device="cuda:0"
+    )
+    assert "an unrecorded device" in lines[0] and not any("WARNING" in line for line in lines)
+
+
+def test_arena_games_are_costed_at_the_arena_devices_rate(tmp_path: Path) -> None:
+    """480 self-play games on the training device, the other 460 on the arena's."""
+    train = _timing(tmp_path, "train.json", 36.0, "cuda:0")
+    arena = _timing(tmp_path, "arena.json", 72.0, "cuda:1")
+    lines = ap._throughput_lines(
+        train, 40, arena_path=arena, train_device="cuda:0", arena_device="cuda:1"
+    )
+    expected_hours = (ap.A1_TRAINING_GAMES * 36.0 + (940 - ap.A1_TRAINING_GAMES) * 72.0) / 3600.0
+    assert f"{expected_hours:.1f} h" in lines[-1]
+    assert "460 arena games" in lines[-1] and not any("WARNING" in line for line in lines)
+
+
+def test_an_arena_timing_on_the_wrong_device_is_called_out(tmp_path: Path) -> None:
+    train = _timing(tmp_path, "train.json", 36.0, "cuda:0")
+    arena = _timing(tmp_path, "arena.json", 72.0, "cpu")
+    lines = ap._throughput_lines(
+        train, 40, arena_path=arena, train_device="cuda:0", arena_device="cuda:1"
+    )
+    assert any("WARNING" in line and "judges on cuda:1" in line for line in lines)
+
+
+def test_the_registered_devices_are_read_from_section_7_1() -> None:
+    assert ap._registered_devices_or_none() == ("cuda:0", "cuda:1")

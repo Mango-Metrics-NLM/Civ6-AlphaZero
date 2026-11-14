@@ -246,6 +246,9 @@ def test_cpu_venv_is_not_reused_for_a_cuda_pin(
         ("torch==2.11.0", "https://user:pw@example.com/whl"),  # credentials
         ("torch==2.11.0", "https://example.com/whl?x=1"),  # query
         ("torch==2.11.0", "https://example.com/whl --extra-index-url https://evil"),
+        ("torch==2.11.0\n", _CU128),  # a YAML block scalar's trailing newline
+        ("torch==2.11.0", _CU128 + "\n"),
+        ("torch==2.11.0+cu128", _CU128),  # the index selects the variant, not a local tag
     ],
 )
 def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(

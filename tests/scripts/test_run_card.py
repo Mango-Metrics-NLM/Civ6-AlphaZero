@@ -21,6 +21,7 @@ Negative controls (recorded when written, then reverted):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -37,6 +38,7 @@ import alpha_zero
 from alpha_zero.local import pinned_env as pe
 from alpha_zero.local import run_card as rc
 from alpha_zero.utils.game_budget import GameBudgetExceededError
+from alpha_zero.utils.seeding import CUBLAS_WORKSPACE_DETERMINISTIC
 
 REPO = Path(alpha_zero.__file__).resolve().parents[1]
 FULL_SHA = "0123456789abcdef0123456789abcdef01234567"
@@ -56,6 +58,13 @@ def restore_environ() -> Iterator[None]:
     yield
     os.environ.clear()
     os.environ.update(snapshot)
+
+
+@pytest.fixture(autouse=True)
+def no_inherited_cuda_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """These tests assert on the child's CUDA variables; a GPU box's shell exports some."""
+    for name in ("CUDA_VISIBLE_DEVICES", "CUDA_DEVICE_ORDER", "CUBLAS_WORKSPACE_CONFIG"):
+        monkeypatch.delenv(name, raising=False)
 
 
 class FakeRunner:
@@ -285,7 +294,7 @@ def test_tiny_card_runs_from_pinned_source(
     assert inv["launched_argv"] == ["--dry_run", "--max_games", "8"]
 
     # torch facts are recorded, never required (the bare test venv has no torch).
-    assert data["device_plan"]["torch"] == {"error": "ModuleNotFoundError"}
+    assert data["device_plan"]["torch"]["error"] == "ModuleNotFoundError"
 
     # Names, never values.
     assert SENTINEL_NAME in data["env_var_names"]
@@ -635,7 +644,14 @@ def test_parent_reverifies_preflight_report(
 #     card COMPLETED on a venv with no torch at all, which is the silent CPU
 #     fallback this guards against;
 #   * dropping ``torch_pin=card.torch_pin`` from the ``prepare_pinned_run`` call
-#     made ``test_torch_pin_reaches_the_pinned_env_and_run_json`` fail.
+#     made ``test_torch_pin_reaches_the_pinned_env_and_run_json`` fail;
+#   * reading the device from argv tokens instead of the runner's parser made
+#     ``test_devices_come_from_the_runners_own_parser`` fail (``--dev cuda:1`` and
+#     the benchmark's ``cpu`` default were both missed);
+#   * removing the ``refuse_implicit_devices`` call made
+#     ``test_a_pinned_card_with_an_implicit_device_is_refused_before_anything_exists`` fail;
+#   * dropping ``error_tail`` from the failed-child ``finish`` made
+#     ``test_a_failed_child_leaves_its_last_log_lines_in_run_json`` fail.
 # ---------------------------------------------------------------------------
 
 _CU128 = "https://download.pytorch.org/whl/cu128"
@@ -661,18 +677,89 @@ def _device_card(*devices: str, **extra: Any) -> rc.RunCard:
     )
 
 
-def test_requested_devices_reads_both_flag_forms_and_the_last_one_wins() -> None:
+def test_devices_come_from_the_runners_own_parser() -> None:
+    """Abbreviations and defaults are argparse's to resolve, so the parser is asked.
+
+    A token scan for ``--device`` misses ``--dev cuda:1`` (argparse accepts the
+    abbreviation) and cannot know that the benchmark defaults to ``cpu`` while the
+    trainer leaves its device unset.
+    """
     card = rc.RunCard(
         card_id="t1",
         sha="0123456",
-        max_games=10,
+        max_games=1000,
         invocations=(
-            rc.Invocation("a", "training_civ6", ("--device", "cpu", "--device", "cuda:1")),
-            rc.Invocation("b", "benchmark", ("--device=cuda:0",)),
-            rc.Invocation("c", "benchmark", ("--n-games", "4")),
+            rc.Invocation(
+                "last-wins", "training_civ6", ("--dry_run", "--device", "cpu", "--device", "cuda:1")
+            ),
+            rc.Invocation("equals", "benchmark", ("--device=cuda:0", "--n-games", "2")),
+            rc.Invocation("abbrev", "training_civ6", ("--dry_run", "--dev", "cuda:1")),
+            rc.Invocation("bench-default", "benchmark", ("--n-games", "2")),
+            rc.Invocation("train-default", "training_civ6", ("--dry_run",)),
         ),
     )
-    assert rc.requested_devices(card) == {"a": "cuda:1", "b": "cuda:0"}
+    assert rc.resolved_devices(card) == {
+        "last-wins": "cuda:1",
+        "equals": "cuda:0",
+        "abbrev": "cuda:1",
+        "bench-default": "cpu",
+        "train-default": None,
+    }
+    assert "train-default" not in rc.requested_devices(card)
+
+
+def test_a_pinned_card_with_an_implicit_device_is_refused_before_anything_exists(
+    tmp_path: Path, pinned: FakeRunner
+) -> None:
+    card = _card(
+        tmp_path,
+        [_train("explicit", "--dry_run", "--device", "cuda:0"), _train("implicit", "--dry_run")],
+        torch_spec="torch==2.11.0",
+        torch_index_url=_CU128,
+    )
+    with pytest.raises(rc.RunCardError, match="implicit leave it to a default"):
+        _run(card, tmp_path, pinned)
+    assert not (tmp_path / "root").exists(), "a refused card must create nothing"
+    assert pinned.calls == []
+
+
+def test_a_failed_child_leaves_its_last_log_lines_in_run_json(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The reason must not be left in a log file the operator has to go and find."""
+    monkeypatch.setenv("FAKE_CHILD_EXIT", "3")
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+    result = _run(card, tmp_path, pinned)
+    assert result.status == rc.STATUS_FAILED
+    assert result.error is not None and "smoke exited 3" in result.error
+    assert any("child argv" in line for line in result.error_tail)
+    data = _run_json(tmp_path)
+    assert (
+        data["error_tail"] == result.error_tail and len(data["error_tail"]) <= rc.ERROR_TAIL_LINES
+    )
+
+
+def test_price_only_and_probe_cannot_be_combined(tmp_path: Path) -> None:
+    card = _card(tmp_path, [_train("smoke", "--dry_run")])
+    with pytest.raises(SystemExit) as refused:
+        rc.main([str(card), "--price_only", "--probe"])
+    assert refused.value.code == 2
+
+
+def test_device_report_names_each_invocations_gpu() -> None:
+    plan = {
+        "CUDA_VISIBLE_DEVICES": "0,1",
+        "CUDA_DEVICE_ORDER": "PCI_BUS_ID",
+        "source": "card",
+        "requested": {"train": "cuda:0", "primary": "cuda:1", "timing": "cpu"},
+        "torch": _TWO_GPUS,
+    }
+    lines = rc.device_report_lines(plan)
+    assert "2.11.0+cu128" in lines[0] and "PCI_BUS_ID" in lines[0]
+    by_name = {line.split()[0]: line for line in lines[1:]}
+    assert by_name["train"].endswith("GPU A") and by_name["primary"].endswith("GPU B")
+    assert by_name["timing"].endswith("-")
+    assert rc.device_report_lines(None) == []
 
 
 @pytest.mark.parametrize(
@@ -719,6 +806,65 @@ def test_torch_keys_are_validated_at_load(
         rc.load_card(_card(tmp_path, [_train("a", "--dry_run")], **extra))
 
 
+def test_pricing_a_gpu_card_does_not_claim_it_will_run_on_cpu(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The driver's torch is not the run's: its "using cpu" fallback warning would be false.
+
+    Pricing the trainer resolves the device in the driver's interpreter. Without a
+    GPU here that used to log "device 'cuda:0' requested but CUDA is unavailable;
+    using cpu" for a card that runs on the GPU in its pinned environment.
+    """
+    device_logger = logging.getLogger(rc.DEVICE_LOGGER_NAME)
+    before = device_logger.level
+    card = _card(tmp_path, [_train("train", "--dry_run", "--device", "cuda:0")])
+    with caplog.at_level(logging.WARNING):
+        rc.price_card(rc.load_card(card))
+        rc.resolved_devices(rc.load_card(card))
+    assert not [r for r in caplog.records if "using cpu" in r.getMessage()]
+    assert device_logger.level == before, "the logger's level must be put back"
+
+
+def test_gpus_key_is_read_as_ordinal_to_name(tmp_path: Path) -> None:
+    card = rc.load_card(
+        _card(
+            tmp_path,
+            [_train("a", "--dry_run")],
+            gpus={"cuda:0": "RTX 5060 Ti", "cuda:1": "RTX 5060"},
+        )
+    )
+    assert card.gpus == {0: "RTX 5060 Ti", 1: "RTX 5060"}
+
+
+@pytest.mark.parametrize(
+    "gpus", [{}, ["RTX"], {"cuda": "RTX"}, {"gpu0": "RTX"}, {"cuda:0": ""}, "RTX"]
+)
+def test_malformed_gpus_key_is_refused(tmp_path: Path, gpus: Any) -> None:
+    with pytest.raises(rc.RunCardError, match="gpus"):
+        rc.load_card(_card(tmp_path, [_train("a", "--dry_run")], gpus=gpus))
+
+
+def test_a_card_whose_gpus_are_in_another_order_is_refused(
+    tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    real = rc._preflight
+    swapped = {**_TWO_GPUS, "devices": ["GPU B", "GPU A"]}
+    monkeypatch.setattr(rc, "_preflight", lambda env, child: {**real(env, child), "torch": swapped})
+    card = _card(
+        tmp_path,
+        [_train("smoke", "--dry_run", "--device", "cuda:0")],
+        cuda_visible_devices="0,1",
+        gpus={"cuda:0": "GPU A", "cuda:1": "GPU B"},
+    )
+    result = _run(card, tmp_path, pinned)
+    assert result.status == rc.STATUS_FAILED
+    assert (
+        result.error is not None
+        and "cuda:0 is 'GPU B' but the card expects 'GPU A'" in result.error
+    )
+    assert _run_json(tmp_path)["invocations"] == []
+
+
 def test_card_asking_for_cuda_without_it_fails_before_launching(
     tmp_path: Path, pinned: FakeRunner
 ) -> None:
@@ -749,7 +895,7 @@ def test_cuda_card_runs_when_the_pinned_venv_has_the_devices(
     plan = _run_json(tmp_path)["device_plan"]
     assert plan["CUDA_VISIBLE_DEVICES"] == "0,1" and plan["source"] == "card"
     assert plan["CUDA_DEVICE_ORDER"] == "PCI_BUS_ID"
-    assert plan["CUBLAS_WORKSPACE_CONFIG"] == rc.CUBLAS_WORKSPACE_CONFIG
+    assert plan["CUBLAS_WORKSPACE_CONFIG"] == CUBLAS_WORKSPACE_DETERMINISTIC
     assert plan["requested"] == {"smoke": "cuda:1"}
     assert plan["torch"]["devices"] == ["GPU A", "GPU B"]
 
@@ -797,6 +943,16 @@ def test_probe_checks_devices_without_claiming_the_card_directory(
     assert result.run_dir.parent == runs and result.run_dir.name.startswith("probe-t1-")
     data = json.loads((result.run_dir / "run.json").read_text(encoding="utf-8"))
     assert data["probe"] is True and data["error"].startswith("devices: ")
+
+
+def test_two_probes_of_one_card_never_share_a_directory() -> None:
+    from datetime import UTC, datetime
+
+    first = rc.probe_run_name("t1", now=datetime(2026, 11, 14, 1, 2, 3, 4, tzinfo=UTC))
+    second = rc.probe_run_name("t1", now=datetime(2026, 11, 14, 1, 2, 3, 5, tzinfo=UTC))
+    assert first != second and first.startswith("probe-t1-")
+    longest = rc.probe_run_name("c" * 64)  # a maximal card id still gives a valid run id
+    assert len(longest) <= rc.RUN_ID_MAX_LENGTH
 
 
 def test_probe_of_a_cpu_card_is_probed_and_launches_nothing(

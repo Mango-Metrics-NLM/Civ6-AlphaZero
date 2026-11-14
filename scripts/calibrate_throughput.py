@@ -31,9 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.training_civ6 import TrainingConfig, run_self_play
-from alpha_zero.utils.device import resolve_device_str
-from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
-from alpha_zero.utils.seeding import cuda_ordinal, derive_seed, enforce_deterministic_backend
+from alpha_zero.utils.device import cuda_ordinal, resolve_device_str
+from alpha_zero.utils.game_budget import EXIT_CODE_REFUSED, add_budget_arguments, enforce_cli
+from alpha_zero.utils.seeding import derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger("calibrate_throughput")
 
@@ -180,7 +180,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     except DeviceUnavailableError as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
-        return 2
+        return EXIT_CODE_REFUSED
     payload: dict[str, Any] = {
         "harness": "calibrate_throughput",
         "args": {k: (str(v) if isinstance(v, Path) else v) for k, v in vars(args).items()},

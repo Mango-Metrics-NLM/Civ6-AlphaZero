@@ -42,7 +42,9 @@ logger = logging.getLogger(__name__)
 ENV_VAR = "CIV6AZ_DATA_ROOT"
 MAX_ROOT_CHARS = 120
 MIN_FREE_GB = 50
-RUN_ID_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+#: Longest run id: one leading alphanumeric plus up to 63 more characters.
+RUN_ID_MAX_LENGTH = 64
+RUN_ID_PATTERN = rf"^[A-Za-z0-9][A-Za-z0-9._-]{{0,{RUN_ID_MAX_LENGTH - 1}}}$"
 _RUN_ID_RE = re.compile(RUN_ID_PATTERN)
 ALLOWED_FILESYSTEMS = frozenset({"NTFS", "REFS"})
 _ONEDRIVE_ENV_VARS = ("OneDrive", "OneDriveConsumer", "OneDriveCommercial")

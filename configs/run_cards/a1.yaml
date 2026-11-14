@@ -35,6 +35,9 @@ max_games: 980
 cuda_visible_devices: '0,1'
 torch_spec: 'torch==2.11.0'
 torch_index_url: 'https://download.pytorch.org/whl/cu128'
+gpus:
+  'cuda:0': 'NVIDIA GeForce RTX 5060 Ti'
+  'cuda:1': 'NVIDIA GeForce RTX 5060'
 description: A1 learning run at seed 20261111 (LF-A1), registered in docs/EVALUATION.md section 7.1.
 invocations:
   - name: train
