@@ -165,8 +165,11 @@ of trusting its stored status. A re-run that differs from the attempt, or that
 ran at another commit, device plan or driver, MUST NOT be read as a PASS: its
 verdict is INCONCLUSIVE and it is labelled a non-reproducing re-run. An attempt
 that launched nothing MUST NOT be listed. The verifier MUST order a role's
-attempts by the start time each `run.json` records and by nothing else, and MUST
-fail a bundle that lists an attempt started after a non-reproducing re-run.
+attempts by the start time each `run.json` records and by nothing else: every
+listed attempt MUST record one, no two attempts of a role may record the same
+one, and a role's non-VOID attempt MUST be the last of its role to start. The
+verifier MUST fail a bundle that lists an attempt started after a non-reproducing
+re-run.
 
 #### Scenario: An interrupted attempt with no comparison
 - **WHEN** a bundle lists an interrupted attempt and its re-run but no comparison record
@@ -195,6 +198,14 @@ fail a bundle that lists an attempt started after a non-reproducing re-run.
 #### Scenario: A further run after a non-reproducing re-run
 - **WHEN** an attempt of either role started after a re-run that did not reproduce
 - **THEN** verification fails
+
+#### Scenario: A second draw dated before a non-reproducing re-run
+- **WHEN** a role's non-VOID attempt records a start at or before another listed attempt of that role
+- **THEN** verification fails, so a second draw cannot be dated ahead of the re-run that did not reproduce
+
+#### Scenario: Two attempts with the same start
+- **WHEN** two listed attempts of one role record the same start time
+- **THEN** verification fails, whichever is listed first
 
 #### Scenario: Two interrupted attempts before one re-run
 - **WHEN** two attempts of a role were interrupted before the same re-run

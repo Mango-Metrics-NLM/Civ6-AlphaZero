@@ -206,8 +206,9 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   nothing was left to compare, so a crash that needs a code fix costs the seed pair.
 - The verifier orders a role's attempts by the `started_at` in each `run.json` and by
   nothing else, so do not edit `run.json` and keep the machine's clock right. Every listed
-  attempt must record one; an interrupted attempt must be followed by its re-run; and an
-  attempt of either role that started after a non-reproducing re-run fails the bundle.
+  attempt must record one; no two attempts of a role may record the same one; the attempt
+  that is judged must be the last of its role to start; and an attempt of either role that
+  started after a non-reproducing re-run fails the bundle.
   So run `reproduction compare` as soon as the re-run finishes, **before starting any other
   card**: a replication started after a re-run that turns out not to reproduce is lost too.
 
