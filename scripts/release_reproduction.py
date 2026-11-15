@@ -12,14 +12,24 @@ both attempts". What the comparison says decides whether the re-run may PASS:
 * ``NOTHING TO COMPARE`` (the attempt finished nothing beyond ``checkpoint_0``,
   which the seed alone fixes) -- the re-run is judged, and the bundle says the
   comparison was empty (:data:`OUTCOME_EMPTY`);
-* ``DIFFERS``, or another ``sha``, ``device_plan`` or NVIDIA driver -- the re-run
-  is a "non-reproducing re-run" and cannot PASS
+* ``DIFFERS``, or another ``sha``, ``device_plan``, torch wheel or NVIDIA driver
+  -- the re-run is a "non-reproducing re-run" and cannot PASS
   (:data:`OUTCOME_NON_REPRODUCING`; ``a1_protocol.compute_verdict`` reads a PASS
-  row as INCONCLUSIVE).
+  row as INCONCLUSIVE). No further A1-family run may start until section 7.1 is
+  re-registered, so an attempt listed as started after such a re-run fails the
+  bundle (:func:`review`).
 
 After a symmetry or positive-control VOID the code changed, so the re-run is a
-second draw and no comparison applies. An attempt whose ``run.json`` records no
-launched invocation played nothing: it is not an attempt and is not listed.
+second draw and no comparison applies (nothing here checks that the code did
+change). An attempt whose ``run.json`` records no launched invocation played
+nothing: it is not an attempt and is not listed.
+
+**Order.** A role's attempts are ordered by ``run.json``'s ``started_at`` and by
+nothing else: every listed attempt must record a readable one, and the order the
+bundle lists attempts in decides nothing. An interrupted attempt must be followed
+by its re-run: one with no later COMPLETED attempt, in a role that has a non-VOID
+attempt, fails the bundle. Otherwise a re-run given an earlier ``started_at``
+would leave the interrupted attempt with nothing to be compared with.
 
 This module is that rule and nothing else. It takes plain data -- an
 :class:`Attempt` per listed run, built by the caller from files it has already
@@ -32,17 +42,20 @@ lazily: it imports ``alpha_zero``, which the verifier's ``--scope`` path must no
 What a record can and cannot show (:func:`check_record`):
 
 * its arena and iteration digests are held to the files the bundle carries for
-  both runs, in both directions, so a record that leaves out an arm the attempt
-  finished, or was made from other files, fails;
+  both runs, in both directions, so a record that leaves out a bundled arm, or
+  was made from other files, fails. What the bundle may omit (an arm that wrote
+  ``result.json`` after the last invocation ``run.json`` records, the iteration
+  records of an attempt killed during training) the record can omit with it;
 * its ``status`` and ``differences`` are recomputed from its own digests
   (``reproduction.compare_status``);
 * its **checkpoint tensor digests are not anchored to anything**: checkpoints are
   too large to bundle, so the record is the only account of them.
 
-Not modelled: after a non-reproducing re-run section 7.1 requires a new
-registration with a new confirmatory seed pair before any further A1-family run.
-That is a statement about later runs and registrations, which one bundle cannot
-show.
+Limits no check here can close: an interrupted attempt that is simply not listed
+is invisible to a bundle verifier, and ``started_at`` is the operator's own clock,
+written by the operator's own machine. Not modelled: the bundle of the new
+registration that section 7.1 requires after a non-reproducing re-run (a new
+confirmatory seed pair, listing both attempts).
 """
 
 from __future__ import annotations
@@ -101,10 +114,12 @@ DEVICE_PLAN_KEY = "device_plan"
 PREFLIGHT_KEY = "preflight"
 NVIDIA_SMI_KEY = "nvidia_smi"
 PLAN_TORCH_KEY = "torch"
+#: ``{url, sha256}`` of the torch wheel pip installed, when pip reported it.
+TORCH_WHEEL_KEY = "torch_wheel"
+WHEEL_SHA256_KEY = "sha256"
 
 #: ``device_plan`` keys a re-run must share with the attempt it replaces. Named,
-#: never the whole mapping: ``source`` says where a value came from, not what it
-#: was, and ``run.json``'s ``torch_wheel`` is a record that may be absent.
+#: never the whole mapping: ``source`` says where a value came from, not what it was.
 PLAN_KEYS: tuple[str, ...] = (
     "CUDA_VISIBLE_DEVICES",
     "CUDA_DEVICE_ORDER",
@@ -154,6 +169,11 @@ class Attempt:
     iterations: Path | None = None
     arenas: Mapping[str, Path] = field(default_factory=dict)
 
+    @property
+    def void(self) -> bool:
+        """VOID: for an interruption-class reason, or by a control arm."""
+        return bool(self.interruptions) or self.control_void
+
 
 @dataclass(frozen=True)
 class Outcome:
@@ -202,36 +222,37 @@ def _started(attempt: Attempt) -> datetime | None:
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
 
 
-def _in_start_order(role_attempts: Sequence[Attempt]) -> list[Attempt]:
-    """By ``run.json``'s ``started_at``; the order given when any attempt has none."""
-    starts = [start for a in role_attempts if (start := _started(a)) is not None]
-    if len(starts) != len(role_attempts):
-        return list(role_attempts)
-    # A stable sort: attempts started in the same second keep the order given.
-    order = sorted(range(len(role_attempts)), key=starts.__getitem__)
-    return [role_attempts[index] for index in order]
-
-
 def rerun_of(attempt: Attempt, role_attempts: Sequence[Attempt]) -> Attempt | None:
-    """The attempt's re-run: the first later COMPLETED attempt of its role, or ``None``.
+    """The attempt's re-run: the first COMPLETED attempt of its role that started after it.
 
-    "Later" is by ``started_at`` (the order of ``role_attempts`` as a fallback).
-    It need not be the attempt that ends up judged: an interrupted attempt's
-    re-run can itself be VOID by a control arm, and a second draw follows it.
+    "After" is by ``run.json``'s ``started_at`` and strict: an attempt that started
+    in the same second is not later, and one without a readable ``started_at`` is
+    neither earlier nor later than anything (:func:`review` reports it). The order
+    of ``role_attempts`` decides nothing, so a bundle cannot reorder its way to
+    another answer. The re-run need not be the attempt that ends up judged: an
+    interrupted attempt's re-run can itself be VOID by a control arm, and a second
+    draw follows it.
     """
-    ordered = _in_start_order(role_attempts)
-    position = next((i for i, other in enumerate(ordered) if other is attempt), None)
-    if position is None:
+    mine = _started(attempt)
+    if mine is None:
         return None
-    return next((other for other in ordered[position + 1 :] if other.completed), None)
+    later = [
+        (start, other)
+        for other in role_attempts
+        if other is not attempt
+        and other.completed
+        and (start := _started(other)) is not None
+        and start > mine
+    ]
+    return min(later, key=lambda item: item[0])[1] if later else None
 
 
 def record_rerun(attempt: Attempt, attempts: Sequence[Attempt]) -> Attempt | None:
     """The re-run whose comparison with ``attempt`` the bundle must hold, or ``None``.
 
-    ``attempts`` is every listed attempt, in bundle order. ``None`` when no
-    comparison applies: the attempt needs no record (:func:`needs_record`), or no
-    later COMPLETED attempt of its role is listed.
+    ``attempts`` is every listed attempt. ``None`` when no comparison applies: the
+    attempt needs no record (:func:`needs_record`), or no COMPLETED attempt of its
+    role started after it (which :func:`review` reports when the role is judged).
     """
     if not needs_record(attempt):
         return None
@@ -246,7 +267,7 @@ def _no_comparison(attempt: Attempt) -> str:
         return "it was not interrupted"
     if not launched(attempt.record):
         return "it launched nothing"
-    return f"no later COMPLETED attempt of {attempt.role} is listed"
+    return f"no COMPLETED attempt of {attempt.role} started after it"
 
 
 # ---------------------------------------------------------------------------
@@ -272,11 +293,14 @@ def condition_differences(attempt: Attempt, rerun: Attempt) -> list[str]:
 
     Section 7.1 claims a reproduction only "at the VOID attempt's ``sha`` with the
     same ``device_plan`` (torch pin, device order, GPUs) and the same NVIDIA
-    driver". Compared: the ``sha``; when both runs record a ``device_plan``, its
-    :data:`PLAN_KEYS` and its ``torch`` report's :data:`PLAN_TORCH_KEYS` (a plan on
-    one side only is a difference); and, when section 7.1 registers devices for
-    either run, the driver version of every GPU -- a driver that cannot be read
-    on either side is a difference, because it cannot be shown to be the same.
+    driver", and its Devices paragraph adds "the same torch wheel". Compared: the
+    ``sha``; when both runs record a ``device_plan``, its :data:`PLAN_KEYS` and its
+    ``torch`` report's :data:`PLAN_TORCH_KEYS` (a plan on one side only is a
+    difference); the sha256 of the installed torch wheel, when **both** runs record
+    one (pip does not always report it, so a run without the record is not held to
+    it); and, when section 7.1 registers devices for either run, the driver version
+    of every GPU -- a driver that cannot be read on either side is a difference,
+    because it cannot be shown to be the same.
     """
     found: list[str] = []
     if attempt.sha != rerun.sha:
@@ -299,6 +323,14 @@ def condition_differences(attempt: Attempt, rerun: Attempt) -> list[str]:
             for key, a, b in pairs
             if _canonical(a) != _canonical(b)
         ]
+    wheels = [
+        _mapping(run.record.get(TORCH_WHEEL_KEY)).get(WHEEL_SHA256_KEY) for run in (attempt, rerun)
+    ]
+    if all(isinstance(wheel, str) and wheel for wheel in wheels) and wheels[0] != wheels[1]:
+        found.append(
+            f"{TORCH_WHEEL_KEY}: the attempt installed the wheel with sha256 {wheels[0]}, the "
+            f"re-run {wheels[1]}"
+        )
     if attempt.devices_registered or rerun.devices_registered:
         drivers = {"the attempt": _driver(attempt), "the re-run": _driver(rerun)}
         unread = [who for who, versions in drivers.items() if versions is None]
@@ -406,7 +438,8 @@ def check_record(record: Any, attempt: Attempt, rerun: Attempt) -> list[str]:
 
     * its schema version is ``reproduction.RECORD_SCHEMA_VERSION``;
     * it names these two runs: each side's ``card_id``, ``sha`` and
-      ``run_json_sha256`` are the bundle's;
+      ``run_json_sha256`` are strings and are the bundle's (a null never matches,
+      whatever the bundle's attempt holds);
     * its arena and iteration digests equal the digests of the files the bundle
       carries for each run, in both directions (checkpoint digests cannot be
       checked: the bundle holds no checkpoints);
@@ -437,7 +470,7 @@ def check_record(record: Any, attempt: Attempt, rerun: Attempt) -> list[str]:
             f"{side}.{key} {identity.get(key)!r} is not {run.run_id}'s ({want!r}): the record "
             "is for other runs"
             for key, want in expected.items()
-            if identity.get(key) != want
+            if not isinstance(identity.get(key), str) or identity.get(key) != want
         ]
     digests = _mapping(record.get(reproduction.RECORD_DIGESTS))
     if not all(isinstance(digests.get(side), Mapping) for side in _SIDES):
@@ -492,27 +525,91 @@ def bundle_reference(written: Mapping[str, str], rerun: Attempt, result: Outcome
 # ---------------------------------------------------------------------------
 
 
+def _started_text(attempt: Attempt) -> str:
+    return f"{STARTED_AT_KEY} {attempt.record.get(STARTED_AT_KEY)!r}"
+
+
+def _order_problems(attempts: Sequence[Attempt]) -> list[str]:
+    """What is wrong with when the listed attempts started (module docstring, "Order").
+
+    * every listed attempt records a readable ``started_at``;
+    * an attempt whose re-run would be a reproduction check (:func:`needs_record`)
+      is followed by a COMPLETED attempt of its role, whenever that role has a
+      non-VOID attempt. With none, the non-VOID attempt started at or before the
+      interrupted one and so is not its re-run. (A role without a non-VOID attempt
+      fails the bundle anyway, and has nothing to say this about.)
+    """
+    problems = [
+        f"run {attempt.run_id} ({attempt.role}): run.json {_started_text(attempt)} is not a "
+        "timestamp. The re-run rule orders a role's attempts by it, so every listed attempt "
+        "must record when it started"
+        for attempt in attempts
+        if _started(attempt) is None
+    ]
+    for attempt in attempts:
+        role = [other for other in attempts if other.role == attempt.role]
+        judged = [other.run_id for other in role if not other.void]
+        if needs_record(attempt) and judged and rerun_of(attempt, role) is None:
+            problems.append(
+                f"run {attempt.run_id} ({attempt.role}): it is VOID "
+                f"({'; '.join(attempt.interruptions)}) and no COMPLETED attempt of {attempt.role} "
+                f"started after it ({_started_text(attempt)}), yet {', '.join(judged)} is judged. "
+                "An interrupted attempt must be followed by its re-run and compared with it; an "
+                "attempt that started at or before it is not its re-run (section 7.1, 'After a "
+                f"VOID'; attempts are ordered by run.json's {STARTED_AT_KEY})"
+            )
+    return problems
+
+
+def _later_run_problems(attempts: Sequence[Attempt], reruns: Sequence[Attempt]) -> list[str]:
+    """Attempts listed as started after a non-reproducing re-run: section 7.1 allows none.
+
+    "No further A1-family run starts until this section is re-registered with a
+    new confirmatory seed pair", so any attempt of either role that started later
+    was made under a registration that no longer stood.
+    """
+    problems: list[str] = []
+    for rerun in reruns:
+        cutoff = _started(rerun)
+        for other in attempts:
+            start = _started(other)
+            if cutoff is None or start is None or start <= cutoff:
+                continue
+            problems.append(
+                f"run {other.run_id} ({other.role}): it started ({_started_text(other)}) after "
+                f"{rerun.run_id}, a non-reproducing re-run ({_started_text(rerun)}). Section 7.1 "
+                "('After a VOID') lets no further A1-family run start until the section is "
+                "re-registered with a new confirmatory seed pair: a new registration is required "
+                "first, and this verifier does not model the bundle of that registration yet"
+            )
+    return problems
+
+
 def review(
     listed: Sequence[tuple[Attempt, Any]], load: Callable[[Any, str], Any]
 ) -> tuple[list[str], dict[str, list[str]]]:
     """Apply the rule to every listed attempt: ``(problems, non-reproducing re-runs)``.
 
-    ``listed`` pairs each attempt, in bundle order, with its bundle entry's
-    ``reproduction`` value (``None`` when it has none). ``load(reference, label)``
-    returns the parsed record a reference names, or ``None`` when it cannot be
-    read; the loader reports why, and re-hashes the file.
+    ``listed`` pairs each attempt with its bundle entry's ``reproduction`` value
+    (``None`` when it has none); the order of ``listed`` decides nothing.
+    ``load(reference, label)`` returns the parsed record a reference names, or
+    ``None`` when it cannot be read; the loader reports why, and re-hashes the file.
 
     For each attempt whose re-run is a reproduction check a record is required,
     checked (:func:`check_record`) and its outcome recomputed (:func:`outcome`);
     the stored ``outcome`` and ``rerun`` must equal the recomputed ones (the
     stored ``reasons`` are prose and are not compared). An entry on an attempt no
     comparison applies to is a problem too: it would be a stored claim nothing
-    recomputes. The second value maps a re-run's ``run_id`` to why it is a
-    non-reproducing re-run (:func:`verdict_reasons`).
+    recomputes. So are an unreadable ``started_at``, an interrupted attempt that
+    nothing re-ran (:func:`_order_problems`) and any attempt started after a
+    non-reproducing re-run (:func:`_later_run_problems`). The second value maps a
+    re-run's ``run_id`` to why it is a non-reproducing re-run
+    (:func:`verdict_reasons`).
     """
     attempts = [attempt for attempt, _ in listed]
-    problems: list[str] = []
+    problems = _order_problems(attempts)
     non_reproducing: dict[str, list[str]] = {}
+    flagged: list[Attempt] = []  # the non-reproducing re-runs, once each
     for attempt, reference in listed:
         label = f"run {attempt.run_id} ({attempt.role}) reproduction record"
         rerun = record_rerun(attempt, attempts)
@@ -549,5 +646,7 @@ def review(
             )
         if result.kind == OUTCOME_NON_REPRODUCING:
             non_reproducing.setdefault(rerun.run_id, []).extend(verdict_reasons(attempt, result))
+            if not any(other is rerun for other in flagged):
+                flagged.append(rerun)
         logger.info("%s: %s against %s", label, result.kind, rerun.run_id)
-    return problems, non_reproducing
+    return problems + _later_run_problems(attempts, flagged), non_reproducing

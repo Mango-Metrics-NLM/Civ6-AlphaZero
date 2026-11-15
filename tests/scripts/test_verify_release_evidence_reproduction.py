@@ -281,9 +281,10 @@ def test_a_differing_checkpoint_alone_cannot_pass(tmp_path: Path) -> None:
 
 
 def test_the_claim_is_withheld_after_a_non_reproducing_rerun(tmp_path: Path) -> None:
-    specs = [interrupted(), rerun(primary_rotation=1), fx.RunSpec(**A1R)]
+    """A1-R ran (and passed) before A1's re-run started; nothing may start after that re-run."""
+    specs = [interrupted(), fx.RunSpec(**A1R), rerun(primary_rotation=1)]
     release = fx.make_release(tmp_path, specs)
-    assert verdicts(release) == ["VOID", "INCONCLUSIVE", "PASS"]
+    assert verdicts(release) == ["VOID", "PASS", "INCONCLUSIVE"]
     assert release.bundle["learning_claimed"] is False
     assert verify(release)[0] == vre.EXIT_PASS
     release.bundle["learning_claimed"] = True
@@ -539,11 +540,24 @@ def test_where_a_value_came_from_is_not_a_condition(tmp_path: Path) -> None:
     assert verify(release)[0] == vre.EXIT_PASS
 
 
-def test_another_driver_is_non_reproducing(tmp_path: Path) -> None:
-    release = fx.make_release(tmp_path, [interrupted(), rerun(driver="580.10")])
+@pytest.mark.parametrize(
+    ("before", "after", "shown"),
+    [
+        (fx.DRIVER, "580.10", "('576.88', '576.88'), the re-run under ('580.10', '580.10')"),
+        # One GPU only: every GPU's driver is compared, not the first one's.
+        (
+            "581.15",
+            ("581.15", "581.42"),
+            "('581.15', '581.15'), the re-run under ('581.15', '581.42')",
+        ),
+    ],
+)
+def test_another_driver_is_non_reproducing(
+    tmp_path: Path, before: str, after: Any, shown: str
+) -> None:
+    release = fx.make_release(tmp_path, [interrupted(driver=before), rerun(driver=after)])
     assert non_reproducing_reasons(release) == [
-        "driver: the attempt ran under NVIDIA driver ('576.88', '576.88'), the re-run under "
-        "('580.10', '580.10')"
+        f"driver: the attempt ran under NVIDIA driver {shown}"
     ]
     assert verify(release)[0] == vre.EXIT_PASS
 
@@ -559,6 +573,33 @@ def test_an_unreadable_driver_is_non_reproducing(
     who = "the attempt" if void_driver is None else "the re-run"
     assert found.startswith(f"driver: the NVIDIA driver version of {who} could not be read")
     assert verify(release)[0] == vre.EXIT_PASS
+
+
+def _wheel(sha256: str) -> Callable[[dict[str, Any]], None]:
+    def record_wheel(run_json: dict[str, Any]) -> None:
+        run_json["torch_wheel"] = {"url": "https://example.invalid/torch.whl", "sha256": sha256}
+
+    return record_wheel
+
+
+def test_another_torch_wheel_is_non_reproducing_when_both_runs_record_one(tmp_path: Path) -> None:
+    """Section 7.1 "Devices" names the same torch wheel; pip does not always report it."""
+    one, other = "1" * 64, "2" * 64
+    specs = [interrupted(edit_run_json=_wheel(one)), rerun(edit_run_json=_wheel(other))]
+    release = fx.make_release(tmp_path / "both", specs)
+    assert non_reproducing_reasons(release) == [
+        f"torch_wheel: the attempt installed the wheel with sha256 {one}, the re-run {other}"
+    ]
+    assert verify(release)[0] == vre.EXIT_PASS
+    for name, specs in {
+        "same": [interrupted(edit_run_json=_wheel(one)), rerun(edit_run_json=_wheel(one))],
+        "attempt only": [interrupted(edit_run_json=_wheel(one)), rerun()],
+        "re-run only": [interrupted(), rerun(edit_run_json=_wheel(other))],
+    }.items():
+        release = fx.make_release(tmp_path / name, specs)
+        assert entries(release)[A1]["reproduction"]["outcome"] == rr.OUTCOME_REPRODUCED, name
+        assert verdicts(release) == ["VOID", "PASS"]
+        assert verify(release)[0] == vre.EXIT_PASS
 
 
 # ---------------------------------------------------------------------------
@@ -660,27 +701,6 @@ def test_the_rerun_is_the_next_completed_attempt(tmp_path: Path) -> None:
     assert f"run {R3} (A1): verdict PASS" in out
 
 
-def test_attempts_are_ordered_by_when_they_started(tmp_path: Path) -> None:
-    """The bundle lists the re-run first; ``started_at`` says which run came first."""
-    specs = [
-        rerun(started_at="2026-11-12T09:30:00Z"),
-        interrupted(started_at="2026-11-11T22:00:00Z"),
-    ]
-    release = fx.make_release(tmp_path, specs)
-    assert [run["run_id"] for run in release.bundle["runs"]] == [R2, A1]
-    assert entries(release)[A1]["reproduction"]["rerun"] == R2
-    code, out = verify(release)
-    assert code == vre.EXIT_PASS, out
-    # The other way round, the completed run came first: nothing re-ran the interrupted one.
-    earlier = [
-        rerun(started_at="2026-11-11T22:00:00Z"),
-        interrupted(started_at="2026-11-12T09:30:00Z"),
-    ]
-    release = fx.make_release(tmp_path / "earlier", earlier)
-    assert "reproduction" not in entries(release)[A1]
-    assert verify(release)[0] == vre.EXIT_PASS
-
-
 @pytest.mark.parametrize("on", [R2, A1])
 def test_a_record_no_comparison_applies_to_fails(tmp_path: Path, on: str) -> None:
     """A ``reproduction`` entry nothing recomputes is a stored claim: it may not be listed."""
@@ -737,17 +757,17 @@ def test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt(tmp_path: 
 
 
 def test_a_run_json_without_the_new_keys_still_verifies(tmp_path: Path) -> None:
-    """``launched``, ``started_at`` and ``preflight`` are additive: an old record is read."""
+    """``launched`` and ``preflight`` are additive: an old record is read."""
     release = fx.make_release(tmp_path / "one", [fx.RunSpec(legacy_run_json=True)])
     run_json = json.loads(
         (release.bundle_dir / release.bundle["runs"][0]["run_json"]["path"]).read_text("utf-8")
     )
-    assert not {"launched", "started_at", "preflight"} & set(run_json)
+    assert not {"launched", "preflight"} & set(run_json) and "started_at" in run_json
     code, out = verify(release)
     assert code == vre.EXIT_PASS, out
     assert "verdict PASS" in out
-    # An old interrupted attempt counts as launched, in bundle order; its driver was
-    # never recorded, so under a GPU registration it cannot be shown to reproduce.
+    # An old interrupted attempt counts as launched; its driver was never recorded,
+    # so under a GPU registration it cannot be shown to reproduce.
     specs = [interrupted(legacy_run_json=True), rerun(legacy_run_json=True)]
     release = fx.make_release(tmp_path / "two", specs)
     (found,) = non_reproducing_reasons(release)
@@ -778,7 +798,12 @@ PLAN = {
 
 def attempt(run_id: str = A1, **changes: Any) -> rr.Attempt:
     """A run on the registered devices; ``record`` keys and fields are overridden by name."""
-    record = {"device_plan": PLAN, "preflight": {"nvidia_smi": SMI}, "launched": ["train"]}
+    record: dict[str, Any] = {
+        "device_plan": PLAN,
+        "preflight": {"nvidia_smi": SMI},
+        "launched": ["train"],
+        "started_at": "2026-11-11T08:00:00Z",
+    }
     record.update(changes.pop("record", {}))
     fields: dict[str, Any] = {"sha": SHA, "completed": True, "devices_registered": True, **changes}
     return rr.Attempt(
@@ -791,7 +816,7 @@ class TestConditions:
         assert rr.condition_differences(attempt(), attempt(R2)) == []
 
     def test_records_that_are_not_conditions_are_ignored(self) -> None:
-        """``torch_wheel`` may be absent, ``source`` says where a value came from."""
+        """A ``torch_wheel`` only one run records; ``source`` says where a value came from."""
         other = attempt(
             R2,
             record={
@@ -801,6 +826,18 @@ class TestConditions:
             },
         )
         assert rr.condition_differences(attempt(), other) == []
+
+    def test_the_torch_wheel_is_compared_when_both_runs_record_its_hash(self) -> None:
+        def wheel(sha256: Any) -> dict[str, Any]:
+            return {"torch_wheel": {"url": "https://example.invalid/t.whl", "sha256": sha256}}
+
+        first = attempt(record=wheel("1" * 64))
+        (found,) = rr.condition_differences(first, attempt(R2, record=wheel("2" * 64)))
+        assert found.startswith(
+            f"torch_wheel: the attempt installed the wheel with sha256 {'1' * 64}"
+        )
+        for unrecorded in (wheel("1" * 64), wheel(None), wheel(""), {"torch_wheel": None}, {}):
+            assert rr.condition_differences(first, attempt(R2, record=unrecorded)) == []
 
     def test_the_sha_is_always_compared(self) -> None:
         (found,) = rr.condition_differences(attempt(), attempt(R2, sha="b" * 40))
@@ -861,36 +898,20 @@ class TestWhichAttempts:
         nothing = attempt(interruptions=why, record={"launched": []})
         assert rr.needs_record(nothing) is False
 
-    def test_the_rerun_is_the_first_later_completed_attempt(self) -> None:
-        why = ("interrupted",)
-        first = attempt("a", interruptions=why, completed=False)
-        second = attempt("b", interruptions=why, completed=False)
-        third, fourth = attempt("c"), attempt("d")
-        runs = [first, second, third, fourth]
-        assert rr.rerun_of(first, runs) is third and rr.rerun_of(second, runs) is third
-        assert rr.rerun_of(third, runs) is fourth and rr.rerun_of(fourth, runs) is None
-        assert rr.rerun_of(attempt("elsewhere"), runs) is None
-        other_role = attempt("r", role="A1-R")
-        assert rr.record_rerun(first, [first, other_role]) is None
-        assert rr.record_rerun(first, [first, other_role, third]) is third
-        assert rr.record_rerun(third, runs) is None  # it needs no record
-
-    def test_started_at_orders_the_attempts_and_bundle_order_is_the_fallback(self) -> None:
-        def at(run_id: str, started: str | None, **changes: Any) -> rr.Attempt:
-            record = {} if started is None else {"started_at": started}
-            return attempt(run_id, record=record, **changes)
-
-        why = ("interrupted",)
-        late = at("void", "2026-11-11T22:00:00Z", interruptions=why, completed=False)
-        early = at("early", "2026-11-11T08:00:00Z")
-        later = at("later", "2026-11-12T08:00:00+00:00")
-        assert rr.rerun_of(late, [later, early, late]) is later
-        assert rr.rerun_of(late, [early, late]) is None
-        # One attempt without a start time: the order given decides.
-        unknown = at("unknown", None)
-        assert rr.rerun_of(late, [later, early, late, unknown]) is unknown
-        tie = at("tie", "2026-11-11T22:00:00Z")
-        assert rr.rerun_of(late, [late, tie]) is tie and rr.rerun_of(late, [tie, late]) is None
+    def test_a_null_identity_never_matches(self) -> None:
+        """Not even an attempt whose own ``sha`` is unknown: null is not an identity."""
+        unknown, other = attempt(sha=None), attempt(R2)
+        blocks = {
+            side: {"card_id": run.run_id, "sha": run.sha, rp.RUN_JSON_SHA256: run.run_json_sha256}
+            for side, run in zip(_SIDES, (unknown, other), strict=True)
+        }
+        record = {rp.RECORD_SCHEMA_KEY: 1, **blocks, rp.RECORD_DIGESTS: {s: {} for s in _SIDES}}
+        problems = rr.check_record(record, unknown, other)
+        assert [p for p in problems if "the record is for other runs" in p] == [
+            f"attempt.sha None is not {A1}'s (None): the record is for other runs"
+        ]
+        problems = rr.check_record({**record, rp.RECORD_ATTEMPT: None}, unknown, other)
+        assert "attempt: the record names no run (was a run.json beside it?)" in problems
 
 
 def test_small_helpers() -> None:
@@ -902,5 +923,6 @@ def test_small_helpers() -> None:
     named = {rp.RECORD_ATTEMPT: {"card_id": A1}, rp.RECORD_RERUN: {"card_id": R2}}
     assert rr.record_run_ids(named) == (A1, R2)
     assert rr.record_run_ids({**named, rp.RECORD_RERUN: None}) is None
+    assert rr.record_run_ids({**named, rp.RECORD_RERUN: {"card_id": None}}) is None
     assert rr.record_run_ids("not a record") is None
     assert set(rr.OUTCOMES) == {"REPRODUCED", "EMPTY", "NON_REPRODUCING"}

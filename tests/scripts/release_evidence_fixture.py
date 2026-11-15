@@ -141,12 +141,14 @@ class RunSpec:
     launched: list[str] | None = None
     #: ``run.json``'s ``started_at``; ``None`` spaces the attempts a day apart, in bundle order.
     started_at: str | None = None
-    #: The NVIDIA driver version ``preflight.nvidia_smi`` reports for every GPU;
-    #: ``None`` records that nvidia-smi could not be run.
-    driver: str | None = DRIVER
-    #: Write ``run.json`` without ``launched``, ``started_at`` and ``preflight``, as
-    #: run_card wrote it before those keys existed.
+    #: The NVIDIA driver version ``preflight.nvidia_smi`` reports: one string for
+    #: every GPU, or one per GPU; ``None`` records that nvidia-smi could not be run.
+    driver: str | Sequence[str] | None = DRIVER
+    #: Write ``run.json`` without ``launched`` and ``preflight``, as run_card wrote it
+    #: before those keys existed (``started_at`` it has always written).
     legacy_run_json: bool = False
+    #: Edit ``run.json`` just before it is written (a missing key, a ``torch_wheel``...).
+    edit_run_json: Callable[[dict[str, Any]], None] | None = None
     #: Rotate the primary arm's pairs: the same counts and verdict, other games.
     primary_rotation: int = 0
     #: Salt of the stand-in checkpoint digests: another value is other trained weights.
@@ -298,7 +300,11 @@ def _nvidia_smi(spec: RunSpec, gpus: Sequence[str]) -> Any:
     """``preflight.nvidia_smi`` as run_card records it: one csv line per GPU, or an error."""
     if spec.driver is None:
         return {"error": "FileNotFoundError"}
-    return [f"{i}, {name}, 00000000:0{i + 1}:00.0, {spec.driver}" for i, name in enumerate(gpus)]
+    drivers = [spec.driver] * len(gpus) if isinstance(spec.driver, str) else list(spec.driver)
+    return [
+        f"{i}, {name}, 00000000:0{i + 1}:00.0, {driver}"
+        for i, (name, driver) in enumerate(zip(gpus, drivers, strict=True))
+    ]
 
 
 def write_run(
@@ -349,9 +355,9 @@ def write_run(
     }
     plan = registered_device_plan(section)
     devices = registered_devices(section)
+    run_json["started_at"] = spec.started_at or f"2026-11-{11 + position:02d}T08:00:00Z"
     if not spec.legacy_run_json:
         run_json["launched"] = _launched(spec, list(registered))
-        run_json["started_at"] = spec.started_at or f"2026-11-{11 + position:02d}T08:00:00Z"
         if devices is not None:
             gpus = [devices.gpus[i] for i in sorted(devices.gpus)]
             run_json["preflight"] = {"nvidia_smi": _nvidia_smi(spec, gpus)}
@@ -361,6 +367,8 @@ def write_run(
         run_json["device_plan"] = plan
     if spec.probe:
         run_json["probe"] = True
+    if spec.edit_run_json is not None:
+        spec.edit_run_json(run_json)
     entry: dict[str, Any] = {
         "run_id": spec.run_id,
         "role": spec.role,
