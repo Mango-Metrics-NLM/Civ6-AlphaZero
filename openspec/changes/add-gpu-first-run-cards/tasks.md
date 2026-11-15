@@ -42,6 +42,7 @@
 - [x] 4c.5 `reproduction compare` records identities and digests; `build_release_bundle.py --compare`; the verifier recomputes the comparison, requires a record for an interrupted attempt and reads a non-reproducing PASS as INCONCLUSIVE
 - [x] 4c.6 Negative controls recorded in each test module; no edit inside the hashed region (digest unchanged)
 - [ ] 4c.7 Follow-up: the verifier does not model the bundle section 7.1 requires after a non-reproducing re-run (a new registration that lists both attempts)
+- [x] 4c.8 Review fix round (run cards): the run-directory claim is atomic (the second of two racing runs is refused as a resumed card); a report listing torch twice records no wheel; a reused environment without a wheel record warns; tests for a failure after a passed rehearsal and for an interrupted rehearsal
 
 ## 5. On the GPU machine (maintainer)
 - [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order

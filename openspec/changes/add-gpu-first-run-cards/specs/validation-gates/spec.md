@@ -124,6 +124,18 @@ rehearsal that preceded a run, and the name of each invocation before it starts.
 - **WHEN** a card whose run directory already holds a `run.json` is run again
 - **THEN** it is refused and no rehearsal directory is created
 
+#### Scenario: A failure after the rehearsal passed
+- **WHEN** the rehearsal passes and the run itself is then refused or fails
+- **THEN** the card's run directory holds a FAILED `run.json` and the card cannot be run again under that `card_id`
+
+#### Scenario: An interrupted rehearsal
+- **WHEN** a card is interrupted while it is being rehearsed
+- **THEN** the card's run directory does not exist and the same card can be run again
+
+#### Scenario: Two runs of one card at once
+- **WHEN** two runs of one card both find its run directory unused
+- **THEN** exactly one of them claims it and the other is refused as a resumed card
+
 ### Requirement: A pinned GPU run records the driver and the wheel it ran with
 
 A card that pins a torch build and names a CUDA device MUST be refused when the
@@ -139,6 +151,10 @@ the torch pin that is compared with the registration.
 #### Scenario: The wheel is recorded
 - **WHEN** a torch pin is installed and the installer reports the wheel's hash
 - **THEN** `run.json` carries it as `torch_wheel`, and a reused environment reports the same value
+
+#### Scenario: A report that names two torch wheels
+- **WHEN** the installer's report lists torch more than once
+- **THEN** no wheel is recorded and the run continues with a warning
 
 ### Requirement: The release verifier applies the re-run rule
 
