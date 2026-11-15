@@ -5,6 +5,17 @@
 
 <!-- entries below -->
 
+## 2026-11-15 - v2.1 local close-out (PR #140)
+- **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
+- **Validating:** 19 commits on `claude/cool-lovelace-o02vn9` over `6d548d8`: rehearsal-first run cards, the torch wheel record, atomic checkpoint and result writes, the driver record, the release verifier applying the "After a VOID" rule, and the archive of five merged OpenSpec changes. No edit inside the hashed region of `docs/EVALUATION.md` (digest `e460a353…7c17`).
+- **Lint:** pass (`ruff check .` + `ruff format --check .`, 981 files)
+- **Types:** pass (`python -m mypy alpha_zero/`, 346 files)
+- **Tests:** unit 10,546 passed; integration + e2e + smoke + sanity + inference 740 passed; regression + governance + scripts + security + cloud 2,998 passed. Eight failures, all also failing on the base commit in this container (root, no `.env`, no Google credentials). Coverage by path on changed modules 86-100%; the global gate is CI's (all 24 checks on `d44f7ee` completed: 23 passed, `pip-audit` skipped by design). `make verify` as one command was not run: the coverage plugin crashes here.
+- **Smoke Tests:** pass (`training_civ6 --dry_run` exit 0; `orchestrator --preset fast --dry_run` exit 0)
+- **Review:** in isolated subagents, four passes: `sdlc-ml-scientist` and `sdlc-qa-sdet` on the first version, `sdlc-ml-scientist` on the fix (it found one more route around the ordering rule), then its confirmation that the findings are closed (by reading; its shell cannot run pytest).
+- **Status:** PR-ready as a draft; awaiting human review. Not marked ready for review and not merged: both are the maintainer's.
+- **Next:** watch PR #140 (CI on the final head, review comments). Maintainer: the CONFIRM-FIRST items and conservative readings in the PR body; then T0b on the GPU machine.
+
 ## 2026-09-04 - Correctness-first branch: search fix, seeding, and the gates that were fail-open (PR #118)
 - **Session:** session_01KZPsP2Mvg333p1akDqpLTG
 - **Validating:** six commits on `claude/2026-standards-audit-7tgk7e` -- the 2026 standards audit, the correctness-first plan, one sign-correct value backup shared by all five MCTS variants, the Danihelka completed-Q policy target, per-stream seed derivation, `MicroCivEnv.clone()` terrain sharing, and the harness/supply-chain fixes (SHA-pinned actions, CI PR trigger, coverage-floor ratchet, dead-code ratchet vs build artifacts, `chess` out of the `dev` extra).

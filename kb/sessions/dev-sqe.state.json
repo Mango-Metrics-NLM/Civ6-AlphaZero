@@ -1,24 +1,26 @@
 {
     "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-14T20:00:00Z",
-    "current_focus": "GPU-first registered runs on PR #138 (cuda:0 trains, cuda:1 judges, torch==2.11.0+cu128; section 7.1 digest e460a353...7c17); handed off to Pre-PR and the maintainer",
+    "last_timestamp": "2026-11-15T21:45:00Z",
+    "current_focus": "v2.1 local close-out on PR #140 (rehearsal-first run cards, torch wheel record, atomic writes, driver record, the release verifier's re-run rule, OpenSpec archive); handed off to Pre-PR and the maintainer. Section 7.1 digest unchanged (e460a353...7c17).",
     "resume_pointers": {
-        "current_task": "Pre-PR review of PR #138; then the maintainer's T0b probe and run on the GPU machine",
+        "current_task": "None in flight. v2.1's remaining work is the maintainer's (T0b, the section 7.1 slot fill-in, A1, A1-R, the release).",
         "blocked_on": [
-            "maintainer: review/merge PR #138 (CONFIRM-FIRST items listed in the PR body and the handoff)",
+            "maintainer: review PR #140 (CONFIRM-FIRST items and conservative readings are in its body); it is a draft and is not to be merged or marked ready by an agent",
             "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
             "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation"
         ],
         "next_steps": [
             "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
             "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
-            "Then A1 and A1-R on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
-            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256"
+            "Then A1 and A1-R on the rc SHA; after an interruption run reproduction compare before any other card; build_release_bundle.py --compare; verify_release_evidence.py",
+            "Open follow-ups on openspec/changes/add-gpu-first-run-cards: 4c.7 (the bundle after a non-reproducing re-run) and 4c.11 (three checks the verifier does not make)",
+            "v2.2 (local training loop, gap-register rows L0-L6) needs its own task plan; most of it is CONFIRM-FIRST"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261114-devsqe-to-prepr-gpu-first-run-cards.md",
-        "openspec/changes/add-gpu-first-run-cards/proposal.md",
+        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md",
+        "openspec/changes/add-gpu-first-run-cards/tasks.md",
+        "docs/evidence/SCHEMA.md",
         "docs/EVALUATION.md",
         "docs/runbooks/branching-and-release.md",
         ".claude/skills/a1-reregister/SKILL.md",
