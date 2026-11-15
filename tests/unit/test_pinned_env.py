@@ -235,6 +235,20 @@ def test_cpu_venv_is_not_reused_for_a_cuda_pin(
     assert other.variant != pin.variant
 
 
+def test_torch_pin_may_name_its_build() -> None:
+    """``torch==X.Y.Z+tag`` is the build's own name; ``version`` keeps the tag.
+
+    Negative control: with the tag group removed from ``_TORCH_SPEC_RE`` the
+    constructor raises, and with ``version`` stripping the tag the device check
+    would again accept another CUDA variant of the same release.
+    """
+    pin = pe.TorchPin("torch==2.11.0+cu128", _CU128)
+    assert pin.version == "2.11.0+cu128"
+    assert pin.as_dict() == {"spec": "torch==2.11.0+cu128", "index_url": _CU128}
+    assert pe.TorchPin("torch==2.11.0", _CU128).version == "2.11.0"
+    assert pin.variant != pe.TorchPin("torch==2.11.0", _CU128).variant
+
+
 @pytest.mark.parametrize(
     ("spec", "url"),
     [
@@ -248,7 +262,11 @@ def test_cpu_venv_is_not_reused_for_a_cuda_pin(
         ("torch==2.11.0", "https://example.com/whl --extra-index-url https://evil"),
         ("torch==2.11.0\n", _CU128),  # a YAML block scalar's trailing newline
         ("torch==2.11.0", _CU128 + "\n"),
-        ("torch==2.11.0+cu128", _CU128),  # the index selects the variant, not a local tag
+        ("torch==2.11.0+", _CU128),  # an empty build tag
+        ("torch==2.11.0+cu128.", _CU128),
+        ("torch==2.11.0+cu 128", _CU128),
+        ("torch==2.11.0+cu128;python_version>'3'", _CU128),  # a marker is not a pin
+        ("torch==2.11.0+cu128\n", _CU128),
     ],
 )
 def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(

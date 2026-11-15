@@ -19,6 +19,7 @@ Usage:
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -89,7 +90,9 @@ class ArenaResult:
     losses: int
     draws: int
     total_games: int
-    #: ``{"pair", "seat", "result"}`` per game, from model_a's side, in play order.
+    #: ``{"pair", "seat", "result", "moves", "actions_sha256"}`` per game, from model_a's
+    #: side, in play order. ``actions_sha256`` digests every action of the game in order
+    #: (both players'), so two runs can be compared move for move, not only by outcome.
     #: Additive: :meth:`to_dict` does not carry it, so persisted artifacts are unchanged.
     games: list[dict[str, Any]] = field(default_factory=list)
 
@@ -302,6 +305,7 @@ def run_arena(
         _obs, _info = env.reset()
         done = False
         move_count = 0
+        actions = hashlib.sha256()
 
         while not done:
             current_is_a = (env.current_player == 0 and a_is_player_0) or (
@@ -319,6 +323,7 @@ def run_arena(
             _obs, _reward, terminated, truncated, _ = env.step(action)
             done = terminated or truncated
             move_count += 1
+            actions.update(b"%d," % int(action))
 
         # Determine result from model_a's perspective
         if env.winner is None:
@@ -330,7 +335,8 @@ def run_arena(
         else:
             losses += 1
             result = "loss"
-        games.append({"pair": pair, "seat": 0 if a_is_player_0 else 1, "result": result})
+        record = {"pair": pair, "seat": 0 if a_is_player_0 else 1, "result": result}
+        games.append({**record, "moves": move_count, "actions_sha256": actions.hexdigest()})
 
         elapsed = time.time() - game_start_time
         player_str = "P0" if a_is_player_0 else "P1"

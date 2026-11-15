@@ -49,6 +49,7 @@ from alpha_zero.evaluation.a1_protocol import (
     read_registered_protocol,
 )
 from alpha_zero.evaluation.a1_registration import registered_devices
+from alpha_zero.utils.device import torch_build_matches
 
 pytestmark = pytest.mark.skipif(
     not torch.cuda.is_available(),
@@ -136,8 +137,7 @@ def test_this_environment_has_the_torch_build_the_cards_pin() -> None:
     """A pass on another build says nothing about the registered one, so this fails, not skips."""
     registered = registered_devices(read_registered_protocol(default_protocol_path()))
     assert registered is not None, "section 7.1 registers no devices"
-    installed = torch.__version__.split("+", 1)[0]
-    assert installed == registered.torch_version, (
+    assert torch_build_matches(torch.__version__, registered.torch_version), (
         f"this environment has torch {torch.__version__}, but the cards pin "
         f"{registered.torch_spec} from {registered.torch_index_url}. Install that build "
         "first; a determinism result on another build is not evidence for the cards."

@@ -98,7 +98,9 @@ so the benchmark and production cannot disagree:
   [`evidence/SCHEMA.md`](evidence/SCHEMA.md) (`search_epoch: post-2026-09-04`,
   `claims`, `non_claims`, a `shlex`-joined command) and each result embeds the
   versioned `EvaluationResult` plus `draw_rate`, `decisive_win_rate`, the MDE at
-  that `n`, the per-game records `{pair, seat, result}`, and an `intervals` block:
+  that `n`, the per-game records `{pair, seat, result, moves, actions_sha256}`
+  (`actions_sha256` digests every action of the game in order, so two runs can be
+  compared move for move), and an `intervals` block:
   at 95% and 99%, the iid ternary interval, the pair-clustered interval
   (`scoring.pair_score_interval`: the plain pentanomial interval, the
   seat-swapped pair as the unit, no pseudo-counts) and their hull
@@ -316,7 +318,7 @@ values, and `tests/scripts/test_a1_registration.py` holds them equal:
 
 <!-- a1-devices -->
 ```text
-torch_spec: torch==2.11.0
+torch_spec: torch==2.11.0+cu128
 torch_index_url: https://download.pytorch.org/whl/cu128
 cuda_visible_devices: 0,1
 cuda:0: NVIDIA GeForce RTX 5060 Ti
@@ -330,7 +332,9 @@ device is missing from the pinned environment, when that torch build has no
 kernels for the GPU, or when a GPU is not the one the card expects at that
 ordinal; the runners would otherwise fall back to CPU with a warning. A run
 whose `device_plan` shows another torch build, device order or GPU than the
-block above is VOID (T14 reads `device_plan`). The positive-control arm loads no
+block above is VOID (T14 reads `device_plan`). `torch_spec` names the build with
+its tag (`+cu128`), and the installed `torch.__version__` must equal it in full:
+another CUDA variant of the same release is another build. The positive-control arm loads no
 network, so its `--device` is nominal; it carries the arena's value so that the
 arm keeps the common prefix.
 
@@ -344,7 +348,8 @@ before any A1-family run: T0b's `determinism` invocation
 (`scripts/check_determinism.py`) trains and judges a small A1-shaped run twice
 on the registered devices, each repeat in its own process inside the card's
 pinned environment, and compares every checkpoint tensor by tensor and every
-arena game by game. If it reports a difference, raises, or has not run on the
+arena game by game: its outcome, its length and a sha256 of its actions in
+order. If it reports a difference, raises, or has not run on the
 registered build and GPUs, the GPU registration does not stand: no A1-family
 run starts until this section is re-registered, on `cpu` or on devices where
 the check passes.
@@ -502,7 +507,8 @@ re-run under this rule, only a new `card_id`.
      `python -m alpha_zero.evaluation.reproduction compare <VOID attempt's <D>>
      <re-run's <D>> --out <file>`: each checkpoint it saved, tensor by tensor;
      each iteration record it wrote, timings excepted; each arm it completed,
-     game by game. That file goes in the bundle beside both attempts.
+     game by game (outcome, length and action digest). That file goes in the
+     bundle beside both attempts.
      - `REPRODUCED`: the re-run is judged.
      - `NOTHING TO COMPARE` (the attempt finished nothing beyond
        `checkpoint_0`, which is fixed by the seed alone): nothing of the result
@@ -656,6 +662,7 @@ in `run.json` and the release bundle, not here.
 | 2026-11-12 | `79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b` | T14 rereview N-1/N-2 (before any A1-family run): "After a VOID" says the same-seed re-run is a reproduction only after an interruption; after a symmetry or positive-control VOID it is a second draw, disclosed by the listed VOID attempt, which keeps whatever components it left |
 | 2026-11-14 | `c58abfad89091b37ab2bace9dde820c72894ad3b1e82108297364d29977b4194` | GPU-first re-registration (before any A1-family run; maintainer instruction, PR #138): training and self-play on `cuda:0`, every arena arm on `cuda:1` (was `cpu` throughout); new "Devices" paragraph (pinned torch build, PCI device order, `run_card` refuses a missing device, deterministic algorithms enforced); "After a VOID" reproduction claim scoped to the same machine, torch build and device |
 | 2026-11-14 | `dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91` | Review round on the GPU registration (before any A1-family run; PR #138, ML-science, QA and architecture reviews): the torch build and both GPUs are named in a machine-readable `a1-devices` block and a run on anything else is VOID; GPU determinism is a precondition checked by T0b's `determinism` invocation in the pinned environment, each repeat in its own process, with a stated consequence; "After a VOID" makes the re-run a reproduction check (`evaluation.reproduction compare`) and a non-reproducing re-run cannot PASS; a never-launched attempt is not an attempt; T0b is named as a card; "the devices or the torch build" added to what a later amendment may not change; the confirmatory-seed sentence corrected for the 2026-11-11 harness smoke |
+| 2026-11-14 | `e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17` | Automated review of PR #138 (before any A1-family run; same maintainer instruction as the two rows above): `torch_spec` names the build (`torch==2.11.0+cu128`, was `torch==2.11.0`) and the installed `torch.__version__` must equal it in full, so another CUDA variant of the same release is another build (the cu128 index was already registered; the build is the same one, now named); arena games are compared by outcome, length and a sha256 of their actions in order, in the determinism precondition and in the "After a VOID" reproduction check (was outcome only) |
 
 ## 8. The LLM advisor gate is not an evaluation
 
