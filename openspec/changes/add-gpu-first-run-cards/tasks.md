@@ -24,7 +24,7 @@
 - [x] 4.5 `scripts/check_determinism.py` as runner `determinism_check`, T0b's first invocation (660 games)
 - [x] 4.6 `a1_protocol digest`, `--arena-throughput`, `make verify-registration`, skill `a1-reregister`
 - [x] 4.7 Negative controls recorded in each test module; debt ratchet passes without a baseline change (until 4b.2)
-- [ ] 4.8 Follow-up: the release verifier reads the `reproduction compare` record and applies "cannot PASS" itself
+- [x] 4.8 Follow-up: the release verifier reads the `reproduction compare` record and applies "cannot PASS" itself (done in 4c.5)
 - [x] 4.9 Follow-up: record the torch wheel's sha256 in `.pinned.json` and `run.json` (done in 4c.2)
 - [x] 4.10 Follow-up: a preflight refusal does not use up the `card_id` (done in 4c.1 by rehearsing first; nothing is moved aside)
 
@@ -39,7 +39,9 @@
 - [x] 4c.2 The torch wheel pip installed is recorded (`pip install --report`) in the venv marker and `run.json`; record-only, outside the compared torch pin
 - [x] 4c.3 Checkpoints and the benchmark's `result.json` are written through a temporary file (`alpha_zero/utils/atomic_io.py`)
 - [x] 4c.4 A card that pins torch and names a CUDA device is refused when the NVIDIA driver version cannot be read
-- [x] 4c.5 Negative controls recorded in each test module; no edit inside the hashed region (digest unchanged)
+- [x] 4c.5 `reproduction compare` records identities and digests; `build_release_bundle.py --compare`; the verifier recomputes the comparison, requires a record for an interrupted attempt and reads a non-reproducing PASS as INCONCLUSIVE
+- [x] 4c.6 Negative controls recorded in each test module; no edit inside the hashed region (digest unchanged)
+- [ ] 4c.7 Follow-up: the verifier does not model the bundle section 7.1 requires after a non-reproducing re-run (a new registration that lists both attempts)
 
 ## 5. On the GPU machine (maintainer)
 - [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order

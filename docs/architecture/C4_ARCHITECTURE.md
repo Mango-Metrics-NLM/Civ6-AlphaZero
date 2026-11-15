@@ -486,7 +486,7 @@ flowchart TD
 
     Refuse["REFUSED / FAILED\nnothing launched"]:::stop
     Runners["training_civ6 · evaluation.benchmark\ncalibrate_throughput · check_determinism\n(seeded GPU runs: utils/seeding\nenforce_deterministic_backend)"]:::ext
-    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices"]:::comp
+    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices\nre-run rule recomputed (release_reproduction.py)"]:::comp
 
     Registration -. "tests hold cards equal to it" .-> Card
     Card --> Price --> Static

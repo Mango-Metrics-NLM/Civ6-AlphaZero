@@ -139,3 +139,30 @@ the torch pin that is compared with the registration.
 #### Scenario: The wheel is recorded
 - **WHEN** a torch pin is installed and the installer reports the wheel's hash
 - **THEN** `run.json` carries it as `torch_wheel`, and a reused environment reports the same value
+
+### Requirement: The release verifier applies the re-run rule
+
+When a release bundle lists an attempt that was interrupted after it launched an
+invocation, the bundle MUST carry the reproduction comparison between that
+attempt and its re-run, and the verifier MUST recompute that comparison instead
+of trusting its stored status. A re-run that differs from the attempt, or that
+ran at another commit, device plan or driver, MUST NOT be read as a PASS: its
+verdict is INCONCLUSIVE and it is labelled a non-reproducing re-run. An attempt
+that launched nothing MUST NOT be listed.
+
+#### Scenario: An interrupted attempt with no comparison
+- **WHEN** a bundle lists an interrupted attempt and its re-run but no comparison record
+- **THEN** verification fails
+
+#### Scenario: A re-run that differs
+- **WHEN** the comparison finds a difference and the re-run's arms would give PASS
+- **THEN** the stored and recomputed verdict are INCONCLUSIVE with the label, and a bundle that stores PASS fails verification
+
+#### Scenario: A record that claims more than its digests show
+- **WHEN** a record's status is REPRODUCED but its digests differ, or its digests contradict the arena results the bundle holds
+- **THEN** verification fails
+
+#### Scenario: A second draw
+- **WHEN** an attempt completed and is VOID by its symmetry or positive control
+- **THEN** no comparison is required for its re-run
+

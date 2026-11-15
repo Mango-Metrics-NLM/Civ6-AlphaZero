@@ -199,8 +199,11 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   finished nothing beyond `checkpoint_0`; the re-run is judged and the bundle says the
   comparison was empty. `DIFFERS` (exit 1): the re-run cannot PASS and no further A1-family
   run starts until section 7.1 is re-registered with a new seed pair. `compare.json` goes in
-  the bundle beside both attempts. The release verifier does not read it yet, so a reviewer
-  must.
+  the bundle beside both attempts: pass it to `scripts/build_release_bundle.py --compare`.
+  The release verifier reads it, recomputes the comparison from the digests it carries and
+  applies the rule itself; a bundle with an interrupted attempt and no record fails. A
+  re-run at another `sha`, device plan or driver cannot PASS either, even when nothing was
+  left to compare, so a crash that needs a code fix costs the seed pair.
 
 ### The A1 sequence
 
