@@ -73,7 +73,8 @@ Each `runs[]` entry is one attempt:
 | `games`, `approval_ref` | the run's priced games (the sum of `run.json`'s invocations) and `run.json`'s own `approval_ref`; over 1,000 games needs one |
 | `run_json`, `iterations` | `{path, sha256}` of the run's `run.json` and `iterations.jsonl` |
 | `arms` | `{name: {path, sha256, wins, draws, losses, score_rate, confidence, hull}}`, one per registered arena invocation (`positive-control` -> `positive_control`); `hull` is at 99% for `symmetry`, 95% otherwise |
-| `verdict` | `a1_protocol.compute_verdict(...).to_dict()`: `verdict`, `reasons`, the three hulls, and for INCONCLUSIVE `mde_alpha025_80pct`, `hull_ratio`, `mde_alpha025_80pct_hull` |
+| `verdict` | `a1_protocol.compute_verdict(...).to_dict()`: `verdict`, `reasons`, the three hulls, and for INCONCLUSIVE `mde_alpha025_80pct`, `hull_ratio`, `mde_alpha025_80pct_hull`. `label` is present only on a non-reproducing re-run (below), where it is `"non-reproducing re-run"` |
+| `reproduction` | only on an interrupted attempt that has a re-run: `{path, sha256, rerun, outcome, reasons}` naming its compare record (below), the `run_id` it was compared with, and what the comparison means for that re-run: `REPRODUCED`, `EMPTY` or `NON_REPRODUCING`. `reasons` are prose and are not compared |
 | `checkpoints` | written by the builder: `{path under the run directory: sha256}` of every checkpoint an arm names (the files are not committed). The builder refuses an arm whose `checkpoint:<sha256>` is not the file on disk; the verifier ignores this field |
 
 Paths are POSIX and relative to the bundle directory (`..` and absolute paths
@@ -116,3 +117,73 @@ honesty, not completeness:
   cover every iteration; each line carries the run's seed and sha;
 - the stored verdict is `VOID`. A FAIL or INCONCLUSIVE verdict passes when it is
 recorded honestly: a negative A1 ships the release with the claim withheld.
+
+An attempt whose `run.json` records no launched invocation (`"launched": []`: a
+refused device, a failed preflight) played nothing. It is not an attempt and may
+not be listed. A `run.json` written before the `launched` key existed counts as
+launched.
+
+### Reproduction compare record (`<run_id>.reproduction.json`)
+
+Section 7.1 ("After a VOID") makes the re-run after an interruption a
+reproduction check first. Its record is the file written by
+
+```text
+python -m alpha_zero.evaluation.reproduction compare <VOID attempt's run dir> <re-run's run dir> --out FILE
+```
+
+and `scripts/build_release_bundle.py --compare FILE` copies it into the bundle
+root as `<VOID attempt's run_id>.reproduction.json`, beside both attempts, and
+names it in the VOID attempt's `reproduction` entry. The record names both runs,
+so the builder matches it to them by `card_id`.
+
+| Field | Meaning |
+|---|---|
+| `schema_version` | `1` (`reproduction.RECORD_SCHEMA_VERSION`) |
+| `attempt`, `rerun` | each run's identity from its `run.json`: `card_id`, `sha`, `status`, and `run_json_sha256`, the sha256 of that file. `null` for a directory without a `run.json` |
+| `digests` | `{attempt, rerun}`: what `reproduction.run_digest` gives for each run directory: every checkpoint's tensors (one sha256 each), every finished arm's protocol, seed and per-game records, and every iteration record without its wall-clock fields |
+| `status`, `differences` | `REPRODUCED`, `DIFFERS` or `NOTHING TO COMPARE`, and each difference found. `NOTHING TO COMPARE` means the attempt finished nothing beyond `checkpoint_0.pt`, which the seed alone fixes |
+| `components`, `rerun_components`, `components_compared`, `attempt_dir`, `rerun_dir`, `tool` | informational |
+
+**Which attempts need one.** An attempt that is VOID for an interruption-class
+reason (its `run.json` is not `COMPLETED`, an iteration record was resumed, an
+`MCTS_*` variable was set, or its `device_plan` is not the registered one), that
+launched something, and that has a re-run: the first later `COMPLETED` attempt of
+the same role, by `run.json`'s `started_at` (bundle order when an attempt has
+none). That re-run need not be the attempt that is judged. A symmetry or
+positive-control VOID needs none, even when it was also interrupted: the code
+changes before its re-run, which is a second draw. A `reproduction` entry on an
+attempt that needs none fails the bundle, as a stored claim that nothing
+recomputes.
+
+**What the verifier does with it** (`scripts/release_reproduction.py`). It
+re-hashes the file, then requires that:
+
+- both identities are the bundle's (`card_id`, `sha`, and `run_json_sha256` equal
+  to the bundled `run.json`'s hash);
+- the record's arena and iteration digests equal the digests of the bundled
+  `result.json` and `iterations.jsonl` files of both runs, in both directions, so
+  a record that leaves out an arm the attempt finished fails;
+- `status` and `differences` are what `reproduction.compare_status` gives for the
+  record's own digests.
+
+It then recomputes the outcome, which must equal the stored `outcome` and `rerun`:
+
+| Outcome | When | The re-run |
+|---|---|---|
+| `REPRODUCED` | no difference, the same conditions | is judged |
+| `EMPTY` | `NOTHING TO COMPARE`, the same conditions | is judged; the bundle says the comparison was empty (this `outcome`, which is recomputed, and a line the builder writes in `report.md`, which is not checked) |
+| `NON_REPRODUCING` | any difference between the digests, **or** another `sha`, another `device_plan` (`CUDA_VISIBLE_DEVICES`, `CUDA_DEVICE_ORDER`, `CUBLAS_WORKSPACE_CONFIG`, `torch_pin`, `requested`, `expected_gpus`, and `torch.version`, `.cuda`, `.cudnn`, `.devices`, `.capabilities`), or another NVIDIA driver. Where section 7.1 registers devices, a driver that cannot be read from `preflight.nvidia_smi` on either side counts as another driver | cannot PASS: its verdict is recomputed with the label, and a PASS row is read as INCONCLUSIVE with the MDE that verdict reports |
+
+`run.json`'s `torch_wheel` is a record and is not compared.
+
+**What the record cannot show.** The checkpoint tensor digests in the record are
+not anchored to anything in the bundle: checkpoints are too large to bundle, so
+the record is the only account of them, and it is the output of a tool the
+operator ran. The arena and iteration digests are anchored, because those files
+are bundled.
+
+**Not modelled.** After a non-reproducing re-run, section 7.1 allows no further
+A1-family run until it is re-registered with a new confirmatory seed pair, and
+requires that registration's bundle to list both attempts. The verifier does not
+check either: it labels the re-run and withholds the PASS.
