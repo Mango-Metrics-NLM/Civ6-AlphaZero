@@ -662,6 +662,7 @@ _TWO_GPUS = {
     "device_count": 2,
     "devices": ["GPU A", "GPU B"],
 }
+_SMI = ["0, GPU A, 00000000:01:00.0, 581.15", "1, GPU B, 00000000:05:00.0, 581.15"]
 
 
 def _device_card(*devices: str, **extra: Any) -> rc.RunCard:
@@ -913,9 +914,8 @@ def test_torch_pin_reaches_the_pinned_env_and_run_json(
     tmp_path: Path, pinned: FakeRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     real = rc._preflight
-    monkeypatch.setattr(
-        rc, "_preflight", lambda env, child: {**real(env, child), "torch": _TWO_GPUS}
-    )
+    report = {"torch": _TWO_GPUS, "nvidia_smi": _SMI}
+    monkeypatch.setattr(rc, "_preflight", lambda env, child: {**real(env, child), **report})
     card = _card(
         tmp_path,
         [_train("smoke", "--dry_run", "--device", "cuda:0")],

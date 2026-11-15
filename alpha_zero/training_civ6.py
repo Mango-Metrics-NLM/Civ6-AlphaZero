@@ -54,6 +54,7 @@ from alpha_zero.multiplayer.scoring import (
 )
 from alpha_zero.training.diagnostics import StepRecord, prequential_value_metrics
 from alpha_zero.training.run_record import IterationLog
+from alpha_zero.utils.atomic_io import write_text_atomically
 from alpha_zero.utils.checkpoint import (
     GIT_SHA_ENV,
     build_provenance,
@@ -1199,10 +1200,7 @@ def write_eval_json(
     result: dict[str, Any] = dict(summary.to_dict())
     result["win_rate"] = legacy_win_rate(summary.wins, summary.draws, summary.losses)
     payload = {"eval_schema_version": EVAL_JSON_SCHEMA_VERSION, **meta, "result": result}
-    target = Path(path)
-    tmp = target.with_name(target.name + ".tmp")
-    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    os.replace(tmp, target)
+    write_text_atomically(path, json.dumps(payload, indent=2, sort_keys=True) + "\n")
     return result
 
 

@@ -64,6 +64,12 @@ PCI_BUS_ORDER = "PCI_BUS_ID"
 SOURCE_CARD = "card"
 SOURCE_INHERITED = "inherited"
 SOURCE_UNSET = "unset"
+#: What the preflight asks ``nvidia-smi`` for, one csv line per GPU. The driver
+#: version is last: :func:`driver_versions` reads it from there.
+NVIDIA_SMI_QUERY_FIELDS = ("index", "name", "pci.bus_id", "driver_version")
+#: ``device_problem(driver_report=...)`` default: the caller has no driver report
+#: to offer, which is different from a report that could not be read.
+DRIVER_NOT_CHECKED: Any = object()
 
 #: Run inside the pinned child, with an ``info`` dict in scope: adds ``info['torch']``.
 #: It is the pinned environment's own account of itself -- the only one that counts,
@@ -101,8 +107,9 @@ TORCH_REPORT_CODE = (
     # it; nvidia-smi does. Best effort: absent on a machine without NVIDIA tooling.
     "try:\n"
     "    import subprocess\n"
-    "    _smi = subprocess.run(['nvidia-smi', '--query-gpu=index,name,pci.bus_id,"
-    "driver_version', '--format=csv,noheader'], capture_output=True, text=True, timeout=30)\n"
+    "    _smi = subprocess.run(['nvidia-smi', '--query-gpu="
+    + ",".join(NVIDIA_SMI_QUERY_FIELDS)
+    + "', '--format=csv,noheader'], capture_output=True, text=True, timeout=30)\n"
     "    info['nvidia_smi'] = [ln.strip() for ln in _smi.stdout.splitlines() if ln.strip()]\n"
     "except Exception as exc:\n"
     "    info['nvidia_smi'] = {'error': type(exc).__name__}\n"
@@ -207,6 +214,25 @@ def _torch_label(report: Mapping[str, Any]) -> str:
     return str(report.get("version", report.get("error", "unknown")))
 
 
+def driver_versions(nvidia_smi: Any) -> tuple[str, ...] | None:
+    """The NVIDIA driver version of each GPU the preflight listed, or ``None``.
+
+    ``nvidia_smi`` is the preflight's record (:data:`TORCH_REPORT_CODE`): one csv
+    line per GPU with the fields of :data:`NVIDIA_SMI_QUERY_FIELDS`, or
+    ``{"error": ...}`` when the tool could not be run. ``None`` means the driver
+    could not be read: an error record, no lines, or a line without a version.
+    """
+    if not isinstance(nvidia_smi, (list, tuple)) or not nvidia_smi:
+        return None
+    versions: list[str] = []
+    for line in nvidia_smi:
+        fields = [field.strip() for field in str(line).split(",")]
+        if len(fields) < len(NVIDIA_SMI_QUERY_FIELDS) or not fields[-1]:
+            return None
+        versions.append(fields[-1])
+    return tuple(versions)
+
+
 def device_problem(
     requested: Mapping[str, str],
     torch_report: Any,
@@ -214,6 +240,7 @@ def device_problem(
     torch_pin: TorchPin | None = None,
     visible: str | None = None,
     expected_gpus: Mapping[int, str] | None = None,
+    driver_report: Any = DRIVER_NOT_CHECKED,
 ) -> str | None:
     """Why the pinned environment cannot honour the requested devices, or ``None``.
 
@@ -226,7 +253,11 @@ def device_problem(
        below the visible device count;
     3. the build has kernels for that GPU's architecture
        (:func:`architecture_supported`), and one real CUDA operation ran there;
-    4. each ordinal in ``expected_gpus`` holds the GPU the card expects there. A
+    4. a card that pins torch and names a CUDA device has a readable NVIDIA driver
+       version in ``driver_report`` (the preflight's ``nvidia_smi``). A re-run is
+       compared with the attempt it replaces under the same driver, so a run whose
+       driver was never recorded could not be shown to reproduce later;
+    5. each ordinal in ``expected_gpus`` holds the GPU the card expects there. A
        two-GPU machine can present its cards in either order; evidence that says
        ``cuda:1`` must mean one physical card every time.
 
@@ -280,6 +311,16 @@ def device_problem(
                 f"invocation {name} asks for {device} ({gpu}) but a CUDA kernel failed there "
                 f"under torch {_torch_label(report)}: {smoke[index]}"
             )
+    if (
+        torch_pin is not None
+        and driver_report is not DRIVER_NOT_CHECKED
+        and driver_versions(driver_report) is None
+    ):
+        return (
+            f"invocations {', '.join(sorted(wanted))} ask for CUDA under a torch pin, but the "
+            f"NVIDIA driver version could not be read (nvidia-smi reported {driver_report!r}); "
+            "a pinned GPU run records its driver, because a re-run is compared against it"
+        )
     for ordinal, expected in sorted((expected_gpus or {}).items()):
         found = names[ordinal] if ordinal < len(names) else None
         if found != expected:

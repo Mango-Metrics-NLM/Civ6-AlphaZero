@@ -85,6 +85,7 @@ from alpha_zero.local.pinned_env import (
     resolve_commit,
 )
 from alpha_zero.utils import game_budget
+from alpha_zero.utils.atomic_io import write_text_atomically
 from alpha_zero.utils.checkpoint import GIT_SHA_ENV
 from alpha_zero.utils.data_root import (
     ENV_VAR as DATA_ROOT_ENV,
@@ -366,11 +367,18 @@ def refuse_implicit_devices(card: RunCard) -> None:
         raise RunCardError(f"card {card.card_id!r}: {problem}")
 
 
-def device_problem(card: RunCard, torch_report: Any, *, visible: str | None = None) -> str | None:
+def device_problem(
+    card: RunCard,
+    torch_report: Any,
+    *,
+    visible: str | None = None,
+    driver_report: Any = devices.DRIVER_NOT_CHECKED,
+) -> str | None:
     """Why the pinned environment cannot honour the card's devices, or ``None``.
 
     ``visible`` is the ``CUDA_VISIBLE_DEVICES`` in force for the children; it
-    defaults to the card's own value. See :func:`alpha_zero.local.devices.device_problem`.
+    defaults to the card's own value. ``driver_report`` is the preflight's
+    ``nvidia_smi``. See :func:`alpha_zero.local.devices.device_problem`.
     """
     return devices.device_problem(
         requested_devices(card),
@@ -378,6 +386,7 @@ def device_problem(card: RunCard, torch_report: Any, *, visible: str | None = No
         torch_pin=card.torch_pin,
         visible=card.cuda_visible_devices if visible is None else visible,
         expected_gpus=card.gpus,
+        driver_report=driver_report,
     )
 
 
@@ -512,9 +521,7 @@ def prepare_data_root(root: Path, *, repo_root: Path) -> Path:
 
 
 def _write_record(path: Path, record: Mapping[str, Any]) -> None:
-    tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(record, indent=2, sort_keys=True), encoding="utf-8")
-    os.replace(tmp, path)
+    write_text_atomically(path, json.dumps(record, indent=2, sort_keys=True))
 
 
 def probe_run_name(card_id: str, *, now: datetime | None = None) -> str:
@@ -868,6 +875,7 @@ def _attempt(run: _CardRun, *, probe: bool, rehearsal: str | None = None) -> Car
                 card,
                 preflight.get("torch"),
                 visible=device_plan[devices.ENV_CUDA_VISIBLE_DEVICES],
+                driver_report=preflight.get("nvidia_smi"),
             )
             if problem is not None:
                 logger.error("run card %s: devices: %s", card.card_id, problem)

@@ -340,3 +340,69 @@ def test_a_failed_smoke_on_an_unrequested_device_does_not_refuse() -> None:
     assert devices.device_problem({"train": "cuda:0"}, report) is None
     refused = devices.device_problem({"primary": "cuda:1"}, report)
     assert refused is not None and "no kernel image" in refused
+
+
+# --------------------------------------------------------------------------
+# The NVIDIA driver: a pinned GPU run must be able to say which one it ran under
+# --------------------------------------------------------------------------
+#
+# Negative controls (planted in alpha_zero/local/devices.py, observed failing, restored):
+# 1. ``driver_versions`` returning ``()`` for an error record -> the ``None`` rows of
+#    ``test_driver_versions`` and ``test_a_pinned_cuda_request_needs_a_driver_version`` fail.
+# 2. The refusal applied without a torch pin ->
+#    ``test_the_driver_is_demanded_only_of_pinned_cuda_requests`` fails.
+
+_DRIVER_LINES = [
+    "0, NVIDIA GeForce RTX 5060 Ti, 00000000:01:00.0, 581.15",
+    "1, NVIDIA GeForce RTX 5060, 00000000:05:00.0, 581.15",
+]
+
+
+@pytest.mark.parametrize(
+    ("nvidia_smi", "expected"),
+    [
+        (_DRIVER_LINES, ("581.15", "581.15")),
+        (tuple(_DRIVER_LINES[:1]), ("581.15",)),
+        ({"error": "FileNotFoundError"}, None),
+        ([], None),
+        (None, None),
+        (["0, GPU A, 00000000:01:00.0"], None),  # a line without the version field
+        (["0, GPU A, 00000000:01:00.0, "], None),  # an empty version
+        ("0, GPU A, 00000000:01:00.0, 581.15", None),  # a string is not a list of lines
+    ],
+)
+def test_driver_versions(nvidia_smi: Any, expected: tuple[str, ...] | None) -> None:
+    assert devices.driver_versions(nvidia_smi) == expected
+
+
+def test_the_preflight_asks_for_the_field_driver_versions_reads() -> None:
+    query = ",".join(devices.NVIDIA_SMI_QUERY_FIELDS)
+    assert f"--query-gpu={query}" in devices.TORCH_REPORT_CODE
+    assert devices.NVIDIA_SMI_QUERY_FIELDS[-1] == "driver_version"
+
+
+@pytest.mark.parametrize("report", [{"error": "FileNotFoundError"}, [], ["0, GPU A, bus"]])
+def test_a_pinned_cuda_request_needs_a_driver_version(report: Any) -> None:
+    pin = TorchPin("torch==2.11.0+cu128", _CU128)
+    requested = {"train": "cuda:0"}
+    assert (
+        devices.device_problem(requested, BLACKWELL, torch_pin=pin, driver_report=_DRIVER_LINES)
+        is None
+    )
+    problem = devices.device_problem(requested, BLACKWELL, torch_pin=pin, driver_report=report)
+    assert problem is not None and "driver version could not be read" in problem
+    assert "train" in problem
+
+
+def test_the_driver_is_demanded_only_of_pinned_cuda_requests() -> None:
+    pin = TorchPin("torch==2.11.0+cu128", _CU128)
+    unreadable = {"error": "FileNotFoundError"}
+    # No torch pin: an ad-hoc card is not held to it.
+    assert devices.device_problem({"t": "cuda:0"}, BLACKWELL, driver_report=unreadable) is None
+    # A pinned CPU card asks for no GPU, so there is no driver to record.
+    cpu = {"version": "2.11.0+cu128"}
+    assert (
+        devices.device_problem({"t": "cpu"}, cpu, torch_pin=pin, driver_report=unreadable) is None
+    )
+    # A caller with no driver report to offer (the default) is not refused for it.
+    assert devices.device_problem({"t": "cuda:0"}, BLACKWELL, torch_pin=pin) is None

@@ -31,6 +31,8 @@ failing, then restored):
 
 6. ``torch_wheel`` dropped from the record ``run_card`` writes ->
    ``test_run_json_records_the_torch_wheel`` fails.
+7. ``driver_report`` not passed to the device check ->
+   ``test_a_pinned_gpu_card_is_refused_when_its_driver_cannot_be_read`` fails.
 
 The fixtures and fakes are the ones ``test_run_card.py`` defines; that file is
 near the 1,000-line ratchet, so these tests live here.
@@ -212,21 +214,28 @@ _WHEEL_SHA = "ef" * 32
 _WHEEL_HASH = f"sha256={_WHEEL_SHA}"
 
 
-def test_run_json_records_the_torch_wheel(
-    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """The wheel's hash is a record of its own, never part of the compared torch pin."""
+def _fake_gpu_preflight(monkeypatch: pytest.MonkeyPatch, **report: Any) -> None:
+    """The bare test venv has no torch: give its preflight two GPUs, plus ``report``."""
     real = rc._preflight
-    monkeypatch.setattr(
-        rc, "_preflight", lambda env, child: {**real(env, child), "torch": base._TWO_GPUS}
-    )
-    card = base._card(
+    extra = {"torch": base._TWO_GPUS, **report}
+    monkeypatch.setattr(rc, "_preflight", lambda env, child: {**real(env, child), **extra})
+
+
+def _pinned_gpu_card(tmp_path: Path) -> Path:
+    return base._card(
         tmp_path,
         [base._train("smoke", "--dry_run", "--device", "cuda:0")],
         torch_spec="torch==2.11.0",
         torch_index_url=base._CU128,
     )
-    result = base._run(card, tmp_path, _ReportingRunner())
+
+
+def test_run_json_records_the_torch_wheel(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wheel's hash is a record of its own, never part of the compared torch pin."""
+    _fake_gpu_preflight(monkeypatch, nvidia_smi=base._SMI)
+    result = base._run(_pinned_gpu_card(tmp_path), tmp_path, _ReportingRunner())
 
     assert result.status == rc.STATUS_COMPLETED, result.error
     record = _record(result.run_dir)
@@ -245,3 +254,28 @@ def test_a_card_without_a_torch_pin_records_no_torch_wheel(
     result = base._run(card, tmp_path, pinned)
     assert result.status == rc.STATUS_COMPLETED
     assert _record(result.run_dir)["torch_wheel"] is None
+
+
+@pytest.mark.parametrize(
+    "nvidia_smi",
+    [{"error": "FileNotFoundError"}, [], ["0, GPU A, 00000000:01:00.0"]],
+    ids=["tool missing", "no lines", "no version field"],
+)
+def test_a_pinned_gpu_card_is_refused_when_its_driver_cannot_be_read(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch, nvidia_smi: Any
+) -> None:
+    """A re-run is compared under the same driver, so a run must record the one it had."""
+    _fake_gpu_preflight(monkeypatch, nvidia_smi=nvidia_smi)
+    result = base._run(_pinned_gpu_card(tmp_path), tmp_path, pinned)
+
+    assert result.status == rc.STATUS_FAILED and result.claimed is False
+    assert result.error is not None and "driver version could not be read" in result.error
+    assert not (_runs(tmp_path) / CARD_ID).exists()
+
+
+def test_a_gpu_card_without_a_torch_pin_is_not_held_to_a_driver_record(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _fake_gpu_preflight(monkeypatch, nvidia_smi={"error": "FileNotFoundError"})
+    card = base._card(tmp_path, [base._train("smoke", "--dry_run", "--device", "cuda:0")])
+    assert base._run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED
