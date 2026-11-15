@@ -14,6 +14,10 @@ the same filesystem) and then give it the target's name in one step:
 
 The bytes written are exactly what the caller's writer produces; nothing here
 changes a file's content. Needs only the standard library.
+
+One writer per target: the temporary name is fixed, so two processes writing the
+same target at once would share it. Callers own that (a run directory is claimed
+by one run; a benchmark ``--out`` belongs to one arm).
 """
 
 from __future__ import annotations

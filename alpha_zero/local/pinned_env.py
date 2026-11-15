@@ -156,6 +156,7 @@ def torch_wheel_from_report(report: Path) -> TorchWheel | None:
     except (OSError, ValueError, KeyError, TypeError) as exc:
         logger.warning("no torch wheel hash: %s is not a pip report (%s)", report, exc)
         return None
+    found: list[TorchWheel | None] = []
     for entry in entries if isinstance(entries, list) else []:
         try:
             name = _NAME_SEPARATORS_RE.sub("-", str(entry["metadata"]["name"])).lower()
@@ -166,13 +167,17 @@ def torch_wheel_from_report(report: Path) -> TorchWheel | None:
             digest = (archive.get("hashes") or {}).get("sha256")
             if digest is None and str(archive.get("hash", "")).startswith(_SHA256_PREFIX):
                 digest = str(archive["hash"])[len(_SHA256_PREFIX) :]
-            wheel = TorchWheel.from_mapping({"url": info["url"], "sha256": digest})
+            found.append(TorchWheel.from_mapping({"url": info["url"], "sha256": digest}))
         except (KeyError, TypeError, AttributeError) as exc:
             logger.warning("no torch wheel hash: malformed entry in %s (%s)", report, exc)
             return None
-        if wheel is None:
+    if len(found) > 1:  # pip installs one torch; a report naming two cannot say which
+        logger.warning("no torch wheel hash: %s lists %d torch installs", report, len(found))
+        return None
+    if found:
+        if found[0] is None:
             logger.warning("no torch wheel hash: %s gives no sha256 for torch", report)
-        return wheel
+        return found[0]
     logger.warning("no torch wheel hash: %s lists no %s install", report, TORCH_DISTRIBUTION)
     return None
 
@@ -392,6 +397,8 @@ def prepare_pinned_run(
             wheel_hash = str(data.get("wheel_sha256", ""))
             torch_wheel = TorchWheel.from_mapping(data.get("torch_wheel"))
             logger.info("reusing pinned venv %s", venv)
+            if torch_pin is not None and torch_wheel is None:
+                logger.warning("no torch wheel hash: %s was built without recording it", venv)
     if not wheel_hash:
         if venv.exists():
             shutil.rmtree(venv, ignore_errors=True)

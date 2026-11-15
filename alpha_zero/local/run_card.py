@@ -122,6 +122,8 @@ DEVICE_LOGGER_NAME = "alpha_zero.utils.device"
 PROBE_PREFIX = "probe-"
 #: The data root's subdirectory that holds one directory per run.
 RUNS_DIR = "runs"
+#: A run directory's subdirectory of per-invocation logs; creating it claims the run.
+LOGS_DIR = "logs"
 #: Printed when a card's rehearsal fails: nothing was claimed, so no new ``card_id``.
 NOT_CLAIMED_HINT = (
     "the card's run directory was not claimed: fix the cause and run the same card again"
@@ -569,10 +571,20 @@ def _refuse_used_run_dir(run_dir: Path) -> None:
         raise CardResumedError(f"{run_dir} is not empty; run directories are single-use")
 
 
-def _claim_run_dir(run_dir: Path) -> None:
-    """Claim a single-use run directory (see :func:`_refuse_used_run_dir`)."""
+def _claim_run_dir(run_dir: Path) -> Path:
+    """Claim a single-use run directory and return its ``logs`` directory.
+
+    Creating ``logs`` is the claim: ``mkdir`` is atomic, so of two runs of one
+    card that both passed :func:`_refuse_used_run_dir`, exactly one gets here.
+    """
     _refuse_used_run_dir(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
+    logs = run_dir / LOGS_DIR
+    try:
+        logs.mkdir()
+    except FileExistsError as exc:
+        raise CardResumedError(f"{run_dir} was claimed by another run of this card") from exc
+    return logs
 
 
 def _run_invocation(cmd: list[str], *, cwd: Path, env: Mapping[str, str], log: Path) -> int:
@@ -775,9 +787,7 @@ def _attempt(run: _CardRun, *, probe: bool, rehearsal: str | None = None) -> Car
     pinned_runner = run.pinned_runner
     run_name = probe_run_name(card.card_id) if probe else card.card_id
     run_dir = root / RUNS_DIR / run_name
-    _claim_run_dir(run_dir)
-    logs = run_dir / "logs"
-    logs.mkdir()
+    logs = _claim_run_dir(run_dir)
     record_path = run_dir / RUN_JSON
 
     results = [

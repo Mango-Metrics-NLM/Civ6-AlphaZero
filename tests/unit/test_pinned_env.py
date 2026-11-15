@@ -297,6 +297,10 @@ def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(
 #    ``test_an_unusable_report_records_none_and_does_not_fail`` fails.
 # 5. ``torch_wheel`` made part of the venv's identity ->
 #    ``test_a_marker_without_torch_wheel_is_reused`` fails (a second venv build).
+# 6. The parser returning the first of two torch entries ->
+#    ``test_a_report_that_lists_torch_twice_is_not_trusted`` fails.
+# 7. The warning for a reused venv without a wheel record removed ->
+#    ``test_a_marker_without_torch_wheel_is_reused`` fails.
 
 _WHEEL_URL = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-win_amd64.whl"
 _WHEEL_SHA = "ab" * 32
@@ -413,10 +417,28 @@ def test_a_legacy_hash_field_is_read(tmp_path: Path) -> None:
     assert pe.torch_wheel_from_report(report) == pe.TorchWheel(_WHEEL_URL, _WHEEL_SHA)
 
 
-def test_a_marker_without_torch_wheel_is_reused(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_a_report_that_lists_torch_twice_is_not_trusted(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A venv built before the hash was recorded is still that venv."""
+    """pip installs one torch; a report naming two cannot say which one is in the venv."""
+    report = tmp_path / "report.json"
+    other = _WHEEL_URL.replace("cu128", "cpu")
+    report.write_text(
+        _report(
+            _entry("torch", _WHEEL_URL, {"hashes": {"sha256": _WHEEL_SHA}}),
+            _entry("torch", other, {"hashes": {"sha256": _DEPENDENCY_SHA}}),
+        ),
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        assert pe.torch_wheel_from_report(report) is None
+    assert "lists 2 torch installs" in caplog.text
+
+
+def test_a_marker_without_torch_wheel_is_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A venv built before the hash was recorded is still that venv, and the run says so."""
     runner = ReportingRunner(_GOOD_REPORT)
     pin = pe.TorchPin("torch==2.11.0", _CU128)
     kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
@@ -426,7 +448,9 @@ def test_a_marker_without_torch_wheel_is_reused(
     del marker["torch_wheel"]
     marker_path.write_text(json.dumps(marker), encoding="utf-8")
 
-    reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
 
     assert runner.count("venv") == 1, "an old marker must not force a rebuild"
     assert reused.torch_wheel is None and reused.wheel_sha256 == built.wheel_sha256
+    assert "no torch wheel hash" in caplog.text and "without recording it" in caplog.text

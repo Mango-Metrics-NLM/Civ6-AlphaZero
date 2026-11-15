@@ -33,6 +33,13 @@ failing, then restored):
    ``test_run_json_records_the_torch_wheel`` fails.
 7. ``driver_report`` not passed to the device check ->
    ``test_a_pinned_gpu_card_is_refused_when_its_driver_cannot_be_read`` fails.
+8. ``_claim_run_dir`` lets the second ``mkdir`` raise ``FileExistsError`` ->
+   ``test_a_directory_claimed_by_another_run_is_refused_as_a_resume`` fails.
+9. The real pass reports ``claimed=False`` (``claimed=probe``) ->
+   ``test_a_real_pass_refused_after_its_rehearsal_uses_up_the_card`` fails.
+10. An interrupted rehearsal falls through to the real pass (``KeyboardInterrupt``
+    swallowed around the rehearsal) ->
+    ``test_an_interrupted_rehearsal_leaves_the_card_unclaimed`` fails.
 
 The fixtures and fakes are the ones ``test_run_card.py`` defines; that file is
 near the 1,000-line ratchet, so these tests live here.
@@ -159,6 +166,92 @@ def test_an_invocation_is_recorded_as_launched_before_it_finishes(
     record = _record(_runs(tmp_path) / CARD_ID)
     assert record["status"] == rc.STATUS_VOID
     assert record["launched"] == ["smoke"] and record["invocations"] == []
+
+
+def _preflight_that_changes_after(
+    monkeypatch: pytest.MonkeyPatch, passes: int, **changed: Any
+) -> None:
+    """The first ``passes`` preflights are the real ones; later ones report ``changed``."""
+    real, calls = rc._preflight, []
+
+    def preflight(env: Any, child: Any) -> dict[str, Any]:
+        calls.append(1)
+        report = real(env, child)
+        return report if len(calls) <= passes else {**report, **changed}
+
+    monkeypatch.setattr(rc, "_preflight", preflight)
+
+
+def test_a_real_pass_refused_after_its_rehearsal_uses_up_the_card(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rehearsal passed, so the card claimed its directory: this failure is an attempt."""
+    _preflight_that_changes_after(monkeypatch, 1, version="0.0.0")
+    card = base._card(tmp_path, [base._train("smoke", "--dry_run")])
+
+    result = base._run(card, tmp_path, pinned)
+
+    assert result.status == rc.STATUS_FAILED and result.claimed is True
+    assert result.error is not None and result.error.startswith("preflight: ")
+    assert result.run_dir == _runs(tmp_path) / CARD_ID
+    record = _record(result.run_dir)
+    assert record["status"] == rc.STATUS_FAILED and record["probe"] is False
+    (rehearsal_dir,) = _rehearsals(tmp_path)
+    assert record["rehearsal"] == rehearsal_dir.name
+    assert _record(rehearsal_dir)["status"] == rc.STATUS_PROBED
+    assert record["launched"] == [] and record["invocations"] == []
+
+    with pytest.raises(rc.CardResumedError, match="single-use"):  # the card_id is used up
+        base._run(card, tmp_path, pinned)
+
+
+def test_an_interrupted_rehearsal_leaves_the_card_unclaimed(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Ctrl-C while the environment is being checked is not an attempt at the card."""
+    real = rc._preflight
+
+    def interrupted(env: Any, child: Any) -> dict[str, Any]:
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rc, "_preflight", interrupted)
+    card = base._card(tmp_path, [base._train("smoke", "--dry_run")])
+
+    with pytest.raises(KeyboardInterrupt):
+        base._run(card, tmp_path, pinned)
+
+    assert not (_runs(tmp_path) / CARD_ID).exists(), "the rehearsal never reached the claim"
+    (rehearsal_dir,) = _rehearsals(tmp_path)
+    rehearsal = _record(rehearsal_dir)
+    assert rehearsal["status"] == rc.STATUS_VOID and rehearsal["probe"] is True
+    assert rehearsal["launched"] == []
+
+    monkeypatch.setattr(rc, "_preflight", real)
+    again = base._run(card, tmp_path, pinned)  # the SAME card_id
+    assert again.status == rc.STATUS_COMPLETED and again.run_dir == _runs(tmp_path) / CARD_ID
+
+
+def test_a_directory_claimed_by_another_run_is_refused_as_a_resume(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two runs of one card that both passed the "is it used" check: one claim wins."""
+    run_dir = _runs(tmp_path) / CARD_ID
+    assert rc._claim_run_dir(run_dir) == run_dir / rc.LOGS_DIR  # the first run's claim
+
+    # The second run checked before the first one claimed, so its check saw nothing.
+    monkeypatch.setattr(rc, "_refuse_used_run_dir", lambda run_dir: None)
+    with pytest.raises(rc.CardResumedError, match="claimed by another run"):
+        rc._claim_run_dir(run_dir)
+
+    assert [p.name for p in run_dir.iterdir()] == [rc.LOGS_DIR], "the loser wrote nothing"
+
+
+def test_a_claimed_directory_is_refused_by_the_check_itself(tmp_path: Path) -> None:
+    """Without the race, the ordinary check already refuses a claimed directory."""
+    run_dir = _runs(tmp_path) / CARD_ID
+    rc._claim_run_dir(run_dir)
+    with pytest.raises(rc.CardResumedError, match="not empty"):
+        rc._claim_run_dir(run_dir)
 
 
 @pytest.mark.parametrize(
