@@ -57,6 +57,7 @@ This module provides the foundational utilities consumed by all other modules:
 | `rag_client.py` | RAGClient, thin wrapper for RAG pipeline (optional) |
 | `reward_shaping.py` | RewardShaper for intermediate reward signals |
 | `checkpoint.py` | safe_load_checkpoint for secure deserialization |
+| `atomic_io.py` | `write_atomically`, `create_atomically` (and the text forms): a file is written beside its target and renamed into place, so a killed process leaves no torn checkpoint or result |
 | `seeding.py` | `derive_seed`, `SeedStream` — per-stream seeds derived by name from one run seed (BLAKE2b, so it is stable across processes and platforms) |
 | `constants.py` | Namespace objects for game/distributed/training constants |
 | `memory_guard.py` | MemoryGuard for replay buffer memory limits |

@@ -25,14 +25,21 @@
 - [x] 4.6 `a1_protocol digest`, `--arena-throughput`, `make verify-registration`, skill `a1-reregister`
 - [x] 4.7 Negative controls recorded in each test module; debt ratchet passes without a baseline change (until 4b.2)
 - [ ] 4.8 Follow-up: the release verifier reads the `reproduction compare` record and applies "cannot PASS" itself
-- [ ] 4.9 Follow-up: record the torch wheel's sha256 in `.pinned.json` and `run.json`
-- [ ] 4.10 Follow-up: move a never-launched run directory aside so a preflight refusal does not use up the `card_id`
+- [x] 4.9 Follow-up: record the torch wheel's sha256 in `.pinned.json` and `run.json` (done in 4c.2)
+- [x] 4.10 Follow-up: a preflight refusal does not use up the `card_id` (done in 4c.1 by rehearsing first; nothing is moved aside)
 
 ## 4b. Automated review of PR #138 (Copilot)
 - [x] 4b.1 A torch pin may name its build (`torch==2.11.0+cu128`); the device check, the release verifier and the GPU pytest module compare the installed version in full through `utils.device.torch_build_matches`; section 7.1 and the three cards name the build (digest `e460a353…7c17`)
 - [x] 4b.2 Arena per-game records carry `moves` and `actions_sha256`; the reproduction and determinism checks compare them. `coverage_omitted_lines` baseline 66,852 -> 66,858 (six lines in `alpha_zero/cloud/gcp/arena.py`, covered by `tests/cloud/unit/test_arena_game_records.py` in the `cloud-tests` job)
 - [x] 4b.3 Negative controls: tag ignored (9 tests fail), no action digest (1), records without the new keys (3), tag rejected by the pin (9)
 - [x] 4b.4 The other three findings (parsed device, test state isolation, CUDA variables in the run-card test) were already fixed in section 4
+
+## 4c. Local close-out after PR #138 and #139 (2026-11-15)
+- [x] 4c.1 `run_card` rehearses before it claims the run directory; a used directory is refused before the rehearsal; `run.json` records `rehearsal` and `launched`
+- [x] 4c.2 The torch wheel pip installed is recorded (`pip install --report`) in the venv marker and `run.json`; record-only, outside the compared torch pin
+- [x] 4c.3 Checkpoints and the benchmark's `result.json` are written through a temporary file (`alpha_zero/utils/atomic_io.py`)
+- [x] 4c.4 A card that pins torch and names a CUDA device is refused when the NVIDIA driver version cannot be read
+- [x] 4c.5 Negative controls recorded in each test module; no edit inside the hashed region (digest unchanged)
 
 ## 5. On the GPU machine (maintainer)
 - [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order

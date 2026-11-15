@@ -103,3 +103,39 @@ device check.
 #### Scenario: A probe offered as an attempt
 - **WHEN** a bundle lists a `run.json` that a `--probe` wrote
 - **THEN** the verifier reports a problem
+
+### Requirement: A card is rehearsed before it claims its run directory
+
+`run_card` MUST run the pinned environment, the preflight and the device check in
+a throwaway directory before it claims the card's single-use run directory, and
+MUST claim that directory only when the rehearsal passes. A run directory that
+was already used MUST be refused before the rehearsal. `run.json` MUST record the
+rehearsal that preceded a run, and the name of each invocation before it starts.
+
+#### Scenario: A refused device
+- **WHEN** a card names a device its pinned environment cannot provide
+- **THEN** the card finishes FAILED, its own run directory does not exist, and the same card can be run again once the cause is fixed
+
+#### Scenario: An attempt interrupted in its first invocation
+- **WHEN** a run is interrupted while its first invocation is running
+- **THEN** `run.json` names that invocation as launched although no invocation finished
+
+#### Scenario: A used card
+- **WHEN** a card whose run directory already holds a `run.json` is run again
+- **THEN** it is refused and no rehearsal directory is created
+
+### Requirement: A pinned GPU run records the driver and the wheel it ran with
+
+A card that pins a torch build and names a CUDA device MUST be refused when the
+NVIDIA driver version cannot be read. The pinned environment MUST record the URL
+and sha256 of the torch wheel that was installed, when the installer reports
+them; a missing report MUST NOT fail the run, and the record MUST NOT be part of
+the torch pin that is compared with the registration.
+
+#### Scenario: The driver cannot be read
+- **WHEN** a torch-pinned card names `cuda:0` and the preflight has no driver version
+- **THEN** the card is refused before any invocation is launched
+
+#### Scenario: The wheel is recorded
+- **WHEN** a torch pin is installed and the installer reports the wheel's hash
+- **THEN** `run.json` carries it as `torch_wheel`, and a reused environment reports the same value

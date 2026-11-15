@@ -82,3 +82,18 @@ The added keys MUST NOT change how a game is played or how a result is scored.
 #### Scenario: A seeded arena is repeated
 - **WHEN** the same seeded arena is played twice on CPU
 - **THEN** every record, digest included, is identical
+
+### Requirement: An interrupted run leaves no torn file
+
+Checkpoints and benchmark results MUST be written so that a process killed during
+the write leaves either the previous file or no file, never a partial one. A
+benchmark result MUST still never be overwritten.
+
+#### Scenario: A save killed midway
+- **WHEN** a checkpoint save is killed after it has written part of the file
+- **THEN** the checkpoint that was there before is unchanged and still loads
+
+#### Scenario: A benchmark killed while writing its result
+- **WHEN** the benchmark is killed while writing `result.json`
+- **THEN** no `result.json` exists, and the same output directory can be used by the re-run
+
