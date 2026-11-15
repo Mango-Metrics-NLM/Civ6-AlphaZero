@@ -229,9 +229,10 @@ registration, and it says so in the message.
 
 **Limits no check here can close.**
 
-- *An interrupted attempt that is not listed.* A bundle verifier sees the runs
-  it is given. An operator who leaves the interrupted attempt out of `runs[]`
-  leaves no trace in the bundle. The role's first `card_id` is not registered
+- *An attempt that is not listed.* A bundle verifier sees the runs it is given.
+  An operator who leaves an attempt out of `runs[]` (an interrupted one, or a
+  completed re-run that did not reproduce) leaves no trace in the bundle, and the
+  rules above then never see it. The role's first `card_id` is not registered
   (section 7.1 names the card files, not their ids, and a card refused before it
   launched anything legitimately moves on to a new `card_id` without being
   listed), so a judged attempt under another id proves nothing.

@@ -57,8 +57,9 @@ What a record can and cannot show (:func:`check_record`):
   not that the attempt is proved to have finished nothing more: for an attempt
   killed during training it is reachable by omission.
 
-Limits no check here can close: an interrupted attempt that is simply not listed
-is invisible to a bundle verifier, and ``started_at`` is the operator's own
+Limits no check here can close: an attempt that is simply not listed (an
+interrupted one, or a completed re-run that did not reproduce) is invisible to a
+bundle verifier, and ``started_at`` is the operator's own
 record, written by the operator's own machine. The order rules refuse the
 orderings they name; a forged clock that stays consistent with them is not
 detectable, and a ``started_at`` is not checked against anything outside the
