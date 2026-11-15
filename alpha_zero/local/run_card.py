@@ -119,6 +119,12 @@ DEVICE_ATTRIBUTE = "device"
 #: The logger whose "using cpu" fallback warnings are about the driver, not the run.
 DEVICE_LOGGER_NAME = "alpha_zero.utils.device"
 PROBE_PREFIX = "probe-"
+#: The data root's subdirectory that holds one directory per run.
+RUNS_DIR = "runs"
+#: Printed when a card's rehearsal fails: nothing was claimed, so no new ``card_id``.
+NOT_CLAIMED_HINT = (
+    "the card's run directory was not claimed: fix the cause and run the same card again"
+)
 PROBE_STAMP_FORMAT = "%Y%m%dT%H%M%S%f"
 #: Lines of a failed child's log copied into ``run.json`` (``error_tail``) and printed,
 #: so the reason -- a deterministic-algorithm error names the offending op -- is not
@@ -262,6 +268,9 @@ class CardResult:
     error: str | None = None
     error_tail: list[str] = field(default_factory=list)
     device_plan: dict[str, Any] | None = None
+    #: False for a rehearsal (``--probe``, or the automatic one that failed): the
+    #: card's own single-use run directory was not touched.
+    claimed: bool = True
 
 
 # ---------------------------------------------------------------------------
@@ -524,8 +533,12 @@ def _now() -> str:
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def _claim_run_dir(run_dir: Path) -> None:
-    """Refuse a reused run directory; VOID a record an earlier attempt left RUNNING."""
+def _refuse_used_run_dir(run_dir: Path) -> None:
+    """Refuse a reused run directory; VOID a record an earlier attempt left RUNNING.
+
+    Creates nothing, so it can run before a card's rehearsal: a card whose
+    directory is already used is refused at once, not after a rehearsal.
+    """
     record_path = run_dir / RUN_JSON
     if record_path.exists():
         try:
@@ -547,6 +560,11 @@ def _claim_run_dir(run_dir: Path) -> None:
         )
     if run_dir.exists() and any(run_dir.iterdir()):
         raise CardResumedError(f"{run_dir} is not empty; run directories are single-use")
+
+
+def _claim_run_dir(run_dir: Path) -> None:
+    """Claim a single-use run directory (see :func:`_refuse_used_run_dir`)."""
+    _refuse_used_run_dir(run_dir)
     run_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -677,6 +695,17 @@ def _default_repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+@dataclass(frozen=True)
+class _CardRun:
+    """What every pass over one card shares: the priced card and where it runs."""
+
+    card: RunCard
+    priced: PricedCard
+    root: Path
+    repo: Path
+    pinned_runner: Runner | None
+
+
 def run_card(
     card_path: str | Path,
     *,
@@ -687,17 +716,23 @@ def run_card(
 ) -> CardResult:
     """Price, pin, isolate and run a card; return its :class:`CardResult`.
 
-    ``probe=True`` is a rehearsal: everything up to and including the preflight
+    A card is **rehearsed first**: everything up to and including the preflight
     and the device check runs in a throwaway ``runs/probe-<card_id>-<stamp>``
-    directory, nothing is launched, and the card's own single-use run directory
-    is not claimed. Its status is ``PROBED`` (or ``FAILED`` with the reason).
+    directory, and nothing is launched. Only when that ends ``PROBED`` is the
+    card's own single-use run directory claimed and the card run. A refused
+    device or a failed preflight therefore leaves the card's directory untouched
+    (``CardResult.claimed`` is false) and the same card can be run again.
+
+    ``probe=True`` stops after the rehearsal: its status is ``PROBED`` (or
+    ``FAILED`` with the reason).
 
     ``data_root`` defaults to ``CIV6AZ_DATA_ROOT``. ``pinned_runner`` is the
     ``pinned_env`` subprocess seam (tests pass a fake that builds no wheel).
-    Budget and card errors are raised before anything is created. A
-    ``KeyboardInterrupt`` (also raised for SIGBREAK/SIGTERM) marks the card VOID
-    and is re-raised; any other setup error marks it FAILED and is re-raised; a
-    child exiting non-zero marks it FAILED and stops the card.
+    Budget and card errors are raised before anything is created, and so is a
+    run directory that was already used. A ``KeyboardInterrupt`` (also raised for
+    SIGBREAK/SIGTERM) marks the pass VOID and is re-raised; any other setup error
+    marks it FAILED and is re-raised; a child exiting non-zero marks the card
+    FAILED and stops it.
     """
     repo = Path(repo_root) if repo_root is not None else _default_repo_root()
     card = load_card(card_path)
@@ -711,8 +746,28 @@ def run_card(
     if root_arg is None:  # unreachable: required=True raises
         raise RunCardError(f"{DATA_ROOT_ENV} is not set")
     root = prepare_data_root(Path(root_arg), repo_root=repo)
+    run = _CardRun(card=card, priced=priced, root=root, repo=repo, pinned_runner=pinned_runner)
+    if probe:
+        return _attempt(run, probe=True)
+    _refuse_used_run_dir(root / RUNS_DIR / card.card_id)  # before paying for a rehearsal
+    rehearsal = _attempt(run, probe=True)
+    if rehearsal.status != STATUS_PROBED:
+        logger.error("run card %s: rehearsal failed; %s", card.card_id, NOT_CLAIMED_HINT)
+        return rehearsal
+    return _attempt(run, probe=False, rehearsal=rehearsal.run_dir.name)
+
+
+def _attempt(run: _CardRun, *, probe: bool, rehearsal: str | None = None) -> CardResult:
+    """One pass over a card: a rehearsal (``probe``) or the real run.
+
+    The rehearsal uses a throwaway directory and stops after the device check.
+    The real run claims the card's directory and records ``rehearsal``, the name
+    of the rehearsal directory that preceded it.
+    """
+    card, priced, root, repo = run.card, run.priced, run.root, run.repo
+    pinned_runner = run.pinned_runner
     run_name = probe_run_name(card.card_id) if probe else card.card_id
-    run_dir = root / "runs" / run_name
+    run_dir = root / RUNS_DIR / run_name
     _claim_run_dir(run_dir)
     logs = run_dir / "logs"
     logs.mkdir()
@@ -740,7 +795,12 @@ def run_card(
         "status": STATUS_RUNNING,
         "started_at": _now(),
         "invocations": [],
+        # Names of the invocations that were started, written BEFORE each child runs.
+        # ``invocations`` holds only finished ones, so an attempt interrupted in its
+        # first child would otherwise look like one that launched nothing.
+        "launched": [],
         "probe": probe,
+        "rehearsal": rehearsal,
     }
     _write_record(record_path, record)
 
@@ -758,6 +818,7 @@ def run_card(
             error=record.get("error"),
             error_tail=list(record.get("error_tail") or []),
             device_plan=record.get("device_plan"),
+            claimed=not probe,
         )
 
     try:
@@ -817,6 +878,8 @@ def run_card(
                 # Cap the child at what was priced here (argparse keeps the last value).
                 result.launched_argv = [*result.argv, "--max_games", str(result.priced_games)]
                 cmd = [str(env.python), "-m", RUNNERS[result.runner].module, *result.launched_argv]
+                record["launched"].append(result.name)
+                _write_record(record_path, record)
                 started = time.monotonic()
                 result.exit_code = _run_invocation(cmd, cwd=env.src, env=child, log=log)
                 result.duration_s = round(time.monotonic() - started, 3)
@@ -846,6 +909,7 @@ def run_card(
 def main(argv: Sequence[str] | None = None) -> int:
     """``run_card CARD [--data_root D] [--price_only | --probe]``.
 
+    A card is rehearsed before it runs; ``--probe`` stops after the rehearsal.
     Exit 0 ok, 1 failed, 2 refused, 130 VOID.
     """
     parser = argparse.ArgumentParser(description="Price, pin and run a run card.")
@@ -885,6 +949,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"  reason: {result.error}", file=sys.stderr)
     for line in result.error_tail:
         print(f"  | {line}", file=sys.stderr)
+    if result.status == STATUS_FAILED and not result.claimed and not args.probe:
+        print(f"  {NOT_CLAIMED_HINT}", file=sys.stderr)
     if args.probe:
         for line in device_report_lines(result.device_plan):
             print(line)

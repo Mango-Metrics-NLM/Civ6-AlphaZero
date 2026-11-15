@@ -344,12 +344,12 @@ def test_preflight_version_mismatch_fails_card(
     result = _run(card, tmp_path, pinned)
 
     assert result.status == rc.STATUS_FAILED
-    data = _run_json(tmp_path)
+    data = json.loads((result.run_dir / "run.json").read_text(encoding="utf-8"))
     assert data["status"] == "FAILED"
     assert data["preflight"]["exit_code"] != 0
     assert "version" in data["preflight"]["output"]
     assert data["invocations"] == []
-    assert not (tmp_path / "root" / "runs" / "t1" / "logs" / "smoke.log").exists()
+    assert not (tmp_path / "root" / "runs" / "t1").exists(), "the rehearsal refused it"
 
 
 def test_failing_child_marks_failed_and_stops(
@@ -629,8 +629,8 @@ def test_parent_reverifies_preflight_report(
 
     result = _run(card, tmp_path, pinned)
 
-    assert result.status == rc.STATUS_FAILED
-    data = _run_json(tmp_path)
+    assert result.status == rc.STATUS_FAILED and not result.claimed
+    data = json.loads((result.run_dir / "run.json").read_text(encoding="utf-8"))
     assert reason in data["error"]
     assert data["invocations"] == []
 
@@ -862,7 +862,7 @@ def test_a_card_whose_gpus_are_in_another_order_is_refused(
         result.error is not None
         and "cuda:0 is 'GPU B' but the card expects 'GPU A'" in result.error
     )
-    assert _run_json(tmp_path)["invocations"] == []
+    assert not result.claimed and not (tmp_path / "root" / "runs" / "t1").exists()
 
 
 def test_card_asking_for_cuda_without_it_fails_before_launching(
@@ -872,10 +872,10 @@ def test_card_asking_for_cuda_without_it_fails_before_launching(
     card = _card(tmp_path, [_train("smoke", "--dry_run", "--device", "cuda:1")])
     result = _run(card, tmp_path, pinned)
     assert result.status == rc.STATUS_FAILED
-    data = _run_json(tmp_path)
+    data = json.loads((result.run_dir / "run.json").read_text(encoding="utf-8"))
     assert data["error"].startswith("devices: ") and "smoke" in data["error"]
     assert data["invocations"] == []
-    assert not (tmp_path / "root" / "runs" / "t1" / "logs" / "smoke.log").exists()
+    assert not (tmp_path / "root" / "runs" / "t1").exists(), "the rehearsal refused it"
 
 
 def test_cuda_card_runs_when_the_pinned_venv_has_the_devices(
