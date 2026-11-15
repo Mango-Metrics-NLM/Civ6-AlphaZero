@@ -22,8 +22,11 @@ Also here: two interrupted attempts before one re-run need a record each.
 rest of the verifier: it makes the honest order the only one that verifies, not a
 forged clock impossible.
 
-Negative controls: CHECKPOINT -- the list below is the plan and has not been run
-yet; the commit that follows this one records what was planted and what failed.
+Negative controls (2026-11-15). Each defect was planted in
+``scripts/release_reproduction.py``, the planted text was read back from disk, this
+module and ``test_verify_release_evidence_reproduction.py`` were run and the listed
+tests were seen to FAIL, and the file was restored and checked byte-identical
+(sha256) before the next one:
 
 1. ``rerun_of`` counts an attempt that started in the same second as later
    (``>=``) -> ``test_an_interrupted_attempt_must_be_followed_by_its_rerun[the same
@@ -32,23 +35,26 @@ yet; the commit that follows this one records what was planted and what failed.
    ``test_every_listed_attempt_needs_a_readable_started_at`` cases failed.
 3. ``_order_problems`` does not require an interrupted attempt to be followed by
    its re-run -> both ``test_an_interrupted_attempt_must_be_followed_by_its_rerun``
-   cases failed: the completed attempt verified with exit 0 and PASS.
+   cases failed (the completed attempt verified with exit 0 and PASS), and the
+   five ``started_at`` cases above.
 4. ``_order_problems`` reports that also for a role without a non-VOID attempt
    (the ``judged`` condition dropped) ->
    ``test_a_role_without_a_judged_attempt_is_not_told_twice`` failed.
-5. ``_later_run_problems`` returns nothing ->
+5. ``_later_run_problems`` reports nothing ->
    ``test_no_second_draw_after_a_rerun_that_did_not_reproduce`` and
    ``test_the_other_role_may_not_start_after_it_either`` failed (exit 0, with a
    second draw judged PASS).
 6. ``_later_run_problems`` looks at the re-run's own role only ->
    ``test_the_other_role_may_not_start_after_it_either`` failed.
-7. ``_later_run_problems`` flags an attempt that started at the same time as the
-   re-run (``<`` for ``<=``), so the re-run flags itself ->
-   ``test_two_interrupted_attempts_and_one_rerun_need_a_record_each`` and the first
-   half of ``test_the_other_role_may_not_start_after_it_either`` failed.
-8. ``review`` evaluates one record per re-run only (a second interrupted attempt
-   with the same re-run is skipped) ->
+7. ``_later_run_problems`` counts the same start as "after" (``<`` for ``<=``), so
+   a non-reproducing re-run flags itself -> 17 tests failed: the three bundle tests
+   here that hold one, and every "is non-reproducing" test of the other module.
+8. ``review`` reviews one record per re-run (a second interrupted attempt with the
+   same re-run is skipped) ->
    ``test_two_interrupted_attempts_and_one_rerun_need_a_record_each`` failed.
+9. ``rerun_of`` takes the last later COMPLETED attempt, not the first -> both
+   ``TestOrder`` ordering tests and
+   ``test_no_second_draw_after_a_rerun_that_did_not_reproduce`` failed.
 """
 
 from __future__ import annotations

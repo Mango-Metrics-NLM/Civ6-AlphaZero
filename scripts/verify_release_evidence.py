@@ -51,6 +51,9 @@ sha256. This script trusts none of the stored numbers:
   (``scripts/release_reproduction.py``); a re-run that differs, or ran at another
   ``sha``, ``device_plan`` or driver, is a "non-reproducing re-run" whose PASS is
   read as INCONCLUSIVE. An attempt that launched nothing may not be listed.
+  Attempts are ordered by ``run.json``'s ``started_at`` alone (each must record
+  one): an interrupted attempt must be followed by its re-run, and no attempt
+  may have started after a non-reproducing re-run.
 
 Exit status: 0 pass, 1 fail, 2 missing (no bundle, a missing component, a git
 object, or no way to read the check runs: no ``--repo``, ``gh`` not runnable).

@@ -17,98 +17,82 @@ bundle stores, then the verifier's exit code and message.
 Kept apart from ``test_verify_release_evidence.py`` so neither file grows past the
 size the debt ratchet holds test modules to.
 
-Negative controls (2026-11-15). Each defect was planted in the named file, the
-planted text was read back from disk, this module was run and the listed tests
-were seen to FAIL, and the file was restored and checked byte-identical (sha256)
-before the next one. In ``scripts/release_reproduction.py`` unless another file is
-named:
+Negative controls (2026-11-15, re-run after the fix round). Each defect was
+planted in the named file, the planted text was read back from disk, this module
+and ``test_verify_release_evidence_ordering.py`` were run and the listed tests were
+seen to FAIL, and the file was restored and checked byte-identical (sha256) before
+the next one. In ``scripts/release_reproduction.py`` unless another file is named;
+"+N" counts further failing tests that are not named:
 
-1.  ``review`` accepts an attempt without a record (the "missing" problem
-    skipped) -> ``test_an_interrupted_attempt_without_a_record_fails``,
-    ``test_a_run_voided_by_an_override_needs_a_record`` and
-    ``test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt`` failed.
-2.  ``outcome`` ignores the digests' differences (``reasons`` built from the
-    conditions alone) -> ``test_a_differing_rerun_cannot_pass``,
+1.  ``review`` accepts an attempt without a record ->
+    ``test_an_interrupted_attempt_without_a_record_fails``,
+    ``test_a_run_voided_by_an_override_needs_a_record``,
+    ``test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt`` (+1).
+2.  ``outcome`` ignores the digests' differences ->
+    ``test_a_differing_rerun_cannot_pass``,
     ``test_a_differing_checkpoint_alone_cannot_pass``,
-    ``test_the_claim_is_withheld_after_a_non_reproducing_rerun``,
-    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` and
-    ``test_the_report_shows_the_label_and_the_comparison`` failed.
+    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` (+6).
 3.  ``scripts/verify_release_evidence.py``: ``judge`` does not pass
-    ``non_reproducing`` to ``compute_verdict`` -> 13 tests failed, among them
-    ``test_a_differing_rerun_cannot_pass`` and every "is non-reproducing" test (the
-    stored INCONCLUSIVE was "recomputed" as PASS).
+    ``non_reproducing`` -> 17 tests, ``test_a_differing_rerun_cannot_pass`` and
+    every "is non-reproducing" test among them (the stored INCONCLUSIVE was
+    "recomputed" as PASS).
 4.  ``scripts/verify_release_evidence.py``: ``compare_verdict`` does not compare
-    the label -> ``test_a_differing_rerun_cannot_pass`` failed (the label could be
-    deleted from the bundle).
-5.  ``check_record`` does not recompute the status (the comparison with
-    ``compare_status`` removed) ->
-    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` failed.
-6.  ``check_record`` does not hold the digests to the bundled files (the
-    ``_bundle_contradictions`` call removed) -> all four
-    ``test_a_record_that_contradicts_the_bundled_components_fails`` cases failed:
-    a record that leaves out the arm that differs verified with exit 0 and PASS.
-7.  ``_bundle_contradictions`` checks one direction only (``only_bundle`` emptied)
-    -> the ``a missing arm`` case failed.
+    the label -> ``test_a_differing_rerun_cannot_pass``.
+5.  ``check_record`` does not recompute the status ->
+    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` (+1).
+6.  ``check_record`` does not hold the digests to the bundled files -> all four
+    ``test_a_record_that_contradicts_the_bundled_components_fails`` cases (+1): a
+    record that leaves out the arm that differs verified with exit 0 and PASS.
+7.  ``_bundle_contradictions`` checks one direction only -> the ``a missing arm``
+    case.
 8.  ``check_record`` does not check the identities -> the six
-    ``test_a_record_for_other_runs_fails`` cases failed.
+    ``test_a_record_for_other_runs_fails`` cases and
+    ``TestWhichAttempts::test_a_null_identity_never_matches``; only the "is a
+    string" half removed -> the latter alone.
 9.  ``condition_differences`` does not compare the ``sha`` ->
-    ``test_another_commit_is_non_reproducing`` and
-    ``TestConditions::test_the_sha_is_always_compared`` failed.
-10. ``condition_differences`` compares no ``device_plan`` key (the comparison
-    disabled) -> the four ``test_another_device_plan_is_non_reproducing`` cases and
-    the eleven ``test_every_named_*_key_is_compared`` cases failed.
-11. ``condition_differences`` skips the driver ->
-    ``test_another_driver_is_non_reproducing``, both
-    ``test_an_unreadable_driver_is_non_reproducing`` cases,
-    ``test_a_run_json_without_the_new_keys_still_verifies`` and
-    ``TestConditions::test_the_driver_is_compared_only_where_devices_are_registered``
-    failed.
-12. ``alpha_zero/evaluation/reproduction.py``: ``_shows_a_result`` counts the
-    seed-fixed checkpoint -> ``test_only_checkpoint_0_is_an_empty_comparison`` and
-    ``test_another_commit_is_non_reproducing`` failed (the record said REPRODUCED).
-13. ``needs_record`` ignores ``control_void`` ->
-    ``test_an_interrupted_control_void_is_a_second_draw`` and
-    ``TestWhichAttempts::test_needs_record`` failed.
-14. ``needs_record`` is true for every attempt that launched something ->
-    ``test_a_control_void_needs_no_record``,
+    ``test_another_commit_is_non_reproducing``,
+    ``TestConditions::test_the_sha_is_always_compared``.
+10. ... compares no ``device_plan`` key -> the four
+    ``test_another_device_plan_is_non_reproducing`` cases and the eleven
+    ``test_every_named_*_key_is_compared`` cases.
+11. ... skips the driver -> both ``test_another_driver_is_non_reproducing`` cases,
+    both ``test_an_unreadable_driver_is_non_reproducing`` cases,
+    ``test_a_run_json_without_the_new_keys_still_verifies`` and one unit test;
+    compares the first GPU's driver only -> both
+    ``test_another_driver_is_non_reproducing`` cases.
+12. ... does not compare the torch wheel ->
+    ``test_another_torch_wheel_is_non_reproducing_when_both_runs_record_one`` and
+    its unit test; counts a wheel only one run records as a difference -> those
+    two and ``TestConditions::test_records_that_are_not_conditions_are_ignored``.
+13. ``alpha_zero/evaluation/reproduction.py``: ``_shows_a_result`` counts the
+    seed-fixed checkpoint -> ``test_only_checkpoint_0_is_an_empty_comparison``,
+    ``test_another_commit_is_non_reproducing``.
+14. ``needs_record`` ignores ``control_void`` ->
     ``test_an_interrupted_control_void_is_a_second_draw``,
-    ``test_the_rerun_is_the_next_completed_attempt``, one
-    ``test_a_record_no_comparison_applies_to_fails`` case and two unit tests failed.
-    (Dropping only the "was interrupted" condition is seen by the two unit tests
-    alone: in a bundle it matters only with two non-VOID attempts of one role,
-    which fails anyway.)
-15. ``rerun_of`` returns the last COMPLETED attempt instead of the next one ->
-    ``test_the_rerun_is_the_next_completed_attempt`` and
-    ``TestWhichAttempts::test_the_rerun_is_the_first_later_completed_attempt`` failed.
-16. ``rerun_of`` ignores ``started_at`` (bundle order always) ->
-    ``test_attempts_are_ordered_by_when_they_started`` and the ``started_at`` unit
-    test failed.
-17. ``launched`` reads ``invocations`` (the finished ones) instead of ``launched``
-    -> ``test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt``,
+    ``TestWhichAttempts::test_needs_record``; true for every launched attempt, or
+    without the "was interrupted" condition -> about 30 tests each (every
+    completed re-run must then itself be followed by a re-run).
+15. ``rerun_of`` takes the last later COMPLETED attempt ->
+    ``test_the_rerun_is_the_next_completed_attempt`` (+3 in the ordering module).
+16. ``launched`` reads ``invocations`` (the finished ones) ->
+    ``test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt``,
     ``test_only_checkpoint_0_is_an_empty_comparison``,
-    ``test_another_commit_is_non_reproducing`` and four unit tests failed.
-18. ``scripts/verify_release_evidence.py``: the "launched nothing" problem removed
-    -> ``test_an_attempt_that_launched_nothing_must_not_be_listed`` failed.
-19. ``review`` accepts a ``reproduction`` entry no comparison applies to ->
-    both ``test_a_record_no_comparison_applies_to_fails`` cases failed.
-20. ``review`` does not compare the stored outcome ->
-    ``test_a_stored_outcome_that_is_not_the_recomputed_one_fails`` and
-    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` failed.
-21. ``scripts/build_release_bundle.py``: ``reproduction_lines`` returns nothing ->
-    ``test_only_checkpoint_0_is_an_empty_comparison`` and
-    ``test_the_report_shows_the_label_and_the_comparison`` failed.
-22. ``scripts/verify_release_evidence.py``, the ``Attempt`` it builds: no arena
-    paths -> 23 tests failed; no iterations path -> 21 failed (in both, every
-    bundle with a record: the record's digests had nothing bundled to match);
-    ``control_void`` always false ->
-    ``test_an_interrupted_control_void_is_a_second_draw`` and one
-    ``test_a_record_no_comparison_applies_to_fails`` case failed;
-    ``devices_registered`` always false -> ``test_another_driver_is_non_reproducing``,
-    both ``test_an_unreadable_driver_is_non_reproducing`` cases and
-    ``test_a_run_json_without_the_new_keys_still_verifies`` failed.
-23. ``_recompute`` lets a misshapen digest raise (it catches ``KeyError`` only) ->
-    ``test_a_record_with_digests_of_another_shape_fails_and_does_not_crash`` failed
-    with the ``AttributeError``.
+    ``test_another_commit_is_non_reproducing`` and four unit tests.
+17. ``scripts/verify_release_evidence.py``: the "launched nothing" problem removed
+    -> ``test_an_attempt_that_launched_nothing_must_not_be_listed``.
+18. ``review`` accepts a ``reproduction`` entry no comparison applies to -> both
+    ``test_a_record_no_comparison_applies_to_fails`` cases.
+19. ``review`` does not compare the stored outcome ->
+    ``test_a_stored_outcome_that_is_not_the_recomputed_one_fails`` (+1).
+20. ``scripts/build_release_bundle.py``: ``reproduction_lines`` returns nothing ->
+    ``test_only_checkpoint_0_is_an_empty_comparison``,
+    ``test_the_report_shows_the_label_and_the_comparison``.
+21. ``scripts/verify_release_evidence.py``, the ``Attempt`` it builds: no arena
+    paths -> 29 tests; no iterations path -> 26; ``control_void`` always false ->
+    ``test_an_interrupted_control_void_is_a_second_draw`` (+1);
+    ``devices_registered`` always false -> the five driver tests.
+22. ``_recompute`` lets a misshapen digest raise ->
+    ``test_a_record_with_digests_of_another_shape_fails_and_does_not_crash``.
 """
 
 from __future__ import annotations

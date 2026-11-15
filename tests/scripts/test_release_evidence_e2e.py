@@ -33,6 +33,10 @@ What is replaced, and why (so it is not mistaken for coverage):
   temporary root, so the paths the verifier reconstructs are the ones that ran.
 * **Check runs.** The rc's CI is read through the fake GitHub API the verifier's
   own tests use.
+* **The clock.** ``run.json``'s ``started_at`` has one-second resolution and the
+  re-run rule orders attempts by it, strictly. Real attempts are hours apart;
+  these tiny ones can start within one second, so ``run_card._now`` ticks one
+  minute per call here.
 
 So what this proves: the verifier's schema, registration, recomputation, verdict,
 identity and freshness checks all accept real producer output. What it does not:
@@ -67,11 +71,13 @@ from __future__ import annotations
 import contextlib
 import importlib
 import io
+import itertools
 import json
 import os
 import shutil
 import sys
 from collections.abc import Callable, Iterator, Mapping, Sequence
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +99,9 @@ RERUN_ID = "a1-tiny-r2"
 SEED = 20261111
 #: Runs a card; with ``interrupt_in`` the named invocation is interrupted when it starts.
 RunCard = Callable[..., Path]
+#: The stand-in clock (module docstring): ``run_card._now``'s format, a minute per call.
+CLOCK_START = datetime(2026, 12, 1, tzinfo=UTC)
+CLOCK_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 BENCH = (
     "python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 4 "
     "--max-turns 8 --sims 2 --gumbel-k 2 --mcts-type gumbel --device cpu"
@@ -207,6 +216,10 @@ def producer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[GitRepo, 
     monkeypatch.setattr(rc, "_preflight", lambda env, child: {"exit_code": 0})
     monkeypatch.setattr(rc, "verify_preflight", lambda env, report: None)
     monkeypatch.setattr(rc, "_pip_freeze", lambda env, child, runner: [])
+    minutes = itertools.count()
+    monkeypatch.setattr(
+        rc, "_now", lambda: (CLOCK_START + timedelta(minutes=next(minutes))).strftime(CLOCK_FORMAT)
+    )
     monkeypatch.setattr(
         rc,
         "harden_data_root",
@@ -333,6 +346,8 @@ def test_an_interrupted_attempt_and_its_rerun_build_and_verify(
     assert [i["name"] for i in void["invocations"]] == ["train", "primary"]
     assert void["launched"] == ["train", "primary", "symmetry"]
     rerun_dir = run(RERUN_ID)
+    rerun_started = json.loads((rerun_dir / "run.json").read_text(encoding="utf-8"))["started_at"]
+    assert void["started_at"] < rerun_started, "the re-run is the attempt that started later"
 
     compare = tmp_path / "compare.json"
     assert rp.main(["compare", str(void_dir), str(rerun_dir), "--out", str(compare)]) == 0

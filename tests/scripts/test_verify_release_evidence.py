@@ -717,15 +717,15 @@ class TestFreshness:
         assert "alpha_zero/envs/microciv.py" in out
 
     def test_a_void_attempts_stale_code_is_not_judged_stale(self, tmp_path: Path) -> None:
-        """The VOID attempt ran before the fix; only the judged re-run must be fresh."""
+        """A symmetry VOID ran before the arena fix; only the judged second draw must be fresh."""
         fix = {"alpha_zero/core/mcts/base.py": "BASE = 2\n"}
-        specs = [
-            fx.RunSpec(run_id="a1-20261111", status="VOID"),
-            fx.RunSpec(run_id="a1-20261111-r2", at_rc=True),
-        ]
-        code, out = verify(fx.make_release(tmp_path / "ok", specs, after_run=fix))
+        void = fx.RunSpec(run_id="a1-20261111", symmetry=list(fx.LOPSIDED))
+        fresh = [void, fx.RunSpec(run_id="a1-20261111-r2", at_rc=True)]
+        release = fx.make_release(tmp_path / "ok", fresh, after_run=fix)
+        assert [r["verdict"]["verdict"] for r in release.bundle["runs"]] == ["VOID", "PASS"]
+        code, out = verify(release)
         assert code == vre.EXIT_PASS, out
-        stale = [fx.RunSpec(run_id="a1-20261111", status="VOID"), fx.RunSpec(run_id="a1-r2")]
+        stale = [void, fx.RunSpec(run_id="a1-r2")]
         code, out = verify(fx.make_release(tmp_path / "bad", stale, after_run=fix))
         assert code == vre.EXIT_FAIL
         assert "run a1-r2 (A1): the play path changed" in out
