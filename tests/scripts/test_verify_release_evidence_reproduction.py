@@ -17,10 +17,7 @@ bundle stores, then the verifier's exit code and message.
 Kept apart from ``test_verify_release_evidence.py`` so neither file grows past the
 size the debt ratchet holds test modules to.
 
-CHECKPOINT: the list below was run before the role's-last-attempt rule replaced
-the "must be followed" bullet; it is being re-run and the next commit records it.
-
-Negative controls (2026-11-15, re-run after the fix round). Each defect was
+Negative controls (2026-11-15, all re-run after the third round). Each defect was
 planted in the named file, the planted text was read back from disk, this module
 and ``test_verify_release_evidence_ordering.py`` were run and the listed tests were
 seen to FAIL, and the file was restored and checked byte-identical (sha256) before
@@ -34,9 +31,9 @@ the next one. In ``scripts/release_reproduction.py`` unless another file is name
 2.  ``outcome`` ignores the digests' differences ->
     ``test_a_differing_rerun_cannot_pass``,
     ``test_a_differing_checkpoint_alone_cannot_pass``,
-    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` (+6).
+    ``test_a_record_claiming_reproduced_over_differing_digests_fails`` (+8).
 3.  ``scripts/verify_release_evidence.py``: ``judge`` does not pass
-    ``non_reproducing`` -> 17 tests, ``test_a_differing_rerun_cannot_pass`` and
+    ``non_reproducing`` -> 19 tests, ``test_a_differing_rerun_cannot_pass`` and
     every "is non-reproducing" test among them (the stored INCONCLUSIVE was
     "recomputed" as PASS).
 4.  ``scripts/verify_release_evidence.py``: ``compare_verdict`` does not compare
@@ -72,11 +69,12 @@ the next one. In ``scripts/release_reproduction.py`` unless another file is name
     ``test_another_commit_is_non_reproducing``.
 14. ``needs_record`` ignores ``control_void`` ->
     ``test_an_interrupted_control_void_is_a_second_draw``,
-    ``TestWhichAttempts::test_needs_record``; true for every launched attempt, or
-    without the "was interrupted" condition -> about 30 tests each (every
-    completed re-run must then itself be followed by a re-run).
+    ``TestWhichAttempts::test_needs_record``; true for every launched attempt ->
+    ``test_a_control_void_needs_no_record`` (+7); without the "was interrupted"
+    condition -> two unit tests only (in a bundle the judged attempt is the last
+    of its role, so nothing follows it to be compared with).
 15. ``rerun_of`` takes the last later COMPLETED attempt ->
-    ``test_the_rerun_is_the_next_completed_attempt`` (+3 in the ordering module).
+    ``test_the_rerun_is_the_next_completed_attempt`` (+6 in the ordering module).
 16. ``launched`` reads ``invocations`` (the finished ones) ->
     ``test_an_attempt_interrupted_in_its_first_invocation_is_an_attempt``,
     ``test_only_checkpoint_0_is_an_empty_comparison``,
@@ -91,8 +89,8 @@ the next one. In ``scripts/release_reproduction.py`` unless another file is name
     ``test_only_checkpoint_0_is_an_empty_comparison``,
     ``test_the_report_shows_the_label_and_the_comparison``.
 21. ``scripts/verify_release_evidence.py``, the ``Attempt`` it builds: no arena
-    paths -> 29 tests; no iterations path -> 26; ``control_void`` always false ->
-    ``test_an_interrupted_control_void_is_a_second_draw`` (+1);
+    paths -> 32 tests; no iterations path -> 29; ``control_void`` always false ->
+    ``test_an_interrupted_control_void_is_a_second_draw`` (+4);
     ``devices_registered`` always false -> the five driver tests.
 22. ``_recompute`` lets a misshapen digest raise ->
     ``test_a_record_with_digests_of_another_shape_fails_and_does_not_crash``.

@@ -2,62 +2,84 @@
 
 ``scripts/release_reproduction.py`` requires the compare record of an interrupted
 attempt against its re-run: the first COMPLETED attempt of the role that started
-after it. Two routes around that were open, and these tests close them:
+after it. Three routes around that were open, each needing one edited or missing
+``started_at``, and these tests close them:
 
 * **Give the re-run an earlier start.** Interrupt X, re-run as Y after a code
   change, and record Y as started before X (a clock set back), or leave a
   ``started_at`` out so the order fell back to the one the bundle lists. X then had
-  no later attempt, needed no record, and Y could PASS. Now every listed attempt
-  must record a readable ``started_at``, the bundle's order decides nothing, and an
-  interrupted attempt with no later COMPLETED attempt fails a role that is judged.
+  no later attempt, needed no record, and Y could PASS.
 * **Draw again after a re-run that did not reproduce.** X interrupted, Y does not
   reproduce X and is VOID by a control arm, Z is a second draw that would be judged
   PASS. Section 7.1 lets no A1-family run start after a non-reproducing re-run
   until it is re-registered, so any attempt of either role that started later fails
   the bundle.
+* **Date that second draw at or before the re-run.** The same X, Y, Z, with Z's
+  ``started_at`` edited to before X, or to Y's own second: Z was then not "after"
+  Y, and was the role's only non-VOID attempt.
 
-Also here: two interrupted attempts before one re-run need a record each.
+The rules: every listed attempt records a readable ``started_at``; no two attempts
+of a role record the same instant; and a role's non-VOID attempt is its last, so
+every other attempt of the role started strictly before it. The order the bundle
+lists attempts in decides nothing. Also here: two interrupted attempts before one
+re-run need a record each.
 
-``started_at`` is the operator's own clock, so this is an accident net like the
-rest of the verifier: it makes the honest order the only one that verifies, not a
-forged clock impossible.
+``started_at`` is the operator's own record, so this is an accident net like the
+rest of the verifier: it refuses the orderings above. A forged clock that stays
+consistent with the rules is not detectable.
 
-CHECKPOINT: the list below was run before the role's-last-attempt rule replaced
-the "must be followed" bullet; it is being re-run and the next commit records it.
+Each bundle-level test of a refused arrangement also verifies it with
+``_order_problems`` silenced and sees exit 0 with ``verdict PASS``: the order
+rules are the only thing refusing it, so the test is not passing for another
+reason.
 
-Negative controls (2026-11-15). Each defect was planted in
-``scripts/release_reproduction.py``, the planted text was read back from disk, this
-module and ``test_verify_release_evidence_reproduction.py`` were run and the listed
-tests were seen to FAIL, and the file was restored and checked byte-identical
-(sha256) before the next one:
+Negative controls (2026-11-15, all re-run after the third round). Each defect was
+planted in ``scripts/release_reproduction.py``, the planted text was read back
+from disk, this module, ``test_verify_release_evidence_reproduction.py`` and (for
+1-8) ``test_verify_release_evidence.py`` were run and the listed tests were seen
+to FAIL, and the file was restored and checked byte-identical (sha256) before the
+next one:
 
-1. ``rerun_of`` counts an attempt that started in the same second as later
-   (``>=``) -> ``test_an_interrupted_attempt_must_be_followed_by_its_rerun[the same
-   second]`` and ``TestOrder::test_only_started_at_orders_the_attempts`` failed.
-2. ``_order_problems`` does not require a readable ``started_at`` -> the five
-   ``test_every_listed_attempt_needs_a_readable_started_at`` cases failed.
-3. ``_order_problems`` does not require an interrupted attempt to be followed by
-   its re-run -> both ``test_an_interrupted_attempt_must_be_followed_by_its_rerun``
-   cases failed (the completed attempt verified with exit 0 and PASS), and the
-   five ``started_at`` cases above.
-4. ``_order_problems`` reports that also for a role without a non-VOID attempt
-   (the ``judged`` condition dropped) ->
-   ``test_a_role_without_a_judged_attempt_is_not_told_twice`` failed.
-5. ``_later_run_problems`` reports nothing ->
-   ``test_no_second_draw_after_a_rerun_that_did_not_reproduce`` and
-   ``test_the_other_role_may_not_start_after_it_either`` failed (exit 0, with a
-   second draw judged PASS).
-6. ``_later_run_problems`` looks at the re-run's own role only ->
-   ``test_the_other_role_may_not_start_after_it_either`` failed.
-7. ``_later_run_problems`` counts the same start as "after" (``<`` for ``<=``), so
-   a non-reproducing re-run flags itself -> 17 tests failed: the three bundle tests
-   here that hold one, and every "is non-reproducing" test of the other module.
-8. ``review`` reviews one record per re-run (a second interrupted attempt with the
-   same re-run is skipped) ->
-   ``test_two_interrupted_attempts_and_one_rerun_need_a_record_each`` failed.
-9. ``rerun_of`` takes the last later COMPLETED attempt, not the first -> both
-   ``TestOrder`` ordering tests and
-   ``test_no_second_draw_after_a_rerun_that_did_not_reproduce`` failed.
+1.  The non-VOID attempt need not be the last of its role (the rule's condition
+    disabled) -> both ``test_an_interrupted_attempt_must_be_followed_by_its_rerun``
+    cases, both
+    ``test_a_second_draw_cannot_be_dated_at_or_before_a_non_reproducing_rerun``
+    cases and ``TestOrder::test_order_problems`` failed.
+2.  ... an attempt with the same start as the non-VOID attempt is allowed (``>``
+    for ``>=``) -> the "same second" and "the re-run's second" cases of those two
+    tests and ``TestOrder::test_order_problems`` failed.
+3.  Ties are not refused -> ``test_two_attempts_of_a_role_cannot_record_the_same_start``
+    failed (the bundle verified, exit 0 with PASS), with the tie cases of the two
+    tests above and two unit tests.
+4.  A tie is the same text, not the same instant ->
+    ``TestOrder::test_a_tie_is_the_same_instant_not_the_same_text`` failed.
+5.  Roles are not ordered apart -> ``test_the_other_role_may_not_start_after_it_either``,
+    ``TestOrder::test_order_problems`` and six tests of the other two modules
+    failed (every bundle that holds both roles).
+6.  The rule is applied to VOID attempts too -> 39 tests failed,
+    ``test_a_role_without_a_judged_attempt_is_not_told_twice`` among them.
+7.  ``rerun_of`` breaks a tie by the listing ->
+    ``TestOrder::test_a_tie_between_later_attempts_is_not_decided_by_the_listing``
+    and two bundle tests failed.
+8.  ``Attempt.void`` ignores ``completed`` -> ``TestOrder::test_void`` failed.
+9.  ``rerun_of`` counts an attempt that started in the same second as later
+    (``>=``) -> ``test_an_interrupted_attempt_must_be_followed_by_its_rerun[the same
+    second]`` and ``TestOrder::test_only_started_at_orders_the_attempts`` failed.
+10. ``_order_problems`` does not require a readable ``started_at`` -> the five
+    ``test_every_listed_attempt_needs_a_readable_started_at`` cases failed.
+11. ``_later_run_problems`` reports nothing ->
+    ``test_no_second_draw_after_a_rerun_that_did_not_reproduce`` and
+    ``test_the_other_role_may_not_start_after_it_either`` failed (exit 0, with a
+    second draw judged PASS).
+12. ``_later_run_problems`` looks at the re-run's own role only ->
+    ``test_the_other_role_may_not_start_after_it_either`` failed.
+13. ``_later_run_problems`` counts the same start as "after" (``<`` for ``<=``), so
+    a non-reproducing re-run flags itself -> 19 tests failed.
+14. ``review`` reviews one record per re-run (a second interrupted attempt with the
+    same re-run is skipped) ->
+    ``test_two_interrupted_attempts_and_one_rerun_need_a_record_each`` failed.
+15. ``rerun_of`` takes the last later COMPLETED attempt, not the first -> the three
+    ``TestOrder`` tests on ``rerun_of`` and four bundle tests failed.
 """
 
 from __future__ import annotations

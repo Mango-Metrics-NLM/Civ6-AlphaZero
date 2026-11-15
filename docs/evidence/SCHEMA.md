@@ -142,7 +142,7 @@ so the builder matches it to them by `card_id`.
 | `schema_version` | `1` (`reproduction.RECORD_SCHEMA_VERSION`) |
 | `attempt`, `rerun` | each run's identity from its `run.json`: `card_id`, `sha`, `status`, and `run_json_sha256`, the sha256 of that file. `null` for a directory without a `run.json` |
 | `digests` | `{attempt, rerun}`: what `reproduction.run_digest` gives for each run directory: every checkpoint's tensors (one sha256 each), every finished arm's protocol, seed and per-game records, and every iteration record without its wall-clock fields |
-| `status`, `differences` | `REPRODUCED`, `DIFFERS` or `NOTHING TO COMPARE`, and each difference found. `NOTHING TO COMPARE` means the attempt finished nothing beyond `checkpoint_0.pt`, which the seed alone fixes |
+| `status`, `differences` | `REPRODUCED`, `DIFFERS` or `NOTHING TO COMPARE`, and each difference found. `NOTHING TO COMPARE` means the record's digest of the attempt holds nothing beyond `checkpoint_0.pt`, which the seed alone fixes. That is what the record shows, not something the bundle proves (see "What the record cannot show") |
 | `components`, `rerun_components`, `components_compared`, `attempt_dir`, `rerun_dir`, `tool` | informational |
 
 **Which attempts need one.** An attempt that is VOID for an interruption-class
@@ -161,12 +161,16 @@ claim that nothing recomputes.
 the order of `runs[]` decides nothing.
 
 - Every listed attempt must record a `started_at` that parses as a timestamp.
-- "After" is strict: an attempt that started in the same second is not later.
-- An interrupted attempt must be followed by its re-run. One that needs a record
-  and has no later `COMPLETED` attempt, in a role that has a non-VOID attempt,
-  fails the bundle: the non-VOID attempt started at or before it, so it is not
-  its re-run. (Without this, recording the re-run as started earlier would leave
-  the interrupted attempt with nothing to be compared with.)
+- Two listed attempts of one role may not record the same instant. `run_card`
+  writes `started_at` to the second and two runs of a role do not start in one,
+  so an honest bundle has no tie; a tie would leave the order to the listing.
+- **The role's non-VOID attempt is its last.** In a role that has a non-VOID
+  attempt, every other listed attempt of that role must have started strictly
+  before it: section 7.1 judges the one non-VOID attempt, and nothing of the role
+  runs after it. This is one rule for two things. An interrupted attempt must be
+  followed by its re-run, so it cannot be dated after the attempt that is judged
+  (it would have nothing to be compared with). And a second draw cannot be dated
+  at or before a non-reproducing re-run to escape the rule below.
 - Two interrupted attempts before one re-run need a record each.
 
 **What the verifier does with it** (`scripts/release_reproduction.py`). It
@@ -190,7 +194,7 @@ It then recomputes the outcome, which must equal the stored `outcome` and `rerun
 | Outcome | When | The re-run |
 |---|---|---|
 | `REPRODUCED` | no difference, the same conditions | is judged |
-| `EMPTY` | `NOTHING TO COMPARE`, the same conditions | is judged; the bundle says the comparison was empty (this `outcome`, which is recomputed, and a line the builder writes in `report.md`, which is not checked) |
+| `EMPTY` | the record's digests give `NOTHING TO COMPARE`, the same conditions | is judged; the bundle says the comparison was empty (this `outcome`, which is recomputed from the record, and a line the builder writes in `report.md`, which is not checked) |
 | `NON_REPRODUCING` | any difference between the digests, **or** another `sha`, another `device_plan` (`CUDA_VISIBLE_DEVICES`, `CUDA_DEVICE_ORDER`, `CUBLAS_WORKSPACE_CONFIG`, `torch_pin`, `requested`, `expected_gpus`, and `torch.version`, `.cuda`, `.cudnn`, `.devices`, `.capabilities`), another torch wheel, or another NVIDIA driver on any GPU. Where section 7.1 registers devices, a driver that cannot be read from `preflight.nvidia_smi` on either side counts as another driver | cannot PASS: its verdict is recomputed with the label, and a PASS row is read as INCONCLUSIVE with the MDE that verdict reports |
 
 The torch wheel is `run.json`'s `torch_wheel.sha256`, compared only when both
@@ -202,11 +206,19 @@ A1-family run start until it is re-registered. Any listed attempt, of either
 role, whose `started_at` is later than a non-reproducing re-run's fails the
 bundle, with a message that a new registration is required first.
 
-**What the record cannot show.** The checkpoint tensor digests in the record are
-not anchored to anything in the bundle: checkpoints are too large to bundle, so
-the record is the only account of them, and it is the output of a tool the
-operator ran. The arena and iteration digests are anchored, because those files
-are bundled.
+**What the record cannot show.** The record is the output of a tool the operator
+ran, and the verifier can hold it only to what the bundle carries.
+
+- The checkpoint tensor digests are not anchored to anything: checkpoints are
+  too large to bundle, so the record is the only account of them.
+- The arena and iteration digests are anchored only for the components that are
+  bundled. What a VOID attempt's bundle may omit (an arm that wrote `result.json`
+  after the last invocation `run.json` records, the iteration records of an
+  attempt killed during training) a record can omit with it.
+- So `EMPTY` means the record shows nothing beyond `checkpoint_0`; it does not
+  prove the attempt finished nothing more. For an attempt killed during training,
+  an `EMPTY` outcome is reachable by leaving its iteration records out of both
+  the bundle and the record, and its later checkpoints out of the record.
 
 **Not modelled.** After a non-reproducing re-run, section 7.1 requires a new
 registration with a new confirmatory seed pair, whose bundle lists both
@@ -223,7 +235,35 @@ registration, and it says so in the message.
   (section 7.1 names the card files, not their ids, and a card refused before it
   launched anything legitimately moves on to a new `card_id` without being
   listed), so a judged attempt under another id proves nothing.
-- *`started_at` is the operator's own clock.* It is written by `run_card` on the
-  operator's machine into a file the operator holds. The order rules above make
-  the honest order the only one that verifies; they do not make a forged
-  timestamp impossible.
+- *`started_at` is the operator's own record.* It is written by `run_card` on
+  the operator's machine into a file the operator holds. The order rules refuse
+  the orderings they name (an unreadable or tied start, an attempt not before its
+  role's non-VOID attempt, anything after a non-reproducing re-run). A forged
+  clock that stays consistent with them is not detectable.
+
+**Not checked.**
+
+- The torch wheel comparison is skipped when either run has no `torch_wheel`
+  record.
+- A control-VOID attempt's second draw is not required to be at another `sha`,
+  or to have a changed play path.
+- A `started_at` is not checked against anything outside the bundle, such as the
+  commit date of the run's `sha`.
+
+**Conservative readings.** Where section 7.1 is silent or looser, the verifier
+takes the stricter reading. These are the maintainer's to overrule.
+
+- *A VOID with no re-run that can PASS.* An attempt that is VOID because its
+  `device_plan` departs from the registered one, or because an `MCTS_*` variable
+  was set, is treated as interruption-class: it needs a record. Its correct
+  re-run necessarily runs under other conditions (the registered devices, no
+  override), so it is a non-reproducing re-run, it cannot PASS, and no further
+  A1-family run may start. The same holds for a `FAILED` run whose fix needs a
+  code change: the re-run is at another `sha`. Section 7.1 speaks only of an
+  interruption and of "a `FAILED` run whose cause needs no code change"; it is
+  silent on the first two cases.
+- *The cutoff after a non-reproducing re-run is its `started_at`*, not when it
+  finished. For the other role that is stricter than section 7.1 if the two runs
+  overlapped: a run that started while the re-run was still running is refused,
+  though nothing was known yet. On the registered device plan both cards use
+  both GPUs, so they do not overlap.

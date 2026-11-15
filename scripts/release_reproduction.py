@@ -52,7 +52,10 @@ What a record can and cannot show (:func:`check_record`):
 * its ``status`` and ``differences`` are recomputed from its own digests
   (``reproduction.compare_status``);
 * its **checkpoint tensor digests are not anchored to anything**: checkpoints are
-  too large to bundle, so the record is the only account of them.
+  too large to bundle, so the record is the only account of them;
+* so :data:`OUTCOME_EMPTY` means the record shows nothing beyond ``checkpoint_0``,
+  not that the attempt is proved to have finished nothing more: for an attempt
+  killed during training it is reachable by omission.
 
 Limits no check here can close: an interrupted attempt that is simply not listed
 is invisible to a bundle verifier, and ``started_at`` is the operator's own
