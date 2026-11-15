@@ -208,6 +208,8 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   nothing else, so do not edit `run.json` and keep the machine's clock right. Every listed
   attempt must record one; an interrupted attempt must be followed by its re-run; and an
   attempt of either role that started after a non-reproducing re-run fails the bundle.
+  So run `reproduction compare` as soon as the re-run finishes, **before starting any other
+  card**: a replication started after a re-run that turns out not to reproduce is lost too.
 
 ### The A1 sequence
 
