@@ -22,6 +22,9 @@ Also here: two interrupted attempts before one re-run need a record each.
 rest of the verifier: it makes the honest order the only one that verifies, not a
 forged clock impossible.
 
+CHECKPOINT: the list below was run before the role's-last-attempt rule replaced
+the "must be followed" bullet; it is being re-run and the next commit records it.
+
 Negative controls (2026-11-15). Each defect was planted in
 ``scripts/release_reproduction.py``, the planted text was read back from disk, this
 module and ``test_verify_release_evidence_reproduction.py`` were run and the listed
@@ -83,7 +86,24 @@ from tests.scripts.test_verify_release_evidence_reproduction import (
 )
 
 EARLY, LATE = "2026-11-11T22:00:00Z", "2026-11-12T09:30:00Z"
-FOLLOWED = "An interrupted attempt must be followed by its re-run"
+T0, T1, T2, T3 = (f"2026-11-{day}T08:00:00Z" for day in (10, 11, 12, 13))
+R2X = "a1-20261111-r2x"
+NOT_BEFORE = "it did not start before"
+LAST = "every other listed attempt must have started strictly before it"
+TIE = "it records the same start as"
+
+
+def verify_without_the_order_rules(release: fx.Release, monkeypatch: pytest.MonkeyPatch) -> str:
+    """The bundle is otherwise sound: with ``_order_problems`` silenced it verifies.
+
+    Returns the verifier's output. This is the in-test negative control: it shows
+    the order rules are the only thing that refuses the arrangement.
+    """
+    with monkeypatch.context() as patched:
+        patched.setattr(rr, "_order_problems", lambda attempts: [])
+        code, out = verify(release)
+    assert code == vre.EXIT_PASS, out
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -115,13 +135,13 @@ def test_the_order_the_bundle_lists_attempts_in_decides_nothing(
     ],
 )
 def test_an_interrupted_attempt_must_be_followed_by_its_rerun(
-    tmp_path: Path, completed_at: str, interrupted_at: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, completed_at: str, interrupted_at: str
 ) -> None:
     """The route: the "re-run" is recorded as started before the attempt it replaces.
 
-    The interrupted attempt then has nothing after it to be compared with, and
-    before this rule that meant no record was needed and the completed run could
-    PASS. Whichever order the bundle lists them in.
+    The interrupted attempt then has nothing after it to be compared with, so no
+    record is due and the completed run would PASS. The role's non-VOID attempt
+    must be its last, whichever order the bundle lists them in.
     """
     specs = [rerun(started_at=completed_at), interrupted(started_at=interrupted_at)]
     for name, listed in (("as run", specs), ("reversed", specs[::-1])):
@@ -130,17 +150,23 @@ def test_an_interrupted_attempt_must_be_followed_by_its_rerun(
         assert entries(release)[R2]["verdict"]["verdict"] == "PASS"
         code, out = verify(release)
         assert code == vre.EXIT_FAIL, out
-        assert f"run {A1} (A1): it is VOID (run.json status is 'VOID', not 'COMPLETED')" in out
-        assert f"no COMPLETED attempt of A1 started after it (started_at '{interrupted_at}')" in out
-        assert f"yet {R2} is judged. {FOLLOWED}" in out
+        assert (
+            f"run {A1} (A1): {NOT_BEFORE} {R2}, the role's non-VOID attempt "
+            f"(started_at '{interrupted_at}' against started_at '{completed_at}')"
+        ) in out
+        assert LAST in out and "must be followed by its re-run" in out
+        assert (TIE in out) is (completed_at == interrupted_at)
+        assert "verdict PASS" in verify_without_the_order_rules(release, monkeypatch)
 
 
 def test_a_role_without_a_judged_attempt_is_not_told_twice(tmp_path: Path) -> None:
-    """An interrupted attempt alone: the role has no non-VOID attempt, which says it all."""
-    code, out = verify(fx.make_release(tmp_path, [interrupted()]))
+    """Two VOID attempts: the role has no non-VOID attempt, which says it all."""
+    release = fx.make_release(tmp_path, [interrupted(), rerun(symmetry=list(fx.LOPSIDED))])
+    assert verdicts(release) == ["VOID", "VOID"]
+    code, out = verify(release)
     assert code == vre.EXIT_FAIL
     assert "A1 has no non-VOID attempt" in out
-    assert FOLLOWED not in out
+    assert NOT_BEFORE not in out
 
 
 def _without_started_at(run_json: dict[str, Any]) -> None:
@@ -170,7 +196,8 @@ def test_every_listed_attempt_needs_a_readable_started_at(
     """The other route: no ``started_at``, so the order fell back to the bundle's.
 
     A clean single attempt fails for it too, and beside an interrupted attempt the
-    run without a start is not "later", so it cannot stand in as the re-run.
+    run without a start is not "later", so it cannot stand in as the re-run. A pair
+    that cannot be ordered is reported once, as the unreadable timestamp.
     """
     code, out = verify(fx.make_release(tmp_path / "one", [fx.RunSpec(edit_run_json=edit)]))
     assert code == vre.EXIT_FAIL
@@ -187,7 +214,7 @@ def test_every_listed_attempt_needs_a_readable_started_at(
         code, out = verify(release)
         assert code == vre.EXIT_FAIL
         assert f"run {R2} {problem}" in out
-        assert f"yet {R2} is judged. {FOLLOWED}" in out
+        assert NOT_BEFORE not in out and TIE not in out
 
 
 # ---------------------------------------------------------------------------
@@ -233,6 +260,79 @@ def test_the_other_role_may_not_start_after_it_either(tmp_path: Path) -> None:
     assert code == vre.EXIT_FAIL
     assert f"run {A1R['run_id']} (A1-R): it started" in out
     assert f"after {R2}, a non-reproducing re-run" in out
+
+
+@pytest.mark.parametrize(
+    "dated", [pytest.param(T0, id="before the attempt"), pytest.param(T2, id="the re-run's second")]
+)
+def test_a_second_draw_cannot_be_dated_at_or_before_a_non_reproducing_rerun(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, dated: str
+) -> None:
+    """One edited ``started_at``: I interrupted (t1); R does not reproduce it and a control
+    arm VOIDs it (t2); J, a second draw that really started after t2, is dated t0 or t2.
+
+    J needs no record, so nothing else hashes its ``run.json``. Dated honestly it is
+    refused as started after a non-reproducing re-run; dated at or before t2 it used
+    to escape that, be the role's only non-VOID attempt, and verify with PASS.
+    """
+    specs = [
+        interrupted(started_at=T1),
+        rerun(primary_rotation=1, symmetry=list(fx.LOPSIDED), started_at=T2),
+        fx.RunSpec(run_id=R3, started_at=dated),
+    ]
+    for name, listed in (("as run", specs), ("reversed", specs[::-1])):
+        release = fx.make_release(tmp_path / name, listed)
+        reference = entries(release)[A1]["reproduction"]
+        assert (reference["rerun"], reference["outcome"]) == (R2, rr.OUTCOME_NON_REPRODUCING)
+        assert [entries(release)[run]["verdict"]["verdict"] for run in (A1, R2, R3)] == [
+            "VOID",
+            "VOID",
+            "PASS",
+        ]
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL, out
+        assert (
+            f"run {R2} (A1): {NOT_BEFORE} {R3}, the role's non-VOID attempt "
+            f"(started_at '{T2}' against started_at '{dated}')"
+        ) in out
+        assert LAST in out
+        # The interrupted attempt (t1) is after t0, and before t2.
+        assert (f"run {A1} (A1): {NOT_BEFORE} {R3}" in out) is (dated == T0)
+        assert (TIE in out) is (dated == T2)
+        # Nothing else was wrong with it: this is the bundle that used to verify.
+        assert f"run {R3} (A1): verdict PASS" in verify_without_the_order_rules(
+            release, monkeypatch
+        )
+
+
+def test_two_attempts_of_a_role_cannot_record_the_same_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A tie would let the listing pick the re-run: here only the tie rule refuses.
+
+    I interrupted (t1); two COMPLETED attempts both dated t2, each VOID by a control
+    arm, one reproducing I and one not; J, a second draw (t3), is last and would
+    PASS. Taking the reproducing one as "the re-run" leaves the other unflagged.
+    """
+    specs = [
+        interrupted(started_at=T1),
+        rerun(symmetry=list(fx.LOPSIDED), started_at=T2),
+        fx.RunSpec(run_id=R2X, primary_rotation=1, symmetry=list(fx.LOPSIDED), started_at=T2),
+        fx.RunSpec(run_id=R3, started_at=T3),
+    ]
+    swapped = [specs[0], specs[2], specs[1], specs[3]]
+    for name, listed, subject, first in (("as run", specs, R2X, R2), ("swapped", swapped, R2, R2X)):
+        release = fx.make_release(tmp_path / name, listed)
+        reference = entries(release)[A1]["reproduction"]
+        assert (reference["rerun"], reference["outcome"]) == (R2, rr.OUTCOME_REPRODUCED), name
+        assert entries(release)[R3]["verdict"]["verdict"] == "PASS"
+        code, out = verify(release)
+        assert code == vre.EXIT_FAIL, out
+        assert f"run {subject} (A1): {TIE} {first} (started_at '{T2}')" in out
+        assert NOT_BEFORE not in out and "non-reproducing re-run" not in out
+        assert f"run {R3} (A1): verdict PASS" in verify_without_the_order_rules(
+            release, monkeypatch
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +420,42 @@ class TestOrder:
         assert rr.rerun_of(void, [void, at("naive", "2026-11-11T22:00:01")]) is not None
         assert rr.rerun_of(void, [void, at("east", "2026-11-12T00:30:00+03:00")]) is None
 
+    def test_a_tie_between_later_attempts_is_not_decided_by_the_listing(self) -> None:
+        void = at("void", T1, interruptions=WHY, completed=False)
+        one, other = at("b", T2), at("a", T2)
+        assert rr.rerun_of(void, [void, one, other]) is other
+        assert rr.rerun_of(void, [other, one, void]) is other
+
     def test_void(self) -> None:
         assert attempt().void is False
         assert attempt(interruptions=WHY).void is True and attempt(control_void=True).void is True
+        assert attempt(completed=False).void is True, "a run that is not COMPLETED is VOID"
+
+    def test_order_problems(self) -> None:
+        void = at("void", T1, interruptions=WHY, completed=False)
+        control = at("control", T2, control_void=True)
+        judged = at("judged", T3)
+        assert rr._order_problems([judged, control, void]) == []
+        assert rr._order_problems([void, control]) == [], "no non-VOID attempt, nothing to say"
+        # The non-VOID attempt is not the last of its role.
+        (problem,) = rr._order_problems([void, at("judged", T0)])
+        assert problem.startswith(
+            f"run void (A1): {NOT_BEFORE} judged, the role's non-VOID attempt"
+        )
+        late = [p.split(":")[0] for p in rr._order_problems([void, control, at("judged", T2)])]
+        assert late == ["run judged (A1)", "run control (A1)"]  # the tie, then the order
+        # Another role is ordered apart, and may share a start.
+        other_role = at("replica", T3, role="A1-R")
+        assert rr._order_problems([void, control, judged, other_role]) == []
+        assert rr._order_problems([void, judged, at("early", T0, role="A1-R")]) == []
+
+    def test_a_tie_is_the_same_instant_not_the_same_text(self) -> None:
+        void = at("void", "2026-11-11T21:30:00Z", interruptions=WHY, completed=False)
+        (problem,) = rr._order_problems(
+            [void, at("east", "2026-11-12T00:30:00+03:00", control_void=True)]
+        )
+        assert problem.startswith(
+            f"run east (A1): {TIE} void (started_at '2026-11-12T00:30:00+03:00')"
+        )
+        three = [at(name, T1, control_void=True) for name in ("a", "b", "c")]
+        assert [p.split(":")[0] for p in rr._order_problems(three)] == ["run b (A1)", "run c (A1)"]

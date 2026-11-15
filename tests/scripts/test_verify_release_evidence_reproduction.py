@@ -17,6 +17,9 @@ bundle stores, then the verifier's exit code and message.
 Kept apart from ``test_verify_release_evidence.py`` so neither file grows past the
 size the debt ratchet holds test modules to.
 
+CHECKPOINT: the list below was run before the role's-last-attempt rule replaced
+the "must be followed" bullet; it is being re-run and the next commit records it.
+
 Negative controls (2026-11-15, re-run after the fix round). Each defect was
 planted in the named file, the planted text was read back from disk, this module
 and ``test_verify_release_evidence_ordering.py`` were run and the listed tests were
@@ -671,9 +674,17 @@ def test_a_run_voided_by_an_override_needs_a_record(tmp_path: Path) -> None:
 
 
 def test_the_rerun_is_the_next_completed_attempt(tmp_path: Path) -> None:
-    """Interrupted, then a re-run that a control arm VOIDs, then a second draw that is judged."""
-    specs = [interrupted(), rerun(symmetry=list(fx.LOPSIDED)), fx.RunSpec(run_id=R3)]
-    release = fx.make_release(tmp_path, specs)
+    """What section 7.1 allows, with three attempts started one after another.
+
+    Interrupted; a re-run that reproduces it and that a control arm VOIDs; then,
+    after the arena fix, a second draw at the rc, which is the one judged.
+    """
+    specs = [interrupted(), rerun(symmetry=list(fx.LOPSIDED)), fx.RunSpec(run_id=R3, at_rc=True)]
+    arena_fix = {"alpha_zero/core/mcts/base.py": "BASE = 2\n"}
+    release = fx.make_release(tmp_path, specs, after_run=arena_fix)
+    assert release.run_sha != release.rc_sha
+    at_rc = [run["git_sha"] == release.rc_sha for run in release.bundle["runs"]]
+    assert at_rc == [False, False, True]
     assert verdicts(release) == ["VOID", "VOID", "PASS"]
     reference = entries(release)[A1]["reproduction"]
     assert (reference["rerun"], reference["outcome"]) == (R2, rr.OUTCOME_REPRODUCED)

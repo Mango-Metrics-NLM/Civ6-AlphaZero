@@ -25,11 +25,14 @@ change). An attempt whose ``run.json`` records no launched invocation played
 nothing: it is not an attempt and is not listed.
 
 **Order.** A role's attempts are ordered by ``run.json``'s ``started_at`` and by
-nothing else: every listed attempt must record a readable one, and the order the
-bundle lists attempts in decides nothing. An interrupted attempt must be followed
-by its re-run: one with no later COMPLETED attempt, in a role that has a non-VOID
-attempt, fails the bundle. Otherwise a re-run given an earlier ``started_at``
-would leave the interrupted attempt with nothing to be compared with.
+nothing else. Every listed attempt must record a readable one, and no two
+attempts of a role may record the same one, so the order the bundle lists
+attempts in decides nothing. The role's non-VOID attempt is its last: every other
+listed attempt of the role must have started strictly before it ("each role has
+exactly one non-VOID attempt, and that attempt is the one judged"; nothing of a
+role runs after it). That is what makes an interrupted attempt be followed by its
+re-run, and what keeps a second draw from being dated at or before a
+non-reproducing re-run (:func:`_order_problems`).
 
 This module is that rule and nothing else. It takes plain data -- an
 :class:`Attempt` per listed run, built by the caller from files it has already
@@ -52,10 +55,16 @@ What a record can and cannot show (:func:`check_record`):
   too large to bundle, so the record is the only account of them.
 
 Limits no check here can close: an interrupted attempt that is simply not listed
-is invisible to a bundle verifier, and ``started_at`` is the operator's own clock,
-written by the operator's own machine. Not modelled: the bundle of the new
+is invisible to a bundle verifier, and ``started_at`` is the operator's own
+record, written by the operator's own machine. The order rules refuse the
+orderings they name; a forged clock that stays consistent with them is not
+detectable, and a ``started_at`` is not checked against anything outside the
+bundle (not the commit date of its ``sha``). Not modelled: the bundle of the new
 registration that section 7.1 requires after a non-reproducing re-run (a new
 confirmatory seed pair, listing both attempts).
+
+Conservative readings, where section 7.1 is silent or looser (the maintainer's to
+overrule): ``docs/evidence/SCHEMA.md``, "Conservative readings".
 """
 
 from __future__ import annotations
@@ -171,8 +180,11 @@ class Attempt:
 
     @property
     def void(self) -> bool:
-        """VOID: for an interruption-class reason, or by a control arm."""
-        return bool(self.interruptions) or self.control_void
+        """VOID: not COMPLETED, another interruption-class reason, or a control arm.
+
+        So an attempt that is not VOID is always a COMPLETED one.
+        """
+        return not self.completed or bool(self.interruptions) or self.control_void
 
 
 @dataclass(frozen=True)
@@ -228,10 +240,11 @@ def rerun_of(attempt: Attempt, role_attempts: Sequence[Attempt]) -> Attempt | No
     "After" is by ``run.json``'s ``started_at`` and strict: an attempt that started
     in the same second is not later, and one without a readable ``started_at`` is
     neither earlier nor later than anything (:func:`review` reports it). The order
-    of ``role_attempts`` decides nothing, so a bundle cannot reorder its way to
-    another answer. The re-run need not be the attempt that ends up judged: an
-    interrupted attempt's re-run can itself be VOID by a control arm, and a second
-    draw follows it.
+    of ``role_attempts`` decides nothing: between two later attempts that record
+    the same start the smaller ``run_id`` is taken, and :func:`review` refuses such
+    a tie anyway, so a bundle cannot reorder its way to another answer. The re-run
+    need not be the attempt that ends up judged: an interrupted attempt's re-run
+    can itself be VOID by a control arm, and a second draw follows it.
     """
     mine = _started(attempt)
     if mine is None:
@@ -244,7 +257,7 @@ def rerun_of(attempt: Attempt, role_attempts: Sequence[Attempt]) -> Attempt | No
         and (start := _started(other)) is not None
         and start > mine
     ]
-    return min(later, key=lambda item: item[0])[1] if later else None
+    return min(later, key=lambda item: (item[0], item[1].run_id))[1] if later else None
 
 
 def record_rerun(attempt: Attempt, attempts: Sequence[Attempt]) -> Attempt | None:
@@ -252,7 +265,8 @@ def record_rerun(attempt: Attempt, attempts: Sequence[Attempt]) -> Attempt | Non
 
     ``attempts`` is every listed attempt. ``None`` when no comparison applies: the
     attempt needs no record (:func:`needs_record`), or no COMPLETED attempt of its
-    role started after it (which :func:`review` reports when the role is judged).
+    role started after it (then the role's non-VOID attempt, if it has one, did not
+    start after it either, which :func:`review` reports).
     """
     if not needs_record(attempt):
         return None
@@ -532,12 +546,19 @@ def _started_text(attempt: Attempt) -> str:
 def _order_problems(attempts: Sequence[Attempt]) -> list[str]:
     """What is wrong with when the listed attempts started (module docstring, "Order").
 
-    * every listed attempt records a readable ``started_at``;
-    * an attempt whose re-run would be a reproduction check (:func:`needs_record`)
-      is followed by a COMPLETED attempt of its role, whenever that role has a
-      non-VOID attempt. With none, the non-VOID attempt started at or before the
-      interrupted one and so is not its re-run. (A role without a non-VOID attempt
-      fails the bundle anyway, and has nothing to say this about.)
+    * Every listed attempt records a readable ``started_at``.
+    * No two attempts of one role record the same instant. ``run_card`` writes
+      ``started_at`` to the second and two runs of a role do not start in one, so
+      an honest bundle has no tie; a tie would let the listing pick the re-run.
+    * In a role that has a non-VOID attempt, every other listed attempt of the
+      role started strictly before it. Section 7.1 judges a role's one non-VOID
+      attempt, and nothing of the role runs after it. This is one rule for two
+      routes: an interrupted attempt dated after the attempt that is judged (it
+      would have nothing after it to be compared with), and a second draw dated at
+      or before a non-reproducing re-run (it would escape
+      :func:`_later_run_problems`, which the last attempt of a role cannot).
+
+    A pair with an unreadable ``started_at`` is reported by the first rule only.
     """
     problems = [
         f"run {attempt.run_id} ({attempt.role}): run.json {_started_text(attempt)} is not a "
@@ -546,18 +567,35 @@ def _order_problems(attempts: Sequence[Attempt]) -> list[str]:
         for attempt in attempts
         if _started(attempt) is None
     ]
-    for attempt in attempts:
-        role = [other for other in attempts if other.role == attempt.role]
-        judged = [other.run_id for other in role if not other.void]
-        if needs_record(attempt) and judged and rerun_of(attempt, role) is None:
-            problems.append(
-                f"run {attempt.run_id} ({attempt.role}): it is VOID "
-                f"({'; '.join(attempt.interruptions)}) and no COMPLETED attempt of {attempt.role} "
-                f"started after it ({_started_text(attempt)}), yet {', '.join(judged)} is judged. "
-                "An interrupted attempt must be followed by its re-run and compared with it; an "
-                "attempt that started at or before it is not its re-run (section 7.1, 'After a "
-                f"VOID'; attempts are ordered by run.json's {STARTED_AT_KEY})"
-            )
+    for role in dict.fromkeys(attempt.role for attempt in attempts):
+        timed = [
+            (start, attempt)
+            for attempt in attempts
+            if attempt.role == role and (start := _started(attempt)) is not None
+        ]
+        first_at: dict[datetime, Attempt] = {}
+        for start, attempt in timed:
+            earlier = first_at.setdefault(start, attempt)
+            if earlier is not attempt:
+                problems.append(
+                    f"run {attempt.run_id} ({role}): it records the same start as "
+                    f"{earlier.run_id} ({_started_text(attempt)}). Two attempts of one role do "
+                    f"not start in the same second, and a role's attempts are ordered by "
+                    f"{STARTED_AT_KEY} alone, so a tie would leave their order to the listing"
+                )
+        for end, judged in timed:
+            if judged.void:
+                continue
+            problems += [
+                f"run {other.run_id} ({role}): it did not start before {judged.run_id}, the "
+                f"role's non-VOID attempt ({_started_text(other)} against "
+                f"{_started_text(judged)}). Section 7.1 judges the one non-VOID attempt of a "
+                "role and nothing of that role runs after it, so every other listed attempt "
+                "must have started strictly before it. An interrupted attempt in particular "
+                "must be followed by its re-run and compared with it ('After a VOID')"
+                for start, other in timed
+                if other is not judged and start >= end
+            ]
     return problems
 
 
@@ -600,10 +638,11 @@ def review(
     the stored ``outcome`` and ``rerun`` must equal the recomputed ones (the
     stored ``reasons`` are prose and are not compared). An entry on an attempt no
     comparison applies to is a problem too: it would be a stored claim nothing
-    recomputes. So are an unreadable ``started_at``, an interrupted attempt that
-    nothing re-ran (:func:`_order_problems`) and any attempt started after a
-    non-reproducing re-run (:func:`_later_run_problems`). The second value maps a
-    re-run's ``run_id`` to why it is a non-reproducing re-run
+    recomputes. So are an unreadable or tied ``started_at``, an attempt that did
+    not start before its role's non-VOID attempt (:func:`_order_problems`) and any
+    attempt started after a non-reproducing re-run (:func:`_later_run_problems`;
+    its cutoff is the re-run's ``started_at``, not when it finished). The second
+    value maps a re-run's ``run_id`` to why it is a non-reproducing re-run
     (:func:`verdict_reasons`).
     """
     attempts = [attempt for attempt, _ in listed]
