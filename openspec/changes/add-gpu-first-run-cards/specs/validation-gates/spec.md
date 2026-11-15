@@ -164,7 +164,9 @@ attempt and its re-run, and the verifier MUST recompute that comparison instead
 of trusting its stored status. A re-run that differs from the attempt, or that
 ran at another commit, device plan or driver, MUST NOT be read as a PASS: its
 verdict is INCONCLUSIVE and it is labelled a non-reproducing re-run. An attempt
-that launched nothing MUST NOT be listed.
+that launched nothing MUST NOT be listed. The verifier MUST order a role's
+attempts by the start time each `run.json` records and by nothing else, and MUST
+fail a bundle that lists an attempt started after a non-reproducing re-run.
 
 #### Scenario: An interrupted attempt with no comparison
 - **WHEN** a bundle lists an interrupted attempt and its re-run but no comparison record
@@ -181,4 +183,24 @@ that launched nothing MUST NOT be listed.
 #### Scenario: A second draw
 - **WHEN** an attempt completed and is VOID by its symmetry or positive control
 - **THEN** no comparison is required for its re-run
+
+#### Scenario: A re-run recorded as started first
+- **WHEN** an interrupted attempt has no completed attempt of its role that started after it, and the role has a judged attempt
+- **THEN** verification fails
+
+#### Scenario: An attempt without a start time
+- **WHEN** a listed attempt's `run.json` records no readable start time
+- **THEN** verification fails, whatever order the bundle lists its attempts in
+
+#### Scenario: A further run after a non-reproducing re-run
+- **WHEN** an attempt of either role started after a re-run that did not reproduce
+- **THEN** verification fails
+
+#### Scenario: Two interrupted attempts before one re-run
+- **WHEN** two attempts of a role were interrupted before the same re-run
+- **THEN** each needs its own comparison with that re-run
+
+#### Scenario: A different torch wheel
+- **WHEN** the attempt and its re-run both record the installed torch wheel and the hashes differ
+- **THEN** the re-run is a non-reproducing re-run
 

@@ -43,6 +43,7 @@
 - [x] 4c.6 Negative controls recorded in each test module; no edit inside the hashed region (digest unchanged)
 - [ ] 4c.7 Follow-up: the verifier does not model the bundle section 7.1 requires after a non-reproducing re-run (a new registration that lists both attempts)
 - [x] 4c.8 Review fix round (run cards): the run-directory claim is atomic (the second of two racing runs is refused as a resumed card); a report listing torch twice records no wheel; a reused environment without a wheel record warns; tests for a failure after a passed rehearsal and for an interrupted rehearsal
+- [x] 4c.9 Review fix round (verifier): a role's attempts are ordered by `started_at` alone and every listed attempt must record one; an interrupted attempt must be followed by its re-run; no attempt may start after a non-reproducing re-run; the torch wheel hash is compared when both runs record it; a null identity in a record never matches
 
 ## 5. On the GPU machine (maintainer)
 - [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order

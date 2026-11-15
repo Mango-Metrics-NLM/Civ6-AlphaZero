@@ -202,8 +202,12 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   the bundle beside both attempts: pass it to `scripts/build_release_bundle.py --compare`.
   The release verifier reads it, recomputes the comparison from the digests it carries and
   applies the rule itself; a bundle with an interrupted attempt and no record fails. A
-  re-run at another `sha`, device plan or driver cannot PASS either, even when nothing was
-  left to compare, so a crash that needs a code fix costs the seed pair.
+  re-run at another `sha`, device plan, torch wheel or driver cannot PASS either, even when
+  nothing was left to compare, so a crash that needs a code fix costs the seed pair.
+- The verifier orders a role's attempts by the `started_at` in each `run.json` and by
+  nothing else, so do not edit `run.json` and keep the machine's clock right. Every listed
+  attempt must record one; an interrupted attempt must be followed by its re-run; and an
+  attempt of either role that started after a non-reproducing re-run fails the bundle.
 
 ### The A1 sequence
 
