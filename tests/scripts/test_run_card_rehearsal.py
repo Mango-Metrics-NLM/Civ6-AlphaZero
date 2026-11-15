@@ -29,6 +29,9 @@ failing, then restored):
 5. The CLI's "not claimed" line is removed ->
    ``test_cli_says_when_the_directory_was_not_claimed`` fails.
 
+6. ``torch_wheel`` dropped from the record ``run_card`` writes ->
+   ``test_run_json_records_the_torch_wheel`` fails.
+
 The fixtures and fakes are the ones ``test_run_card.py`` defines; that file is
 near the 1,000-line ratchet, so these tests live here.
 """
@@ -36,11 +39,13 @@ near the 1,000-line ratchet, so these tests live here.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from alpha_zero.local import pinned_env as pe
 from alpha_zero.local import run_card as rc
 from tests.scripts import test_run_card as base
 
@@ -182,3 +187,61 @@ def test_cli_says_when_the_directory_was_not_claimed(
 
     assert code == (0 if status == rc.STATUS_COMPLETED else 1)
     assert (rc.NOT_CLAIMED_HINT in capsys.readouterr().err) is hinted
+
+
+class _ReportingRunner(base.FakeRunner):
+    """``base.FakeRunner`` whose torch install writes the report pip would."""
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        out = super().__call__(cmd, cwd=cwd, env=env)
+        argv = [str(c) for c in cmd]
+        if "--report" in argv:
+            entry = {
+                "metadata": {"name": "torch"},
+                "download_info": {"url": _WHEEL_URL, "archive_info": {"hash": _WHEEL_HASH}},
+            }
+            report = Path(argv[argv.index("--report") + 1])
+            report.write_text(json.dumps({"install": [entry]}), encoding="utf-8")
+        return out
+
+
+_WHEEL_URL = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-win_amd64.whl"
+_WHEEL_SHA = "ef" * 32
+_WHEEL_HASH = f"sha256={_WHEEL_SHA}"
+
+
+def test_run_json_records_the_torch_wheel(
+    tmp_path: Path, pinned: base.FakeRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The wheel's hash is a record of its own, never part of the compared torch pin."""
+    real = rc._preflight
+    monkeypatch.setattr(
+        rc, "_preflight", lambda env, child: {**real(env, child), "torch": base._TWO_GPUS}
+    )
+    card = base._card(
+        tmp_path,
+        [base._train("smoke", "--dry_run", "--device", "cuda:0")],
+        torch_spec="torch==2.11.0",
+        torch_index_url=base._CU128,
+    )
+    result = base._run(card, tmp_path, _ReportingRunner())
+
+    assert result.status == rc.STATUS_COMPLETED, result.error
+    record = _record(result.run_dir)
+    assert record["torch_wheel"] == {"url": _WHEEL_URL, "sha256": _WHEEL_SHA}
+    assert record["device_plan"]["torch_pin"] == {
+        "spec": "torch==2.11.0",
+        "index_url": base._CU128,
+    }, "the pin is compared with the registration; the wheel hash must not be inside it"
+    assert pe.TorchWheel.from_mapping(record["torch_wheel"]) is not None
+
+
+def test_a_card_without_a_torch_pin_records_no_torch_wheel(
+    tmp_path: Path, pinned: base.FakeRunner
+) -> None:
+    card = base._card(tmp_path, [base._train("smoke", "--dry_run")])
+    result = base._run(card, tmp_path, pinned)
+    assert result.status == rc.STATUS_COMPLETED
+    assert _record(result.run_dir)["torch_wheel"] is None

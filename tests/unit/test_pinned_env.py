@@ -8,11 +8,14 @@ the preflight exists to refuse.
 
 from __future__ import annotations
 
+import json
+import logging
 import shutil
 import subprocess
 import types
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -197,7 +200,9 @@ def test_torch_pin_is_installed_from_its_index_before_the_wheel(
     )
     installs = _torch_installs(runner)
     assert len(installs) == 1
-    assert installs[0][-4:] == ["install", "torch==2.11.0", "--index-url", _CU128]
+    assert installs[0][-3:] == ["torch==2.11.0", "--index-url", _CU128]
+    report = installs[0][installs[0].index("--report") + 1]
+    assert Path(report) == env.venv / pe.TORCH_REPORT_NAME, "pip is asked for its report"
     wheel_install = next(
         i for i, c in enumerate(runner.calls) if c[-2] == "install" and c[-1].endswith(".whl")
     )
@@ -274,3 +279,154 @@ def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(
 ) -> None:
     with pytest.raises(pe.PinnedEnvError):
         pe.TorchPin(spec, url)
+
+
+# --------------------------------------------------------------------------
+# The torch wheel pip installed (a record: its absence never fails a run)
+# --------------------------------------------------------------------------
+#
+# Negative controls (planted in alpha_zero/local/pinned_env.py, observed failing,
+# restored):
+# 1. ``--report`` dropped from the install command -> the report assertion in
+#    ``test_torch_pin_is_installed_from_its_index_before_the_wheel`` and
+#    ``test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker`` fail.
+# 2. The marker written without ``torch_wheel`` -> the reuse half of
+#    ``test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker`` fails.
+# 3. The parser reading ``hashes`` only -> ``test_a_legacy_hash_field_is_read`` fails.
+# 4. The parser raising on a malformed report ->
+#    ``test_an_unusable_report_records_none_and_does_not_fail`` fails.
+# 5. ``torch_wheel`` made part of the venv's identity ->
+#    ``test_a_marker_without_torch_wheel_is_reused`` fails (a second venv build).
+
+_WHEEL_URL = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-win_amd64.whl"
+_WHEEL_SHA = "ab" * 32
+_DEPENDENCY_SHA = "cd" * 32
+
+
+def _entry(name: str, url: str, archive_info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metadata": {"name": name, "version": "0"},
+        "download_info": {"url": url, "archive_info": archive_info},
+    }
+
+
+def _report(*entries: dict[str, Any]) -> str:
+    return json.dumps({"version": "1", "pip_version": "24.0", "install": list(entries)})
+
+
+_GOOD_REPORT = _report(
+    # A dependency listed first: the torch entry must be chosen by name, not position.
+    _entry("filelock", "https://example.org/filelock.whl", {"hashes": {"sha256": _DEPENDENCY_SHA}}),
+    _entry("Torch", _WHEEL_URL, {"hash": f"sha256={_WHEEL_SHA}", "hashes": {"sha256": _WHEEL_SHA}}),
+)
+
+
+class ReportingRunner(FakeRunner):
+    """A :class:`FakeRunner` whose pip writes ``report`` where ``--report`` says."""
+
+    def __init__(self, report: str | None) -> None:
+        super().__init__()
+        self.report = report
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        out = super().__call__(cmd, cwd=cwd, env=env)
+        argv = [str(c) for c in cmd]
+        if "--report" in argv and self.report is not None:
+            Path(argv[argv.index("--report") + 1]).write_text(self.report, encoding="utf-8")
+        return out
+
+
+def test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = ReportingRunner(_GOOD_REPORT)
+    pin = pe.TorchPin("torch==2.11.0+cu128", _CU128)
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    built = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", torch_pin=pin, **kwargs)
+
+    assert built.torch_wheel == pe.TorchWheel(_WHEEL_URL, _WHEEL_SHA)
+    marker = json.loads((built.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))
+    assert marker["torch_wheel"] == {"url": _WHEEL_URL, "sha256": _WHEEL_SHA}
+    assert marker["torch"] == pin.as_dict(), "the pin itself is recorded unchanged"
+
+    # A reused venv has no install to report on: the record comes from the marker.
+    reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+    assert runner.count("venv") == 1 and len(_torch_installs(runner)) == 1
+    assert reused.torch_wheel == built.torch_wheel
+
+
+def test_no_torch_pin_records_no_torch_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = ReportingRunner(_GOOD_REPORT)
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef", tmp_path / "r1", **_pinned_kwargs(tmp_path, runner, monkeypatch)
+    )
+    assert env.torch_wheel is None
+    assert not any("--report" in call for call in runner.calls)
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        None,  # pip wrote no report (an old pip, or the fake)
+        "not json",
+        json.dumps({"install": "not a list"}),
+        json.dumps({"version": "1"}),  # no install key
+        _report(_entry("filelock", "https://example.org/f.whl", {"hashes": {"sha256": "ab" * 32}})),
+        _report(_entry("torch", _WHEEL_URL, {})),  # no hash at all
+        _report(_entry("torch", _WHEEL_URL, {"hashes": {"sha256": "short"}})),
+        _report(_entry("torch", _WHEEL_URL, {"hash": "md5=" + "ab" * 16})),
+        _report({"metadata": {"name": "torch"}}),  # no download_info
+    ],
+)
+def test_an_unusable_report_records_none_and_does_not_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    report: str | None,
+) -> None:
+    runner = ReportingRunner(report)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        env = pe.prepare_pinned_run(
+            "0123456789abcdef",
+            tmp_path / "r1",
+            torch_pin=pin,
+            **_pinned_kwargs(tmp_path, runner, monkeypatch),
+        )
+    assert env.torch_wheel is None
+    assert (
+        json.loads((env.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))["torch_wheel"] is None
+    )
+    assert "no torch wheel hash" in caplog.text
+
+
+def test_a_legacy_hash_field_is_read(tmp_path: Path) -> None:
+    """Older pips wrote only ``archive_info.hash`` as ``sha256=<hex>``."""
+    report = tmp_path / "report.json"
+    report.write_text(
+        _report(_entry("torch", _WHEEL_URL, {"hash": f"sha256={_WHEEL_SHA}"})), encoding="utf-8"
+    )
+    assert pe.torch_wheel_from_report(report) == pe.TorchWheel(_WHEEL_URL, _WHEEL_SHA)
+
+
+def test_a_marker_without_torch_wheel_is_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A venv built before the hash was recorded is still that venv."""
+    runner = ReportingRunner(_GOOD_REPORT)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    built = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", torch_pin=pin, **kwargs)
+    marker_path = built.venv / pe.MARKER_NAME
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    del marker["torch_wheel"]
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+
+    reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+
+    assert runner.count("venv") == 1, "an old marker must not force a rebuild"
+    assert reused.torch_wheel is None and reused.wheel_sha256 == built.wheel_sha256

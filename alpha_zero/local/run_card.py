@@ -789,6 +789,7 @@ def _attempt(run: _CardRun, *, probe: bool, rehearsal: str | None = None) -> Car
         "requested_sha": card.sha,
         "sha": None,
         "wheel_sha256": None,
+        "torch_wheel": None,
         "max_games": card.max_games,
         "approval_ref": card.approval_ref,
         "total_priced_games": priced.total,
@@ -848,6 +849,8 @@ def _attempt(run: _CardRun, *, probe: bool, rehearsal: str | None = None) -> Car
             record.update(
                 sha=env.sha,
                 wheel_sha256=env.wheel_sha256,
+                # A record only; never inside device_plan.torch_pin, which is compared.
+                torch_wheel=None if env.torch_wheel is None else env.torch_wheel.as_dict(),
                 python=str(env.python),
                 src=str(env.src),
                 device_plan=device_plan,
