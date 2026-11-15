@@ -64,6 +64,26 @@ checked byte-identical (sha256) before the next one:
 12. The comparison made symmetric (candidate-only components reported) ->
     ``test_what_only_the_rerun_holds_is_ignored`` and six others failed. That one
     guards the documented direction, not a safety property.
+
+Negative controls for the compare record and ``compare_status`` (2026-11-15, same
+procedure):
+
+13. ``_shows_a_result`` counts every component (``compared_components(reference)
+    > 0``), so the seed-fixed checkpoint alone is a pass ->
+    ``test_only_what_the_seed_does_not_fix_is_a_reproduction[checkpoint_0 alone]``
+    failed (``REPRODUCED``, exit 0).
+14. The CLI compares the digests as ``run_digest`` returns them, not as the
+    record stores them (the JSON round trip removed) ->
+    ``test_the_record_can_be_recomputed_from_its_own_digests`` failed: the two
+    differences came back in another order.
+15. ``arena_digest`` records the file's path ->
+    ``test_component_digests_do_not_depend_on_where_the_file_lives`` failed.
+16. ``run_identity`` hashes the parsed record instead of the file's bytes ->
+    ``test_the_record_names_both_runs`` and
+    ``test_a_directory_without_a_run_json_has_no_identity`` failed.
+17. The record written without its digests (the ``RECORD_DIGESTS`` entry
+    removed) -> ``test_the_record_can_be_recomputed_from_its_own_digests`` and all
+    five ``test_only_what_the_seed_does_not_fix_is_a_reproduction`` cases failed.
 """
 
 from __future__ import annotations
@@ -730,3 +750,155 @@ def test_cli_runs_as_a_module_and_propagates_its_status(runs: tuple[Path, Path])
     assert completed.returncode == rp.EXIT_DIFFERS, completed.stderr[-2000:]
     assert completed.stdout.splitlines()[0] == rp.STATUS_DIFFERS
     assert "checkpoint_0.pt: missing from the candidate" in completed.stdout
+
+
+# ---------------------------------------------------------------------------
+# The compare record (``compare --out``) and ``compare_status``
+# ---------------------------------------------------------------------------
+
+
+def write_run_json(run_dir: Path, card_id: str, status: str) -> str:
+    """A ``run.json`` with the fields the record's identity reads; returns the file's sha256."""
+    record = {"schema_version": 1, "card_id": card_id, "sha": "b" * 40, "status": status}
+    target = run_dir / rp.RUN_RECORD_FILE
+    target.write_text(json.dumps(record, indent=1), encoding="utf-8")
+    return hashlib.sha256(target.read_bytes()).hexdigest()
+
+
+def compare_record(attempt: Path, rerun: Path, out: Path) -> tuple[int, dict[str, Any]]:
+    code = rp.main(["compare", str(attempt), str(rerun), "--out", str(out)])
+    return code, json.loads(out.read_text(encoding="utf-8"))
+
+
+def test_the_record_names_both_runs(runs: tuple[Path, Path], tmp_path: Path) -> None:
+    """Each side's identity is its ``run.json``: card id, sha, status and the file's own hash."""
+    attempt, rerun = runs
+    hashes = [
+        write_run_json(attempt, "a1-20261111", "VOID"),
+        write_run_json(rerun, "a1-20261111-r2", "COMPLETED"),
+    ]
+    code, record = compare_record(attempt, rerun, tmp_path / "record.json")
+    assert code == rp.EXIT_REPRODUCED
+    assert record[rp.RECORD_SCHEMA_KEY] == rp.RECORD_SCHEMA_VERSION == 1
+    assert record[rp.RECORD_ATTEMPT] == {
+        "card_id": "a1-20261111",
+        "sha": "b" * 40,
+        "status": "VOID",
+        rp.RUN_JSON_SHA256: hashes[0],
+    }
+    assert record[rp.RECORD_RERUN] == {
+        "card_id": "a1-20261111-r2",
+        "sha": "b" * 40,
+        "status": "COMPLETED",
+        rp.RUN_JSON_SHA256: hashes[1],
+    }
+    assert rp.run_identity(attempt) == record[rp.RECORD_ATTEMPT]
+
+
+def test_a_directory_without_a_run_json_has_no_identity(
+    runs: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """The determinism check's repeats are not run-card runs: the whole block is null."""
+    attempt, rerun = runs
+    (rerun / rp.RUN_RECORD_FILE).write_text("{torn", encoding="utf-8")
+    _, record = compare_record(attempt, rerun, tmp_path / "record.json")
+    assert record[rp.RECORD_ATTEMPT] is None
+    torn = record[rp.RECORD_RERUN]
+    assert (torn["card_id"], torn["sha"], torn["status"]) == (None, None, None)
+    assert torn[rp.RUN_JSON_SHA256] == hashlib.sha256(b"{torn").hexdigest()
+
+
+def test_the_record_can_be_recomputed_from_its_own_digests(
+    runs: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """The record carries both digests, and ``compare_status`` of them is what it says.
+
+    Checkpoints 2 and 10 differ: a digest lists checkpoints by number, the record
+    stores them sorted by name, so the two differences come back in the same order
+    only if the CLI compared what it recorded.
+    """
+    attempt, rerun = runs
+    for number in (2, 10):
+        write_checkpoint(checkpoint_path(attempt, number), state(number))
+        write_checkpoint(checkpoint_path(rerun, number), state(number + 50))
+    code, record = compare_record(attempt, rerun, tmp_path / "differs.json")
+    assert code == rp.EXIT_DIFFERS
+    digests = record[rp.RECORD_DIGESTS]
+    assert digests[rp.RECORD_ATTEMPT] == json.loads(json.dumps(rp.run_digest(attempt)))
+    assert digests[rp.RECORD_RERUN] == json.loads(json.dumps(rp.run_digest(rerun)))
+    recomputed = rp.compare_status(digests[rp.RECORD_ATTEMPT], digests[rp.RECORD_RERUN])
+    assert recomputed == (record[rp.RECORD_STATUS], record[rp.RECORD_DIFFERENCES])
+    assert record[rp.RECORD_STATUS] == rp.STATUS_DIFFERS
+    assert len(record[rp.RECORD_DIFFERENCES]) == 2
+    assert {d.split(":")[0] for d in record[rp.RECORD_DIFFERENCES]} == {
+        "checkpoint checkpoint_2.pt",
+        "checkpoint checkpoint_10.pt",
+    }
+    # And for a faithful re-run.
+    for number in (2, 10):
+        write_checkpoint(checkpoint_path(rerun, number), state(number))
+    code, record = compare_record(attempt, rerun, tmp_path / "reproduced.json")
+    digests = record[rp.RECORD_DIGESTS]
+    assert code == rp.EXIT_REPRODUCED
+    assert rp.compare_status(digests[rp.RECORD_ATTEMPT], digests[rp.RECORD_RERUN]) == (
+        rp.STATUS_REPRODUCED,
+        [],
+    )
+
+
+def test_component_digests_do_not_depend_on_where_the_file_lives(
+    runs: tuple[Path, Path], tmp_path: Path
+) -> None:
+    """A release bundle carries copies under other paths; they digest as the originals do."""
+    attempt, _ = runs
+    digest = rp.run_digest(attempt)
+    bundled = tmp_path / "bundle" / "a1-20261111"
+    arena = bundled / "arena" / "renamed" / "copy.json"
+    arena.parent.mkdir(parents=True)
+    arena.write_bytes((attempt / rp.ARENA_DIR_NAME / ARM / rp.ARENA_RESULT_FILE).read_bytes())
+    iterations = bundled / "iterations-copy.jsonl"
+    iterations.write_bytes((attempt / rp.CHECKPOINT_DIR_NAME / ITERATIONS_FILE).read_bytes())
+    assert rp.arena_digest(arena) == digest[rp.COMPONENT_ARENAS][ARM]
+    unreadable: dict[str, str] = {}
+    assert rp.iteration_digests(iterations, unreadable) == digest[rp.COMPONENT_ITERATIONS]
+    assert unreadable == {}
+    assert rp.iteration_digests(bundled / "absent.jsonl", unreadable) == {}
+
+
+@pytest.mark.parametrize(
+    ("left", "status", "exit_code"),
+    [
+        ("checkpoint_0 alone", rp.STATUS_NOTHING_TO_COMPARE, rp.EXIT_NOTHING_TO_COMPARE),
+        ("a trained checkpoint", rp.STATUS_REPRODUCED, rp.EXIT_REPRODUCED),
+        ("an iteration record", rp.STATUS_REPRODUCED, rp.EXIT_REPRODUCED),
+        ("an arena arm", rp.STATUS_REPRODUCED, rp.EXIT_REPRODUCED),
+        ("another checkpoint_0", rp.STATUS_DIFFERS, rp.EXIT_DIFFERS),
+    ],
+)
+def test_only_what_the_seed_does_not_fix_is_a_reproduction(
+    runs: tuple[Path, Path], tmp_path: Path, left: str, status: str, exit_code: int
+) -> None:
+    """Section 7.1: an attempt that finished nothing beyond ``checkpoint_0`` showed nothing.
+
+    ``checkpoint_0`` is written before any training and is fixed by the seed, so an
+    equal one is not evidence that the re-run reproduces; a different one is
+    evidence that it does not.
+    """
+    _, rerun = runs
+    attempt = tmp_path / "interrupted"
+    write_checkpoint(
+        checkpoint_path(attempt, 0), state(99 if left == "another checkpoint_0" else 0)
+    )
+    if left == "a trained checkpoint":
+        write_checkpoint(checkpoint_path(attempt, 1), state(1))
+    elif left == "an iteration record":
+        write_iterations(attempt, [iteration_record(1)])
+    elif left == "an arena arm":
+        write_arena(attempt, ARM, RESULTS)
+    assert rp.SEED_FIXED_CHECKPOINT == checkpoint_path(attempt, 0).name
+    code, record = compare_record(attempt, rerun, tmp_path / "record.json")
+    assert (record[rp.RECORD_STATUS], code) == (status, exit_code)
+    digests = record[rp.RECORD_DIGESTS]
+    assert rp.compare_status(digests[rp.RECORD_ATTEMPT], digests[rp.RECORD_RERUN])[0] == status
+    if left == "checkpoint_0 alone":
+        assert record["components_compared"] == 1 and record[rp.RECORD_DIFFERENCES] == []

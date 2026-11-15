@@ -68,6 +68,7 @@ from alpha_zero.evaluation.scoring import (
 )
 
 __all__ = [
+    "NON_REPRODUCING_LABEL",
     "POSITIVE_CONTROL_CONFIDENCE",
     "PRIMARY_CONFIDENCE",
     "PROTOCOL_BEGIN",
@@ -388,6 +389,11 @@ POSITIVE_CONTROL_CONFIDENCE = 0.95
 #: One-sided alpha of the INCONCLUSIVE report's MDE.
 _MDE_ALPHA = 0.025
 
+#: How section 7.1 ("After a VOID") labels a re-run that did not reproduce the
+#: interrupted attempt it replaces, or ran under other conditions. Such a re-run
+#: is reported and cannot PASS: a PASS row is read as INCONCLUSIVE.
+NON_REPRODUCING_LABEL = "non-reproducing re-run"
+
 
 def verdict_from_bounds(
     *,
@@ -447,7 +453,9 @@ class A1Verdict:
     """A recomputed A1 verdict and everything section 7.1 says it reports.
 
     The MDE fields are set only for INCONCLUSIVE, the one verdict that reports
-    them; they are ``None`` otherwise.
+    them; they are ``None`` otherwise. ``label`` is :data:`NON_REPRODUCING_LABEL`
+    for a non-reproducing re-run, whatever its verdict, and ``None`` for every
+    other run.
     """
 
     verdict: str
@@ -460,10 +468,11 @@ class A1Verdict:
     mde_alpha025_80pct: float | None
     hull_ratio: float | None
     mde_alpha025_80pct_hull: float | None
+    label: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        """JSON-ready form (tuples become lists)."""
-        return {
+        """JSON-ready form (tuples become lists); ``label`` appears only when set."""
+        data: dict[str, Any] = {
             "verdict": self.verdict,
             "reasons": list(self.reasons),
             "primary_score": self.primary_score,
@@ -475,6 +484,9 @@ class A1Verdict:
             "hull_ratio": self.hull_ratio,
             "mde_alpha025_80pct_hull": self.mde_alpha025_80pct_hull,
         }
+        if self.label is not None:
+            data["label"] = self.label
+        return data
 
 
 def _hull(games: Sequence[Mapping[str, Any]], confidence: float) -> tuple[float, float]:
@@ -488,6 +500,7 @@ def compute_verdict(
     positive_control_games: Sequence[Mapping[str, Any]],
     *,
     interruptions: Sequence[str] = (),
+    non_reproducing: Sequence[str] = (),
 ) -> A1Verdict:
     """Recompute the section 7.1 verdict from the judged arms' per-game records.
 
@@ -499,6 +512,15 @@ def compute_verdict(
     verdict also reports ``minimum_detectable_effect(n, d, alpha=0.025)`` at the
     primary arm's game count and draw rate, and that MDE widened by
     :func:`~alpha_zero.evaluation.benchmark_evidence.facing_hull_ratio`.
+
+    ``non_reproducing`` says why the run is a non-reproducing re-run (section
+    7.1, "After a VOID": its comparison with the interrupted attempt it replaces
+    found a difference, or it ran at another ``sha``, ``device_plan`` or driver);
+    empty for every other run. Such a run is labelled
+    :data:`NON_REPRODUCING_LABEL` and **cannot PASS**: a PASS row is read as
+    INCONCLUSIVE, with the MDE an INCONCLUSIVE verdict reports. VOID, FAIL and
+    INCONCLUSIVE keep their verdict and carry the label. The reasons given are
+    appended to the verdict's.
 
     Raises:
         ValueError: if any arm's records hold an unknown result or are not
@@ -521,6 +543,14 @@ def compute_verdict(
         positive_control_hull=positive_hull,
         primary_hull=primary_hull,
     )
+    label = None
+    if non_reproducing:
+        label = NON_REPRODUCING_LABEL
+        if verdict == VERDICT_PASS:
+            # Before the MDE block, so the detectable effect is reported.
+            verdict = VERDICT_INCONCLUSIVE
+            reasons = (*reasons, f"{label}: a PASS row is read as {VERDICT_INCONCLUSIVE}")
+        reasons = (*reasons, *(f"{label}: {reason}" for reason in non_reproducing))
     mde = ratio = widened = None
     if verdict == VERDICT_INCONCLUSIVE:
         mde = minimum_detectable_effect(len(results), summary.draw_rate, alpha=_MDE_ALPHA)
@@ -537,6 +567,7 @@ def compute_verdict(
         mde_alpha025_80pct=mde,
         hull_ratio=ratio,
         mde_alpha025_80pct_hull=widened,
+        label=label,
     )
 
 

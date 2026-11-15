@@ -7,6 +7,24 @@ per-game records, against the benchmark's own interval code.
 Negative control (run when written, then reverted): making the rule ignore the
 symmetry hull failed ``test_symmetry_void_beats_a_primary_pass`` and
 ``test_symmetry_hull_below_half_voids``.
+
+Negative controls for ``TestNonReproducingReRun`` (2026-11-15; each defect was
+planted in ``compute_verdict`` / ``A1Verdict.to_dict``, the listed tests were seen
+to FAIL, and the file was restored and checked byte-identical before the next):
+
+1. a non-reproducing PASS is not demoted (the ``verdict = VERDICT_INCONCLUSIVE``
+   line removed) -> ``test_a_pass_is_read_as_inconclusive_and_reports_its_mde``
+   failed;
+2. the MDE block skipped for a non-reproducing re-run (``and not
+   non_reproducing`` added to its condition; for a demoted PASS that is what
+   placing the demotion below the block does) ->
+   ``test_a_pass_is_read_as_inconclusive_and_reports_its_mde`` and the
+   INCONCLUSIVE case of ``test_other_verdicts_keep_their_verdict_and_carry_the_label``
+   failed (the MDE fields were ``None``);
+3. the label set only when a PASS was demoted -> the three
+   ``test_other_verdicts_keep_their_verdict_and_carry_the_label`` cases failed;
+4. ``to_dict`` always emits ``label`` -> ``test_a_plain_verdict_dict_has_no_label_key``
+   failed.
 """
 
 from __future__ import annotations
@@ -178,3 +196,77 @@ class TestComputeVerdict:
         data = json.loads(json.dumps(v.to_dict()))
         assert data["verdict"] == "INCONCLUSIVE"
         assert data["primary_hull"] == list(v.primary_hull)
+
+
+#: Why a re-run is non-reproducing, as ``scripts/release_reproduction.py`` words it.
+WHY = ("it does not reproduce a1-20261111: checkpoint checkpoint_5.pt: 1 of 5 tensors differ",)
+#: Every key a verdict dict had before the label existed.
+PLAIN_KEYS = {
+    "verdict",
+    "reasons",
+    "primary_score",
+    "primary_draw_rate",
+    "primary_hull",
+    "symmetry_hull",
+    "positive_control_hull",
+    "mde_alpha025_80pct",
+    "hull_ratio",
+    "mde_alpha025_80pct_hull",
+}
+
+
+class TestNonReproducingReRun:
+    """Section 7.1, "After a VOID": a non-reproducing re-run is labelled and cannot PASS."""
+
+    def test_a_pass_is_read_as_inconclusive_and_reports_its_mde(self) -> None:
+        arms = (games(STRONG_GAMES, 200), games(SYMMETRIC, 40), games(STRONG_GAMES, 40))
+        plain = a1.compute_verdict(*arms)
+        assert plain.verdict == "PASS" and plain.label is None
+        v = a1.compute_verdict(*arms, non_reproducing=WHY)
+        assert v.verdict == "INCONCLUSIVE"
+        assert v.label == a1.NON_REPRODUCING_LABEL == "non-reproducing re-run"
+        # The arm is what it was: only how its row is read changed.
+        assert v.primary_hull == plain.primary_hull and v.primary_hull[0] > 0.5
+        mde = minimum_detectable_effect(200, v.primary_draw_rate, alpha=0.025)
+        block = interval_summary(arms[0], 0.95)
+        ratio = facing_hull_ratio(v.primary_score, block["iid"], block["hull"])
+        assert v.mde_alpha025_80pct == pytest.approx(mde)
+        assert v.hull_ratio == pytest.approx(ratio)
+        assert v.mde_alpha025_80pct_hull == pytest.approx(mde * ratio)
+        assert plain.reasons[0] in v.reasons, "the PASS row it would have been is still reported"
+        assert any(WHY[0] in reason for reason in v.reasons)
+        data = v.to_dict()
+        assert data["label"] == "non-reproducing re-run" and data["verdict"] == "INCONCLUSIVE"
+        assert set(data) == PLAIN_KEYS | {"label"}
+
+    @pytest.mark.parametrize(
+        ("verdict", "primary", "symmetry"),
+        [
+            ("VOID", STRONG_GAMES, LOPSIDED),
+            ("FAIL", WEAK_GAMES, SYMMETRIC),
+            ("INCONCLUSIVE", EVEN, SYMMETRIC),
+        ],
+    )
+    def test_other_verdicts_keep_their_verdict_and_carry_the_label(
+        self, verdict: str, primary: list[tuple[str, str]], symmetry: list[tuple[str, str]]
+    ) -> None:
+        arms = (games(primary, 200), games(symmetry, 40), games(STRONG_GAMES, 40))
+        plain = a1.compute_verdict(*arms)
+        v = a1.compute_verdict(*arms, non_reproducing=WHY)
+        assert plain.verdict == v.verdict == verdict
+        assert plain.label is None and v.label == a1.NON_REPRODUCING_LABEL
+        assert v.reasons[: len(plain.reasons)] == plain.reasons
+        assert any(WHY[0] in reason for reason in v.reasons)
+        assert (v.mde_alpha025_80pct, v.hull_ratio) == (plain.mde_alpha025_80pct, plain.hull_ratio)
+        assert v.to_dict()["label"] == a1.NON_REPRODUCING_LABEL
+
+    @pytest.mark.parametrize("primary", [STRONG_GAMES, WEAK_GAMES, EVEN])
+    def test_a_plain_verdict_dict_has_no_label_key(self, primary: list[tuple[str, str]]) -> None:
+        """Additive: a verdict dict written before the label existed is still what is written."""
+        v = a1.compute_verdict(games(primary, 200), games(SYMMETRIC, 40), games(STRONG_GAMES, 40))
+        assert v.label is None
+        assert set(v.to_dict()) == PLAIN_KEYS
+        empty = a1.compute_verdict(
+            games(primary, 200), games(SYMMETRIC, 40), games(STRONG_GAMES, 40), non_reproducing=()
+        )
+        assert empty == v
