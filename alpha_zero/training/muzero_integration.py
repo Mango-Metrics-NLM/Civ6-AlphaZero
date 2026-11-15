@@ -7,6 +7,7 @@ trainers, and MCTS for self-play and training workflows.
 from __future__ import annotations
 
 import logging
+import numbers
 import os
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -28,6 +29,17 @@ except ImportError:
 import yaml
 
 logger = logging.getLogger(__name__)
+
+
+def _current_player_or_none(env: Any) -> int | None:
+    """Return the environment's player to move, or ``None`` if it exposes none.
+
+    ``MuZeroMCTS.search`` roots its latent tree at ``to_play`` and falls back to
+    player 0 when it is ``None``. Only an integral value counts: test doubles
+    answer any attribute with a ``Mock``.
+    """
+    player = getattr(env, "current_player", None)
+    return int(player) if isinstance(player, numbers.Integral) else None
 
 
 @dataclass
@@ -340,8 +352,15 @@ class MuZeroTrainingBridge:
 
                 action_mask = np.ones(env.action_space.n, dtype=bool)
 
-            # MCTS search
-            action_probs, value = mcts.search(observation, action_mask, add_noise=(move_count < 30))
+            # MCTS search, rooted at the player to move: without it the latent
+            # tree is rooted at player 0 and, after the first END_TURN, player
+            # 1's moves are scored in player 0's frame.
+            action_probs, value = mcts.search(
+                observation,
+                action_mask,
+                add_noise=(move_count < 30),
+                to_play=_current_player_or_none(env),
+            )
 
             # Select action
             action = mcts.select_action(action_probs, temperature, action_mask)

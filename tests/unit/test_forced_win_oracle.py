@@ -26,17 +26,29 @@ The fixture and its constants are imported from the original oracle so the two
 files cannot drift apart: a change to what "forced win" means changes both.
 
 Both searches are also run on :class:`AlternatingTurnEnv`, where every edge is a
-player-change edge. ``batch_gumbel`` must pass it at every depth. ``muzero``
-passes it only at odd depth and is ``xfail(strict=True)`` at even depth: its
-backup does not sign rewards by mover, a known defect (see
-``_MUZERO_MOVER_REASON`` and CLAUDE.md section 5.3).
+player-change edge, and must pass it at every depth. Until 2026-11-12 ``muzero``
+backed up rewards with no sign flip, so it found the win only at the depths
+where the outcome's frame happened to be the root player's. It now tracks the
+mover through the latent tree with a turn model (MicroCiv's: END_TURN passes the
+move); each toy game here injects its own.
+
+Which parity an unsigned search fails depends on the reward's frame. T18's
+stand-in scored the outcome for the player who *made* the final move, so the
+unsigned search failed at even depth (the six ``xfail`` cases). On 2026-11-12
+the stand-in moved to ``MicroCivEnv``'s frame -- the player to move *after* the
+transition, which is the frame the search reads -- and the unsigned search
+then fails at odd depth instead. So the fixture change alone does not make the
+oracle pass; the negative controls below are what show the signed search does.
 
 Negative control
 ----------------
 Making ``perspective_sign`` in ``core/mcts/backup.py`` always return ``-1.0``
 (plain negamax) fails ``batch_gumbel`` here and ``gumbel`` in the original
-oracle. MuZero does not use ``backup.py``'s sign rule, so that control cannot
-reach it; its oracle is non-vacuous because it failed on the pre-T18 code.
+oracle. MuZero signs with ``perspective_sign`` too (``core/mcts/muzero_tree.py``):
+the same control fails all 12 of its *same-player* cases (both search paths),
+and making ``muzero_tree.edge_q`` and ``backpropagate_with_rewards`` drop the
+sign -- the 2026-11-12 defect itself -- fails all 12 *alternating* cases at odd
+depth (measured 2026-11-12; ``openspec/changes/fix-muzero-reward-sign``).
 Reverting only batch's halving-ranking sign passes the oracle (the completed-Q
 target re-signs Q) but fails the batch-equals-``GumbelMCTS`` gates below.
 Recorded in the T18 report.
@@ -383,9 +395,12 @@ class ForcedWinDynamics(torch.nn.Module):
       any), and a done flag.
     * Dynamics: one ply per step; the transition that ends the game carries the
       outcome as its reward -- ``+1`` when the first action was the winning one,
-      ``-1`` otherwise -- from the perspective of the player who moved, which in
-      the same-player game is always the root player. Every transition out of a
-      finished state is absorbing: same latent, zero reward.
+      ``-1`` otherwise -- from the perspective of the player to move *after*
+      the transition. That is ``MicroCivEnv``'s frame (``step`` scores the
+      outcome against ``current_player`` after the action) and the one
+      ``MuZeroMCTS`` reads. In the same-player game it is always the root
+      player. Every transition out of a finished state is absorbing: same
+      latent, zero reward.
     * Prediction: uniform policy, zero value everywhere. As in the original
       oracle, the terminal outcome is the only signal.
 
@@ -434,10 +449,11 @@ class ForcedWinDynamics(torch.nn.Module):
                 done = 1.0
                 type(self).terminal_transitions += 1
                 root_wins = int(first) == self.winning_action
-                # Reward from the mover's perspective. In the alternating game
-                # the final mover is the root player only at odd depth.
-                mover_is_root = (not self.alternating) or (int(plies) % 2 == 1)
-                reward = 1.0 if root_wins == mover_is_root else -1.0
+                # Reward from the perspective of the player to move after this
+                # transition. In the alternating game that is the root player
+                # only after an even number of plies.
+                next_is_root = (not self.alternating) or (int(plies) % 2 == 0)
+                reward = 1.0 if root_wins == next_is_root else -1.0
         next_hidden = torch.tensor([[plies, first, done]])
         return (
             next_hidden,
@@ -454,7 +470,17 @@ class ForcedWinDynamics(torch.nn.Module):
         return torch.zeros(1, NUM_ACTIONS), torch.zeros(1, 1)
 
 
-def _search_muzero(env: ConsecutiveTurnEnv, *, alternating: bool) -> np.ndarray:
+def _same_player(to_play: int, action: int) -> int:
+    return to_play
+
+
+def _alternate(to_play: int, action: int) -> int:
+    return 1 - to_play
+
+
+def _search_muzero(
+    env: ConsecutiveTurnEnv, *, alternating: bool, use_gumbel: bool = True
+) -> np.ndarray:
     network = ForcedWinDynamics(env.depth, env.winning_action, alternating=alternating)
     # The deployed configuration (MuZeroTrainingBridge builds the default:
     # Gumbel root, sequential halving), with a scalar reward head because the
@@ -465,70 +491,49 @@ def _search_muzero(env: ConsecutiveTurnEnv, *, alternating: bool) -> np.ndarray:
             num_simulations=SEARCH_SIMULATIONS,
             seed=SEARCH_SEED,
             use_categorical_reward=False,
+            use_gumbel=use_gumbel,
         ),
         device="cpu",
+        # The toy games' rule, as MicroCiv's is EndTurnModel: the latent search
+        # learns who moves from the turn model, never from the environment.
+        turn_model=_alternate if alternating else _same_player,
     )
     policy, _value = search.search_from_env(env, add_noise=False)
     return np.asarray(policy)
 
 
+#: MuZero's two search paths: the deployed Gumbel root with sequential halving,
+#: and the PUCT path (``use_gumbel=False``). Both share one signed backup.
+MUZERO_PATHS: dict[str, bool] = {"gumbel": True, "puct": False}
+
+
+@pytest.mark.parametrize("path", sorted(MUZERO_PATHS))
+@pytest.mark.parametrize("env_type", sorted(ENV_TYPES))
 @pytest.mark.parametrize("depth", FORCED_WIN_DEPTHS)
 @pytest.mark.parametrize("winning_action", WINNING_ACTIONS)
-def test_muzero_prefers_the_winning_action(depth: int, winning_action: int) -> None:
-    """MuZero's default search picks the forced win in the same-player game."""
-    ForcedWinDynamics.reset_counter()
-    env = ConsecutiveTurnEnv(depth=depth, winning_action=winning_action)
+def test_muzero_prefers_the_winning_action(
+    path: str, env_type: str, depth: int, winning_action: int
+) -> None:
+    """MuZero picks the forced win at every depth, on both edge types and both paths.
 
-    policy = _search_muzero(env, alternating=False)
+    The alternating game at even depth is the 2026-11-12 regression: the
+    opponent makes the final move, so the outcome reaches the root only through
+    a player change, and an unsigned backup reads the root's win as a loss.
+    """
+    ForcedWinDynamics.reset_counter()
+    alternating = env_type == "alternating"
+    env = ENV_TYPES[env_type](depth=depth, winning_action=winning_action)
+
+    policy = _search_muzero(env, alternating=alternating, use_gumbel=MUZERO_PATHS[path])
 
     assert ForcedWinDynamics.terminal_transitions > 0, (
-        f"muzero at depth {depth} never produced a terminal transition; vacuous"
+        f"muzero[{path}] at depth {depth} never produced a terminal transition; vacuous"
     )
     _assert_prefers_the_win(
-        policy, search_name="muzero[same_player]", depth=depth, winning_action=winning_action
-    )
-
-
-#: Why MuZero's alternating case fails at even depth: a KNOWN DEFECT, not a
-#: limitation of latent search. Its Gumbel path backs up discounted returns
-#: (``_backpropagate_with_rewards``) with no sign flip anywhere, as if the game
-#: had one player. MuZero is self-played here on two-player MicroCiv, whose
-#: rewards are mover-relative, so a reward reaches the root with the right sign
-#: only when the root player made that move -- odd depth here. At even depth
-#: the opponent moved last, so a win for the root arrives as ``-1``.
-#:
-#: The mover IS trackable: in MicroCiv ``current_player`` changes only on the
-#: END_TURN action, and the search knows every action on its path. The fix --
-#: carry ``to_play`` down the latent path and sign backup, root Q and child
-#: selection with ``perspective_sign``, with training targets in one frame --
-#: is CONFIRM-FIRST and tracked in CLAUDE.md section 5.3. ``strict=True`` turns
-#: the xfail into a failure (XPASS) the day that fix lands.
-_MUZERO_MOVER_REASON = "MuZero backup does not sign rewards by mover (known defect, CLAUDE.md §5.3)"
-
-
-@pytest.mark.parametrize(
-    "depth",
-    [
-        pytest.param(
-            depth,
-            marks=pytest.mark.xfail(strict=True, reason=_MUZERO_MOVER_REASON),
-        )
-        if depth % 2 == 0
-        else depth
-        for depth in FORCED_WIN_DEPTHS
-    ],
-)
-@pytest.mark.parametrize("winning_action", WINNING_ACTIONS)
-def test_muzero_prefers_the_winning_action_alternating(depth: int, winning_action: int) -> None:
-    """In the alternating game MuZero finds the win only when the root moves last."""
-    ForcedWinDynamics.reset_counter()
-    env = AlternatingTurnEnv(depth=depth, winning_action=winning_action)
-
-    policy = _search_muzero(env, alternating=True)
-
-    assert ForcedWinDynamics.terminal_transitions > 0
-    _assert_prefers_the_win(
-        policy, search_name="muzero[alternating]", depth=depth, winning_action=winning_action
+        policy,
+        search_name=f"muzero[{path}, {env_type}]",
+        depth=depth,
+        winning_action=winning_action,
     )
 
 
@@ -554,15 +559,14 @@ def _check_dynamics(
     hidden = net.initial_inference(torch.zeros(1), torch.zeros(1)).hidden_state
     env = env_cls(depth=depth, winning_action=winning_action)
     rewards = []
-    last_mover = env.current_player
     for _ in range(depth):
         hidden, reward, _, _ = net.recurrent_inference(hidden, torch.tensor([first]))
         rewards.append(float(reward))
-        last_mover = env.current_player
         env.step(first)
     assert env.done
-    # The reward is from the perspective of the player who made the final move.
-    expected = 1.0 if env.get_info()["winner"] == last_mover else -1.0
+    # The reward is from the perspective of the player to move after the final
+    # move -- MicroCivEnv's frame (``winner == current_player`` after ``step``).
+    expected = 1.0 if env.get_info()["winner"] == env.current_player else -1.0
     assert rewards[:-1] == [0.0] * (depth - 1)
     assert rewards[-1] == expected
     # Absorbing afterwards.

@@ -216,7 +216,9 @@ class TestMuZeroMCTS:
 
         # Exactly Danihelka's completed-Q target on the root's own statistics,
         # recomputed here independently of the search's builder. Root Q is the
-        # edge reward plus the discounted value after it.
+        # edge reward plus the discounted value after it, signed into the root
+        # mover's frame: under the default MicroCiv turn model action 0 is
+        # END_TURN, so its child belongs to the other player.
         size = len(sample_action_mask)
         priors = np.zeros(size, dtype=np.float32)
         visits = np.zeros(size, dtype=np.float32)
@@ -225,7 +227,8 @@ class TestMuZeroMCTS:
             priors[action] = child.prior
             visits[action] = child.visit_count
             if child.visit_count > 0:
-                qs[action] = child.reward + mcts.config.discount * child.value
+                sign = 1.0 if child.to_play == root.to_play else -1.0
+                qs[action] = sign * (child.reward + mcts.config.discount * child.value)
         expected = build_completed_q_policy(
             priors=priors,
             visit_counts=visits,

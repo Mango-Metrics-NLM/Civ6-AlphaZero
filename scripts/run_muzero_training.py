@@ -35,6 +35,7 @@ from alpha_zero.core.civ6_mcts import MuZeroMCTS, MuZeroMCTSConfig
 # Core imports
 from alpha_zero.core.muzero_network import MuZeroConfig, MuZeroNetwork
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.training.muzero_targets import outcome_only_targets
 from alpha_zero.training.muzero_trainer import (
     GameTrajectory,
     MuZeroTrainer,
@@ -153,7 +154,7 @@ def self_play_game(
     """Play a single self-play game and collect trajectory."""
     observations = []
     actions = []
-    rewards = []
+    players = []
     policies = []
     dones = []
 
@@ -170,8 +171,11 @@ def self_play_game(
             }
         )
 
-        # Get MCTS policy
-        action_probs, _root_value = mcts.search(obs, obs["action_mask"], add_noise=True)
+        # Get MCTS policy. The root mover anchors the search's signed backup.
+        players.append(int(env.current_player))
+        action_probs, _root_value = mcts.search(
+            obs, obs["action_mask"], add_noise=True, to_play=env.current_player
+        )
         policies.append(action_probs.copy())
 
         # Select action
@@ -180,8 +184,7 @@ def self_play_game(
         actions.append(action)
 
         # Take action
-        obs, reward, terminated, truncated, info = env.step(action)
-        rewards.append(reward)
+        obs, _reward, terminated, truncated, info = env.step(action)
         done = terminated or truncated
         dones.append(done)
 
@@ -194,40 +197,15 @@ def self_play_game(
         }
     )
 
-    # Compute target values based on game outcome
-    winner = info.get("winner")
-    game_history_len = len(actions)
-    target_values = []
-
-    for i in range(game_history_len):
-        # Bootstrap from later values (simplified n-step return)
-        steps_remaining = game_history_len - i
-        discount = 0.997
-        n_steps = min(config.td_steps, steps_remaining)
-
-        # Sum discounted rewards
-        value = sum(rewards[i + j] * (discount**j) for j in range(n_steps))
-
-        # Add terminal value if we reached the end
-        if i + n_steps >= game_history_len:
-            if winner is None:
-                terminal_value = 0.0
-            elif winner == 0:  # Assuming player 0 perspective
-                terminal_value = 1.0
-            else:
-                terminal_value = -1.0
-            value += terminal_value * (discount**n_steps)
-
-        target_values.append(value)
-
-    # Terminal value (value of the state after last action)
-    if winner is None:
-        terminal_state_value = 0.0
-    elif winner == 0:
-        terminal_state_value = 1.0
-    else:
-        terminal_state_value = -1.0
-    target_values.append(terminal_state_value)
+    # Outcome-only targets in the search's frames (alpha_zero/training/muzero_targets).
+    # Until 2026-11-12 values were labelled from player 0's perspective and
+    # summed the env's shaped rewards across player changes, then added the
+    # outcome again on top of the terminal reward that already carried it.
+    rewards, target_values = outcome_only_targets(
+        info.get("winner"), players, int(env.current_player)
+    )
+    # The absorbing state after the game is worth nothing.
+    target_values.append(0.0)
 
     # Terminal policy (dummy but required for T+1)
     policies.append(np.zeros_like(policies[0]))
