@@ -83,6 +83,7 @@ next one. In ``scripts/check_determinism.py`` unless another file is named:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -262,6 +263,24 @@ def test_a_planted_game_change_in_a_real_arena_is_reported(
     outcome = cd.compare_runs(work, TINY_ITERATIONS)
     assert outcome["status"] == cd.STATUS_DIFFERS
     assert all(f"arena {cd.ARENA_ARM}" in d and "game index 1" in d for d in outcome["differences"])
+
+
+def test_a_real_arena_is_compared_move_for_move(real_check: RealCheck, tmp_path: Path) -> None:
+    """A repeat that played other moves to the same outcome is not a reproduction.
+
+    Negative control: with the arena writing only ``{pair, seat, result}`` the first
+    assertion fails (the records carry no digest to compare).
+    """
+    work = _copy(real_check, tmp_path)
+    result = work / cd.REPEAT_NAMES[1] / rp.ARENA_DIR_NAME / cd.ARENA_ARM / rp.ARENA_RESULT_FILE
+    envelope = json.loads(result.read_text(encoding="utf-8"))
+    game = envelope["results"][0]["games"][0]
+    assert game["moves"] > 0 and len(game["actions_sha256"]) == 64
+    game["actions_sha256"] = hashlib.sha256(b"another game").hexdigest()
+    result.write_text(json.dumps(envelope), encoding="utf-8")
+    outcome = cd.compare_runs(work, TINY_ITERATIONS)
+    assert outcome["status"] == cd.STATUS_DIFFERS
+    assert all(f"arena {cd.ARENA_ARM}" in d and "game index 0" in d for d in outcome["differences"])
 
 
 # ---------------------------------------------------------------------------

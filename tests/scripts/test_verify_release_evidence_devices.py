@@ -50,6 +50,14 @@ def test_a_run_on_the_registered_devices_passes(tmp_path: Path) -> None:
             lambda p: {**p, "torch": {**p["torch"], "version": "2.13.0+cu130"}},
             "device_plan.torch.version '2.13.0+cu130' is not the registered",
         ),
+        (
+            # The registered release from another CUDA index: same public version.
+            lambda p: {
+                **p,
+                "torch": {**p["torch"], "version": p["torch"]["version"].split("+")[0] + "+cu130"},
+            },
+            "+cu130' is not the registered",
+        ),
         (lambda p: {**p, "CUDA_DEVICE_ORDER": None}, "device_plan.CUDA_DEVICE_ORDER None"),
         (lambda p: {**p, "torch_pin": None}, "device_plan.torch_pin None"),
         (lambda p: None, "records no device_plan"),

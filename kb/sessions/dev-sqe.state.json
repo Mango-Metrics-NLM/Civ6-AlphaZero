@@ -1,7 +1,7 @@
 {
     "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-14T18:00:00Z",
-    "current_focus": "GPU-first registered runs on draft PR #138 (cuda:0 trains, cuda:1 judges); handed off to Pre-PR and the maintainer",
+    "last_timestamp": "2026-11-14T20:00:00Z",
+    "current_focus": "GPU-first registered runs on PR #138 (cuda:0 trains, cuda:1 judges, torch==2.11.0+cu128; section 7.1 digest e460a353...7c17); handed off to Pre-PR and the maintainer",
     "resume_pointers": {
         "current_task": "Pre-PR review of PR #138; then the maintainer's T0b probe and run on the GPU machine",
         "blocked_on": [
@@ -13,7 +13,7 @@
             "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
             "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
             "Then A1 and A1-R on the rc SHA; build_release_bundle.py; verify_release_evidence.py",
-            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256; store move counts in arena game records (play-path change)"
+            "Follow-ups: make verify_release_evidence read the reproduction-compare record; record the torch wheel sha256"
         ]
     },
     "context_files": [

@@ -79,6 +79,20 @@ def cuda_ordinal(device: object) -> int | None:
     return None
 
 
+def torch_build_matches(installed: object, pinned_version: str) -> bool:
+    """Whether an installed torch (``torch.__version__``) is the pinned build.
+
+    A pin that names its build -- a local version tag, as in ``2.11.0+cu128`` --
+    is compared in full, so ``2.11.0+cu130`` and an untagged ``2.11.0`` are both
+    another build. A pin with no tag (``2.11.0``) says nothing about the build and
+    is compared on the public version alone, as it always was. Needs no torch.
+    """
+    installed_version = str(installed or "").strip()
+    if "+" in pinned_version:
+        return installed_version == pinned_version
+    return installed_version.split("+", 1)[0] == pinned_version
+
+
 def _resolve_name(requested: str | None) -> str:
     """Resolve ``requested`` to a concrete device string.
 

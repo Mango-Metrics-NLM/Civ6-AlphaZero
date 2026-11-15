@@ -23,10 +23,16 @@
 - [x] 4.4 "After a VOID": a re-run is a reproduction check and a differing one cannot PASS; `evaluation/reproduction.py` (`compare`)
 - [x] 4.5 `scripts/check_determinism.py` as runner `determinism_check`, T0b's first invocation (660 games)
 - [x] 4.6 `a1_protocol digest`, `--arena-throughput`, `make verify-registration`, skill `a1-reregister`
-- [x] 4.7 Negative controls recorded in each test module; debt ratchet passes without a baseline change
+- [x] 4.7 Negative controls recorded in each test module; debt ratchet passes without a baseline change (until 4b.2)
 - [ ] 4.8 Follow-up: the release verifier reads the `reproduction compare` record and applies "cannot PASS" itself
 - [ ] 4.9 Follow-up: record the torch wheel's sha256 in `.pinned.json` and `run.json`
 - [ ] 4.10 Follow-up: move a never-launched run directory aside so a preflight refusal does not use up the `card_id`
+
+## 4b. Automated review of PR #138 (Copilot)
+- [x] 4b.1 A torch pin may name its build (`torch==2.11.0+cu128`); the device check, the release verifier and the GPU pytest module compare the installed version in full through `utils.device.torch_build_matches`; section 7.1 and the three cards name the build (digest `e460a353…7c17`)
+- [x] 4b.2 Arena per-game records carry `moves` and `actions_sha256`; the reproduction and determinism checks compare them. `coverage_omitted_lines` baseline 66,852 -> 66,858 (six lines in `alpha_zero/cloud/gcp/arena.py`, covered by `tests/cloud/unit/test_arena_game_records.py` in the `cloud-tests` job)
+- [x] 4b.3 Negative controls: tag ignored (9 tests fail), no action digest (1), records without the new keys (3), tag rejected by the pin (9)
+- [x] 4b.4 The other three findings (parsed device, test state isolation, CUDA variables in the run-card test) were already fixed in section 4
 
 ## 5. On the GPU machine (maintainer)
 - [ ] 5.1 `python scripts/run_card.py configs/run_cards/t0b.yaml --probe` reports PROBED and names the two registered GPUs in order

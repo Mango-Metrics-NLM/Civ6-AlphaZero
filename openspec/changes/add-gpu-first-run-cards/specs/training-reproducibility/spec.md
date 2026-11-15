@@ -66,3 +66,19 @@ that does not reproduce MUST NOT be read as a PASS.
 #### Scenario: The re-run differs
 - **WHEN** a checkpoint tensor, a non-timing field of an iteration record or an arena game differs
 - **THEN** the re-run is reported as non-reproducing and a PASS row is read as INCONCLUSIVE
+
+### Requirement: Arena games are recorded move for move
+
+Each arena per-game record MUST carry, beside its pair, seat and result, the
+number of moves played and a digest of every action of the game in order. The
+reproduction check and the determinism check MUST compare whole records, so two
+runs that reach the same outcomes by different moves are reported as different.
+The added keys MUST NOT change how a game is played or how a result is scored.
+
+#### Scenario: Same outcome, other moves
+- **WHEN** two runs agree on every game's result and one game's action digest differs
+- **THEN** the comparison reports `DIFFERS` and names the game
+
+#### Scenario: A seeded arena is repeated
+- **WHEN** the same seeded arena is played twice on CPU
+- **THEN** every record, digest included, is identical

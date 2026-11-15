@@ -20,7 +20,8 @@
 #      "Devices"). scripts/check_determinism.py trains and judges a small A1-shaped
 #      run twice, on the registered devices, each repeat in its own process inside
 #      this card's pinned environment, and compares every checkpoint tensor by
-#      tensor and every arena game. It runs FIRST, so a machine on which a seeded
+#      tensor and every arena game (outcome, length and a digest of its actions).
+#      It runs FIRST, so a machine on which a seeded
 #      GPU run does not repeat fails the card before anything else is measured.
 #      48 games: 2 repeats x (2 iterations x 2 self-play games + 20 arena games).
 #      Its JSON says REPRODUCED, DIFFERS, INCOMPLETE or WORKER_FAILED.
@@ -55,7 +56,7 @@ card_id: t0b-20261112
 sha: '0000000000000000000000000000000000000000'
 max_games: 660
 cuda_visible_devices: '0,1'
-torch_spec: 'torch==2.11.0'
+torch_spec: 'torch==2.11.0+cu128'
 torch_index_url: 'https://download.pytorch.org/whl/cu128'
 gpus:
   'cuda:0': 'NVIDIA GeForce RTX 5060 Ti'
