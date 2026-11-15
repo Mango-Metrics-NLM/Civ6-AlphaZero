@@ -38,13 +38,9 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
 - `openspec/changes/branching-and-release`: the dev / qa / main branch model,
   rulesets and release gates of the local-first plan.
 - `openspec/changes/harden-governance-gates`: governance-gate hardening.
-- `openspec/changes/fix-gumbel-budget`, `openspec/changes/fix-move-mask`: the
-  search-budget and move-mask fixes A1 runs on.
-- `openspec/changes/checkpoint-provenance`, `openspec/changes/eval-decoupling-diagnostics`:
-  checkpoint provenance and `checkpoint_0`; decoupled in-loop evaluation and the
-  prequential diagnostics A1's target-sharpness trigger reads.
-- `openspec/changes/benchmark-evidence-producer`: the benchmark as the A1
-  evidence producer (pair and hull intervals, per-arm `--out`, shards).
+- `openspec/changes/add-gpu-first-run-cards`: GPU-first registered runs (pinned
+  CUDA torch, device checks, the reproduction check). Open until T0b has run on
+  the maintainer's GPU machine.
 
 ### Next — v2.1 "First validated learning run"
 
@@ -66,8 +62,11 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   random play on pre-fix code), then set `max_turns` on the deployed path from
   that number.
 
-Done for v2.1 and no longer listed: the evaluation plumbing (seeded, paired
-arena; additive draw-aware metrics; promotion feasibility), the Gumbel
+Done for v2.1 and no longer listed: the search-budget and move-mask fixes,
+checkpoint provenance and `checkpoint_0`, decoupled in-loop evaluation with
+prequential diagnostics, and the benchmark as the A1 evidence producer (all
+archived 2026-11-15 under `openspec/changes/archive/`); the evaluation plumbing
+(seeded, paired arena; additive draw-aware metrics; promotion feasibility), the Gumbel
 target-sharpness probe and completed-Q alignment memo (decision pending with
 the maintainer; A1 registers the current settings), and the seed-overlap memo
 (`kb/specs/20261111-seed-overlap-memo.md`).
