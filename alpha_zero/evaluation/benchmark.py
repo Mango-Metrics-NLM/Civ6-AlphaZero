@@ -85,6 +85,8 @@ from alpha_zero.evaluation.scoring import (
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.storage.models import EvaluationResult
 from alpha_zero.utils.atomic_io import create_text_atomically
+from alpha_zero.utils.constants import discrete_action_count
+from alpha_zero.utils.device import resolve_device_str
 from alpha_zero.utils.game_budget import (
     EXIT_CODE_REFUSED,
     add_budget_arguments,
@@ -776,9 +778,11 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
     from alpha_zero.utils.checkpoint import (
         build_micro_network_from_checkpoint,
         check_provenance,
+        extract_state_dict,
     )
 
-    checkpoint = safe_torch_load(path, map_location=device)
+    resolved = resolve_device_str(device)
+    checkpoint = safe_torch_load(path, map_location=resolved)
     check_provenance(
         checkpoint.get("metadata") if isinstance(checkpoint, dict) else None,
         expected_max_turns=expected_max_turns,
@@ -787,9 +791,9 @@ def _load_network(path: Path, device: str, expected_max_turns: int | None = None
     network = build_micro_network_from_checkpoint(
         checkpoint, default_board_size=8, default_action_size=None
     )
-    state = checkpoint.get("state_dict") or checkpoint.get("model_state_dict") or checkpoint
+    state = extract_state_dict(checkpoint) if isinstance(checkpoint, dict) else checkpoint
     network.load_state_dict(state)
-    network.eval()
+    network.to(resolved).eval()
     return network
 
 
@@ -922,8 +926,10 @@ def _candidate(
     torch.manual_seed(args.seed or 0)
     network = MicroCivNetwork(
         board_size=protocol.board_size,
-        action_space_size=int(MicroCivEnv(board_size=protocol.board_size).action_space.n),
-    )
+        action_space_size=discrete_action_count(
+            MicroCivEnv(board_size=protocol.board_size).action_space
+        ),
+    ).to(resolve_device_str(args.device))
     network.eval()
     return network, None, f"untrained-network:torch_seed={args.seed or 0}"
 
@@ -958,9 +964,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         import torch
 
+        resolved_device = resolve_device_str(args.device)
         if args.seed is not None:
             # Before any network is built or loaded: a seeded GPU arena must repeat.
-            enforce_deterministic_backend(args.device)
+            enforce_deterministic_backend(resolved_device)
         candidate, candidate_factory, candidate_id = _candidate(args, protocol)
         opponents = [o.strip() for o in args.opponents.split(",") if o.strip()]
         opponent_models: dict[str, Any] = {}
@@ -976,7 +983,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             args.seed,
             candidate_factory=candidate_factory,
             opponent_models=opponent_models,
-            device=torch.device(args.device),
+            device=torch.device(resolved_device),
             command=command,
             shard=args.shard,
             candidate_id=candidate_id,

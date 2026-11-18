@@ -14,6 +14,7 @@ Design Principles:
 
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
 from typing import Any
 
@@ -598,6 +599,26 @@ def default_action_space_size() -> int:
 #: default in signatures and dataclass fields. Use the function when the value
 #: must be recomputed; use this when a constant expression is required.
 DEFAULT_ACTION_SPACE_SIZE: int = default_action_space_size()
+
+
+def discrete_action_count(space: Any) -> int:
+    """Return the integer action count for a Gymnasium ``Discrete``-like space.
+
+    Reads ``space.n`` dynamically so callers stay compatible across NumPy 1.x
+    and 2.x type stubs without ``cast`` or type-ignore comments.
+    """
+    n = getattr(space, "n", None)
+    if n is None or isinstance(n, bool) or type(n).__name__ in ("bool", "bool_"):
+        raise TypeError(f"Expected a discrete space with integer 'n', got {space!r}")
+    try:
+        count = operator.index(n)
+    except TypeError as exc:
+        raise TypeError(
+            f"Expected integer space.n supporting __index__, got {n!r} ({type(n).__name__})"
+        ) from exc
+    if count <= 0:
+        raise ValueError(f"Discrete action count must be positive, got {count}")
+    return count
 
 
 def get_all_constants() -> dict[str, Any]:

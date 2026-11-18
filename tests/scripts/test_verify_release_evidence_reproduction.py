@@ -660,11 +660,22 @@ def test_a_run_voided_by_an_override_needs_a_record(tmp_path: Path) -> None:
     release = fx.make_release(
         tmp_path / "ok", [fx.RunSpec(run_id=A1, env_var_names=MCTS_OVERRIDE), rerun()]
     )
-    assert entries(release)[A1]["reproduction"]["outcome"] == rr.OUTCOME_REPRODUCED
+    reference = entries(release)[A1]["reproduction"]
+    assert reference["outcome"] == rr.OUTCOME_NON_REPRODUCING
+    assert reference["reasons"] == [
+        "MCTS_* overrides: the attempt had ['MCTS_C_VISIT'], the re-run []"
+    ]
     assert stored_record(release)["components"] == {"checkpoints": 5, "arenas": 7, "iterations": 20}
-    assert verdicts(release) == ["VOID", "PASS"]
+    assert verdicts(release) == ["VOID", "INCONCLUSIVE"]
+    assert entries(release)[R2]["verdict"]["label"] == NON_REPRODUCING_LABEL
+    assert release.bundle["learning_claimed"] is False
     code, out = verify(release)
     assert code == vre.EXIT_PASS, out
+    entries(release)[R2]["verdict"] = {"verdict": "PASS", "reasons": ["tampered"]}
+    release.save()
+    code, out = verify(release)
+    assert code == vre.EXIT_FAIL
+    assert "stored verdict 'PASS' != recomputed 'INCONCLUSIVE'" in out
     bare = [fx.RunSpec(run_id=A1, env_var_names=MCTS_OVERRIDE, compare_record=False), rerun()]
     code, out = verify(fx.make_release(tmp_path / "bare", bare))
     assert code == vre.EXIT_FAIL

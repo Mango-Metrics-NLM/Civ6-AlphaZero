@@ -26,7 +26,7 @@ from alpha_zero.distributed.shared_storage import (
     WeightSynchronizer,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
-from alpha_zero.utils.constants import DISTRIBUTED, GAME, REWARDS
+from alpha_zero.utils.constants import DISTRIBUTED, GAME, REWARDS, discrete_action_count
 from alpha_zero.utils.reward_shaping import RewardShaper, RewardShapingConfig
 
 try:
@@ -133,7 +133,7 @@ class SelfPlayActor:
             max_turns=config.max_turns,
             num_players=config.num_players,
         )
-        self.action_space_size = self.env.action_space.n
+        self.action_space_size = discrete_action_count(self.env.action_space)
 
         # Create network (will load weights from storage)
         self.network: MicroCivNetwork | None = None
@@ -160,7 +160,7 @@ class SelfPlayActor:
 
         self.network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=int(self.action_space_size),
+            action_space_size=self.action_space_size,
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
             spatial_channels=spatial_channels,

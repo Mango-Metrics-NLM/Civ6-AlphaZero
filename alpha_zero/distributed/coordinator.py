@@ -35,6 +35,7 @@ from alpha_zero.distributed.shared_storage import (
     SharedStorageConfig,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.constants import discrete_action_count
 
 logger = logging.getLogger(__name__)
 
@@ -415,7 +416,7 @@ class TrainingCoordinator:
         env = MicroCivEnv(board_size=self.config.board_size)
         self.eval_network = MicroCivNetwork(
             board_size=self.config.board_size,
-            action_space_size=int(env.action_space.n),
+            action_space_size=discrete_action_count(env.action_space),
             num_res_blocks=self.config.num_res_blocks,
             num_filters=self.config.num_filters,
         ).to(self.config.device)
@@ -429,7 +430,6 @@ class TrainingCoordinator:
         """
         if self.eval_network is None:
             return False
-
         weights = self.shared_storage.get_model_weights()
         if weights is None:
             return False

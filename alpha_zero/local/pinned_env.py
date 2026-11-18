@@ -32,9 +32,12 @@ Design notes
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
@@ -42,8 +45,10 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
+import time
 import tomllib
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -57,6 +62,19 @@ MARKER_NAME = ".pinned.json"
 TORCH_REPORT_NAME = ".torch-install-report.json"
 #: The distribution whose wheel is recorded, as a PEP 503 normalised name.
 TORCH_DISTRIBUTION = "torch"
+VENV_LOCK_SUFFIX = ".lock"
+DEFAULT_VENV_LOCK_TIMEOUT_S = 1800.0
+DEFAULT_VENV_LOCK_POLL_S = 0.1
+_LOCK_CONTENTION_ERRNOS = frozenset(
+    {
+        errno.EACCES,
+        errno.EAGAIN,
+        errno.EWOULDBLOCK,
+        getattr(errno, "EDEADLOCK", errno.EAGAIN),
+    }
+)
+_THREAD_LOCKS_GUARD = threading.Lock()
+_THREAD_LOCKS: dict[Path, threading.Lock] = {}
 _SHA256_PREFIX = "sha256="
 _SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
 _NAME_SEPARATORS_RE = re.compile(r"[-_.]+")
@@ -329,7 +347,11 @@ def _build_venv(
         "torch": _marker_torch(torch_pin),
         "torch_wheel": None if torch_wheel is None else torch_wheel.as_dict(),
     }
-    (venv / MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+    # Lazy import: tests/scripts/test_run_card.py (_fake_src) copies only pinned_env.py
+    # and data_root.py into the child src tree for PREFLIGHT_CODE, which never builds venvs.
+    from alpha_zero.utils.atomic_io import write_text_atomically
+
+    write_text_atomically(venv / MARKER_NAME, json.dumps(marker))
     return wheel_hash, torch_wheel
 
 
@@ -347,6 +369,133 @@ def resolve_commit(sha: str, *, runner: Runner | None = None, repo_root: Path | 
     return full.strip() or sha
 
 
+def _thread_lock_for(lock_path: Path) -> threading.Lock:
+    key = lock_path.resolve()
+    with _THREAD_LOCKS_GUARD:
+        lock = _THREAD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _THREAD_LOCKS[key] = lock
+        return lock
+
+
+def _try_lock_fd(fd: int) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _release_file_lock(fd: int) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _validate_lock_timing(timeout_s: float, poll_s: float) -> None:
+    if isinstance(timeout_s, bool) or not math.isfinite(timeout_s) or timeout_s < 0:
+        raise PinnedEnvError(f"lock_timeout_s must be finite and >= 0, got {timeout_s!r}")
+    if isinstance(poll_s, bool) or not math.isfinite(poll_s) or poll_s <= 0:
+        raise PinnedEnvError(f"lock poll interval must be finite and > 0, got {poll_s!r}")
+
+
+def _acquire_file_lock(
+    fd: int,
+    lock_path: Path,
+    *,
+    deadline: float,
+    timeout_s: float,
+    poll_s: float,
+) -> None:
+    waited = False
+    while True:
+        try:
+            _try_lock_fd(fd)
+            return
+        except OSError as exc:
+            if exc.errno not in _LOCK_CONTENTION_ERRNOS:
+                raise PinnedEnvError(f"failed to lock {lock_path}: {exc}") from exc
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PinnedEnvError(
+                    f"timed out after {timeout_s:.1f}s waiting for venv lock {lock_path}"
+                ) from exc
+            if not waited:
+                logger.info("waiting for pinned venv lock %s", lock_path)
+                waited = True
+            time.sleep(min(poll_s, remaining))
+
+
+@contextlib.contextmanager
+def _venv_lock(
+    lock_path: Path,
+    *,
+    timeout_s: float = DEFAULT_VENV_LOCK_TIMEOUT_S,
+    poll_s: float = DEFAULT_VENV_LOCK_POLL_S,
+) -> Iterator[None]:
+    """Serialize venv reuse/build across threads and processes using a sibling ``.lock`` file.
+
+    The lockfile is intentionally never unlinked so concurrent waiters cannot
+    acquire locks on different inodes for the same path.
+    """
+    _validate_lock_timing(timeout_s, poll_s)
+    deadline = time.monotonic() + timeout_s
+    thread_lock = _thread_lock_for(lock_path)
+    if not thread_lock.acquire(timeout=timeout_s):
+        raise PinnedEnvError(f"timed out after {timeout_s:.1f}s waiting for venv lock {lock_path}")
+    fd: int | None = None
+    locked = False
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        _acquire_file_lock(fd, lock_path, deadline=deadline, timeout_s=timeout_s, poll_s=poll_s)
+        locked = True
+        yield
+    finally:
+        if fd is not None:
+            try:
+                if locked:
+                    _release_file_lock(fd)
+            except OSError as exc:
+                logger.warning("failed to unlock %s: %s", lock_path, exc)
+            finally:
+                os.close(fd)
+        thread_lock.release()
+
+
+def _read_reusable_marker(
+    marker: Path, full_sha: str, torch_pin: TorchPin | None
+) -> tuple[str, TorchWheel | None] | None:
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        logger.warning("corrupt pinned venv marker %s (%s); rebuilding", marker, exc)
+        return None
+    if not isinstance(data, Mapping):
+        logger.warning("corrupt pinned venv marker %s (expected mapping); rebuilding", marker)
+        return None
+    # ``torch_wheel`` is a record, not part of the venv's identity: a marker
+    # written before it existed is still this venv.
+    if data.get("sha") != full_sha or data.get("torch") != _marker_torch(torch_pin):
+        return None
+    raw_hash = data.get("wheel_sha256")
+    if not isinstance(raw_hash, str) or not raw_hash:
+        logger.warning("corrupt pinned venv marker %s (missing wheel_sha256); rebuilding", marker)
+        return None
+    return raw_hash, TorchWheel.from_mapping(data.get("torch_wheel"))
+
+
 def prepare_pinned_run(
     sha: str,
     run_dir: Path,
@@ -355,6 +504,7 @@ def prepare_pinned_run(
     runner: Runner | None = None,
     repo_root: Path | None = None,
     torch_pin: TorchPin | None = None,
+    lock_timeout_s: float = DEFAULT_VENV_LOCK_TIMEOUT_S,
 ) -> PinnedEnv:
     """Extract ``sha`` to ``<run_dir>/src`` (read-only) and ensure its venv exists.
 
@@ -365,6 +515,7 @@ def prepare_pinned_run(
     """
     if not _SHA_RE.match(sha):
         raise PinnedEnvError(f"not a git SHA: {sha!r}")
+    _validate_lock_timing(lock_timeout_s, DEFAULT_VENV_LOCK_POLL_S)
     run = runner or _default_runner
     repo = repo_root or _default_repo_root()
     run_dir = Path(run_dir)
@@ -380,6 +531,7 @@ def prepare_pinned_run(
     full_sha = resolve_commit(sha, runner=run, repo_root=repo)
     venv_name = full_sha[:12] if torch_pin is None else f"{full_sha[:12]}-t{torch_pin.variant}"
     venv = Path(envs_root) / venv_name
+    lock_path = Path(envs_root) / f"{venv_name}{VENV_LOCK_SUFFIX}"
     src = run_dir / "src"
     if src.exists():
         raise PinnedEnvError(f"{src} already exists; a run directory is single-use")
@@ -389,28 +541,27 @@ def prepare_pinned_run(
     marker = venv / MARKER_NAME
     wheel_hash = ""
     torch_wheel: TorchWheel | None = None
-    if marker.is_file() and _venv_python(venv).exists():
-        data = json.loads(marker.read_text(encoding="utf-8"))
-        # ``torch_wheel`` is a record, not part of the venv's identity: a marker
-        # written before it existed is still this venv.
-        if data.get("sha") == full_sha and data.get("torch") == _marker_torch(torch_pin):
-            wheel_hash = str(data.get("wheel_sha256", ""))
-            torch_wheel = TorchWheel.from_mapping(data.get("torch_wheel"))
-            logger.info("reusing pinned venv %s", venv)
-            if torch_pin is not None and torch_wheel is None:
-                logger.warning("no torch wheel hash: %s was built without recording it", venv)
-    if not wheel_hash:
-        if venv.exists():
-            shutil.rmtree(venv, ignore_errors=True)
-        try:
-            wheel_hash, torch_wheel = _build_venv(
-                venv, src, run_dir / "wheel", full_sha, run, torch_pin
-            )
-        finally:
-            _clean_build_artifacts(src)
+    with _venv_lock(lock_path, timeout_s=lock_timeout_s):
+        if marker.is_file() and _venv_python(venv).exists():
+            reusable = _read_reusable_marker(marker, full_sha, torch_pin)
+            if reusable is not None:
+                wheel_hash, torch_wheel = reusable
+                logger.info("reusing pinned venv %s", venv)
+                if torch_pin is not None and torch_wheel is None:
+                    logger.warning("no torch wheel hash: %s was built without recording it", venv)
+        if not wheel_hash:
+            if venv.exists():
+                shutil.rmtree(venv, ignore_errors=True)
+            try:
+                wheel_hash, torch_wheel = _build_venv(
+                    venv, src, run_dir / "wheel", full_sha, run, torch_pin
+                )
+            finally:
+                _clean_build_artifacts(src)
+        python = _venv_python(venv)
     _make_read_only(src)
     return PinnedEnv(
-        python=_venv_python(venv),
+        python=python,
         src=src,
         sha=full_sha,
         wheel_sha256=wheel_hash,

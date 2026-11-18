@@ -270,3 +270,30 @@ class TestNonReproducingReRun:
             games(primary, 200), games(SYMMETRIC, 40), games(STRONG_GAMES, 40), non_reproducing=()
         )
         assert empty == v
+
+
+class TestNonFiniteBounds:
+    @pytest.mark.parametrize("arm", ["symmetry_hull", "positive_control_hull", "primary_hull"])
+    @pytest.mark.parametrize("idx", [0, 1])
+    @pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+    @pytest.mark.parametrize("interruptions", [(), ("resumed",)])
+    def test_non_finite_bound_raises_value_error(
+        self,
+        arm: str,
+        idx: int,
+        bad_value: float,
+        interruptions: tuple[str, ...],
+    ) -> None:
+        hulls: dict[str, list[float]] = {
+            "symmetry_hull": [0.4, 0.6],
+            "positive_control_hull": [0.6, 0.9],
+            "primary_hull": [0.6, 0.9],
+        }
+        hulls[arm][idx] = bad_value
+        with pytest.raises(ValueError, match="finite"):
+            a1.verdict_from_bounds(
+                interruptions=interruptions,
+                symmetry_hull=hulls["symmetry_hull"],
+                positive_control_hull=hulls["positive_control_hull"],
+                primary_hull=hulls["primary_hull"],
+            )

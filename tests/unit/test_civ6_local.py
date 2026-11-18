@@ -884,6 +884,36 @@ class TestRunMicrociv:
             rc = run_microciv(cfg)
         assert rc == 0
 
+    def test_run_microciv_passes_spatial_channels_not_in_channels(self) -> None:
+        """run_microciv must pass spatial_channels= (not in_channels=) to MicroCivNetwork."""
+        from alpha_zero.civ6_local import run_microciv
+
+        cfg = Civ6LocalConfig(mode="microciv", board_size=4, num_simulations=1)
+        action_size = 10
+        mock_env = self._make_mock_env(action_size)
+        mock_net = self._make_mock_network(action_size)
+        mock_net_cls = MagicMock(return_value=mock_net)
+        mock_mcts_instance = self._make_mock_mcts(action_size)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "alpha_zero.envs.microciv": MagicMock(MicroCivEnv=MagicMock(return_value=mock_env)),
+                "alpha_zero.core.civ6_network": MagicMock(MicroCivNetwork=mock_net_cls),
+                "alpha_zero.core.civ6_mcts": MagicMock(
+                    GumbelMCTS=MagicMock(return_value=mock_mcts_instance),
+                    GumbelMCTSConfig=MagicMock(),
+                ),
+            },
+        ):
+            rc = run_microciv(cfg)
+
+        assert rc == 0
+        mock_net_cls.assert_called_once()
+        kwargs = mock_net_cls.call_args.kwargs
+        assert kwargs.get("spatial_channels") == 13
+        assert "in_channels" not in kwargs
+
 
 # ---------------------------------------------------------------------------
 # run_civ6_bridge — unit-level mock test

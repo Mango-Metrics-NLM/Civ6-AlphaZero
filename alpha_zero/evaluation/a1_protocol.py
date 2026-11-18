@@ -50,6 +50,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -425,6 +426,14 @@ def verdict_from_bounds(
     the symmetry arm does not VOID, the positive control does, and the primary
     arm is not a PASS (nor a FAIL).
     """
+    for name, hull in (
+        ("symmetry_hull", symmetry_hull),
+        ("positive_control_hull", positive_control_hull),
+        ("primary_hull", primary_hull),
+    ):
+        low_val, high_val = float(hull[0]), float(hull[1])
+        if not (math.isfinite(low_val) and math.isfinite(high_val)):
+            raise ValueError(f"{name} bounds must be finite, got [{low_val}, {high_val}]")
     void = [f"interrupted or resumed: {reason}" for reason in interruptions]
     sym_low, sym_high = float(symmetry_hull[0]), float(symmetry_hull[1])
     if sym_low > 0.5 or sym_high < 0.5:

@@ -39,6 +39,7 @@ from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
 from alpha_zero.distributed.shared_storage import GameTrajectory, TrainingExample
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.evaluation.baseline_agents import BaseAgent, GreedyHeuristicAgent
+from alpha_zero.utils.constants import discrete_action_count
 
 if TYPE_CHECKING:
     from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
@@ -193,7 +194,7 @@ class HeuristicExpertGenerator:
             action = current_agent.select_action(env, obs)
 
             # Store observation and action for this player
-            action_probs = np.zeros(int(env.action_space.n), dtype=np.float32)
+            action_probs = np.zeros(discrete_action_count(env.action_space), dtype=np.float32)
             action_probs[action] = 1.0  # Hard target from expert
 
             history.append(
@@ -443,15 +444,14 @@ class ImitationPreTrainer:
 
         # Initialize environment to get action space size
         env = MicroCivEnv(board_size=self.config.board_size)
-        self.action_space_size = env.action_space.n
-
+        self.action_space_size = discrete_action_count(env.action_space)
         # Initialize or use provided network
         if network is not None:
             self.network = network
         else:
             self.network = MicroCivNetwork(
                 board_size=self.config.board_size,
-                action_space_size=int(self.action_space_size),
+                action_space_size=self.action_space_size,
                 num_res_blocks=self.config.num_res_blocks,
                 num_filters=self.config.num_filters,
             )

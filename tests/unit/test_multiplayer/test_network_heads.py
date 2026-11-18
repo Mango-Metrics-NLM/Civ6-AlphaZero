@@ -270,6 +270,57 @@ class TestNPlayerNetworkAdapter:
         adapter = NPlayerNetworkAdapter(base_network_with_config, num_players=6)
         assert adapter.num_players == 6
 
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+    def test_adapter_action_mask_dtype_safe(self, dtype):
+        """Invalid action mask clamp is finite in fp16 and exact -1e9 in fp32."""
+        expected_masked = (
+            -1e9 if dtype == torch.float32 else float(torch.finfo(torch.float16).min) / 2.0
+        )
+
+        class MockEncoderNet(nn.Module):
+            def __init__(self):
+                super().__init__()
+                self.config = type(
+                    "C", (), {"num_filters": 16, "spatial_size": 8, "fc_hidden_dim": 32}
+                )()
+                self.spatial_encoder = nn.Conv2d(13, 16, 3, padding=1)
+                self.vector_encoder = nn.Linear(64, 32)
+                self.policy_head = self._make_policy_head()
+
+            def _make_policy_head(self):
+                class PolicyHead(nn.Module):
+                    def forward(self, spatial_feat, vector_feat):
+                        return torch.zeros(
+                            spatial_feat.shape[0],
+                            10,
+                            device=spatial_feat.device,
+                            dtype=spatial_feat.dtype,
+                        )
+
+                return PolicyHead()
+
+            def forward(self, spatial, vector, action_mask=None):
+                sf = self.spatial_encoder(spatial)
+                vf = self.vector_encoder(vector)
+                return self.policy_head(sf, vf), torch.zeros(
+                    spatial.shape[0], device=spatial.device, dtype=spatial.dtype
+                )
+
+        adapter = NPlayerNetworkAdapter(MockEncoderNet(), num_players=3).to(dtype=dtype)
+        adapter.eval()
+        spatial = torch.randn(2, 13, 8, 8, dtype=dtype)
+        vector = torch.randn(2, 64, dtype=dtype)
+        mask = torch.zeros(2, 10, dtype=dtype)
+        mask[:, :3] = 1.0
+
+        logits, _values = adapter(spatial, vector, action_mask=mask)
+        assert logits.dtype == dtype
+        assert torch.isfinite(logits).all()
+        assert torch.allclose(logits[:, 3:], torch.full_like(logits[:, 3:], expected_masked))
+        probs = torch.softmax(logits, dim=-1)
+        assert torch.isfinite(probs).all()
+        assert torch.all(probs[:, 3:] == 0)
+
 
 class TestComputeNPlayerValueLossMixedDims:
     """Tests for mixed-dimension edge cases in value loss."""

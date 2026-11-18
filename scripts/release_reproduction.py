@@ -12,8 +12,9 @@ both attempts". What the comparison says decides whether the re-run may PASS:
 * ``NOTHING TO COMPARE`` (the attempt finished nothing beyond ``checkpoint_0``,
   which the seed alone fixes) -- the re-run is judged, and the bundle says the
   comparison was empty (:data:`OUTCOME_EMPTY`);
-* ``DIFFERS``, or another ``sha``, ``device_plan``, torch wheel or NVIDIA driver
-  -- the re-run is a "non-reproducing re-run" and cannot PASS
+* ``DIFFERS``, or another ``sha``, ``device_plan``, torch wheel, NVIDIA driver
+  or ``MCTS_*`` override set (``env_var_names``) -- the re-run is a
+  "non-reproducing re-run" and cannot PASS
   (:data:`OUTCOME_NON_REPRODUCING`; ``a1_protocol.compute_verdict`` reads a PASS
   row as INCONCLUSIVE). No further A1-family run may start until section 7.1 is
   re-registered, so an attempt listed as started after such a re-run fails the
@@ -130,6 +131,8 @@ PLAN_TORCH_KEY = "torch"
 #: ``{url, sha256}`` of the torch wheel pip installed, when pip reported it.
 TORCH_WHEEL_KEY = "torch_wheel"
 WHEEL_SHA256_KEY = "sha256"
+ENV_VAR_NAMES_KEY = "env_var_names"
+MCTS_ENV_PREFIX = "MCTS_"
 
 #: ``device_plan`` keys a re-run must share with the attempt it replaces. Named,
 #: never the whole mapping: ``source`` says where a value came from, not what it was.
@@ -306,19 +309,30 @@ def _driver(attempt: Attempt) -> tuple[str, ...] | None:
     return driver_versions(_mapping(attempt.record.get(PREFLIGHT_KEY)).get(NVIDIA_SMI_KEY))
 
 
+def _mcts_overrides(attempt: Attempt) -> tuple[str, ...]:
+    names = attempt.record.get(ENV_VAR_NAMES_KEY)
+    if not isinstance(names, Sequence) or isinstance(names, str | bytes):
+        return ()
+    return tuple(sorted(str(n) for n in names if str(n).upper().startswith(MCTS_ENV_PREFIX)))
+
+
 def condition_differences(attempt: Attempt, rerun: Attempt) -> list[str]:
     """How the re-run's conditions depart from the attempt's; empty when they do not.
 
     Section 7.1 claims a reproduction only "at the VOID attempt's ``sha`` with the
     same ``device_plan`` (torch pin, device order, GPUs) and the same NVIDIA
-    driver", and its Devices paragraph adds "the same torch wheel". Compared: the
+    driver", and its Devices paragraph adds "the same torch wheel";
+    ``docs/evidence/SCHEMA.md`` ("Conservative readings") adds that clearing or
+    changing ``MCTS_*`` overrides makes the re-run non-reproducing. Compared: the
     ``sha``; when both runs record a ``device_plan``, its :data:`PLAN_KEYS` and its
     ``torch`` report's :data:`PLAN_TORCH_KEYS` (a plan on one side only is a
     difference); the sha256 of the installed torch wheel, when **both** runs record
     one (pip does not always report it, so a run without the record is not held to
-    it); and, when section 7.1 registers devices for either run, the driver version
+    it); when section 7.1 registers devices for either run, the driver version
     of every GPU -- a driver that cannot be read on either side is a difference,
-    because it cannot be shown to be the same.
+    because it cannot be shown to be the same; and the sorted ``MCTS_*`` names
+    in ``run.json``'s ``env_var_names`` (absent or non-sequence records count as
+    none).
     """
     found: list[str] = []
     if attempt.sha != rerun.sha:
@@ -363,6 +377,12 @@ def condition_differences(attempt: Attempt, rerun: Attempt) -> list[str]:
                 f"driver: the attempt ran under NVIDIA driver {drivers['the attempt']}, the "
                 f"re-run under {drivers['the re-run']}"
             )
+    mcts_mine, mcts_theirs = _mcts_overrides(attempt), _mcts_overrides(rerun)
+    if mcts_mine != mcts_theirs:
+        found.append(
+            f"{MCTS_ENV_PREFIX}* overrides: the attempt had {list(mcts_mine)}, "
+            f"the re-run {list(mcts_theirs)}"
+        )
     return found
 
 

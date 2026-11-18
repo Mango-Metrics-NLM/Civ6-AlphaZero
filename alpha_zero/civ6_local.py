@@ -28,7 +28,7 @@ import yaml
 
 # Safe to import at module scope: alpha_zero.utils.device defers its own torch
 # import, so --help still works without paying for torch.
-from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE, discrete_action_count
 from alpha_zero.utils.device import resolve_device, resolve_device_str
 
 logger = logging.getLogger(__name__)
@@ -376,16 +376,14 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     device = resolve_device(config.device)
 
     env = MicroCivEnv(board_size=config.board_size)
-    # ``Discrete.n`` may surface as numpy int / float depending on gym version;
-    # cast to plain int for the network constructor's typed signature.
-    action_size = int(env.action_space.n)
+    action_size = discrete_action_count(env.action_space)
     obs_sample, _ = env.reset()
     spatial_channels = int(obs_sample["spatial"].shape[0])
 
     net = MicroCivNetwork(
         board_size=config.board_size,
         action_space_size=action_size,
-        in_channels=spatial_channels,
+        spatial_channels=spatial_channels,
     ).to(device)
 
     if config.checkpoint_path:

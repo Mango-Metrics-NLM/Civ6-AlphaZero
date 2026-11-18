@@ -24,6 +24,7 @@ from alpha_zero.distributed.shared_storage import (
 )
 from alpha_zero.envs.microciv import MicroCivEnv
 from alpha_zero.utils.checkpoint import safe_load_checkpoint
+from alpha_zero.utils.constants import discrete_action_count
 
 try:
     from alpha_zero.multiplayer.network_heads import compute_nplayer_value_loss
@@ -225,15 +226,14 @@ class Learner:
             board_size=config.board_size,
             num_players=config.num_players,
         )
-        self.action_space_size = env.action_space.n
-
+        self.action_space_size = discrete_action_count(env.action_space)
         # Compute spatial channels dynamically based on num_players
         spatial_channels = 3 + 4 * config.num_players + 2
 
         # Initialize network
         self.network: nn.Module = MicroCivNetwork(
             board_size=config.board_size,
-            action_space_size=int(self.action_space_size),
+            action_space_size=self.action_space_size,
             num_res_blocks=config.num_res_blocks,
             num_filters=config.num_filters,
             spatial_channels=spatial_channels,

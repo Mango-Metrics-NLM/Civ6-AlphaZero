@@ -112,7 +112,14 @@ def _read_json(path: Path) -> Any:
 
 def _copy(src: Path, bundle_dir: Path, rel: str) -> dict[str, str]:
     """Copy ``src`` byte for byte to ``bundle_dir/rel``; return ``{path, sha256}``."""
-    target = bundle_dir.joinpath(*rel.split("/"))
+    try:
+        target = vre._component_path(bundle_dir, rel)
+    except ValueError as exc:
+        raise BuildError(str(exc)) from exc
+    resolved_root = bundle_dir.resolve()
+    resolved_target = target.resolve()
+    if not resolved_target.is_relative_to(resolved_root) or resolved_target == resolved_root:
+        raise BuildError(f"bundle path {rel!r} escapes {bundle_dir}")
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(src, target)
     return {"path": rel, "sha256": vre.sha256_file(target)}
@@ -139,6 +146,7 @@ def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> Colle
     from alpha_zero.evaluation.a1_protocol import compute_verdict
     from alpha_zero.evaluation.a1_registration import RegistrationError, run_directory
     from alpha_zero.evaluation.benchmark import checkpoint_opponent_id
+    from alpha_zero.utils.data_root import DataRootError, validate_run_id
     from scripts import release_reproduction as rr
 
     run_json = run.run_dir / "run.json"
@@ -151,6 +159,12 @@ def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> Colle
     facts = vre.check_run_json(record, run_id, label, facts_findings)
     if facts.sha is None or facts_findings.problems:
         raise BuildError("; ".join(facts_findings.problems) or f"{label}: run.json has no sha")
+    try:
+        validate_run_id(run_id)
+    except DataRootError as exc:
+        raise BuildError(f"{label}: {exc}") from exc
+    if "\n" in run_id or "\r" in run_id:
+        raise BuildError(f"{label}: invalid run id {run_id!r}: must not contain newlines")
     if not rr.launched(record):
         raise BuildError(
             f"{label}: run.json records no launched invocation, so it played nothing: it is "

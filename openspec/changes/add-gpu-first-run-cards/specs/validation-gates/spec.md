@@ -25,6 +25,11 @@ child's own preflight report.
 When a card pins a torch build, the pinned environment MUST install exactly that
 build from the named index before the project wheel, and MUST NOT reuse an
 environment built for the same commit with a different torch pin or none.
+Concurrent preparations targeting the same environment identity (`<sha12>` or
+`<sha12>-t<variant>`) MUST serialize marker inspection, reuse, and rebuild behind
+a per-environment lock (re-checking `.pinned.json` under the lock and rebuilding
+if corrupt or incomplete) so one caller never deletes or reads a half-built
+environment.
 
 #### Scenario: CPU and CUDA environments for one commit
 - **WHEN** one commit is prepared first without a torch pin and then with one
@@ -33,6 +38,10 @@ environment built for the same commit with a different torch pin or none.
 #### Scenario: Only an exact pin from a plain index
 - **WHEN** a card gives a torch range, a non-`torch` requirement, a non-https index, or an index URL carrying credentials, a query or extra arguments
 - **THEN** the card is refused at load
+
+#### Scenario: Concurrent preparation of one pinned environment
+- **WHEN** two processes or threads concurrently prepare the same commit and torch pin on a cold or stale environment cache
+- **THEN** they serialize on the per-environment lock, the first builds the environment and writes `.pinned.json` atomically, and the second observes the valid marker under the lock and reuses it without rebuilding
 
 ### Requirement: A pin that names its build is compared in full
 
@@ -162,14 +171,15 @@ When a release bundle lists an attempt that was interrupted after it launched an
 invocation, the bundle MUST carry the reproduction comparison between that
 attempt and its re-run, and the verifier MUST recompute that comparison instead
 of trusting its stored status. A re-run that differs from the attempt, or that
-ran at another commit, device plan or driver, MUST NOT be read as a PASS: its
-verdict is INCONCLUSIVE and it is labelled a non-reproducing re-run. An attempt
-that launched nothing MUST NOT be listed. The verifier MUST order a role's
-attempts by the start time each `run.json` records and by nothing else: every
-listed attempt MUST record one, no two attempts of a role may record the same
-one, and a role's non-VOID attempt MUST be the last of its role to start. The
-verifier MUST fail a bundle that lists an attempt started after a non-reproducing
-re-run.
+ran at another commit, device plan, torch wheel, NVIDIA driver, or set of
+`MCTS_*` overrides (`env_var_names`, matched by case-insensitive MCTS_ prefix), MUST NOT be
+read as a PASS: its verdict is INCONCLUSIVE and it is labelled a non-reproducing
+re-run. An attempt that launched nothing MUST NOT be listed. The verifier MUST
+order a role's attempts by the start time each `run.json` records and by nothing
+else: every listed attempt MUST record one, no two attempts of a role may record
+the same one, and a role's non-VOID attempt MUST be the last of its role to
+start. The verifier MUST fail a bundle that lists an attempt started after a
+non-reproducing re-run.
 
 #### Scenario: An interrupted attempt with no comparison
 - **WHEN** a bundle lists an interrupted attempt and its re-run but no comparison record
@@ -214,4 +224,8 @@ re-run.
 #### Scenario: A different torch wheel
 - **WHEN** the attempt and its re-run both record the installed torch wheel and the hashes differ
 - **THEN** the re-run is a non-reproducing re-run
+
+#### Scenario: An MCTS override cleared or changed on re-run
+- **WHEN** an attempt records an `MCTS_*` override in `run.json`'s `env_var_names` and its re-run clears or changes the set of `MCTS_*` overrides
+- **THEN** the re-run is a non-reproducing re-run even when the digest comparison is empty (`NOTHING TO COMPARE`)
 

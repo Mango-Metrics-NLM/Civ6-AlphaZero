@@ -48,6 +48,11 @@ near the 1,000-line ratchet, so these tests live here.
 from __future__ import annotations
 
 import json
+import logging
+import subprocess
+import sys
+import threading
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -56,6 +61,7 @@ import pytest
 
 from alpha_zero.local import pinned_env as pe
 from alpha_zero.local import run_card as rc
+from tests.scripts import git_fixture
 from tests.scripts import test_run_card as base
 
 # pytest finds fixtures by module attribute, so these make the shared ones local.
@@ -372,3 +378,189 @@ def test_a_gpu_card_without_a_torch_pin_is_not_held_to_a_driver_record(
     _fake_gpu_preflight(monkeypatch, nvidia_smi={"error": "FileNotFoundError"})
     card = base._card(tmp_path, [base._train("smoke", "--dry_run", "--device", "cuda:0")])
     assert base._run(card, tmp_path, pinned).status == rc.STATUS_COMPLETED
+
+
+class _BlockingRehearsalRunner(base.FakeRunner):
+    """Thread-safe FakeRunner that pauses the first ``-m venv`` build."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._blocked = False
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        argv = [str(c) for c in cmd]
+        should_block = False
+        with self._lock:
+            self.calls.append(argv)
+            if argv[1:3] == ["-m", "venv"] and not self._blocked:
+                self._blocked = True
+                should_block = True
+        if should_block:
+            self.entered.set()
+            assert self.release.wait(timeout=15.0), "timed out waiting to release venv build"
+        if argv[0] == "git":
+            return base.FULL_SHA + "\n"
+        if argv[1:3] == ["-m", "venv"]:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--without-pip", argv[-1]],
+                check=True,
+                capture_output=True,
+            )
+            return ""
+        if "wheel" in argv:
+            out = Path(argv[argv.index("-w") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "alpha_zero-2.0.0-py3-none-any.whl").write_bytes(b"wheel-bytes")
+            return ""
+        if "freeze" in argv:
+            return "alpha_zero==2.0.0\ntorch==9.9.9\n"
+        return ""
+
+
+def test_concurrent_rehearsals_of_same_card_build_venv_once_and_one_claims_dir(
+    tmp_path: Path, pinned: base.FakeRunner
+) -> None:
+    del pinned
+    runner = _BlockingRehearsalRunner()
+    card = base._card(tmp_path, [base._train("smoke", "--dry_run")])
+    results: list[rc.CardResult] = []
+    resumed_errors: list[rc.CardResumedError] = []
+    other_errors: list[BaseException] = []
+    lock = threading.Lock()
+
+    def worker() -> None:
+        try:
+            res = base._run(card, tmp_path, runner)
+            with lock:
+                results.append(res)
+        except rc.CardResumedError as exc:
+            with lock:
+                resumed_errors.append(exc)
+        except BaseException as exc:
+            with lock:
+                other_errors.append(exc)
+
+    t1 = threading.Thread(target=worker)
+    t2 = threading.Thread(target=worker)
+    t1.start()
+    assert runner.entered.wait(timeout=10.0)
+    # Ensure distinct probe_run_name microsecond timestamps between threads.
+    time.sleep(0.02)
+    t2.start()
+    time.sleep(0.05)
+    assert t2.is_alive(), "second rehearsal must wait on the shared venv lock"
+    runner.release.set()
+    t1.join(timeout=20.0)
+    t2.join(timeout=20.0)
+
+    assert not other_errors, other_errors
+    assert len(results) == 1
+    assert len(resumed_errors) == 1
+    assert results[0].status == rc.STATUS_COMPLETED and results[0].claimed is True
+    venv_builds = [c for c in runner.calls if c[1:3] == ["-m", "venv"]]
+    assert len(venv_builds) == 1, venv_builds
+    assert _record(_runs(tmp_path) / CARD_ID)["status"] == rc.STATUS_COMPLETED
+    venv_dir = tmp_path / "root" / "envs" / base.FULL_SHA[:12]
+    assert (venv_dir / pe.MARKER_NAME).is_file()
+
+
+def test_git_fixture_retries_transient_windows_permission_denied_and_succeeds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    repo = git_fixture.GitRepo(tmp_path / "repo")
+    calls: list[list[str]] = []
+    sleeps: list[float] = []
+
+    def fake_run(cmd: Sequence[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(list(cmd))
+        if len(calls) < 3:
+            return subprocess.CompletedProcess(
+                list(cmd),
+                returncode=128,
+                stdout="",
+                stderr="error: unable to write file .git/objects/10/abc: Permission denied\n",
+            )
+        return subprocess.CompletedProcess(list(cmd), returncode=0, stdout="ok\n", stderr="")
+
+    monkeypatch.setattr(git_fixture.sys, "platform", "win32")
+    monkeypatch.setattr(git_fixture.subprocess, "run", fake_run)
+    monkeypatch.setattr(git_fixture.time, "sleep", sleeps.append)
+
+    with caplog.at_level(logging.WARNING, logger=git_fixture.logger.name):
+        out = repo.git("add", "-A")
+
+    assert out == "ok"
+    assert len(calls) == 3
+    assert len(sleeps) == 2
+    assert "retrying git add -A" in caplog.text
+
+
+def test_git_fixture_stops_after_max_attempts_on_persistent_permission_denied(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = git_fixture.GitRepo(tmp_path / "repo")
+    calls = 0
+    sleeps: list[float] = []
+
+    def fake_run(cmd: Sequence[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            list(cmd),
+            returncode=128,
+            stdout="",
+            stderr="error: unable to write file .git/objects/10/abc: Permission denied\n",
+        )
+
+    monkeypatch.setattr(git_fixture.sys, "platform", "win32")
+    monkeypatch.setattr(git_fixture.subprocess, "run", fake_run)
+    monkeypatch.setattr(git_fixture.time, "sleep", sleeps.append)
+
+    with pytest.raises(RuntimeError, match="Permission denied"):
+        repo.git("add", "-A")
+
+    assert calls == git_fixture._WIN_RETRY_ATTEMPTS
+    assert len(sleeps) == git_fixture._WIN_RETRY_ATTEMPTS - 1
+
+
+def test_git_fixture_does_not_retry_non_permission_errors_or_non_win32(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo = git_fixture.GitRepo(tmp_path / "repo")
+    calls = 0
+    sleeps: list[float] = []
+
+    def fake_non_perm(cmd: Sequence[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            list(cmd), returncode=128, stdout="", stderr="fatal: not a git repository\n"
+        )
+
+    monkeypatch.setattr(git_fixture.sys, "platform", "win32")
+    monkeypatch.setattr(git_fixture.subprocess, "run", fake_non_perm)
+    monkeypatch.setattr(git_fixture.time, "sleep", sleeps.append)
+
+    with pytest.raises(RuntimeError, match="not a git repository"):
+        repo.git("status")
+    assert calls == 1 and sleeps == []
+
+    calls = 0
+
+    def fake_perm(cmd: Sequence[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            list(cmd), returncode=128, stdout="", stderr="Permission denied\n"
+        )
+
+    monkeypatch.setattr(git_fixture.sys, "platform", "linux")
+    monkeypatch.setattr(git_fixture.subprocess, "run", fake_perm)
+    with pytest.raises(RuntimeError, match="Permission denied"):
+        repo.git("add", "-A")
+    assert calls == 1 and sleeps == []

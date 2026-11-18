@@ -87,7 +87,11 @@ The added keys MUST NOT change how a game is played or how a result is scored.
 
 Checkpoints and benchmark results MUST be written so that a process killed during
 the write leaves either the previous file or no file, never a partial one. A
-benchmark result MUST still never be overwritten.
+benchmark result MUST still never be overwritten: exclusive creation MUST refuse
+existing targets and dangling symlinks, MUST write to a unique sibling temporary
+file per invocation, and MUST publish without overwriting (`os.link`, or Windows
+`os.rename` when hard links are unavailable; never `os.replace`, propagating
+`OSError` on POSIX filesystems without hard links).
 
 #### Scenario: A save killed midway
 - **WHEN** a checkpoint save is killed after it has written part of the file
@@ -96,4 +100,12 @@ benchmark result MUST still never be overwritten.
 #### Scenario: A benchmark killed while writing its result
 - **WHEN** the benchmark is killed while writing `result.json`
 - **THEN** no `result.json` exists, and the same output directory can be used by the re-run
+
+#### Scenario: Concurrent exclusive creations never share a temporary file or overwrite
+- **WHEN** two processes or threads concurrently call `create_atomically` for the same `result.json`
+- **THEN** each writes to its own unique sibling temporary file, at most one succeeds in creating `result.json`, and the other raises `FileExistsError` without corrupting or overwriting the winner's file
+
+#### Scenario: Exclusive creation on a filesystem without hard links never calls os.replace
+- **WHEN** `os.link` fails with a non-`FileExistsError` `OSError` during `create_atomically`
+- **THEN** it never falls back to `os.replace`; on Windows it publishes via exclusive `os.rename`, and on POSIX it logs a warning, cleans up its temporary file, and propagates the `OSError`
 

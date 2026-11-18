@@ -406,7 +406,7 @@ def check_run_json(record: Any, run_id: str, label: str, f: Findings) -> RunFact
     if not isinstance(names, list):
         f.problems.append(f"{label}: run.json env_var_names is not a list")
         names = []
-    mcts = sorted(str(n) for n in names if str(n).startswith("MCTS_"))
+    mcts = sorted(str(n) for n in names if str(n).upper().startswith("MCTS_"))
     if mcts:
         facts.interruptions.append(f"run.json names MCTS_* override(s) {mcts}")
     approval = record.get("approval_ref")

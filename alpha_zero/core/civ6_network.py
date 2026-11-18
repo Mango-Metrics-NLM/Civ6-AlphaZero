@@ -9,8 +9,12 @@ Implements a ResNet-style architecture with:
 
 from __future__ import annotations
 
+import copy
+import importlib
 import logging
-from dataclasses import asdict, dataclass
+import math
+from dataclasses import asdict, dataclass, is_dataclass, replace
+from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import torch
@@ -19,7 +23,7 @@ import torch.nn.functional as F  # noqa: N812
 
 from alpha_zero.utils.atomic_io import write_atomically
 from alpha_zero.utils.checkpoint import safe_load_checkpoint, validate_primitive_metadata
-from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE, NETWORK
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -32,21 +36,52 @@ try:
 
     # Try to find the internal scalar type for legacy compatibility
     # This varies between NumPy 1.x and 2.x
-    try:
-        import numpy.core.multiarray as _ma_legacy
-
-        safe_types.append(_ma_legacy.scalar)
-    except (ImportError, AttributeError):
+    for _mod_name in ("numpy.core.multiarray", "numpy._core.multiarray"):
         try:
-            import numpy._core.multiarray as _ma_modern
-
-            safe_types.append(_ma_modern.scalar)
-        except (ImportError, AttributeError):
+            _mod = importlib.import_module(_mod_name)
+            _scalar = getattr(_mod, "scalar", None)
+            if _scalar is not None and _scalar not in safe_types:
+                safe_types.append(_scalar)
+        except ImportError:
             pass
 
     torch.serialization.add_safe_globals(safe_types)
 except (ImportError, AttributeError):
     pass
+
+
+def safe_invalid_action_logit(dtype: torch.dtype) -> float:
+    """Return a finite invalid-action mask logit safe for ``dtype``."""
+    if dtype.is_floating_point:
+        return max(NETWORK.INVALID_ACTION_LOGIT, float(torch.finfo(dtype).min) / 2.0)
+    return NETWORK.INVALID_ACTION_LOGIT
+
+
+def _resolve_network_config(
+    config: NetworkConfig | None,
+    defaults: NetworkConfig,
+    kwargs: dict[str, Any],
+    *,
+    owner: str,
+) -> NetworkConfig:
+    """Return a copied ``NetworkConfig`` with ``kwargs`` applied, warning on unknown keys."""
+    base = defaults if config is None else config
+    resolved = replace(base) if is_dataclass(base) else copy.copy(base)
+    unknown: list[str] = []
+    for key, value in kwargs.items():
+        if hasattr(resolved, key):
+            setattr(resolved, key, value)
+        else:
+            unknown.append(key)
+    if unknown:
+        unknown_sorted = sorted(unknown)
+        logger.warning(
+            "%s ignored unknown configuration keyword arguments: %s",
+            owner,
+            ", ".join(unknown_sorted),
+            extra={"network_class": owner, "unknown_kwargs": unknown_sorted},
+        )
+    return resolved
 
 
 @dataclass
@@ -350,14 +385,12 @@ class Civ6Network(nn.Module):
         """
         super().__init__()
 
-        # Handle config
-        if config is None:
-            config = NetworkConfig()
-
-        # Allow kwargs to override config
-        for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
+        config = _resolve_network_config(
+            config,
+            NetworkConfig(),
+            kwargs,
+            owner=type(self).__name__,
+        )
 
         self.config = config
 
@@ -419,8 +452,10 @@ class Civ6Network(nn.Module):
 
         # Apply action mask
         if action_mask is not None:
-            # Set invalid actions to very negative value
-            policy_logits = policy_logits.masked_fill(action_mask == 0, -1e9)
+            # Set invalid actions to finite negative value safe for tensor dtype
+            policy_logits = policy_logits.masked_fill(
+                action_mask == 0, safe_invalid_action_logit(policy_logits.dtype)
+            )
 
         return policy_logits, value.squeeze(-1)
 
@@ -495,6 +530,7 @@ class Civ6Network(nn.Module):
         }
         if metadata is not None:
             payload["metadata"] = validate_primitive_metadata(dict(metadata))
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         # Through a temporary file: a run killed mid-save must not leave a torn checkpoint.
         write_atomically(path, lambda tmp: torch.save(payload, tmp))
 
@@ -582,37 +618,31 @@ class MicroCivNetwork(Civ6Network):
                 value_head_hidden=64,
                 num_players=num_players,
             )
-        else:
-            # An explicit config wins over the keyword: reconstructing from a
-            # checkpoint passes config only, and silently keeping the default
-            # num_players=2 there is what built a scalar head for an N-player
-            # checkpoint and broke load_state_dict.
-            num_players = config.num_players
 
-        self._num_players = num_players
         super().__init__(config=config, **kwargs)
+        self._num_players = self.config.num_players
 
         # Replace the value head with an N-player variant when needed
-        if num_players > 2:
+        if self._num_players > 2:
             try:
                 from alpha_zero.multiplayer.network_heads import NPlayerValueHead
 
                 self.value_head = NPlayerValueHead(
-                    spatial_filters=config.num_filters,
-                    spatial_size=config.spatial_size,
-                    vector_dim=config.fc_hidden_dim,
-                    num_players=num_players,
-                    hidden_dim=config.value_head_hidden,
+                    spatial_filters=self.config.num_filters,
+                    spatial_size=self.config.spatial_size,
+                    vector_dim=self.config.fc_hidden_dim,
+                    num_players=self._num_players,
+                    hidden_dim=self.config.value_head_hidden,
                 )
                 logger.info(
                     "MicroCivNetwork: using NPlayerValueHead (num_players=%d, spatial_channels=%d)",
-                    num_players,
-                    spatial_channels,
+                    self._num_players,
+                    self.config.spatial_channels,
                 )
             except ImportError:
                 logger.warning(
                     "NPlayerValueHead not available; using scalar value head for %d players",
-                    num_players,
+                    self._num_players,
                 )
 
     @property
@@ -746,6 +776,7 @@ class SpatialSelfAttention(nn.Module):
         num_heads: int = 4,
         dropout: float = 0.1,
         use_relative_pos: bool = True,
+        spatial_size: int | tuple[int, int] | None = None,
     ) -> None:
         """Initialize spatial self-attention.
 
@@ -754,6 +785,8 @@ class SpatialSelfAttention(nn.Module):
             num_heads: Number of attention heads.
             dropout: Dropout probability.
             use_relative_pos: Whether to use relative position bias.
+            spatial_size: Optional ``H`` or ``(H, W)`` to eagerly initialize
+                relative position parameters and buffers at construction time.
         """
         super().__init__()
         self.num_channels = num_channels
@@ -773,14 +806,24 @@ class SpatialSelfAttention(nn.Module):
         self.norm = nn.LayerNorm(num_channels)
 
         # Relative position bias (if enabled)
+        self._spatial_size: int | None = None
+        self._spatial_hw: tuple[int, int] | None = None
         if use_relative_pos:
-            # Will be initialized dynamically based on spatial size
-            self.relative_pos_bias_table: nn.Parameter | None = None
-            self.relative_position_index: torch.Tensor | None = None
-            self._spatial_size: int | None = None
+            # Reserve parameter/buffer slots without colliding with __dict__.
+            self.register_parameter("relative_pos_bias_table", None)
+            self.register_buffer("relative_position_index", None)
 
         # Initialize weights
         self._init_weights()
+
+        if use_relative_pos and spatial_size is not None:
+            if isinstance(spatial_size, tuple):
+                h, w = spatial_size
+            else:
+                h = w = int(spatial_size)
+            if h <= 0 or w <= 0:
+                raise ValueError(f"spatial_size dimensions must be positive, got {spatial_size!r}")
+            self._init_relative_pos_bias(h, w)
 
     def _init_weights(self) -> None:
         """Initialize attention weights."""
@@ -788,29 +831,11 @@ class SpatialSelfAttention(nn.Module):
         nn.init.xavier_uniform_(self.proj.weight)
         nn.init.zeros_(self.proj.bias)
 
-    def _init_relative_pos_bias(self, h: int, w: int) -> None:
-        """Initialize relative position bias for given spatial size.
-
-        Args:
-            h: Height of feature map.
-            w: Width of feature map.
-        """
-        spatial_size = h * w
-        if self._spatial_size == spatial_size:
-            return
-
-        self._spatial_size = spatial_size
-
-        # Create relative position bias table
-        num_relative_positions = (2 * h - 1) * (2 * w - 1)
-        self.relative_pos_bias_table = nn.Parameter(
-            torch.zeros(num_relative_positions, self.num_heads),
-        )
-        nn.init.trunc_normal_(self.relative_pos_bias_table, std=0.02)
-
-        # Create relative position index
-        coords_h = torch.arange(h)
-        coords_w = torch.arange(w)
+    @staticmethod
+    def _build_relative_position_index(h: int, w: int, *, device: torch.device) -> torch.Tensor:
+        """Compute flattened 2D relative position index tensor of shape ``(H*W * H*W,)``."""
+        coords_h = torch.arange(h, device=device)
+        coords_w = torch.arange(w, device=device)
         coords = torch.stack(torch.meshgrid(coords_h, coords_w, indexing="ij"))  # (2, H, W)
         coords_flatten = coords.flatten(1)  # (2, H*W)
 
@@ -822,9 +847,275 @@ class SpatialSelfAttention(nn.Module):
         relative_coords[:, :, 1] += w - 1
         relative_coords[:, :, 0] *= 2 * w - 1
 
+        return relative_coords.sum(-1).view(-1)  # (H*W * H*W,)
+
+    def _is_valid_relative_pos_table(self, tensor: Any) -> bool:
+        return (
+            isinstance(tensor, torch.Tensor)
+            and tensor.ndim == 2
+            and tensor.shape[0] > 0
+            and tensor.shape[1] == self.num_heads
+        )
+
+    @staticmethod
+    def _is_valid_relative_pos_index(tensor: Any) -> bool:
+        return (
+            isinstance(tensor, torch.Tensor)
+            and tensor.ndim == 1
+            and tensor.numel() > 0
+            and not tensor.is_floating_point()
+            and not tensor.is_complex()
+            and tensor.dtype != torch.bool
+        )
+
+    def _resolve_incoming_relative_pos(
+        self, incoming_table: Any, incoming_index: Any
+    ) -> tuple[bool, tuple[int, int] | None]:
+        """Validate incoming relative-position tensors and infer ``(H, W)``."""
+        if not self._is_valid_relative_pos_table(incoming_table):
+            return False, None
+        if not self._is_valid_relative_pos_index(incoming_index):
+            return False, None
+
+        idx_len = int(incoming_index.numel())
+        p = math.isqrt(idx_len)
+        if p <= 0 or p * p != idx_len:
+            return False, None
+
+        t = int(incoming_table.shape[0])
+        two_s = 4 * p + 1 - t
+        if two_s <= 0 or two_s % 2 != 0:
+            return False, None
+
+        s = two_s // 2
+        disc = s * s - 4 * p
+        if disc < 0:
+            return False, None
+
+        d = math.isqrt(disc)
+        if d * d != disc or (s - d) % 2 != 0:
+            return False, None
+
+        a = (s - d) // 2
+        b = (s + d) // 2
+        if a <= 0 or b <= 0 or a * b != p or (2 * a - 1) * (2 * b - 1) != t:
+            return False, None
+
+        candidates = [(a, a)] if a == b else [(a, b), (b, a)]
+        if incoming_index.device.type == "meta":
+            if len(candidates) == 1:
+                return True, candidates[0]
+            if self._spatial_hw in candidates:
+                return True, self._spatial_hw
+            return True, None
+
+        ordered = (
+            [self._spatial_hw, *(c for c in candidates if c != self._spatial_hw)]
+            if self._spatial_hw in candidates
+            else candidates
+        )
+        index_i64 = incoming_index.to(dtype=torch.int64)
+        for cand_h, cand_w in ordered:
+            expected = self._build_relative_position_index(
+                cand_h, cand_w, device=incoming_index.device
+            )
+            if torch.equal(index_i64, expected):
+                return True, (cand_h, cand_w)
+        return False, None
+
+    def _init_relative_pos_bias(self, h: int, w: int) -> None:
+        """Initialize relative position bias for given spatial size.
+
+        Args:
+            h: Height of feature map.
+            w: Width of feature map.
+        """
+        cur_table = getattr(self, "relative_pos_bias_table", None)
+        cur_index = getattr(self, "relative_position_index", None)
+        if (
+            cur_table is not None
+            and cur_index is not None
+            and (self._spatial_hw == (h, w) or ((h == 1 or w == 1) and self._spatial_hw == (w, h)))
+        ):
+            self._spatial_hw = (h, w)
+            return
+
+        spatial_size = h * w
+        self._spatial_size = spatial_size
+        self._spatial_hw = (h, w)
+
+        device = self.qkv.weight.device
+        dtype = self.qkv.weight.dtype
+
+        # Create relative position bias table
+        num_relative_positions = (2 * h - 1) * (2 * w - 1)
+        table = nn.Parameter(
+            torch.zeros(num_relative_positions, self.num_heads, device=device, dtype=dtype),
+        )
+        nn.init.trunc_normal_(table, std=0.02)
+        self.register_parameter("relative_pos_bias_table", table)
+
         self.register_buffer(
             "relative_position_index",
-            relative_coords.sum(-1).view(-1),  # (H*W * H*W,)
+            self._build_relative_position_index(h, w, device=device),
+        )
+
+    def _load_from_state_dict(
+        self,
+        state_dict: dict[str, Any],
+        prefix: str,
+        local_metadata: dict[str, Any],
+        strict: bool,
+        missing_keys: list[str],
+        unexpected_keys: list[str],
+        error_msgs: list[str],
+    ) -> None:
+        if self.use_relative_pos:
+            table_key = prefix + "relative_pos_bias_table"
+            index_key = prefix + "relative_position_index"
+            has_table = table_key in state_dict
+            has_index = index_key in state_dict
+            legacy_preforward = (
+                not has_table and not has_index and (prefix + "qkv.weight") in state_dict
+            )
+
+            cur_table = getattr(self, "relative_pos_bias_table", None)
+            cur_index = getattr(self, "relative_position_index", None)
+            suppressed_keys: list[str] = []
+
+            if has_table and has_index:
+                incoming_table = state_dict[table_key]
+                incoming_index = state_dict[index_key]
+                valid_hw, resolved_hw = self._resolve_incoming_relative_pos(
+                    incoming_table, incoming_index
+                )
+                if not valid_hw:
+                    if (
+                        cur_table is None
+                        or cur_index is None
+                        or not isinstance(incoming_table, torch.Tensor)
+                        or not isinstance(incoming_index, torch.Tensor)
+                        or cur_table.shape == incoming_table.shape
+                        or cur_index.shape == incoming_index.shape
+                    ):
+                        table_shape = (
+                            tuple(incoming_table.shape)
+                            if isinstance(incoming_table, torch.Tensor)
+                            else type(incoming_table).__name__
+                        )
+                        index_shape = (
+                            tuple(incoming_index.shape)
+                            if isinstance(incoming_index, torch.Tensor)
+                            else type(incoming_index).__name__
+                        )
+                        error_msgs.append(
+                            f"size/shape mismatch for {table_key}/{index_key}: "
+                            f"expected num_heads={self.num_heads} and valid 2D relative position "
+                            f"tensors, got table={table_shape}, index={index_shape}."
+                        )
+                        suppressed_keys.extend((table_key, index_key))
+                else:
+                    if cur_table is None or cur_table.shape != incoming_table.shape:
+                        self.register_parameter(
+                            "relative_pos_bias_table",
+                            nn.Parameter(
+                                torch.empty(
+                                    incoming_table.shape,
+                                    device=self.qkv.weight.device,
+                                    dtype=self.qkv.weight.dtype,
+                                )
+                            ),
+                        )
+                    if cur_index is None or cur_index.shape != incoming_index.shape:
+                        self.register_buffer(
+                            "relative_position_index",
+                            torch.empty(
+                                incoming_index.shape,
+                                device=self.qkv.weight.device,
+                                dtype=incoming_index.dtype,
+                            ),
+                        )
+                    self._spatial_hw = resolved_hw
+                    self._spatial_size = (
+                        resolved_hw[0] * resolved_hw[1] if resolved_hw is not None else None
+                    )
+            elif has_table and not self._is_valid_relative_pos_table(state_dict[table_key]):
+                incoming_table = state_dict[table_key]
+                if (
+                    cur_table is None
+                    or not isinstance(incoming_table, torch.Tensor)
+                    or cur_table.shape == incoming_table.shape
+                ):
+                    table_shape = (
+                        tuple(incoming_table.shape)
+                        if isinstance(incoming_table, torch.Tensor)
+                        else type(incoming_table).__name__
+                    )
+                    error_msgs.append(
+                        f"size/shape mismatch for {table_key}: expected 2D tensor with "
+                        f"num_heads={self.num_heads}, got {table_shape}."
+                    )
+                    suppressed_keys.append(table_key)
+            elif has_index and not self._is_valid_relative_pos_index(state_dict[index_key]):
+                incoming_index = state_dict[index_key]
+                if (
+                    cur_index is None
+                    or not isinstance(incoming_index, torch.Tensor)
+                    or cur_index.shape == incoming_index.shape
+                ):
+                    index_shape = (
+                        tuple(incoming_index.shape)
+                        if isinstance(incoming_index, torch.Tensor)
+                        else type(incoming_index).__name__
+                    )
+                    error_msgs.append(
+                        f"size/shape mismatch for {index_key}: expected 1D integer tensor, "
+                        f"got {index_shape}."
+                    )
+                    suppressed_keys.append(index_key)
+
+            load_state_dict = state_dict
+            if suppressed_keys:
+                load_state_dict = dict(state_dict)
+                for key in suppressed_keys:
+                    load_state_dict.pop(key, None)
+
+            missing_start = len(missing_keys)
+            super()._load_from_state_dict(
+                load_state_dict,
+                prefix,
+                local_metadata,
+                strict,
+                missing_keys,
+                unexpected_keys,
+                error_msgs,
+            )
+
+            if suppressed_keys:
+                suppressed_set = set(suppressed_keys)
+                missing_keys[missing_start:] = [
+                    k for k in missing_keys[missing_start:] if k not in suppressed_set
+                ]
+
+            if legacy_preforward:
+                logger.warning(
+                    "Loading legacy SpatialSelfAttention checkpoint without relative_pos buffers "
+                    "at prefix %r; retaining initialized values.",
+                    prefix,
+                )
+                for key in (table_key, index_key):
+                    if key in missing_keys:
+                        missing_keys.remove(key)
+            return
+
+        super()._load_from_state_dict(
+            state_dict,
+            prefix,
+            local_metadata,
+            strict,
+            missing_keys,
+            unexpected_keys,
+            error_msgs,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -856,15 +1147,12 @@ class SpatialSelfAttention(nn.Module):
         # Add relative position bias if enabled
         if self.use_relative_pos:
             self._init_relative_pos_bias(h, w)
-            if (
-                self.relative_pos_bias_table is not None
-                and self.relative_position_index is not None
-            ):
-                relative_pos_bias = self.relative_pos_bias_table[self.relative_position_index].view(
-                    n, n, -1
-                )
+            bias_table = getattr(self, "relative_pos_bias_table", None)
+            pos_index = getattr(self, "relative_position_index", None)
+            if bias_table is not None and pos_index is not None:
+                relative_pos_bias = bias_table[pos_index].view(n, n, -1)
                 relative_pos_bias = relative_pos_bias.permute(2, 0, 1).unsqueeze(0)
-                attn = attn + relative_pos_bias.to(attn.device)
+                attn = attn + relative_pos_bias.to(device=attn.device, dtype=attn.dtype)
 
         attn = F.softmax(attn, dim=-1)
         attn = self.dropout(attn)
@@ -1027,6 +1315,7 @@ class AttentionSpatialEncoder(nn.Module):
         attention_dropout: float = 0.1,
         attention_interval: int = 2,
         max_spatial_size: int = 128,
+        spatial_size: int | tuple[int, int] | None = None,
     ) -> None:
         """Initialize attention spatial encoder.
 
@@ -1038,6 +1327,7 @@ class AttentionSpatialEncoder(nn.Module):
             attention_dropout: Dropout for attention layers.
             attention_interval: Add attention after every N residual blocks.
             max_spatial_size: Maximum spatial size for positional encoding.
+            spatial_size: Optional ``H`` or ``(H, W)`` for eager attention bias init.
         """
         super().__init__()
 
@@ -1065,6 +1355,7 @@ class AttentionSpatialEncoder(nn.Module):
                         num_heads=num_heads,
                         dropout=attention_dropout,
                         use_relative_pos=True,
+                        spatial_size=spatial_size,
                     ),
                 )
 
@@ -1074,6 +1365,7 @@ class AttentionSpatialEncoder(nn.Module):
             num_heads=num_heads,
             dropout=attention_dropout,
             use_relative_pos=True,
+            spatial_size=spatial_size,
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -1234,26 +1526,25 @@ class Civ6NetworkV2(nn.Module):
         """
         super().__init__()
 
-        # Handle config
-        if config is None:
-            config = NetworkConfig(
-                spatial_channels=84,  # Full Civ6StateEncoder
-                spatial_size=16,
-                vector_dim=512,
-                num_res_blocks=10,
-                num_filters=128,
-                fc_hidden_dim=512,
-                action_space_size=50000,  # Full hierarchical space
-                value_head_hidden=256,
-                num_attention_heads=4,
-                use_attention=True,
-                attention_dropout=0.1,
-            )
-
-        # Allow kwargs to override config
-        for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
+        default_config = NetworkConfig(
+            spatial_channels=84,  # Full Civ6StateEncoder
+            spatial_size=16,
+            vector_dim=512,
+            num_res_blocks=10,
+            num_filters=128,
+            fc_hidden_dim=512,
+            action_space_size=50000,  # Full hierarchical space
+            value_head_hidden=256,
+            num_attention_heads=4,
+            use_attention=True,
+            attention_dropout=0.1,
+        )
+        config = _resolve_network_config(
+            config,
+            default_config,
+            kwargs,
+            owner=type(self).__name__,
+        )
 
         self.config = config
 
@@ -1268,6 +1559,7 @@ class Civ6NetworkV2(nn.Module):
                 attention_dropout=config.attention_dropout,
                 attention_interval=2,
                 max_spatial_size=max(config.spatial_size * 2, 128),
+                spatial_size=config.spatial_size,
             )
         else:
             self.spatial_encoder = SpatialEncoder(
@@ -1360,8 +1652,10 @@ class Civ6NetworkV2(nn.Module):
 
         # Apply action mask
         if action_mask is not None:
-            # Set invalid actions to very negative value
-            policy_logits = policy_logits.masked_fill(action_mask == 0, -1e9)
+            # Set invalid actions to finite negative value safe for tensor dtype
+            policy_logits = policy_logits.masked_fill(
+                action_mask == 0, safe_invalid_action_logit(policy_logits.dtype)
+            )
 
         return policy_logits, value.squeeze(-1)
 
@@ -1402,7 +1696,9 @@ class Civ6NetworkV2(nn.Module):
 
         # Apply action mask
         if action_mask is not None:
-            policy_logits = policy_logits.masked_fill(action_mask == 0, -1e9)
+            policy_logits = policy_logits.masked_fill(
+                action_mask == 0, safe_invalid_action_logit(policy_logits.dtype)
+            )
 
         return policy_logits, category_probs, value.squeeze(-1)
 
@@ -1489,11 +1785,14 @@ class Civ6NetworkV2(nn.Module):
 
         return policy_probs.squeeze(0), category_probs.squeeze(0), value.item()
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, *, metadata: dict[str, Any] | None = None) -> None:
         """Save model checkpoint.
 
         Args:
             path: Path to save checkpoint.
+            metadata: Optional provenance (see ``utils.checkpoint.build_provenance``).
+                Primitive values only, so the file still loads under
+                ``weights_only=True``; anything else raises ``TypeError``.
         """
         # Convert to dictionary with primitive Python types
         config_dict = asdict(self.config)
@@ -1502,11 +1801,14 @@ class Civ6NetworkV2(nn.Module):
             if hasattr(v, "item"):  # Handle numpy scalars
                 config_dict[k] = v.item()
 
-        payload = {
+        payload: dict[str, Any] = {
             "config": config_dict,
             "state_dict": self.state_dict(),
             "network_version": "v2",
         }
+        if metadata is not None:
+            payload["metadata"] = validate_primitive_metadata(dict(metadata))
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
         write_atomically(path, lambda tmp: torch.save(payload, tmp))
 
     @classmethod

@@ -271,7 +271,8 @@ if _JAX_AVAILABLE:
             out = jax.nn.relu(self.fc1(x))
             if key is not None and not inference:
                 out = self.dropout(out, key=key, inference=False)
-            return self.fc2(out)
+            result: jax.Array = self.fc2(out)
+            return result
 
     class JaxPolicyHead(eqx.Module):
         """Policy head for action prediction."""
@@ -306,11 +307,10 @@ if _JAX_AVAILABLE:
 
         def __call__(self, spatial_features: jax.Array, vector_features: jax.Array) -> jax.Array:
             """Forward pass. Returns logits of shape (action_space_size,)."""
-            s = jax.nn.relu(self.gn(self.conv(spatial_features)))
-            s = s.ravel()
-            combined = jnp.concatenate([s, vector_features])
-            out = jax.nn.relu(self.fc1(combined))
-            return self.fc2(out)
+            s = jax.nn.relu(self.gn(self.conv(spatial_features))).ravel()
+            out = jax.nn.relu(self.fc1(jnp.concatenate([s, vector_features])))
+            logits: jax.Array = self.fc2(out)
+            return logits
 
     class JaxValueHead(eqx.Module):
         """Value head for position evaluation."""
