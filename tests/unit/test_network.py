@@ -533,3 +533,52 @@ class TestNetworkHardeningM3:
         assert dst._spatial_hw == (4, 4)
         assert torch.equal(dst.relative_pos_bias_table, orig_table)
         assert torch.equal(dst.relative_position_index, orig_index)
+
+    @pytest.mark.parametrize(
+        "index_dtype",
+        [torch.int8, torch.uint8, torch.int16, torch.int32],
+    )
+    @pytest.mark.parametrize("dst_spatial_size", [None, 4])
+    def test_spatial_self_attention_widens_narrow_integer_index_dtypes(
+        self, index_dtype: torch.dtype, dst_spatial_size: int | None
+    ) -> None:
+        src = SpatialSelfAttention(8, num_heads=2, spatial_size=3)
+        sd = {k: v.clone() for k, v in src.state_dict().items()}
+        sd["relative_position_index"] = sd["relative_position_index"].to(dtype=index_dtype)
+
+        dst = SpatialSelfAttention(8, num_heads=2, spatial_size=dst_spatial_size)
+        dst.load_state_dict(sd, strict=True)
+
+        assert dst.relative_position_index is not None
+        assert dst.relative_position_index.dtype == torch.int64
+        src.eval()
+        dst.eval()
+        x = torch.randn(1, 8, 3, 3)
+        assert torch.allclose(dst(x), src(x))
+
+    @pytest.mark.parametrize("strict", [True, False])
+    @pytest.mark.parametrize(
+        "corrupt_index",
+        [
+            torch.full((256,), 999, dtype=torch.int64),
+            torch.full((256,), -1, dtype=torch.int64),
+        ],
+    )
+    def test_eager_spatial_attention_rejects_partial_corrupt_int_index_without_mutation(
+        self, strict: bool, corrupt_index: torch.Tensor
+    ) -> None:
+        dst = SpatialSelfAttention(8, num_heads=2, spatial_size=4)
+        orig_table = dst.relative_pos_bias_table.detach().clone()
+        orig_index = dst.relative_position_index.detach().clone()
+
+        partial_sd: dict[str, Any] = {
+            k: v.clone() for k, v in dst.state_dict().items() if k != "relative_pos_bias_table"
+        }
+        partial_sd["relative_position_index"] = corrupt_index
+
+        with pytest.raises(RuntimeError):
+            dst.load_state_dict(partial_sd, strict=strict)
+
+        assert dst._spatial_hw == (4, 4)
+        assert torch.equal(dst.relative_pos_bias_table, orig_table)
+        assert torch.equal(dst.relative_position_index, orig_index)

@@ -960,6 +960,19 @@ class SpatialSelfAttention(nn.Module):
             self._build_relative_position_index(h, w, device=device),
         )
 
+    def _ensure_relative_pos_index_buffer(self, shape: torch.Size) -> None:
+        """Ensure ``relative_position_index`` has ``shape`` and ``torch.int64`` dtype."""
+        cur_index = getattr(self, "relative_position_index", None)
+        if cur_index is None or cur_index.shape != shape or cur_index.dtype != torch.int64:
+            self.register_buffer(
+                "relative_position_index",
+                torch.empty(
+                    shape,
+                    device=self.qkv.weight.device,
+                    dtype=torch.int64,
+                ),
+            )
+
     def _load_from_state_dict(
         self,
         state_dict: dict[str, Any],
@@ -1026,15 +1039,7 @@ class SpatialSelfAttention(nn.Module):
                                 )
                             ),
                         )
-                    if cur_index is None or cur_index.shape != incoming_index.shape:
-                        self.register_buffer(
-                            "relative_position_index",
-                            torch.empty(
-                                incoming_index.shape,
-                                device=self.qkv.weight.device,
-                                dtype=incoming_index.dtype,
-                            ),
-                        )
+                    self._ensure_relative_pos_index_buffer(incoming_index.shape)
                     self._spatial_hw = resolved_hw
                     self._spatial_size = (
                         resolved_hw[0] * resolved_hw[1] if resolved_hw is not None else None
@@ -1056,23 +1061,48 @@ class SpatialSelfAttention(nn.Module):
                         f"num_heads={self.num_heads}, got {table_shape}."
                     )
                     suppressed_keys.append(table_key)
-            elif has_index and not self._is_valid_relative_pos_index(state_dict[index_key]):
+            elif has_index:
                 incoming_index = state_dict[index_key]
-                if (
-                    cur_index is None
-                    or not isinstance(incoming_index, torch.Tensor)
-                    or cur_index.shape == incoming_index.shape
+                if not self._is_valid_relative_pos_index(incoming_index):
+                    if (
+                        cur_index is None
+                        or not isinstance(incoming_index, torch.Tensor)
+                        or cur_index.shape == incoming_index.shape
+                    ):
+                        index_shape = (
+                            tuple(incoming_index.shape)
+                            if isinstance(incoming_index, torch.Tensor)
+                            else type(incoming_index).__name__
+                        )
+                        error_msgs.append(
+                            f"size/shape mismatch for {index_key}: expected 1D integer tensor, "
+                            f"got {index_shape}."
+                        )
+                        suppressed_keys.append(index_key)
+                elif (
+                    cur_table is not None
+                    and cur_index is not None
+                    and cur_index.shape == incoming_index.shape
                 ):
-                    index_shape = (
-                        tuple(incoming_index.shape)
-                        if isinstance(incoming_index, torch.Tensor)
-                        else type(incoming_index).__name__
-                    )
-                    error_msgs.append(
-                        f"size/shape mismatch for {index_key}: expected 1D integer tensor, "
-                        f"got {index_shape}."
-                    )
-                    suppressed_keys.append(index_key)
+                    valid_hw, _ = self._resolve_incoming_relative_pos(cur_table, incoming_index)
+                    if not valid_hw:
+                        logger.warning(
+                            "Rejecting invalid partial %s update against bias table %s",
+                            index_key,
+                            tuple(cur_table.shape),
+                            extra={
+                                "index_key": index_key,
+                                "table_shape": tuple(cur_table.shape),
+                                "index_shape": tuple(incoming_index.shape),
+                            },
+                        )
+                        error_msgs.append(
+                            f"invalid relative position index for {index_key}: values do not "
+                            f"match relative_pos_bias_table shape {tuple(cur_table.shape)}."
+                        )
+                        suppressed_keys.append(index_key)
+                    else:
+                        self._ensure_relative_pos_index_buffer(incoming_index.shape)
 
             load_state_dict = state_dict
             if suppressed_keys:
