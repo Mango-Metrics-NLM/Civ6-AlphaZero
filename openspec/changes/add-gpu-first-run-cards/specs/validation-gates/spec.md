@@ -103,3 +103,115 @@ device check.
 #### Scenario: A probe offered as an attempt
 - **WHEN** a bundle lists a `run.json` that a `--probe` wrote
 - **THEN** the verifier reports a problem
+
+### Requirement: A card is rehearsed before it claims its run directory
+
+`run_card` MUST run the pinned environment, the preflight and the device check in
+a throwaway directory before it claims the card's single-use run directory, and
+MUST claim that directory only when the rehearsal passes. A run directory that
+was already used MUST be refused before the rehearsal. `run.json` MUST record the
+rehearsal that preceded a run, and the name of each invocation before it starts.
+
+#### Scenario: A refused device
+- **WHEN** a card names a device its pinned environment cannot provide
+- **THEN** the card finishes FAILED, its own run directory does not exist, and the same card can be run again once the cause is fixed
+
+#### Scenario: An attempt interrupted in its first invocation
+- **WHEN** a run is interrupted while its first invocation is running
+- **THEN** `run.json` names that invocation as launched although no invocation finished
+
+#### Scenario: A used card
+- **WHEN** a card whose run directory already holds a `run.json` is run again
+- **THEN** it is refused and no rehearsal directory is created
+
+#### Scenario: A failure after the rehearsal passed
+- **WHEN** the rehearsal passes and the run itself is then refused or fails
+- **THEN** the card's run directory holds a FAILED `run.json` and the card cannot be run again under that `card_id`
+
+#### Scenario: An interrupted rehearsal
+- **WHEN** a card is interrupted while it is being rehearsed
+- **THEN** the card's run directory does not exist and the same card can be run again
+
+#### Scenario: Two runs of one card at once
+- **WHEN** two runs of one card both find its run directory unused
+- **THEN** exactly one of them claims it and the other is refused as a resumed card
+
+### Requirement: A pinned GPU run records the driver and the wheel it ran with
+
+A card that pins a torch build and names a CUDA device MUST be refused when the
+NVIDIA driver version cannot be read. The pinned environment MUST record the URL
+and sha256 of the torch wheel that was installed, when the installer reports
+them; a missing report MUST NOT fail the run, and the record MUST NOT be part of
+the torch pin that is compared with the registration.
+
+#### Scenario: The driver cannot be read
+- **WHEN** a torch-pinned card names `cuda:0` and the preflight has no driver version
+- **THEN** the card is refused before any invocation is launched
+
+#### Scenario: The wheel is recorded
+- **WHEN** a torch pin is installed and the installer reports the wheel's hash
+- **THEN** `run.json` carries it as `torch_wheel`, and a reused environment reports the same value
+
+#### Scenario: A report that names two torch wheels
+- **WHEN** the installer's report lists torch more than once
+- **THEN** no wheel is recorded and the run continues with a warning
+
+### Requirement: The release verifier applies the re-run rule
+
+When a release bundle lists an attempt that was interrupted after it launched an
+invocation, the bundle MUST carry the reproduction comparison between that
+attempt and its re-run, and the verifier MUST recompute that comparison instead
+of trusting its stored status. A re-run that differs from the attempt, or that
+ran at another commit, device plan or driver, MUST NOT be read as a PASS: its
+verdict is INCONCLUSIVE and it is labelled a non-reproducing re-run. An attempt
+that launched nothing MUST NOT be listed. The verifier MUST order a role's
+attempts by the start time each `run.json` records and by nothing else: every
+listed attempt MUST record one, no two attempts of a role may record the same
+one, and a role's non-VOID attempt MUST be the last of its role to start. The
+verifier MUST fail a bundle that lists an attempt started after a non-reproducing
+re-run.
+
+#### Scenario: An interrupted attempt with no comparison
+- **WHEN** a bundle lists an interrupted attempt and its re-run but no comparison record
+- **THEN** verification fails
+
+#### Scenario: A re-run that differs
+- **WHEN** the comparison finds a difference and the re-run's arms would give PASS
+- **THEN** the stored and recomputed verdict are INCONCLUSIVE with the label, and a bundle that stores PASS fails verification
+
+#### Scenario: A record that claims more than its digests show
+- **WHEN** a record's status is REPRODUCED but its digests differ, or its digests contradict the arena results the bundle holds
+- **THEN** verification fails
+
+#### Scenario: A second draw
+- **WHEN** an attempt completed and is VOID by its symmetry or positive control
+- **THEN** no comparison is required for its re-run
+
+#### Scenario: A re-run recorded as started first
+- **WHEN** an interrupted attempt has no completed attempt of its role that started after it, and the role has a judged attempt
+- **THEN** verification fails
+
+#### Scenario: An attempt without a start time
+- **WHEN** a listed attempt's `run.json` records no readable start time
+- **THEN** verification fails, whatever order the bundle lists its attempts in
+
+#### Scenario: A further run after a non-reproducing re-run
+- **WHEN** an attempt of either role started after a re-run that did not reproduce
+- **THEN** verification fails
+
+#### Scenario: A second draw dated before a non-reproducing re-run
+- **WHEN** a role's non-VOID attempt records a start at or before another listed attempt of that role
+- **THEN** verification fails, so a second draw cannot be dated ahead of the re-run that did not reproduce
+
+#### Scenario: Two attempts with the same start
+- **WHEN** two listed attempts of one role record the same start time
+- **THEN** verification fails, whichever is listed first
+
+#### Scenario: Two interrupted attempts before one re-run
+- **WHEN** two attempts of a role were interrupted before the same re-run
+- **THEN** each needs its own comparison with that re-run
+
+#### Scenario: A different torch wheel
+- **WHEN** the attempt and its re-run both record the installed torch wheel and the hashes differ
+- **THEN** the re-run is a non-reproducing re-run
+

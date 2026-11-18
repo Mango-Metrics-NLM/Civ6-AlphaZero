@@ -1,5 +1,19 @@
 # DEV-SQE Log
 
+## 2026-11-15 - v2.1 local close-out (PR #140)
+- **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
+- **Task:** The v2.1 work that needs no GPU, after PR #138 and #139 merged: the three follow-ups left open there (OpenSpec `add-gpu-first-run-cards` tasks 4.8-4.10), one hazard found while planning them, and post-merge housekeeping. Scope is the plan the maintainer approved in the session.
+  - Run cards rehearse before they claim `runs/<card_id>` (a refused card keeps its `card_id`); `run.json` records `rehearsal` and `launched`; the claim is one atomic `mkdir`.
+  - The torch wheel pip installed is recorded (`torch_wheel`: URL and sha256), record-only.
+  - Checkpoints, the benchmark's `result.json`, the in-loop evaluation JSON and `run.json` are written through a temporary file (`alpha_zero/utils/atomic_io.py`); a pinned GPU card is refused when the driver version cannot be read.
+  - The release verifier applies the "After a VOID" rule itself (`scripts/release_reproduction.py`, `build_release_bundle.py --compare`): a compare record is required for an interrupted attempt, recomputed from its digests, and a non-reproducing re-run's PASS is INCONCLUSIVE. Built by `sdlc-developer`.
+  - Five merged OpenSpec changes archived; baselines `search-budget` and `training-evaluation` created.
+  - Three review rounds in separate contexts: `sdlc-ml-scientist` and `sdlc-qa-sdet` on the first version, then `sdlc-ml-scientist` again on the fix. The verifier's ordering rule changed twice as a result: `started_at` alone (no bundle-order fallback), then "a role's non-VOID attempt is the last of its role to start, and no two attempts of a role tie".
+- **Files Changed:** 19 commits, 61 files (+5,177 / −216) on `claude/cool-lovelace-o02vn9`; new modules `alpha_zero/utils/atomic_io.py`, `scripts/release_reproduction.py`; four new test modules.
+- **Tests:** at `2e51c2c`: unit 10,546 passed, 1 failed; integration + e2e + smoke + sanity + inference 740 passed; regression + governance + scripts + security + cloud 2,998 passed, 7 failed. The failures also fail on the base commit in this container (running as root, no `.env`, no Google credentials). ruff, format and mypy (346 files) clean; six validators, debt ratchet (no baseline change), gitleaks and `make verify-registration` clean; card prices 660 / 980 / 980 / 8; both dry runs exit 0. Coverage by path on the changed modules 86-100%; the global gate was not measured here (CI on `d44f7ee`: all 24 checks completed, 23 passed, `pip-audit` skipped by design).
+- **Status:** complete; handed to Pre-PR. **Nothing here has run on a GPU or on Windows.** No edit inside the hashed region of `docs/EVALUATION.md` (digest `e460a353…7c17`).
+- **Next:** maintainer: review PR #140 (CONFIRM-FIRST items and conservative readings are listed in its body); on the GPU machine `run_card.py configs/run_cards/t0b.yaml --probe`, then the T0b card. Open: OpenSpec tasks 4c.7 (the bundle after a non-reproducing re-run) and 4c.11 (three checks the verifier does not make). v2.2 needs its own task plan.
+
 ## 2026-11-14 - GPU-first registered runs (PR #138)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
 - **Task:** Made registered runs GPU-first on the maintainer's instruction (`cuda:0` trains, `cuda:1` judges, pinned `torch==2.11.0+cu128` from the cu128 index), then hardened it after four independent reviews (QA, `sdlc-architect`, `sdlc-ml-scientist`, and `sdlc-developer` building the reproduction tooling).

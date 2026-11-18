@@ -45,6 +45,15 @@ sha256. This script trusts none of the stored numbers:
   appear (outside backticks or quotes) in ``report.md``, the index row or the
   release's CHANGELOG section. A FAIL or INCONCLUSIVE ships with the claim
   withheld.
+* **Re-runs.** An attempt interrupted after it launched something needs the
+  compare record of its re-run (``reproduction`` in its ``runs[]`` entry). The
+  record is re-hashed, held to the bundled files and recomputed
+  (``scripts/release_reproduction.py``); a re-run that differs, or ran at another
+  ``sha``, ``device_plan`` or driver, is a "non-reproducing re-run" whose PASS is
+  read as INCONCLUSIVE. An attempt that launched nothing may not be listed.
+  Attempts are ordered by ``run.json``'s ``started_at`` alone (each must record
+  one): an interrupted attempt must be followed by its re-run, and no attempt
+  may have started after a non-reproducing re-run.
 
 Exit status: 0 pass, 1 fail, 2 missing (no bundle, a missing component, a git
 object, or no way to read the check runs: no ``--repo``, ``gh`` not runnable).
@@ -786,12 +795,19 @@ class RunOutcome:
     games: int | None
     sha: str | None
     reasons: tuple[str, ...] = ()
+    #: ``release_reproduction.Attempt``: what the re-run rule reads of this attempt
+    #: (``None`` when it could not be read that far).
+    attempt: Any = None
+    #: The judged arms' per-game records (primary, symmetry, positive control),
+    #: held until :func:`judge` has the re-run rule's answer; ``None`` otherwise.
+    judged: tuple[Any, ...] | None = None
 
 
 def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -> RunOutcome | None:
-    """Every per-attempt check except the play-path diff (judged attempts only)."""
+    """Every per-attempt check except the verdict (:func:`judge`) and the play-path diff."""
     from alpha_zero.evaluation.a1_protocol import ProtocolMarkerError, compute_verdict
     from alpha_zero.evaluation.a1_registration import RegistrationError
+    from scripts import release_reproduction as rr
 
     if not isinstance(run, Mapping):
         f.problems.append("runs[]: a run entry is not an object")
@@ -805,10 +821,16 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     run_path = _load_component(bundle_dir, run.get("run_json"), f"{label} run.json", f)
     if run_path is None:
         return None
-    facts = check_run_json(_read_json(run_path, label, f), run_id, label, f)
+    record = _read_json(run_path, label, f)
+    facts = check_run_json(record, run_id, label, f)
     sha = facts.sha
     if sha is None:
         return None
+    if not rr.launched(record):
+        f.problems.append(
+            f"{label}: run.json records no launched invocation, so it played nothing: it is "
+            "not an attempt; do not list it (section 7.1, 'After a VOID')"
+        )
     if run.get("git_sha") != sha:
         f.problems.append(f"{label}: bundle git_sha {run.get('git_sha')!r} != run.json sha")
     if not git.exists(sha):
@@ -830,6 +852,7 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     trained = facts.completed or TRAIN in finished
     # An attempt killed before its first iteration finished has no record to list;
     # one whose training finished must list every iteration.
+    iter_path: Path | None = None
     if trained and run.get("iterations") is None:
         f.problems.append(
             f"{label}: training finished (run.json records it), but iterations.jsonl is not listed"
@@ -855,6 +878,7 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     elif not facts.completed:
         check_void_arms(facts, reg, set(arms_in), finished, label, f)
     arms: dict[str, ArmRead] = {}
+    arenas: dict[str, Path] = {}  # by the arm's directory in the run directory
     # A VOID-by-status attempt lists only the arms that ran; each is still checked.
     listed = reg.arms if facts.completed else [n for n in reg.arms if n in arms_in]
     for name in listed:
@@ -862,6 +886,7 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
         path = _load_component(bundle_dir, entry, f"{label} arm {name}", f)
         if path is None or not isinstance(entry, Mapping):
             continue
+        arenas[rr.arena_directory(reg.flag(name.replace("_", "-"), "--out") or name)] = path
         envelope = _read_json(path, f"{label} arm {name}", f)
         read = check_arm(
             name, entry, envelope, reg=reg, sha=sha, facts=facts,
@@ -872,7 +897,25 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
     check_budget(run, facts, label, f)
     check_arm_identities(arms, reg, label, f)
 
-    if not facts.completed and not {PRIMARY, SYMMETRY, POSITIVE_CONTROL} <= set(arms):
+    judged: tuple[Any, ...] | None = None
+    if {PRIMARY, SYMMETRY, POSITIVE_CONTROL} <= set(arms):
+        judged = tuple(arms[name].games for name in (PRIMARY, SYMMETRY, POSITIVE_CONTROL))
+    outcome = RunOutcome(role, run_id, None, facts.games, sha)
+    outcome.attempt = rr.Attempt(
+        run_id,
+        role,
+        sha,
+        record,
+        sha256_file(run_path),
+        facts.completed,
+        tuple(facts.interruptions),
+        # A symmetry or positive-control VOID: the judged arms alone make it VOID.
+        control_void=judged is not None and compute_verdict(*judged).verdict == VOID,
+        devices_registered=reg.devices is not None,
+        iterations=iter_path,
+        arenas=arenas,
+    )
+    if not facts.completed and judged is None:
         # VOID by status (section 7.1, "Interruptions"); the judged arms never all ran.
         stored = run.get("verdict")
         if not isinstance(stored, Mapping) or stored.get("verdict") != VOID:
@@ -880,20 +923,51 @@ def verify_run(run: Any, bundle_dir: Path, git: Git, rc_sha: str, f: Findings) -
                 f"{label}: run.json status is not COMPLETED, so the stored verdict must be "
                 f"'VOID', not {stored.get('verdict') if isinstance(stored, Mapping) else stored!r}"
             )
-        reasons = tuple(facts.interruptions)
-        f.notes.append(f"{label}: verdict VOID ({'; '.join(reasons)}; listed, not judged)")
-        return RunOutcome(role, run_id, VOID, facts.games, sha, reasons)
-    if facts.completed and set(arms) != set(reg.arms):
-        return RunOutcome(role, run_id, None, facts.games, sha)
+        outcome.verdict, outcome.reasons = VOID, tuple(facts.interruptions)
+        f.notes.append(f"{label}: verdict VOID ({'; '.join(outcome.reasons)}; listed, not judged)")
+    elif not facts.completed or set(arms) == set(reg.arms):
+        outcome.judged = judged
+    return outcome
+
+
+def check_reproduction(
+    listed: Sequence[tuple[Mapping[str, Any], RunOutcome]], bundle_dir: Path, f: Findings
+) -> dict[str, list[str]]:
+    """The re-run rule (section 7.1, "After a VOID"): ``{re-run: why it is non-reproducing}``.
+
+    Every attempt interrupted after it launched something needs the compare record
+    of its re-run; ``release_reproduction.review`` checks each record against the
+    bundled files and recomputes its outcome. The record is re-hashed here.
+    """
+    from scripts import release_reproduction as rr
+
+    def load(reference: Any, label: str) -> Any:
+        path = _load_component(bundle_dir, reference, label, f)
+        return None if path is None else _read_json(path, label, f)
+
+    attempts = [(o.attempt, run.get("reproduction")) for run, o in listed if o.attempt is not None]
+    problems, non_reproducing = rr.review(attempts, load)
+    f.problems.extend(problems)
+    return non_reproducing
+
+
+def judge(
+    run: Mapping[str, Any], outcome: RunOutcome, non_reproducing: Sequence[str], f: Findings
+) -> None:
+    """Recompute an attempt's verdict, the re-run rule applied, and compare the stored one."""
+    from alpha_zero.evaluation.a1_protocol import compute_verdict
+
+    if outcome.judged is None:
+        return
+    label = f"run {outcome.run_id} ({outcome.role})"
     computed = compute_verdict(
-        arms[PRIMARY].games,
-        arms[SYMMETRY].games,
-        arms[POSITIVE_CONTROL].games,
-        interruptions=facts.interruptions,
+        *outcome.judged,
+        interruptions=outcome.attempt.interruptions,
+        non_reproducing=non_reproducing,
     )
     compare_verdict(run.get("verdict"), computed.to_dict(), label, f)
     f.notes.append(f"{label}: verdict {computed.verdict} ({'; '.join(computed.reasons)})")
-    return RunOutcome(role, run_id, computed.verdict, facts.games, sha, computed.reasons)
+    outcome.verdict, outcome.reasons = computed.verdict, computed.reasons
 
 
 def check_void_arms(
@@ -939,6 +1013,10 @@ def compare_verdict(stored: Any, computed: Mapping[str, Any], label: str, f: Fin
             f"{computed['verdict']!r} ({'; '.join(computed['reasons'])})"
         )
         return
+    if stored.get("label") != computed.get("label"):
+        f.problems.append(
+            f"{label}: verdict label {stored.get('label')!r} != {computed.get('label')!r}"
+        )
     for key in ("mde_alpha025_80pct", "hull_ratio", "mde_alpha025_80pct_hull"):
         if not _close(stored.get(key), computed[key]):
             f.problems.append(f"{label}: verdict {key} {stored.get(key)!r} != {computed[key]!r}")
@@ -1244,9 +1322,13 @@ def verify(
     rc_sha = str(bundle["rc_sha"])
     try:
         check_release_refs(bundle, git, head, repo_root, f)
-        outcomes = [
-            o for run in bundle["runs"] if (o := verify_run(run, bundle_dir, git, rc_sha, f))
+        listed = [
+            (run, o) for run in bundle["runs"] if (o := verify_run(run, bundle_dir, git, rc_sha, f))
         ]
+        outcomes = [o for _, o in listed]
+        non_reproducing = check_reproduction(listed, bundle_dir, f)
+        for run, outcome in listed:
+            judge(run, outcome, non_reproducing.get(outcome.run_id, ()), f)
         judged = judged_attempts(outcomes, f)
         for outcome in judged.values():
             check_play_path(git, outcome, [rc_sha, head], play, f)

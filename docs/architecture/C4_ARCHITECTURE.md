@@ -470,8 +470,8 @@ flowchart TD
         Price["price_card\neach argv through its runner's own parser\n(utils/game_budget.py)"]:::comp
         Static["refuse_*\nplaceholder sha · MCTS_* override\nimplicit device on a pinned card"]:::comp
         Preflight["preflight in the pinned child\nassert_running_pinned + TORCH_REPORT_CODE"]:::comp
-        Launch["run invocations in order\nrun.json · logs · error_tail"]:::comp
-        Probe["--probe\nthrowaway run directory, launches nothing"]:::comp
+        Probe["rehearsal: every run, in a throwaway directory\nlaunches nothing; --probe stops here"]:::comp
+        Launch["claim runs/card_id, repeat the checks\nrun invocations in order\nrun.json (launched · rehearsal · torch_wheel) · logs"]:::comp
     end
 
     subgraph Pinned["alpha_zero/local/pinned_env.py"]
@@ -481,23 +481,28 @@ flowchart TD
 
     subgraph Devices["alpha_zero/local/devices.py"]
         Env["apply_device_environment\nCUDA_VISIBLE_DEVICES · PCI_BUS_ID order\nCUBLAS_WORKSPACE_CONFIG -> device_plan"]:::util
-        Problem["device_problem\npin installed · ordinal exists · kernels for the GPU\none real CUDA op · expected GPU at each ordinal"]:::util
+        Problem["device_problem\npin installed · ordinal exists · kernels for the GPU\none real CUDA op · driver readable · expected GPU at each ordinal"]:::util
     end
 
     Refuse["REFUSED / FAILED\nnothing launched"]:::stop
     Runners["training_civ6 · evaluation.benchmark\ncalibrate_throughput · check_determinism\n(seeded GPU runs: utils/seeding\nenforce_deterministic_backend)"]:::ext
-    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices"]:::comp
+    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices\nre-run rule recomputed (release_reproduction.py)"]:::comp
 
     Registration -. "tests hold cards equal to it" .-> Card
     Card --> Price --> Static
     Static -->|"problem"| Refuse
     Static --> Src --> Venv --> Env --> Preflight --> Problem
     Problem -->|"problem"| Refuse
-    Problem --> Probe
-    Problem --> Launch --> Runners
+    Problem -->|"ok"| Probe
+    Probe -->|"PROBED"| Launch --> Runners
     Launch -->|"run.json"| Verify
     Registration --> Verify
 ```
+
+**Rehearsal first.** A run goes through the pin, the preflight and the device check twice: once
+in a throwaway `runs/probe-<card_id>-<stamp>` directory, and again after it has claimed
+`runs/<card_id>`. The venv is cached by commit and torch pin, so the second pass repeats only the
+source export and the checks. A card that is refused in the rehearsal has not used its `card_id`.
 
 **Why the device comes from the runner's parser.** `run_card.invocation_devices` reads the parsed
 namespace, not the argv tokens: argparse accepts `--dev cuda:1`, and the benchmark defaults to

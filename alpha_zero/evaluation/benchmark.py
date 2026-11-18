@@ -84,6 +84,7 @@ from alpha_zero.evaluation.scoring import (
 )
 from alpha_zero.evaluation.scoring import win_rate as legacy_win_rate
 from alpha_zero.storage.models import EvaluationResult
+from alpha_zero.utils.atomic_io import create_text_atomically
 from alpha_zero.utils.game_budget import (
     EXIT_CODE_REFUSED,
     add_budget_arguments,
@@ -981,8 +982,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             candidate_id=candidate_id,
         )
     args.out.mkdir(parents=True, exist_ok=True)
-    with open(target, "x", encoding="utf-8") as fh:  # "x": refuse a file created meanwhile
-        fh.write(json.dumps(envelope, indent=2))
+    # Refuses a file created meanwhile, and a kill mid-write leaves no result.json at all.
+    create_text_atomically(target, json.dumps(envelope, indent=2))
     (args.out / "report.md").write_text(render_report(envelope), encoding="utf-8")
     logger.info("Wrote %s and %s", args.out / "result.json", args.out / "report.md")
     return 0

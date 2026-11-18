@@ -53,6 +53,13 @@ from alpha_zero.utils.data_root import DataRootError, resolve_data_root
 logger = logging.getLogger(__name__)
 
 MARKER_NAME = ".pinned.json"
+#: pip's installation report for the pinned torch install, kept inside the venv.
+TORCH_REPORT_NAME = ".torch-install-report.json"
+#: The distribution whose wheel is recorded, as a PEP 503 normalised name.
+TORCH_DISTRIBUTION = "torch"
+_SHA256_PREFIX = "sha256="
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_NAME_SEPARATORS_RE = re.compile(r"[-_.]+")
 _SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$|^HEAD$")
 # An exact pin only: a range would let two builds of one card resolve differently.
 # ``torch==X.Y.Z`` with an optional build tag (PEP 440 local version, ``+cu128``).
@@ -110,6 +117,72 @@ class TorchPin:
 
 
 @dataclass(frozen=True)
+class TorchWheel:
+    """The wheel pip installed for a torch pin: where it came from and its sha256.
+
+    A pin names a version and a build; this names the file. It is a record only:
+    nothing compares it, and a run is never refused for lacking it.
+    """
+
+    url: str
+    sha256: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"url": self.url, "sha256": self.sha256}
+
+    @classmethod
+    def from_mapping(cls, data: Any) -> TorchWheel | None:
+        """A marker's ``torch_wheel`` value back as a :class:`TorchWheel`, else ``None``."""
+        if not isinstance(data, Mapping):
+            return None
+        url, sha256 = data.get("url"), data.get("sha256")
+        if not isinstance(url, str) or not isinstance(sha256, str):
+            return None
+        return cls(url, sha256) if _SHA256_HEX_RE.fullmatch(sha256) else None
+
+
+def torch_wheel_from_report(report: Path) -> TorchWheel | None:
+    """The torch wheel named in a ``pip install --report`` file, or ``None``.
+
+    pip's installation report lists what it installed under ``install``; each
+    entry has ``metadata.name`` and ``download_info`` (``url`` and
+    ``archive_info.hashes.sha256``, or the older ``archive_info.hash`` spelt
+    ``sha256=<hex>``). Anything missing or malformed yields ``None`` and a
+    warning: the hash is a record, so its absence must not fail a run.
+    """
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+        entries = data["install"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.warning("no torch wheel hash: %s is not a pip report (%s)", report, exc)
+        return None
+    found: list[TorchWheel | None] = []
+    for entry in entries if isinstance(entries, list) else []:
+        try:
+            name = _NAME_SEPARATORS_RE.sub("-", str(entry["metadata"]["name"])).lower()
+            if name != TORCH_DISTRIBUTION:
+                continue
+            info = entry["download_info"]
+            archive = info["archive_info"]
+            digest = (archive.get("hashes") or {}).get("sha256")
+            if digest is None and str(archive.get("hash", "")).startswith(_SHA256_PREFIX):
+                digest = str(archive["hash"])[len(_SHA256_PREFIX) :]
+            found.append(TorchWheel.from_mapping({"url": info["url"], "sha256": digest}))
+        except (KeyError, TypeError, AttributeError) as exc:
+            logger.warning("no torch wheel hash: malformed entry in %s (%s)", report, exc)
+            return None
+    if len(found) > 1:  # pip installs one torch; a report naming two cannot say which
+        logger.warning("no torch wheel hash: %s lists %d torch installs", report, len(found))
+        return None
+    if found:
+        if found[0] is None:
+            logger.warning("no torch wheel hash: %s gives no sha256 for torch", report)
+        return found[0]
+    logger.warning("no torch wheel hash: %s lists no %s install", report, TORCH_DISTRIBUTION)
+    return None
+
+
+@dataclass(frozen=True)
 class PinnedEnv:
     """A prepared pinned run. ``venv`` is derived from ``python``'s location."""
 
@@ -118,6 +191,8 @@ class PinnedEnv:
     sha: str = ""
     wheel_sha256: str = ""
     torch_pin: TorchPin | None = None
+    #: The torch wheel pip installed for ``torch_pin``, when pip reported it.
+    torch_wheel: TorchWheel | None = None
 
     def __post_init__(self) -> None:
         if self.python.parent.name not in {"Scripts", "bin"}:
@@ -213,8 +288,11 @@ def _build_venv(
     full_sha: str,
     runner: Runner,
     torch_pin: TorchPin | None = None,
-) -> str:
-    """Create ``venv`` and install a non-editable wheel of ``src``. Returns the wheel sha256.
+) -> tuple[str, TorchWheel | None]:
+    """Create ``venv`` and install a non-editable wheel of ``src``.
+
+    Returns the project wheel's sha256 and, for a ``torch_pin``, the torch wheel
+    pip installed (``None`` when pip's report does not give it).
 
     With ``torch_pin`` the exact torch is installed from its index *first*; the
     wheel's own ``torch>=2.0.0`` requirement is then already satisfied, so pip
@@ -223,6 +301,7 @@ def _build_venv(
     env = child_env()
     runner([sys.executable, "-m", "venv", str(venv)], env=env)
     py = _venv_python(venv)
+    torch_wheel: TorchWheel | None = None
     if torch_pin is not None:
         logger.info(
             "installing %s from %s into %s (a large download; pip's output is captured)",
@@ -230,10 +309,12 @@ def _build_venv(
             torch_pin.index_url,
             venv,
         )
-        runner(
-            [py, "-m", "pip", "install", torch_pin.spec, "--index-url", torch_pin.index_url],
-            env=env,
-        )
+        report = venv / TORCH_REPORT_NAME
+        install = [py, "-m", "pip", "install", "--report", str(report)]
+        runner([*install, torch_pin.spec, "--index-url", torch_pin.index_url], env=env)
+        torch_wheel = torch_wheel_from_report(report)
+        if torch_wheel is not None:
+            logger.info("torch wheel %s sha256 %s", torch_wheel.url, torch_wheel.sha256)
     runner([py, "-m", "pip", "wheel", str(src), "--no-deps", "-w", str(wheel_dir)], env=env)
     wheels = sorted(wheel_dir.glob("alpha_zero-*.whl"))
     if not wheels:
@@ -242,13 +323,14 @@ def _build_venv(
     # Installing the wheel (not --no-deps) pulls the dependencies pyproject declares.
     runner([py, "-m", "pip", "install", str(wheel)], env=env)
     wheel_hash = _sha256_file(wheel)
-    (venv / MARKER_NAME).write_text(
-        json.dumps(
-            {"sha": full_sha, "wheel_sha256": wheel_hash, "torch": _marker_torch(torch_pin)}
-        ),
-        encoding="utf-8",
-    )
-    return wheel_hash
+    marker = {
+        "sha": full_sha,
+        "wheel_sha256": wheel_hash,
+        "torch": _marker_torch(torch_pin),
+        "torch_wheel": None if torch_wheel is None else torch_wheel.as_dict(),
+    }
+    (venv / MARKER_NAME).write_text(json.dumps(marker), encoding="utf-8")
+    return wheel_hash, torch_wheel
 
 
 def resolve_commit(sha: str, *, runner: Runner | None = None, repo_root: Path | None = None) -> str:
@@ -306,16 +388,24 @@ def prepare_pinned_run(
 
     marker = venv / MARKER_NAME
     wheel_hash = ""
+    torch_wheel: TorchWheel | None = None
     if marker.is_file() and _venv_python(venv).exists():
         data = json.loads(marker.read_text(encoding="utf-8"))
+        # ``torch_wheel`` is a record, not part of the venv's identity: a marker
+        # written before it existed is still this venv.
         if data.get("sha") == full_sha and data.get("torch") == _marker_torch(torch_pin):
             wheel_hash = str(data.get("wheel_sha256", ""))
+            torch_wheel = TorchWheel.from_mapping(data.get("torch_wheel"))
             logger.info("reusing pinned venv %s", venv)
+            if torch_pin is not None and torch_wheel is None:
+                logger.warning("no torch wheel hash: %s was built without recording it", venv)
     if not wheel_hash:
         if venv.exists():
             shutil.rmtree(venv, ignore_errors=True)
         try:
-            wheel_hash = _build_venv(venv, src, run_dir / "wheel", full_sha, run, torch_pin)
+            wheel_hash, torch_wheel = _build_venv(
+                venv, src, run_dir / "wheel", full_sha, run, torch_pin
+            )
         finally:
             _clean_build_artifacts(src)
     _make_read_only(src)
@@ -325,6 +415,7 @@ def prepare_pinned_run(
         sha=full_sha,
         wheel_sha256=wheel_hash,
         torch_pin=torch_pin,
+        torch_wheel=torch_wheel,
     )
 
 

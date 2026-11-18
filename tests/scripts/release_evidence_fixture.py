@@ -8,6 +8,13 @@ writes), the stored verdict from ``a1_protocol.compute_verdict``, and every
 sha256 from the files as written. A test then breaks one thing and asserts the
 verifier notices.
 
+An interrupted attempt that has a re-run also gets the compare record section 7.1
+("After a VOID") requires, shaped as ``python -m alpha_zero.evaluation.reproduction
+compare --out`` writes it: both runs' identities and their digests, the arena and
+iteration digests taken from the bundled files and the checkpoint digests stand-ins
+(:func:`checkpoint_digests`; a bundle holds no checkpoints). The outcome stored
+beside it and the re-run's verdict come from ``scripts/release_reproduction.py``.
+
 The repository is a throwaway git repo (:class:`tests.scripts.git_fixture.GitRepo`)
 holding a copy of the real ``docs/EVALUATION.md`` with its "Branch in force"
 slot filled (as T0b will fill it), so the commands are the registered ones.
@@ -23,6 +30,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.evaluation import reproduction as rp
 from alpha_zero.evaluation.a1_protocol import compute_verdict, protocol_sha256, registered_protocol
 from alpha_zero.evaluation.a1_registration import (
     A1R_SEED,
@@ -38,6 +46,7 @@ from alpha_zero.evaluation.benchmark import (
     _result_record,
 )
 from alpha_zero.evaluation.benchmark_evidence import SEARCH_SEMANTICS
+from scripts import release_reproduction as rr
 from scripts import verify_release_evidence as vre
 from scripts.check_branch_direction import ApiError
 from tests.scripts.git_fixture import GitRepo
@@ -51,6 +60,11 @@ RC_TAG = "v2.1.0-rc.1"
 BUNDLE_DIR = Path("docs/evidence/release_v2_1_0")
 GENERATED = "2026-12-01T00:00:00+00:00"
 SEEDS = {"A1": 20261111, "A1-R": A1R_SEED}
+#: The NVIDIA driver every fixture run reports unless its spec says otherwise.
+DRIVER = "576.88"
+#: The registered training command's ``--save_interval``: which checkpoints a run saves.
+SAVE_INTERVAL = 5
+JUDGED_ARMS = ("primary", "symmetry", "positive_control")
 
 
 def evaluation_text(branch: str = "40") -> str:
@@ -121,10 +135,44 @@ class RunSpec:
     edit_device_plan: Callable[[dict[str, Any]], dict[str, Any] | None] | None = None
     #: Write the record a ``run_card --probe`` leaves.
     probe: bool = False
+    #: ``run.json``'s ``launched``: the invocations run_card started. ``None`` is what
+    #: run_card writes -- every recorded invocation and, for an attempt that did not
+    #: record them all, the one that was in flight.
+    launched: list[str] | None = None
+    #: ``run.json``'s ``started_at``; ``None`` spaces the attempts a day apart, in bundle order.
+    started_at: str | None = None
+    #: The NVIDIA driver version ``preflight.nvidia_smi`` reports: one string for
+    #: every GPU, or one per GPU; ``None`` records that nvidia-smi could not be run.
+    driver: str | Sequence[str] | None = DRIVER
+    #: Write ``run.json`` without ``launched`` and ``preflight``, as run_card wrote it
+    #: before those keys existed (``started_at`` it has always written).
+    legacy_run_json: bool = False
+    #: Edit ``run.json`` just before it is written (a missing key, a ``torch_wheel``...).
+    edit_run_json: Callable[[dict[str, Any]], None] | None = None
+    #: Rotate the primary arm's pairs: the same counts and verdict, other games.
+    primary_rotation: int = 0
+    #: Salt of the stand-in checkpoint digests: another value is other trained weights.
+    checkpoint_salt: str = ""
+    #: An interrupted attempt with a re-run gets its compare record unless this is False.
+    compare_record: bool = True
+    #: Edit the compare record before it is written and its outcome derived.
+    edit_record: Callable[[dict[str, Any]], None] | None = None
 
     @property
     def seed(self) -> int:
         return SEEDS[self.role]
+
+
+@dataclass
+class Written:
+    """One attempt as written: its bundle entry (no verdict yet) and what judges it."""
+
+    spec: RunSpec
+    entry: dict[str, Any]
+    attempt: rr.Attempt
+    #: The judged arms' per-game records; ``None`` when they never all ran.
+    judged: tuple[list[dict[str, Any]], ...] | None
+    interruptions: list[str]
 
 
 def _envelope(
@@ -194,7 +242,9 @@ def _sides(argv: list[str]) -> tuple[str, str]:
 
 def _results(name: str, n: int, spec: RunSpec) -> list[dict[str, Any]]:
     if name == "primary":
-        return games(PRIMARY[spec.primary], n)
+        pairs = PRIMARY[spec.primary]
+        shift = spec.primary_rotation % len(pairs)
+        return games([*pairs[shift:], *pairs[:shift]], n)
     if name == "symmetry":
         return games(spec.symmetry, n)
     if name.startswith("secondary"):
@@ -239,8 +289,32 @@ def _write(path: Path, text: str) -> dict[str, str]:
     return {"sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[str, Any]:
-    """Write one attempt's components under ``bundle_dir/<run_id>/``; return its entry."""
+def _launched(spec: RunSpec, names: Sequence[str]) -> list[str]:
+    """The invocations run_card started: those it recorded and the one in flight."""
+    if spec.launched is not None:
+        return list(spec.launched)
+    return list(names) if spec.recorded is None else list(names[: spec.recorded + 1])
+
+
+def _nvidia_smi(spec: RunSpec, gpus: Sequence[str]) -> Any:
+    """``preflight.nvidia_smi`` as run_card records it: one csv line per GPU, or an error."""
+    if spec.driver is None:
+        return {"error": "FileNotFoundError"}
+    drivers = [spec.driver] * len(gpus) if isinstance(spec.driver, str) else list(spec.driver)
+    return [
+        f"{i}, {name}, 00000000:0{i + 1}:00.0, {driver}"
+        for i, (name, driver) in enumerate(zip(gpus, drivers, strict=True))
+    ]
+
+
+def write_run(
+    bundle_dir: Path, spec: RunSpec, sha: str, section: str, position: int = 0
+) -> Written:
+    """Write one attempt's components under ``bundle_dir/<run_id>/``.
+
+    The entry has no verdict yet: a re-run's depends on its compare record
+    (:func:`write_records`, then :func:`stored_verdict`).
+    """
     base = Path(spec.run_id)
     registered = registered_invocations(section, card_id=spec.run_id, seed=spec.seed)
     invocations = []
@@ -280,12 +354,21 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
         "invocations": invocations,
     }
     plan = registered_device_plan(section)
+    devices = registered_devices(section)
+    run_json["started_at"] = spec.started_at or f"2026-11-{11 + position:02d}T08:00:00Z"
+    if not spec.legacy_run_json:
+        run_json["launched"] = _launched(spec, list(registered))
+        if devices is not None:
+            gpus = [devices.gpus[i] for i in sorted(devices.gpus)]
+            run_json["preflight"] = {"nvidia_smi": _nvidia_smi(spec, gpus)}
     if plan is not None and spec.edit_device_plan is not None:
         plan = spec.edit_device_plan(plan)
     if plan is not None:
         run_json["device_plan"] = plan
     if spec.probe:
         run_json["probe"] = True
+    if spec.edit_run_json is not None:
+        spec.edit_run_json(run_json)
     entry: dict[str, Any] = {
         "run_id": spec.run_id,
         "role": spec.role,
@@ -308,16 +391,20 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
         )
         for i in range(1, spec.iterations_written + 1)
     ]
+    iterations: Path | None = None
     if lines:
         rel = (base / "iterations.jsonl").as_posix()
         entry["iterations"] = {"path": rel, **_write(bundle_dir / rel, "\n".join(lines) + "\n")}
+        iterations = bundle_dir / rel
     entry["arms"] = {}
+    arenas: dict[str, Path] = {}
     for name, (cand, opp, rec, launched) in arm_records.items():
         envelope = _envelope(cand, opp, rec, seed=spec.seed, sha=sha, launched=launched)
         rel = (base / "arena" / name / "result.json").as_posix()
         written = _write(bundle_dir / rel, json.dumps(envelope, indent=2))
         summary = vre.arm_summary(envelope["results"][0], vre.ARM_CONFIDENCE.get(name, 0.95))
         entry["arms"][name] = {"path": rel, **written, **summary}
+        arenas[rr.arena_directory(str(flag_value(launched, "--out")))] = bundle_dir / rel
     interruptions = []
     if spec.status != "COMPLETED":
         interruptions.append(f"run.json status is {spec.status!r}")
@@ -325,16 +412,114 @@ def write_run(bundle_dir: Path, spec: RunSpec, sha: str, section: str) -> dict[s
         interruptions.append("resumed")
     if any(n.startswith("MCTS_") for n in spec.env_var_names):
         interruptions.append("MCTS_")
-    if {"primary", "symmetry", "positive_control"} <= set(arm_records):
-        entry["verdict"] = compute_verdict(
-            arm_records["primary"][2],
-            arm_records["symmetry"][2],
-            arm_records["positive_control"][2],
-            interruptions=interruptions,
-        ).to_dict()
-    else:  # the judged arms never all ran: VOID by status
-        entry["verdict"] = {"verdict": "VOID", "reasons": interruptions}
-    return entry
+    judged = None
+    if set(JUDGED_ARMS) <= set(arm_records):
+        judged = tuple(arm_records[name][2] for name in JUDGED_ARMS)
+    attempt = rr.Attempt(
+        spec.run_id,
+        spec.role,
+        sha,
+        run_json,
+        entry["run_json"]["sha256"],
+        spec.status == "COMPLETED",
+        tuple(interruptions),
+        control_void=judged is not None and compute_verdict(*judged).verdict == "VOID",
+        devices_registered=devices is not None,
+        iterations=iterations,
+        arenas=arenas,
+    )
+    return Written(spec, entry, attempt, judged, interruptions)
+
+
+def checkpoint_digests(spec: RunSpec) -> dict[str, dict[str, str]]:
+    """Stand-in tensor digests for the checkpoints the attempt saved.
+
+    ``checkpoint_0`` and one every :data:`SAVE_INTERVAL` finished iterations, each
+    a function of the seed, the iteration and the spec's salt alone, so an attempt
+    and its faithful re-run agree. Nothing in a bundle anchors these.
+    """
+    saved = [0, *range(SAVE_INTERVAL, spec.iterations_written + 1, SAVE_INTERVAL)]
+    salt = {n: "" if n == 0 else spec.checkpoint_salt for n in saved}  # the seed fixes number 0
+    return {
+        f"checkpoint_{n}.pt": {
+            "conv.weight": hashlib.sha256(f"{spec.seed}:{n}:{salt[n]}".encode()).hexdigest()
+        }
+        for n in saved
+    }
+
+
+def run_digest(written: Written) -> dict[str, Any]:
+    """What ``reproduction.run_digest`` gives for the attempt's run directory, as recorded."""
+    unreadable: dict[str, str] = {}
+    attempt = written.attempt
+    digest = {
+        rp.SCHEMA_KEY: rp.DIGEST_SCHEMA_VERSION,
+        rp.COMPONENT_CHECKPOINTS: checkpoint_digests(written.spec),
+        rp.COMPONENT_ARENAS: {name: rp.arena_digest(p) for name, p in attempt.arenas.items()},
+        rp.COMPONENT_ITERATIONS: (
+            rp.iteration_digests(attempt.iterations, unreadable) if attempt.iterations else {}
+        ),
+        rp.UNREADABLE: unreadable,
+    }
+    return dict(json.loads(json.dumps(digest, sort_keys=True)))
+
+
+def compare_record(void: Written, rerun: Written) -> dict[str, Any]:
+    """The record ``reproduction compare <void's dir> <re-run's dir> --out`` writes."""
+    sides = {rp.RECORD_ATTEMPT: void, rp.RECORD_RERUN: rerun}
+    digests = {side: run_digest(written) for side, written in sides.items()}
+    status, differences = rp.compare_status(digests[rp.RECORD_ATTEMPT], digests[rp.RECORD_RERUN])
+    record: dict[str, Any] = {
+        "tool": "alpha_zero.evaluation.reproduction compare",
+        rp.RECORD_SCHEMA_KEY: rp.RECORD_SCHEMA_VERSION,
+        "components_compared": rp.compared_components(digests[rp.RECORD_ATTEMPT]),
+        "components": rp.component_counts(digests[rp.RECORD_ATTEMPT]),
+        "rerun_components": rp.component_counts(digests[rp.RECORD_RERUN]),
+        rp.RECORD_DIFFERENCES: differences,
+        rp.RECORD_DIGESTS: digests,
+        rp.RECORD_STATUS: status,
+    }
+    for side, written in sides.items():
+        attempt = written.attempt
+        record[f"{side}_dir"] = f"E:\\civ6az-data\\runs\\{attempt.run_id}"
+        record[side] = {
+            "card_id": attempt.run_id,
+            "sha": attempt.sha,
+            "status": attempt.record["status"],
+            rp.RUN_JSON_SHA256: attempt.run_json_sha256,
+        }
+    return record
+
+
+def write_records(bundle_dir: Path, runs: Sequence[Written]) -> dict[str, list[str]]:
+    """Write each interrupted attempt's compare record; ``{re-run: why it is non-reproducing}``."""
+    attempts = [written.attempt for written in runs]
+    non_reproducing: dict[str, list[str]] = {}
+    for void in runs:
+        rerun = rr.record_rerun(void.attempt, attempts)
+        if rerun is None or not void.spec.compare_record:
+            continue
+        record = compare_record(void, next(w for w in runs if w.attempt is rerun))
+        if void.spec.edit_record is not None:
+            void.spec.edit_record(record)
+        rel = rr.record_name(void.spec.run_id)
+        saved = _write(bundle_dir / rel, json.dumps(record, indent=2, sort_keys=True))
+        result = rr.outcome(record, void.attempt, rerun)
+        void.entry["reproduction"] = rr.bundle_reference({"path": rel, **saved}, rerun, result)
+        if result.kind == rr.OUTCOME_NON_REPRODUCING:
+            non_reproducing.setdefault(rerun.run_id, []).extend(
+                rr.verdict_reasons(void.attempt, result)
+            )
+    return non_reproducing
+
+
+def stored_verdict(written: Written, non_reproducing: Sequence[str] = ()) -> dict[str, Any]:
+    """The verdict the bundle stores for an attempt, the re-run rule applied."""
+    if written.judged is None:  # the judged arms never all ran: VOID by status
+        return {"verdict": "VOID", "reasons": written.interruptions}
+    return compute_verdict(
+        *written.judged, interruptions=written.interruptions, non_reproducing=non_reproducing
+    ).to_dict()
 
 
 def write_bundle(
@@ -348,7 +533,14 @@ def write_bundle(
     report: str | None = None,
 ) -> dict[str, Any]:
     section = registered_protocol(document)
-    runs = [write_run(bundle_dir, s, rc_sha if s.at_rc else sha, section) for s in specs]
+    written = [
+        write_run(bundle_dir, s, rc_sha if s.at_rc else sha, section, position)
+        for position, s in enumerate(specs)
+    ]
+    non_reproducing = write_records(bundle_dir, written)
+    for item in written:
+        item.entry["verdict"] = stored_verdict(item, non_reproducing.get(item.spec.run_id, ()))
+    runs = [item.entry for item in written]
     judged = {r["role"]: r["verdict"]["verdict"] for r in runs if r["verdict"]["verdict"] != "VOID"}
     claimed = all(judged.get(role) == "PASS" for role in vre.CLAIM_ROLES)
     total = sum(r["games"] for r in runs)

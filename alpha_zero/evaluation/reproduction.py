@@ -34,15 +34,23 @@ Three rules keep a pass from being vacuous:
   difference, never skipped: an unverifiable component has not been shown to
   reproduce;
 * a checkpoint with no tensors is unreadable, not "equal to anything";
-* :func:`compared_components` says how many components the reference offered, and
-  the CLI exits :data:`EXIT_NOTHING_TO_COMPARE` -- not 0 -- when that is none.
+* :func:`compare_status` is the one place the status is decided, and it is
+  ``NOTHING TO COMPARE`` -- never a pass -- when the reference holds nothing beyond
+  :data:`SEED_FIXED_CHECKPOINT`: that checkpoint is written before any training and
+  is fixed by the seed alone, so an attempt that left only it had shown nothing of
+  its result (section 7.1, "After a VOID").
 
 CLI::
 
     python -m alpha_zero.evaluation.reproduction compare <attempt_dir> <rerun_dir> [--out r.json]
 
 prints ``REPRODUCED`` (exit 0), ``DIFFERS`` and the differences (exit 1) or
-``NOTHING TO COMPARE`` (exit 2).
+``NOTHING TO COMPARE`` (exit 2). ``--out`` writes the **compare record** that goes
+in the release bundle beside both attempts (``docs/evidence/SCHEMA.md``): the
+status and differences, each run's identity (``card_id``, ``sha``, ``status`` and
+the sha256 of its ``run.json``; ``null`` for a directory without one) and both
+digests, so a reader can recompute the status from the record alone
+(``scripts/release_reproduction.py`` does).
 """
 
 from __future__ import annotations
@@ -61,6 +69,7 @@ from typing import Any
 import torch
 
 from alpha_zero.training.run_record import ITERATIONS_FILE, read_iteration_records
+from alpha_zero.utils.atomic_io import write_text_atomically
 from alpha_zero.utils.checkpoint import extract_state_dict, safe_load_checkpoint
 
 logger = logging.getLogger(__name__)
@@ -78,15 +87,30 @@ __all__ = [
     "EXIT_NOTHING_TO_COMPARE",
     "EXIT_REPRODUCED",
     "ITERATION_RECORD_EXCLUDED_FIELDS",
+    "RECORD_ATTEMPT",
+    "RECORD_DIFFERENCES",
+    "RECORD_DIGESTS",
+    "RECORD_RERUN",
+    "RECORD_SCHEMA_KEY",
+    "RECORD_SCHEMA_VERSION",
+    "RECORD_STATUS",
+    "RUN_IDENTITY_FIELDS",
+    "RUN_JSON_SHA256",
+    "RUN_RECORD_FILE",
+    "SEED_FIXED_CHECKPOINT",
     "STATUS_DIFFERS",
     "STATUS_NOTHING_TO_COMPARE",
     "STATUS_REPRODUCED",
+    "arena_digest",
     "checkpoint_digest",
     "compare_digests",
+    "compare_status",
     "compared_components",
     "component_counts",
+    "iteration_digests",
     "main",
     "run_digest",
+    "run_identity",
     "tensor_digest",
 ]
 
@@ -104,6 +128,12 @@ ARENA_RESULT_FILE = "result.json"
 #: it is a second copy of the last numbered checkpoint, written only by a run that
 #: finished, so an interrupted attempt never has one.
 CHECKPOINT_FILE_RE = re.compile(r"^checkpoint_(\d+)\.pt$")
+#: The checkpoint ``training_civ6`` writes before any training (``checkpoint_0.pt``,
+#: the pinned random initialisation). It is fixed by the seed alone, so it shows
+#: nothing of a run's result: see :func:`compare_status`.
+SEED_FIXED_CHECKPOINT = "checkpoint_0.pt"
+#: ``run_card``'s record of a run, in the run directory (:func:`run_identity`).
+RUN_RECORD_FILE = "run.json"
 
 # ---------------------------------------------------------------------------
 # Digest shape
@@ -156,6 +186,29 @@ EXIT_REPRODUCED = 0
 EXIT_DIFFERS = 1
 #: Also the exit for a run directory that does not exist: never a pass.
 EXIT_NOTHING_TO_COMPARE = 2
+_EXIT_BY_STATUS = {
+    STATUS_REPRODUCED: EXIT_REPRODUCED,
+    STATUS_DIFFERS: EXIT_DIFFERS,
+    STATUS_NOTHING_TO_COMPARE: EXIT_NOTHING_TO_COMPARE,
+}
+
+# ---------------------------------------------------------------------------
+# The compare record (``compare --out``)
+# ---------------------------------------------------------------------------
+
+#: Bumped when the record's shape changes; a reader refuses another version.
+RECORD_SCHEMA_VERSION = 1
+RECORD_SCHEMA_KEY = "schema_version"
+#: The interrupted attempt's side of the record (its identity, and its digest
+#: under :data:`RECORD_DIGESTS`), and the re-run's.
+RECORD_ATTEMPT = "attempt"
+RECORD_RERUN = "rerun"
+RECORD_DIGESTS = "digests"
+RECORD_STATUS = "status"
+RECORD_DIFFERENCES = "differences"
+#: ``run.json`` fields copied into a run's identity block, beside the file's sha256.
+RUN_IDENTITY_FIELDS: tuple[str, ...] = ("card_id", "sha", "status")
+RUN_JSON_SHA256 = "run_json_sha256"
 
 
 # ---------------------------------------------------------------------------
@@ -250,8 +303,12 @@ def _opponent_label(opponent_id: object) -> str:
     return CHECKPOINT_OPPONENT_KIND if text.startswith(CHECKPOINT_OPPONENT_PREFIX) else text
 
 
-def _arena_digest(result_file: Path) -> dict[str, Any]:
-    """The comparable part of one ``result.json``. Raises ``ValueError`` if it has none."""
+def arena_digest(result_file: Path) -> dict[str, Any]:
+    """The comparable part of one ``result.json``. Raises ``ValueError`` if it has none.
+
+    It depends on the file's content alone, not on where the file lives, so a copy
+    of an arm's ``result.json`` (a release bundle's) digests as the original does.
+    """
     envelope = json.loads(result_file.read_text(encoding="utf-8"))
     if not isinstance(envelope, dict):
         raise ValueError("the envelope is not a JSON object")
@@ -286,7 +343,7 @@ def _arena_digests(directory: Path, unreadable: dict[str, str]) -> dict[str, dic
             continue
         logger.debug("digesting arena arm %s", arm)
         try:
-            digests[arm.name] = _arena_digest(result_file)
+            digests[arm.name] = arena_digest(result_file)
         except Exception as exc:  # reported as a difference by compare_digests
             unreadable[f"{COMPONENT_ARENAS}/{arm.name}"] = _reason(exc)
             logger.warning("arena result %s is unreadable: %s", result_file, _reason(exc))
@@ -310,7 +367,13 @@ def _without_excluded(record: Mapping[str, Any]) -> dict[str, Any]:
     return cleaned
 
 
-def _iteration_digests(record_file: Path, unreadable: dict[str, str]) -> dict[str, dict[str, Any]]:
+def iteration_digests(record_file: Path, unreadable: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """``{iteration: record}`` for an ``iterations.jsonl``, without the excluded fields.
+
+    A missing file digests to ``{}``. A file that cannot be read is recorded in
+    ``unreadable`` (under :data:`COMPONENT_ITERATIONS`) and digests to ``{}`` too.
+    Like :func:`arena_digest`, the result depends on the file's content alone.
+    """
     if not record_file.is_file():
         return {}
     logger.debug("digesting iteration records %s", record_file)
@@ -359,7 +422,7 @@ def run_digest(run_dir: str | os.PathLike[str]) -> dict[str, Any]:
         SCHEMA_KEY: DIGEST_SCHEMA_VERSION,
         COMPONENT_CHECKPOINTS: _checkpoint_digests(checkpoint_dir, unreadable),
         COMPONENT_ARENAS: _arena_digests(root / ARENA_DIR_NAME, unreadable),
-        COMPONENT_ITERATIONS: _iteration_digests(checkpoint_dir / ITERATIONS_FILE, unreadable),
+        COMPONENT_ITERATIONS: iteration_digests(checkpoint_dir / ITERATIONS_FILE, unreadable),
         UNREADABLE: unreadable,
     }
     logger.info("%s: %s, %d unreadable", root, component_counts(digest), len(unreadable))
@@ -580,6 +643,64 @@ def compare_digests(reference: Mapping[str, Any], candidate: Mapping[str, Any]) 
     return differences
 
 
+def _shows_a_result(reference: Mapping[str, Any]) -> bool:
+    """Whether a digest holds anything the seed alone does not fix."""
+    trained = set(_components(reference, COMPONENT_CHECKPOINTS)) - {SEED_FIXED_CHECKPOINT}
+    return bool(
+        trained
+        or _components(reference, COMPONENT_ARENAS)
+        or _components(reference, COMPONENT_ITERATIONS)
+    )
+
+
+def compare_status(
+    reference: Mapping[str, Any], candidate: Mapping[str, Any]
+) -> tuple[str, list[str]]:
+    """``(status, differences)`` for an attempt's digest and its re-run's.
+
+    The one place the status is decided (section 7.1, "After a VOID"):
+
+    * :data:`STATUS_DIFFERS` -- :func:`compare_digests` found a difference. That
+      includes a :data:`SEED_FIXED_CHECKPOINT` that differs: the seed fixes it, so
+      a re-run that starts from other weights has not reproduced anything.
+    * :data:`STATUS_NOTHING_TO_COMPARE` -- no difference, and the reference holds
+      nothing beyond :data:`SEED_FIXED_CHECKPOINT` (no component at all, or that
+      checkpoint alone): nothing of the result had been seen. Never a pass.
+    * :data:`STATUS_REPRODUCED` -- no difference, and at least one trained
+      checkpoint, iteration record or arena arm was compared.
+    """
+    differences = compare_digests(reference, candidate)
+    if differences:
+        return STATUS_DIFFERS, differences
+    if not _shows_a_result(reference):
+        return STATUS_NOTHING_TO_COMPARE, differences
+    return STATUS_REPRODUCED, differences
+
+
+def run_identity(run_dir: str | os.PathLike[str]) -> dict[str, Any] | None:
+    """Which run a directory holds, from its ``run.json``; ``None`` when it has none.
+
+    ``{card_id, sha, status, run_json_sha256}``: :data:`RUN_IDENTITY_FIELDS` as
+    ``run_card`` recorded them (``None`` for a field that is absent, or when the
+    file does not parse) and the sha256 of the file's bytes, which ties the record
+    to one ``run.json`` exactly. A directory that ``run_card`` did not write (the
+    determinism check's repeats) has no ``run.json`` and no identity.
+    """
+    record_file = Path(run_dir) / RUN_RECORD_FILE
+    if not record_file.is_file():
+        return None
+    raw = record_file.read_bytes()
+    try:
+        record = json.loads(raw.decode("utf-8"))
+    except ValueError as exc:  # also UnicodeDecodeError: the hash still names the file
+        logger.warning("%s does not parse: %s", record_file, _reason(exc))
+        record = None
+    fields = record if isinstance(record, dict) else {}
+    identity: dict[str, Any] = {name: fields.get(name) for name in RUN_IDENTITY_FIELDS}
+    identity[RUN_JSON_SHA256] = hashlib.sha256(raw).hexdigest()
+    return identity
+
+
 # ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
@@ -602,50 +723,62 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     )
     compare.add_argument("attempt_dir", type=Path, help="the interrupted attempt (the reference)")
     compare.add_argument("rerun_dir", type=Path, help="the same-seed re-run (the candidate)")
-    compare.add_argument("--out", type=Path, default=None, help="also write the outcome as JSON")
+    compare.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="also write the compare record as JSON (it goes in the release bundle)",
+    )
     return parser.parse_args(argv)
 
 
 def _compare_command(args: argparse.Namespace) -> int:
     payload: dict[str, Any] = {
         "tool": "alpha_zero.evaluation.reproduction compare",
+        RECORD_SCHEMA_KEY: RECORD_SCHEMA_VERSION,
         "attempt_dir": str(args.attempt_dir),
         "rerun_dir": str(args.rerun_dir),
+        RECORD_ATTEMPT: run_identity(args.attempt_dir),
+        RECORD_RERUN: run_identity(args.rerun_dir),
     }
     try:
-        reference, candidate = run_digest(args.attempt_dir), run_digest(args.rerun_dir)
+        # Compared as the record stores them (plain JSON, keys sorted): differences are
+        # listed in the digest's key order, so a reader that recomputes them from the
+        # record gets the same ones in the same order.
+        reference, candidate = (
+            json.loads(json.dumps(run_digest(run_dir), sort_keys=True))
+            for run_dir in (args.attempt_dir, args.rerun_dir)
+        )
     except NotADirectoryError as exc:
-        status, exit_code = STATUS_NOTHING_TO_COMPARE, EXIT_NOTHING_TO_COMPARE
-        payload.update({"error": str(exc), "components_compared": 0, "differences": []})
+        status = STATUS_NOTHING_TO_COMPARE
+        payload.update({"error": str(exc), "components_compared": 0, RECORD_DIFFERENCES: []})
         print(f"ERROR: {exc}", file=sys.stderr)
     else:
-        differences = compare_digests(reference, candidate)
-        compared = compared_components(reference)
-        if differences:
-            status, exit_code = STATUS_DIFFERS, EXIT_DIFFERS
-        elif compared == 0:
-            status, exit_code = STATUS_NOTHING_TO_COMPARE, EXIT_NOTHING_TO_COMPARE
-        else:
-            status, exit_code = STATUS_REPRODUCED, EXIT_REPRODUCED
+        status, differences = compare_status(reference, candidate)
         payload.update(
             {
-                "components_compared": compared,
+                "components_compared": compared_components(reference),
                 "components": component_counts(reference),
                 "rerun_components": component_counts(candidate),
-                "differences": differences,
+                RECORD_DIFFERENCES: differences,
+                RECORD_DIGESTS: {RECORD_ATTEMPT: reference, RECORD_RERUN: candidate},
             }
         )
-    payload["status"] = status
+    payload[RECORD_STATUS] = status
     print(status)
-    for difference in payload["differences"]:
+    for difference in payload[RECORD_DIFFERENCES]:
         print(f"  {difference}")
     if status == STATUS_REPRODUCED:
         print(f"  {payload['components_compared']} component(s) compared: {payload['components']}")
+    elif status == STATUS_NOTHING_TO_COMPARE and "error" not in payload:
+        print(
+            f"  the attempt left nothing beyond {SEED_FIXED_CHECKPOINT}, which the seed alone fixes"
+        )
     if args.out is not None:
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        write_text_atomically(args.out, json.dumps(payload, indent=2, sort_keys=True) + "\n")
         logger.info("wrote %s", args.out)
-    return exit_code
+    return _EXIT_BY_STATUS[status]
 
 
 def main(argv: Sequence[str] | None = None) -> int:

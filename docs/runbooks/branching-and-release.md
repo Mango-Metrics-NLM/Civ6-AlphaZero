@@ -163,13 +163,21 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   `python scripts/run_card.py <card> --probe` builds the pinned environment, checks every
   device the card names and launches nothing. It prints the torch build and which GPU each
   invocation will use. It uses a throwaway `runs/probe-<card_id>-<time>` directory, so the
-  card's own single-use directory stays unclaimed. **Probe first:** a card refused at its
-  preflight still uses up its run directory and then needs a new `card_id`.
+  card's own single-use directory stays unclaimed. **Every run rehearses first** in the same
+  way: a card refused at its rehearsal has not claimed its directory, so fix the cause and
+  run the same card again (no new `card_id`). The rehearsal directories are records and
+  may be deleted by hand; the exported source in them is read-only. A card whose directory
+  was already used is refused before any rehearsal.
 - What the probe (and every run) refuses: a device that does not exist, a torch build with no
   kernels for the GPU, a CUDA operation that fails on the device, a GPU other than the one the
   card expects at that ordinal, a torch other than the pinned one, and, on a card that pins
-  torch, any invocation whose device is left to `auto` or a default. A card that pins torch
-  therefore cannot fall back to CPU.
+  torch, any invocation whose device is left to `auto` or a default, and a GPU run whose
+  NVIDIA driver version `nvidia-smi` cannot report. A card that pins torch therefore cannot
+  fall back to CPU, and always records the driver a re-run would be compared under.
+- `run.json` records the torch wheel pip installed (`torch_wheel`: URL and sha256), the
+  rehearsal that preceded the run (`rehearsal`) and the invocations that were started
+  (`launched`, written before each child runs). A killed run leaves no torn checkpoint or
+  `result.json`: both are written through a temporary file.
 - GPU reproduction is checked by the T0b card itself: its first invocation, `determinism`
   (`scripts/check_determinism.py`), trains and judges a small A1-shaped run twice in the
   pinned environment, each repeat in its own process, and must report `REPRODUCED`. Section
@@ -191,8 +199,18 @@ and to the card as a whole. Pricing reminders (worst case, defaults included): a
   finished nothing beyond `checkpoint_0`; the re-run is judged and the bundle says the
   comparison was empty. `DIFFERS` (exit 1): the re-run cannot PASS and no further A1-family
   run starts until section 7.1 is re-registered with a new seed pair. `compare.json` goes in
-  the bundle beside both attempts. The release verifier does not read it yet, so a reviewer
-  must.
+  the bundle beside both attempts: pass it to `scripts/build_release_bundle.py --compare`.
+  The release verifier reads it, recomputes the comparison from the digests it carries and
+  applies the rule itself; a bundle with an interrupted attempt and no record fails. A
+  re-run at another `sha`, device plan, torch wheel or driver cannot PASS either, even when
+  nothing was left to compare, so a crash that needs a code fix costs the seed pair.
+- The verifier orders a role's attempts by the `started_at` in each `run.json` and by
+  nothing else, so do not edit `run.json` and keep the machine's clock right. Every listed
+  attempt must record one; no two attempts of a role may record the same one; the attempt
+  that is judged must be the last of its role to start; and an attempt of either role that
+  started after a non-reproducing re-run fails the bundle.
+  So run `reproduction compare` as soon as the re-run finishes, **before starting any other
+  card**: a replication started after a re-run that turns out not to reproduce is lost too.
 
 ### The A1 sequence
 

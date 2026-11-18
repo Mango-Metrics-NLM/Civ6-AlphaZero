@@ -17,6 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
+from alpha_zero.utils.atomic_io import write_atomically
 from alpha_zero.utils.checkpoint import safe_load_checkpoint, validate_primitive_metadata
 from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 
@@ -494,7 +495,8 @@ class Civ6Network(nn.Module):
         }
         if metadata is not None:
             payload["metadata"] = validate_primitive_metadata(dict(metadata))
-        torch.save(payload, path)
+        # Through a temporary file: a run killed mid-save must not leave a torn checkpoint.
+        write_atomically(path, lambda tmp: torch.save(payload, tmp))
 
     @classmethod
     def load(cls, path: str, device: str = "cpu") -> Civ6Network:
@@ -1500,14 +1502,12 @@ class Civ6NetworkV2(nn.Module):
             if hasattr(v, "item"):  # Handle numpy scalars
                 config_dict[k] = v.item()
 
-        torch.save(
-            {
-                "config": config_dict,
-                "state_dict": self.state_dict(),
-                "network_version": "v2",
-            },
-            path,
-        )
+        payload = {
+            "config": config_dict,
+            "state_dict": self.state_dict(),
+            "network_version": "v2",
+        }
+        write_atomically(path, lambda tmp: torch.save(payload, tmp))
 
     @classmethod
     def load(cls, path: str, device: str = "cpu") -> Civ6NetworkV2:

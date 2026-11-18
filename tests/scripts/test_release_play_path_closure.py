@@ -57,6 +57,10 @@ EXEMPT: dict[str, str] = {
     "alpha_zero.monitoring.config": "MLflow configuration: tracking only",
     "alpha_zero.monitoring.metrics": "diagnostic statistics that are logged, never fed back",
     "alpha_zero.monitoring.mlflow_logger": "MLflow logging only",
+    "alpha_zero.utils.atomic_io": (
+        "how a file reaches disk (temporary file, then rename), never what is in it: "
+        "the writer's bytes are published unchanged"
+    ),
     "alpha_zero.storage.models": (
         "result record dataclass; the verifier recomputes every statistic from W/D/L"
     ),

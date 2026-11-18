@@ -10,9 +10,15 @@ attempt's run directory exactly as ``scripts/run_card.py`` left it --
 * a copy of each attempt's ``run.json``, ``iterations.jsonl`` and arm
   ``result.json`` files under ``<run_id>/`` (VOID attempts included: list every
   attempt, ``--run A1=<first> --run A1=<re-run>``);
+* a copy of each ``--compare`` record as ``<VOID attempt's run_id>.reproduction.json``
+  in the bundle root: the output of ``python -m alpha_zero.evaluation.reproduction
+  compare <VOID attempt dir> <re-run dir> --out FILE``, which section 7.1 ("After a
+  VOID") requires for every interrupted attempt that has a re-run. The record
+  names both runs, so it is matched to them by ``card_id``;
 * ``bundle.json`` (``docs/evidence/SCHEMA.md``, "Release evidence bundle"): the
   sha256 of every copy, each arm's summary (``verify_release_evidence.arm_summary``),
-  each attempt's verdict (``a1_protocol.compute_verdict``, or VOID by status), the
+  each attempt's verdict (``a1_protocol.compute_verdict``, or VOID by status; a
+  re-run that does not reproduce its attempt is labelled and cannot PASS), the
   checkpoints' digests, ``games_total`` and the evidence block;
 * ``report.md``, verdict-neutral: it never says the model learns unless the
   judged A1 and A1-R both PASS;
@@ -32,6 +38,11 @@ Usage::
         --run A1=E:\\civ6az-data\\runs\\a1-20261111 \\
         --run A1-R=E:\\civ6az-data\\runs\\a1r-20261112
 
+    # after an interruption: both attempts, and the compare record between them
+    python scripts/build_release_bundle.py --release 2.1.0 --rc v2.1.0-rc.1 \\
+        --run A1=E:\\civ6az-data\\runs\\a1-20261111 \\
+        --run A1=E:\\civ6az-data\\runs\\a1-20261111-r2 --compare compare.json
+
 Exit status: 0 built, 1 the staged bundle failed verification, 2 refused (the
 bundle exists, an input is missing or unreadable, the registration cannot be read).
 """
@@ -45,7 +56,7 @@ import shutil
 import sys
 import tempfile
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -67,6 +78,21 @@ class BuildError(Exception):
 class RunInput:
     role: str
     run_dir: Path
+
+
+@dataclass
+class Collected:
+    """One attempt, read: its ``runs[]`` entry (without a verdict) and what judges it."""
+
+    entry: dict[str, Any]
+    #: ``release_reproduction.Attempt``: what the re-run rule reads of this attempt. Its
+    #: bundled file paths are left out: nothing here holds a record to the bundled
+    #: files, the verifier does that on the staged bundle.
+    attempt: Any
+    #: The judged arms' per-game records (primary, symmetry, positive control);
+    #: ``None`` when they never all ran (VOID by status).
+    judged: tuple[Any, ...] | None
+    interruptions: list[str] = field(default_factory=list)
 
 
 def parse_run(spec: str) -> RunInput:
@@ -104,11 +130,16 @@ def _local(registered_path: str, card_dir: str, run_dir: Path) -> Path:
     return Path(registered_path)
 
 
-def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> dict[str, Any]:
-    """One attempt's ``runs[]`` entry, its components copied under ``bundle_dir/<run_id>/``."""
+def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> Collected:
+    """One attempt, its components copied under ``bundle_dir/<run_id>/``.
+
+    The entry has no verdict yet: a re-run's verdict depends on its comparison with
+    the attempt it replaces (:func:`attach_records`, then :func:`set_verdicts`).
+    """
     from alpha_zero.evaluation.a1_protocol import compute_verdict
     from alpha_zero.evaluation.a1_registration import RegistrationError, run_directory
     from alpha_zero.evaluation.benchmark import checkpoint_opponent_id
+    from scripts import release_reproduction as rr
 
     run_json = run.run_dir / "run.json"
     if not run_json.is_file():
@@ -120,12 +151,19 @@ def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> dict[
     facts = vre.check_run_json(record, run_id, label, facts_findings)
     if facts.sha is None or facts_findings.problems:
         raise BuildError("; ".join(facts_findings.problems) or f"{label}: run.json has no sha")
+    if not rr.launched(record):
+        raise BuildError(
+            f"{label}: run.json records no launched invocation, so it played nothing: it is "
+            "not an attempt and is not listed (section 7.1, 'After a VOID'); drop its --run"
+        )
     if not git.exists(facts.sha):
         raise BuildError(f"{label}: commit {facts.sha[:12]} is not in this repository")
     try:
         reg = vre.read_registration(git, facts.sha, run_id, run.role)
     except (RegistrationError, ValueError) as exc:
         raise BuildError(f"{label}: section 7.1 at {facts.sha[:12]}: {exc}") from exc
+    # A run on other devices than registered is VOID, as the verifier reads it.
+    vre.check_registered_devices(facts, reg)
     card_dir = run_directory(run_id)
     base = run_id
 
@@ -189,16 +227,82 @@ def collect_run(run: RunInput, bundle_dir: Path, git: Any, rc_sha: str) -> dict[
         games[name] = list(row["games"])
     entry["arms"] = arms
     entry["checkpoints"] = dict(sorted(digests.items()))
-    if all(name in games for name in JUDGED):
-        entry["verdict"] = compute_verdict(
-            games[vre.PRIMARY],
-            games[vre.SYMMETRY],
-            games[vre.POSITIVE_CONTROL],
-            interruptions=facts.interruptions,
+    judged = tuple(games[n] for n in JUDGED) if all(n in games for n in JUDGED) else None
+    attempt = rr.Attempt(
+        run_id,
+        run.role,
+        facts.sha,
+        record,
+        entry["run_json"]["sha256"],
+        facts.completed,
+        tuple(facts.interruptions),
+        # A symmetry or positive-control VOID: the judged arms alone make it VOID.
+        control_void=judged is not None and compute_verdict(*judged).verdict == vre.VOID,
+        devices_registered=reg.devices is not None,
+    )
+    return Collected(entry, attempt, judged, list(facts.interruptions))
+
+
+def attach_records(
+    collected: Sequence[Collected], compare: Sequence[Path], bundle_dir: Path
+) -> dict[str, list[str]]:
+    """Copy each ``--compare`` record beside the attempts it names and reference it.
+
+    Returns ``{re-run's run_id: why it is a non-reproducing re-run}``. The record
+    names both runs (``attempt.card_id``, ``rerun.card_id``); it must be the
+    comparison of a listed interrupted attempt with that attempt's re-run. An
+    interrupted attempt left without a record is not refused here: the verifier
+    fails the staged bundle for it.
+
+    Raises:
+        BuildError: a record that names no runs, names runs that are not an
+            interrupted attempt and its re-run among ``--run``, or repeats one.
+    """
+    from scripts import release_reproduction as rr
+
+    attempts = [c.attempt for c in collected]
+    non_reproducing: dict[str, list[str]] = {}
+    for source in compare:
+        record = _read_json(source)
+        ids = rr.record_run_ids(record)
+        if ids is None:
+            raise BuildError(
+                f"--compare {source}: the record names no runs; write it with `python -m "
+                "alpha_zero.evaluation.reproduction compare <attempt dir> <re-run dir> --out FILE` "
+                "on two run_card run directories"
+            )
+        void = next((c for c in collected if c.attempt.run_id == ids[0]), None)
+        rerun = rr.record_rerun(void.attempt, attempts) if void is not None else None
+        if void is None or rerun is None or rerun.run_id != ids[1]:
+            raise BuildError(
+                f"--compare {source}: it compares {ids[0]!r} with {ids[1]!r}, which are not an "
+                "interrupted attempt and its re-run among the --run directories"
+            )
+        if "reproduction" in void.entry:
+            raise BuildError(f"--compare {source}: a second record for {ids[0]!r}")
+        result = rr.outcome(record, void.attempt, rerun)
+        written = _copy(source, bundle_dir, rr.record_name(ids[0]))
+        void.entry["reproduction"] = rr.bundle_reference(written, rerun, result)
+        if result.kind == rr.OUTCOME_NON_REPRODUCING:
+            non_reproducing.setdefault(rerun.run_id, []).extend(
+                rr.verdict_reasons(void.attempt, result)
+            )
+    return non_reproducing
+
+
+def set_verdicts(collected: Sequence[Collected], non_reproducing: dict[str, list[str]]) -> None:
+    """Store each attempt's verdict, the re-run rule applied (section 7.1, "After a VOID")."""
+    from alpha_zero.evaluation.a1_protocol import compute_verdict
+
+    for item in collected:
+        if item.judged is None:  # the judged arms never all ran: VOID by status
+            item.entry["verdict"] = {"verdict": vre.VOID, "reasons": list(item.interruptions)}
+            continue
+        item.entry["verdict"] = compute_verdict(
+            *item.judged,
+            interruptions=item.interruptions,
+            non_reproducing=non_reproducing.get(item.entry["run_id"], ()),
         ).to_dict()
-    else:  # the judged arms never all ran: VOID by status
-        entry["verdict"] = {"verdict": vre.VOID, "reasons": list(facts.interruptions)}
-    return entry
 
 
 def judged_verdicts(runs: Sequence[dict[str, Any]]) -> dict[str, str]:
@@ -210,6 +314,36 @@ def judged_verdicts(runs: Sequence[dict[str, Any]]) -> dict[str, str]:
         if len(valid) == 1:
             out[role] = valid[0]
     return out
+
+
+def verdict_text(run: dict[str, Any]) -> str:
+    """A run's verdict as the report and the index show it: with its label, when it has one."""
+    verdict = run["verdict"]
+    label = verdict.get("label")
+    return f"{verdict['verdict']} ({label})" if label else str(verdict["verdict"])
+
+
+def reproduction_lines(run: dict[str, Any]) -> list[str]:
+    """What the report says of a VOID attempt's reproduction check (section 7.1)."""
+    from scripts import release_reproduction as rr
+
+    entry = run.get("reproduction")
+    if not entry:
+        return []
+    said = {
+        rr.OUTCOME_REPRODUCED: "REPRODUCED: everything this attempt finished is in the re-run "
+        "and equal, so the re-run is judged.",
+        rr.OUTCOME_EMPTY: "the comparison was empty (NOTHING TO COMPARE): this attempt finished "
+        "nothing beyond `checkpoint_0`, which the seed alone fixes, so nothing of the result "
+        "had been seen and the re-run is judged.",
+        rr.OUTCOME_NON_REPRODUCING: "the re-run does not reproduce this attempt. It is reported "
+        "as a non-reproducing re-run and cannot PASS (a PASS row is read as INCONCLUSIVE).",
+    }
+    lines = [
+        f"- Reproduction check against `{entry['rerun']}` (`{entry['path']}`): "
+        f"{said.get(entry['outcome'], entry['outcome'])}"
+    ]
+    return lines + [f"  - {reason}" for reason in entry.get("reasons") or []]
 
 
 def render_report(bundle: dict[str, Any]) -> str:
@@ -228,11 +362,12 @@ def render_report(bundle: dict[str, Any]) -> str:
     for run in bundle["runs"]:
         lines.append(
             f"| `{run['run_id']}` | {run['role']} | {run['seed']} | `{run['git_sha'][:12]}` | "
-            f"{run['games']} | {run['verdict']['verdict']} |"
+            f"{run['games']} | {verdict_text(run)} |"
         )
     for run in bundle["runs"]:
-        lines += ["", f"## `{run['run_id']}` ({run['role']}): {run['verdict']['verdict']}", ""]
+        lines += ["", f"## `{run['run_id']}` ({run['role']}): {verdict_text(run)}", ""]
         lines += [f"- {reason}" for reason in run["verdict"].get("reasons") or []]
+        lines += reproduction_lines(run)
         lines += ["", "| Arm | W/D/L | Score | Hull |", "|---|---|---|---|"]
         for name, arm in run["arms"].items():
             low, high = arm["hull"]
@@ -252,9 +387,7 @@ def render_report(bundle: dict[str, Any]) -> str:
 def index_row(bundle: dict[str, Any], date: str) -> str:
     """The ``docs/evidence/README.md`` row for the bundle."""
     name = vre.bundle_dir_name(str(bundle["release"]))
-    verdicts = ", ".join(
-        f"{r['role']} `{r['run_id']}` {r['verdict']['verdict']}" for r in bundle["runs"]
-    )
+    verdicts = ", ".join(f"{r['role']} `{r['run_id']}` {verdict_text(r)}" for r in bundle["runs"])
     seeds = ", ".join(str(s) for s in dict.fromkeys(r["seed"] for r in bundle["runs"]))
     return (
         f"| [`{name}/`]({name}/report.md) | {date} (`{bundle['rc_sha'][:7]}`) | post-fix | "
@@ -281,6 +414,7 @@ def build(
     rc_tag: str,
     runs: Sequence[RunInput],
     repo_root: Path,
+    compare: Sequence[Path] = (),
     out: Path | None = None,
     date: str | None = None,
     command: str = "python scripts/build_release_bundle.py",
@@ -315,7 +449,9 @@ def build(
     index = repo_root / vre.EVIDENCE_INDEX
     old_index: str | None = None
     try:
-        entries = [collect_run(run, staged, git, rc_sha) for run in runs]
+        collected = [collect_run(run, staged, git, rc_sha) for run in runs]
+        set_verdicts(collected, attach_records(collected, compare, staged))
+        entries = [item.entry for item in collected]
         verdicts = judged_verdicts(entries)
         claimed = all(verdicts.get(role) == "PASS" for role in vre.CLAIM_ROLES)
         total = sum(int(e["games"] or 0) for e in entries)
@@ -381,6 +517,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         required=True,
         help="ROLE=DIR, one per attempt (VOID attempts too); ROLE is A1 or A1-R",
     )
+    parser.add_argument(
+        "--compare",
+        type=Path,
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="a `reproduction compare --out` record: one per interrupted attempt that has a "
+        "re-run (section 7.1, 'After a VOID'); matched to the attempts by card_id",
+    )
     parser.add_argument("--repo-root", type=Path, default=Path("."))
     parser.add_argument("--out", type=Path, default=None, help="default: docs/evidence/<name>")
     parser.add_argument("--date", default=None, help="the index row's date (default: today, UTC)")
@@ -392,6 +537,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             rc_tag=args.rc,
             runs=args.run,
             repo_root=args.repo_root,
+            compare=args.compare,
             out=args.out,
             date=args.date,
             command=command,
