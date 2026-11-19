@@ -223,28 +223,149 @@ def test_an_unknown_era_names_the_column() -> None:
     assert "Technologies[0].EraType" in message and "ERA_NEVER" in message
 
 
-def test_a_prereq_row_for_an_unknown_technology_names_the_row() -> None:
+@pytest.mark.parametrize(
+    ("table", "index", "column"),
+    [
+        ("TechnologyPrereqs", 0, "Technology"),
+        ("TechnologyPrereqs", 1, "PrereqTech"),
+        ("Buildings", 0, "PrereqTech"),
+        ("Units", 1, "PrereqTech"),
+    ],
+)
+def test_every_technology_reference_to_an_unknown_tech_names_table_row_column(
+    table: str, index: int, column: str
+) -> None:
     document = export()
-    document["TechnologyPrereqs"][0]["Technology"] = "TECH_GHOST"
+    document[table][index][column] = "TECH_GHOST"
     message = _error(document)
-    assert "TechnologyPrereqs[0]" in message and "tech_ghost" in message
+    assert f"{table}[{index}].{column}" in message
+    assert "unknown technology 'tech_ghost'" in message
 
 
-@pytest.mark.parametrize(("table", "index"), [("Buildings", 0), ("Units", 1)])
-def test_an_unlocking_prereq_tech_that_does_not_exist_names_the_row(table: str, index: int) -> None:
+@pytest.mark.parametrize(
+    ("table", "index", "column"),
+    [
+        ("TechnologyPrereqs", 0, "Technology"),
+        ("TechnologyPrereqs", 1, "PrereqTech"),
+        ("Buildings", 0, "PrereqTech"),
+        ("Units", 1, "PrereqTech"),
+    ],
+)
+def test_a_reference_to_a_tech_skipped_for_its_cost_says_so(
+    table: str, index: int, column: str
+) -> None:
     document = export()
-    document[table][index]["PrereqTech"] = "TECH_GHOST"
+    document[table][index][column] = "TECH_UNUSED"  # the Cost -1 row
     message = _error(document)
-    assert f"{table}[{index}]" in message and "tech_ghost" in message
+    assert f"{table}[{index}].{column}" in message
+    assert "was skipped for its non-positive cost" in message
 
 
-def test_a_prerequisite_on_an_unknown_technology_is_a_validation_error() -> None:
+def test_a_ghost_prerequisite_is_a_game_info_error_not_a_validation_error() -> None:
     document = export()
     document["TechnologyPrereqs"][0]["PrereqTech"] = "TECH_GHOST"
+    assert "TechnologyPrereqs[0].PrereqTech" in _error(document)
+
+
+def test_a_ghost_prerequisite_exits_one_through_the_cli(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    document = export()
+    document["TechnologyPrereqs"][1]["PrereqTech"] = "TECH_GHOST"
+    out = tmp_path / "r.yaml"
+    assert main(["import-gameinfo", str(write_export(tmp_path, document)), "--out", str(out)]) == 1
+    assert "error: TechnologyPrereqs[1].PrereqTech: unknown technology" in capsys.readouterr().err
+    assert not out.exists()
+
+
+# ---- duplicates, repeated prerequisites, eras, clamping ---------------------------
+
+
+@pytest.mark.parametrize(
+    ("table", "column", "template"),
+    [
+        ("Technologies", "TechnologyType", {"EraType": "ERA_ANCIENT", "Cost": 999}),
+        ("Buildings", "BuildingType", {"Cost": 999}),
+        ("Units", "UnitType", {"Cost": 999}),
+    ],
+)
+@pytest.mark.parametrize("spelling", ["same", "case"])
+def test_a_duplicate_id_is_refused_naming_the_row(
+    table: str, column: str, template: dict[str, object], spelling: str
+) -> None:
+    document = export()
+    first = document[table][0][column]
+    duplicate = first if spelling == "same" else first.lower()
+    assert (duplicate == first) == (spelling == "same")
+    document[table].append({column: duplicate, **template})
+    index = len(document[table]) - 1
+    message = _error(document)
+    assert f"{table}[{index}].{column}: duplicate id" in message
+    assert first.lower() in message
+
+
+def test_a_skipped_row_still_claims_its_id() -> None:
+    document = export()
+    document["Technologies"].append(
+        {"TechnologyType": "tech_unused", "EraType": "ERA_ANCIENT", "Cost": 5}
+    )
+    assert "Technologies[6].TechnologyType: duplicate id 'tech_unused'" in _error(document)
+    document = export()
+    document["Buildings"].append({"BuildingType": "BUILDING_ZERO", "Cost": 0})
+    document["Buildings"].append({"BuildingType": "building_zero", "Cost": 9})
+    assert "Buildings[3].BuildingType: duplicate id" in _error(document)
+
+
+def test_the_same_name_in_different_tables_is_not_a_duplicate() -> None:
+    document = export()
+    document["Units"][0]["UnitType"] = "TECH_ALPHA"
+    spec = parse_ruleset(convert(document).text)
+    assert "tech_alpha" in {t.id for t in spec.techs} and "tech_alpha" in {u.id for u in spec.units}
+
+
+def test_a_repeated_prerequisite_row_is_dropped() -> None:
+    document = export()
+    document["TechnologyPrereqs"].append(dict(document["TechnologyPrereqs"][0]))
+    document["TechnologyPrereqs"].append(dict(document["TechnologyPrereqs"][2]))
+    spec = parse_ruleset(convert(document).text)
+    assert spec.tech("tech_gamma").prerequisites == ("tech_alpha",)
+    assert spec.tech("tech_delta").prerequisites == ("tech_beta", "tech_gamma")
+    assert convert(document).text == convert(export()).text
+
+
+def test_era_and_era_type_together_are_refused() -> None:
+    document = export()
+    document["Technologies"][0]["Era"] = 2  # row 0 also has EraType
+    message = _error(document)
+    assert "Technologies[0]" in message and "not both" in message
+
+
+def test_a_negative_era_is_refused_naming_the_column() -> None:
+    document = export()
+    document["Technologies"][3]["Era"] = -1
+    assert "Technologies[3].Era" in _error(document)
+
+
+def test_era_zero_is_accepted() -> None:
+    document = export()
+    document["Technologies"][3]["Era"] = 0
+    assert parse_ruleset(convert(document).text).tech("tech_delta").era == 0
+
+
+def test_negative_combat_and_moves_import_as_zero() -> None:
+    document = export()
+    document["Units"][1].update({"Combat": -1, "BaseMoves": -1})
+    units = {u.id: u for u in parse_ruleset(convert(document).text).units}
+    assert (units["unit_guard"].strength, units["unit_guard"].moves) == (0, 0)
+    assert units["unit_guard"].cost == 40
+
+
+def test_a_prerequisite_cycle_in_the_export_still_raises_the_validation_error() -> None:
+    document = export()
+    document["TechnologyPrereqs"].append({"Technology": "TECH_ALPHA", "PrereqTech": "TECH_ALPHA"})
     with pytest.raises(RulesetValidationError) as excinfo:
         convert(document)
-    assert "tech_ghost" in str(excinfo.value)
-    assert [i.rule for i in excinfo.value.issues] == ["unresolved-prerequisite"]
+    assert [i.rule for i in excinfo.value.issues] == ["prerequisite-cycle"]
 
 
 @pytest.mark.parametrize("ruleset_id", ["Bad_Id", "has space", "../x", "", "UPPER"])
@@ -523,17 +644,18 @@ def test_a_malformed_export_exits_one_and_writes_nothing(
     assert not out.exists() and not out.parent.exists()
 
 
-def test_an_invalid_converted_rule_set_exits_one_with_every_issue(
+def test_an_invalid_converted_rule_set_exits_one_listing_the_issue(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    """The CLI's RulesetValidationError branch: only the validator can see a cycle."""
     document = export()
     document["TechnologyPrereqs"].append({"Technology": "TECH_ALPHA", "PrereqTech": "TECH_EPSILON"})
-    document["TechnologyPrereqs"].append({"Technology": "TECH_BETA", "PrereqTech": "TECH_GHOST"})
     source = write_export(tmp_path, document)
     out = tmp_path / "r.yaml"
     assert main(["import-gameinfo", str(source), "--out", str(out)]) == 1
     err = capsys.readouterr().err
-    assert "invalid" in err and "tech_ghost" in err
+    assert "the imported rule set is invalid" in err
+    assert "[prerequisite-cycle]" in err and "tech_alpha" in err
     assert not out.exists()
 
 

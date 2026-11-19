@@ -290,3 +290,15 @@ def test_pace_says_so_when_no_whole_rate_fits_the_band(
     out = capsys.readouterr().out
     assert "no whole rate lands in the band" in out
     assert "580" in out
+
+
+@pytest.mark.parametrize("max_turns", [0, -1, -60])
+def test_band_science_rates_itself_rejects_non_positive_max_turns(max_turns: int) -> None:
+    with pytest.raises(ValueError, match="max_turns"):
+        band_science_rates(580, max_turns)
+
+
+def test_rates_above_cost_are_not_listed() -> None:
+    # every rate >= 10 finishes cost 10 in one turn, but the high end reads the cost itself
+    assert band_science_rates(10, 1, (100, 100)) == (10, 10)
+    assert turns_to_research(10, 1000) == 1
