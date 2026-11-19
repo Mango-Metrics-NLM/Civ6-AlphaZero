@@ -95,7 +95,10 @@ here before step 2: calibration `[3001-3099]`, confirmation `[one seed per card
 from 5001-5999]`. None may be 1001-1003, 20261111 or 20261112 (section 7.1). A
 confirmation seed that has been run is spent.
 
-**Bands** (all must hold; reading the intervals at the stated levels, in pairs):
+**Bands** (all that apply must hold; reading the intervals at the stated levels, in pairs).
+B1 and B4 apply only to a rule set that declares a capstone. A rule set without one (for
+example `growth-v1`) must pre-register its own pacing criterion in their place, in the same
+file and before step 4; it may not simply drop them:
 
 | Band | Statistic | Passes when |
 |---|---|---|

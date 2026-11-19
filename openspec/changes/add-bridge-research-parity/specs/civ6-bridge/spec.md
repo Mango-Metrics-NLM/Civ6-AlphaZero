@@ -100,7 +100,9 @@ available, the slots MUST stay zero, a WARNING MUST be logged once and a counter
 
 `gameinfo_capture.py` SHALL write a snapshot only under `CIV6AZ_DATA_ROOT`, in the
 input format of `python -m alpha_zero.rules import-gameinfo`, and MUST refuse a
-path inside the checkout. No tracked file MUST be a GameInfo snapshot.
+path inside the checkout. No tracked file MUST be a GameInfo snapshot, except
+synthetic fixtures on an explicit allowlist in the hygiene test: files written by
+hand for tests, holding no data captured from a game.
 
 #### Scenario: Path inside the checkout
 
@@ -110,7 +112,12 @@ path inside the checkout. No tracked file MUST be a GameInfo snapshot.
 #### Scenario: Hygiene
 
 - **WHEN** the hygiene test lists tracked files
-- **THEN** none matches the snapshot format
+- **THEN** none outside the synthetic-fixture allowlist matches the snapshot format
+
+#### Scenario: A snapshot outside the allowlist
+
+- **WHEN** a file in the snapshot format is tracked at a path the allowlist does not name
+- **THEN** the hygiene test fails and names the path
 
 ### Requirement: Live search mode refuses until an action translator exists
 
@@ -118,7 +125,9 @@ path inside the checkout. No tracked file MUST be a GameInfo snapshot.
 start-up, before any game connection, with a message naming the gap id registered
 for the bridge action translator. The search proxy MUST seed `MicroCivEnv` using
 only its existing rules, with no file under `alpha_zero/envs/` changed. An un-mocked test MUST
-record the current failure before the refusal lands.
+record the current failure before the refusal lands. The refusal MUST stay until the
+search is also given a network and checkpoint matching the simulator's observation
+shape and an un-mocked end-to-end search test passes; a translator alone does not lift it.
 
 #### Scenario: Starting live search
 
