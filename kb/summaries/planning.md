@@ -1,5 +1,12 @@
 # Planning Log
 
+## 2026-11-19 - Game-mechanics gap closure (science, technology, full gameplay): program plan
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Focus:** "Close the gaps on game mechanics per the documentation." Three read-only surveys (documented gaps, mechanics code, constraints), external research (CivRealm, Terra Nova, Tribes, civ6-mcp), four scoping decisions by the maintainer, an independent design review, then the four role reviews (product owner, scrum master, architect, ML scientist).
+- **Decisions:** No tech tree, research or science yield exists in Python although three documents claimed one; the docs are corrected. Mechanics arrive as opt-in MicroCiv presets on a hardened `EnhancedMicroCivEnv`, with `default` byte-identical; no external simulator, no charter change. A small original rule set is committed; real tables come from a local GameInfo export, never committed. Nothing on the release play path changes before v2.1.0: Phase 1 is docs, a rules kernel outside the play path (`alpha_zero/rules/`) and bridge parity. Ids are `GM-`; rungs are GM-S0..S7. Probes follow a pre-registration template with held-out seeds and bounds, not point estimates.
+- **Output:** `kb/specs/20261119-game-mechanics-plan.md`, `kb/specs/20261119-game-mechanics-gap-register.md` (19 `GM-` rows), `docs/GAME_RULES.md`, OpenSpec `add-game-rules-kernel` and `add-bridge-research-parity`, doc corrections, handoff `kb/handoffs/20261119-planning-to-devsqe-game-mechanics.md`.
+- **Next:** DEV-SQE Phase 1 slices in order (GM-S0a, GM-K1, GM-K2, GM-B0..GM-B5), at most two PRs open. Maintainer: merges, the live checklist, and the v2.1 runs. Simulator rungs get their own task plan after v2.1.0.
+
 ## 2026-11-11 - Local-first gap closure + dev/qa/main branching (program plan v3)
 - **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
 - **Focus:** Close every recorded gap except Vertex/GCP, running everything on the Windows workstation, and adopt a professional dev/qa/main branching strategy. Done as an expert team: 3 explore agents, a 3-role design panel (architect/SDLC/release, ML scientist/AI, product owner/scrum), then two adversarial review rounds (73 + 25 agents; 72 + 17 confirmed findings, 0 refuted).

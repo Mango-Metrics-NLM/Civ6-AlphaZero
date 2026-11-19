@@ -106,6 +106,26 @@ the wire-protocol notes, the per-module design) lives in
   (`max_units=20`, `max_cities=5`, `num_production_items=20` at the configured
   board size), not the full 84-channel / hierarchical space described for the
   real game.
+- **Research and buildings are not exported or offered (GM-B2, GM-B3: planned,
+  not done).** The Lua exporter never fills researched techs or civics, and
+  per-city buildings and districts are always empty, so the encoder's tech and
+  civic slots are always zero. Research can be executed
+  (`executeResearchTech`, `executeResearchCivic`) but is never offered as a
+  legal action. Plan: `kb/specs/20261119-game-mechanics-plan.md`.
+- **`--mcts` search mode is not usable as wired (GM-B5: planned, not done).** It
+  pairs the 84-channel network with the 13-channel MicroCiv simulator and
+  decodes a simulator action index as a hierarchical action; an exception in
+  the policy becomes `END_TURN`. This is the reading of the code recorded in
+  the plan, not yet shown by a test; GM-B5 starts by writing that test, then
+  makes the mode refuse at start-up, citing its gap id, until an action
+  translator exists. It does not refuse today.
+- **`END_TURN` is reported as successful unconditionally (GM-B2: planned, not
+  done).** The mod does not read the end-turn blocking type, so a pending
+  research choice or other blocker is not reported. Whether this explains the
+  turn-cycle stall above is a hypothesis to check in a live session, not a
+  finding.
+- **The loaded Lua bundle has drifted from its module sources (GM-B0:
+  planned).** 27 lines differ; GM-B0 generates the bundle and adds a sync gate.
 - **Windows-only paths and a single machine.** The game, the mod and the agent
   must share a filesystem and a loopback interface.
 
