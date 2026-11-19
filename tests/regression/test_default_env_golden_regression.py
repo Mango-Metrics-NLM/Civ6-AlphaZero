@@ -348,6 +348,9 @@ def test_no_seed_is_shared_between_cases() -> None:
 
 def test_the_diagnosis_names_what_moved(monkeypatch: pytest.MonkeyPatch) -> None:
     fixture = _load_fixture()
+    # Pin the installed version string to the fixture's, so each branch below is
+    # exercised on any numpy (CI installs a newer patch release than the fixture's).
+    monkeypatch.setattr(np, "__version__", fixture["numpy_version"])
     assert "neither ENV_VERSION nor numpy moved" in _explain(fixture, "c")
     bumped = {**fixture, "env_version": ENV_VERSION + 1}
     assert _explain(bumped, "c").startswith("ENV_VERSION moved")
