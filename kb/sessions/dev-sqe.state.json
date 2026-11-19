@@ -1,29 +1,26 @@
 {
-    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-15T21:45:00Z",
-    "current_focus": "v2.1 local close-out on PR #140 (rehearsal-first run cards, torch wheel record, atomic writes, driver record, the release verifier's re-run rule, OpenSpec archive); handed off to Pre-PR and the maintainer. Section 7.1 digest unchanged (e460a353...7c17).",
+    "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+    "last_timestamp": "2026-11-19T23:20:00Z",
+    "current_focus": "Game-mechanics program, Phase 1 (empty play-path diff). GM-S0a is draft PR #143 and GM-K1 (rules kernel) is draft PR #144, stacked on #142. Holding until the maintainer merges one of them; GM-K2 is next.",
     "resume_pointers": {
-        "current_task": "None in flight. v2.1's remaining work is the maintainer's (T0b, the section 7.1 slot fill-in, A1, A1-R, the release).",
+        "current_task": "None in flight. Next is GM-K2 (pace, import-gameinfo) under OpenSpec add-game-rules-kernel, started only after one of PRs #142, #143, #144 merges.",
         "blocked_on": [
-            "maintainer: review PR #140 (CONFIRM-FIRST items and conservative readings are in its body); it is a draft and is not to be merged or marked ready by an agent",
-            "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
-            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation"
+            "maintainer: review and merge draft PRs #142 (plan and docs), #143 (golden fingerprint), #144 (rules kernel); agents do not merge",
+            "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
-            "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
-            "Then A1 and A1-R on the rc SHA; after an interruption run reproduction compare before any other card; build_release_bundle.py --compare; verify_release_evidence.py",
-            "Open follow-ups on openspec/changes/add-gpu-first-run-cards: 4c.7 (the bundle after a non-reproducing re-run) and 4c.11 (three checks the verifier does not make)",
-            "v2.2 (local training loop, gap-register rows L0-L6) needs its own task plan; most of it is CONFIRM-FIRST"
+            "When #142 merges: retarget #144 to the default branch; merge the default branch into the PRs still open (each appends a ledger line and a summary entry)",
+            "GM-K2: alpha_zero/rules/pacing.py and gameinfo.py, CLI pace and import-gameinfo (science-v1-draft reports 580 and 780; the importer refuses a path inside the checkout), then task 3.1 (CLAUDE.md rows, make verify)",
+            "Type-check a new module locally with: python -m mypy <file> --python-version 3.13 --follow-imports=silent",
+            "Then bridge slices GM-B0..B5; END_TURN blocked reporting (GM-B2) and GM-B3's four-module span need confirmation at their PRs"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md",
-        "openspec/changes/add-gpu-first-run-cards/tasks.md",
-        "docs/evidence/SCHEMA.md",
-        "docs/EVALUATION.md",
-        "docs/runbooks/branching-and-release.md",
-        ".claude/skills/a1-reregister/SKILL.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md"
+        "kb/handoffs/20261119-devsqe-to-prepr-gm-k1-rules-kernel.md",
+        "openspec/changes/add-game-rules-kernel/tasks.md",
+        "docs/GAME_RULES.md",
+        "alpha_zero/rules/Agent.md",
+        "kb/specs/20261119-game-mechanics-plan.md",
+        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md"
     ]
 }
