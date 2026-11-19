@@ -19,6 +19,13 @@ Every value must be an identifier, an integer or null: the snapshot holds names
 and numbers, no text. Rows whose cost is not positive (the game marks unbuildable
 entries so) are skipped and counted. No modifier and no victory is imported.
 
+Rules the importer applies, so that nothing is changed silently: two rows that
+give the same id (after lowercasing) are an error; a repeated prerequisite row is
+dropped; a technology row gives ``Era`` or ``EraType``, not both; a reference to
+a technology that is unknown, or was skipped for its cost, is an error naming the
+table, row and column. A negative ``Combat`` or ``BaseMoves`` (the game's "none")
+is imported as 0.
+
 The output must lie outside the repository checkout. A leaf package cannot use
 ``alpha_zero.utils.data_root``, so this module reads ``CIV6AZ_DATA_ROOT`` from
 the environment itself and finds the checkout as the nearest ancestor of this
@@ -155,17 +162,16 @@ def _required(row: dict[str, Any], column: str, where: str) -> Any:
 
 def _era(row: dict[str, Any], where: str) -> int:
     if row.get("Era") is not None:
-        return _integer(row["Era"], f"{where}.Era")
+        if row.get("EraType") is not None:
+            raise GameInfoError(f"{where}: give Era or EraType, not both")
+        era = _integer(row["Era"], f"{where}.Era")
+        if era < 0:
+            raise GameInfoError(f"{where}.Era: expected a non-negative integer, got {era}")
+        return era
     era_type = _required(row, "EraType", where)
     if era_type not in ERA_ORDER:
         raise GameInfoError(f"{where}.EraType: unknown era {era_type!r}")
     return ERA_ORDER.index(era_type) + 1
-
-
-def _optional_tech(row: dict[str, Any], where: str) -> str | None:
-    if row.get("PrereqTech") is None:
-        return None
-    return _item_id(row["PrereqTech"], f"{where}.PrereqTech")
 
 
 def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummary:
@@ -185,14 +191,38 @@ def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummar
             raise GameInfoError(f"unknown table {table!r}")
 
     skipped = 0
+    skipped_techs: set[str] = set()
     techs: dict[str, dict[str, Any]] = {}
+
+    def known_tech(value: Any, where: str) -> str:
+        """An id that names an imported technology; ``where`` names table, row and column."""
+        tech_id = _item_id(value, where)
+        if tech_id in skipped_techs:
+            raise GameInfoError(
+                f"{where}: technology {tech_id!r} was skipped for its non-positive cost"
+            )
+        if tech_id not in techs:
+            raise GameInfoError(f"{where}: unknown technology {tech_id!r}")
+        return tech_id
+
+    def new_id(seen: set[str], value: Any, where: str) -> str:
+        item_id = _item_id(value, where)
+        if item_id in seen:
+            raise GameInfoError(f"{where}: duplicate id {item_id!r}")
+        seen.add(item_id)
+        return item_id
+
+    tech_ids: set[str] = set()
     for index, row in enumerate(_rows(document, "Technologies")):
         where = f"Technologies[{index}]"
         cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        tech_id = new_id(
+            tech_ids, _required(row, "TechnologyType", where), f"{where}.TechnologyType"
+        )
         if cost <= 0:
             skipped += 1
+            skipped_techs.add(tech_id)
             continue
-        tech_id = _item_id(_required(row, "TechnologyType", where), f"{where}.TechnologyType")
         techs[tech_id] = {
             "id": tech_id,
             "era": _era(row, where),
@@ -203,47 +233,49 @@ def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummar
         }
     for index, row in enumerate(_rows(document, "TechnologyPrereqs")):
         where = f"TechnologyPrereqs[{index}]"
-        tech_id = _item_id(_required(row, "Technology", where), f"{where}.Technology")
-        prerequisite = _item_id(_required(row, "PrereqTech", where), f"{where}.PrereqTech")
-        if tech_id not in techs:
-            raise GameInfoError(f"{where}: unknown technology {tech_id!r}")
-        techs[tech_id]["prerequisites"].append(prerequisite)
+        tech_id = known_tech(_required(row, "Technology", where), f"{where}.Technology")
+        prerequisite = known_tech(_required(row, "PrereqTech", where), f"{where}.PrereqTech")
+        if prerequisite not in techs[tech_id]["prerequisites"]:
+            techs[tech_id]["prerequisites"].append(prerequisite)
 
-    def unlock(kind: str, item_id: str, tech_id: str | None, where: str) -> None:
-        if tech_id is None:
+    def unlock(kind: str, item_id: str, row: dict[str, Any], where: str) -> None:
+        if row.get("PrereqTech") is None:
             return
-        if tech_id not in techs:
-            raise GameInfoError(f"{where}: unknown technology {tech_id!r}")
-        techs[tech_id][kind].append(item_id)
+        techs[known_tech(row["PrereqTech"], f"{where}.PrereqTech")][kind].append(item_id)
 
+    building_ids: set[str] = set()
     buildings: list[dict[str, Any]] = []
     for index, row in enumerate(_rows(document, "Buildings")):
         where = f"Buildings[{index}]"
         cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        building_id = new_id(
+            building_ids, _required(row, "BuildingType", where), f"{where}.BuildingType"
+        )
         if cost <= 0:
             skipped += 1
             continue
-        building_id = _item_id(_required(row, "BuildingType", where), f"{where}.BuildingType")
         buildings.append({"id": building_id, "cost": cost})
-        unlock("unlocks_buildings", building_id, _optional_tech(row, where), where)
+        unlock("unlocks_buildings", building_id, row, where)
 
+    unit_ids: set[str] = set()
     units: list[dict[str, Any]] = []
     for index, row in enumerate(_rows(document, "Units")):
         where = f"Units[{index}]"
         cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        unit_id = new_id(unit_ids, _required(row, "UnitType", where), f"{where}.UnitType")
         if cost <= 0:
             skipped += 1
             continue
-        unit_id = _item_id(_required(row, "UnitType", where), f"{where}.UnitType")
         units.append(
             {
                 "id": unit_id,
                 "cost": cost,
+                # The game writes a negative number for "none".
                 "strength": max(0, _integer(row.get("Combat") or 0, f"{where}.Combat")),
                 "moves": max(0, _integer(row.get("BaseMoves") or 0, f"{where}.BaseMoves")),
             }
         )
-        unlock("unlocks_units", unit_id, _optional_tech(row, where), where)
+        unlock("unlocks_units", unit_id, row, where)
 
     civics = len(_rows(document, "Civics"))
     _rows(document, "CivicPrereqs")

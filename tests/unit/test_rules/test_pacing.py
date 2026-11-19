@@ -281,3 +281,12 @@ def test_control_boundary_test_fails_when_a_band_end_is_exclusive(
     monkeypatch.setattr(pacing, "band_science_rates", mutant)
     with pytest.raises(AssertionError):
         check_band_boundaries()
+
+
+def test_pace_says_so_when_no_whole_rate_fits_the_band(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["pace", "science-v1-draft", "--max_turns", "1"]) == 0
+    out = capsys.readouterr().out
+    assert "no whole rate lands in the band" in out
+    assert "580" in out

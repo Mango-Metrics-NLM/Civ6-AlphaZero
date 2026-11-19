@@ -60,7 +60,15 @@ def band_science_rates(
     a rate ``r`` is in when ``low% * max_turns <= turns_to_research(cost, r) <=
     high% * max_turns``. Returns ``None`` when no whole rate lands in the band
     (a short game or a cheap tree).
+
+    Rates above ``cost`` are not listed: every one of them also takes one turn,
+    so when a one-turn finish is inside the band the high end reads ``cost``.
+
+    Raises:
+        ValueError: ``max_turns`` is not positive.
     """
+    if max_turns <= 0:
+        raise ValueError(f"max_turns must be positive, got {max_turns}")
     low_percent, high_percent = band_percent
     rates = [
         rate
