@@ -288,8 +288,8 @@ When making changes, update the relevant sections below:
 | `make test-all` | Coverage, mirroring CI's coverage job (gate: 85%) |
 | `make typecheck` | Type check as CI runs it (`python -m mypy alpha_zero/`) |
 | `make typecheck-strict` | Harsher local `--strict` pass — **not** a CI gate |
-| `make validate` | Run governance validators (openspec, kb, skills, agents, role subagents, doc-sync) |
-| `python scripts/validate_claude_agents.py` | Validate the eight `.claude/agents/sdlc-*.md` role subagents (C1-C9; `--path FILE` for one) |
+| `make validate` | Run governance validators (openspec, kb, skills, agents, role subagents, doc-sync; all support deterministic `--json` and `--verbose`) |
+| `python scripts/validate_claude_agents.py --json` | Validate the eight `.claude/agents/sdlc-*.md` role subagents (C1-C9; `--path FILE` for one, `--verbose`, `--json`) |
 | `make hooks-install` | Install pre-commit (self-installing) + git pre-commit/pre-push hooks |
 | `python scripts/check_doc_sync.py` | Documentation-drift gate (version/counts/links/extras) |
 | `python scripts/validate_openspec.py` | Validate the `openspec/` change directory |
@@ -391,7 +391,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
 | `pytest tests/regression/test_debt_ratchet.py -v` | Tech-debt ratchet — every tracked metric vs the committed baseline |
-| `python scripts/audit_import_graph.py` | List `alpha_zero/` modules with no live importer (AST import graph) |
+| `python scripts/audit_import_graph.py` | List `alpha_zero/` modules with no live importer (AST import graph; shares `iter_python_files` + PEP 405/worktree pruning with `measure_debt.py`) |
 | `python scripts/measure_debt.py --write PATH` | Re-measure every tracked debt metric as JSON |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |
 | `pytest tests/unit/test_nplayer_training_pipeline.py -v` | Test N-player training pipeline (G9: per-player values) |
@@ -414,6 +414,7 @@ When making changes, update the relevant sections below:
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-11-18 | Post-merge Windows + dual-GPU E2E hardening, zero-warning `Agent.md` burndown, and deterministic validator CLI contracts (`tests/governance/_bash.py`, `audit_import_graph.iter_python_files`, `rag_client.py`) | Live Windows + dual-GPU testing (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128` -> `scripts/check_determinism.py` `REPRODUCED`) uncovered platform and hygiene gaps across runtime, AST discovery, and harness scripts. (1) `tests/unit/test_seeding.py` inherits `os.environ` alongside `PYTHONHASHSEED` on Windows; `utils/rag_client.py` routes ChromaDB calls through `_call_safely`, preserving `_FATAL_BASE_EXCEPTIONS` while degrading cleanly on non-fatal native `BaseException` panics. (2) `scripts/measure_debt.py` delegates file discovery to `scripts/audit_import_graph.py:iter_python_files`, and both `audit_import_graph` and `utils/agent_tools.py:CodeExplorer` prune PEP 405 virtual environments (`pyvenv.cfg`) and linked git worktrees (`.git` files/worktree dirs) so local clones/venvs never resurrect dead code; `.gitignore`, `.dockerignore`, and `.gitleaks.toml` exclude virtualenvs/worktrees without exempting `.env*`. (3) `Makefile` and `.claude/hooks/*.sh` skip the Windows Store `python3` alias in favour of a real Python >= 3.11 interpreter, `posttooluse_governance.sh` routes `CITATION.cff` edits to `check_doc_sync.py`, and `tests/governance/_bash.py` resolves Git Bash directly instead of the WSL `System32\bash.exe` stub. (4) `validate_skills.py` and `validate_claude_agents.py` implement canonical sorted `--json` output and `--verbose` logging matching sibling validators, `readonly_shell_guard.sh` mirrors `--json` / `--verbose`, and all 6 incomplete `Agent.md` files were completed + factual drifts corrected (`log_evaluation_result()` emits 15 metrics, not 14, synced in `docs/architecture/C4_ARCHITECTURE.md` too), ratcheting `tests/governance/agent_warning_baseline.json` `max_warnings` from 22 to 0. |
 | 2026-11-12 | Forced-win oracle over `batch_gumbel` and `muzero`, and what it exposed (LF-C4, T18; four modules, bug fixes only, covered by the maintainer's approval of `kb/specs/20261111-local-first-and-branching-plan.md`) | `tests/unit/test_forced_win_oracle.py` runs the 2026-09-04 oracle (index sweep, tie guard, vacuity guard) over both searches, on a same-player game and an alternating one. MuZero gets a deterministic stand-in model whose latent state encodes the game and whose final transition carries the outcome as reward. It exposed five defects. (1) Batch ranked halving survivors by an unconditional `-child.value`, so on a same-player edge the forced win ranked **last**; it now uses `perspective_sign`, as `GumbelMCTS` does. (2) Batch queued a whole halving round before evaluating any of it, so every pass of a root action descended to the **same** unexpanded leaf: a 21-pass round evaluated one leaf 21 times and grew the tree by one ply, and a 128-simulation search never reached a terminal three plies deep. Trees now step in lockstep (`_run_lockstep`), one simulation per tree per batch, and a single-environment batch search is **byte-identical to `GumbelMCTS`** -- policy, root value and halving winner -- gated on the toy game and on seeded MicroCiv positions with a real network. Forward passes per search go from a few large, mostly duplicate batches to `n` batches of at most `num_envs`; `max_batch_size` remains read nowhere; no throughput benchmark exists. (3) Batch and (5) MuZero's Gumbel path returned a one-hot on the halving winner, which under LF-A12's unscaled ranking a Gumbel draw can make a losing move. Both now use the shared `gumbel_ops.policy_target_from_root_stats` (completed-Q default; `one_hot` reproduces old runs); batch honours `policy_target`/`greedy_threshold`; `MuZeroMCTSConfig` gains `policy_target`, `c_visit`, `c_scale`. The constants moved to `gumbel_ops` and `gumbel` re-exports them; sequential `GumbelMCTS` is byte-identical before and after (888/888 records, review probe). (4) MuZero's root Q omitted the edge reward (`child.value` is the return *after* the edge), so a game ending on that edge valued every action 0; it is now `reward + discount * value`. MuZero's alternating case is `xfail(strict=True)` at even depth because its backup does not sign rewards by mover -- a **known defect** (§5.3), not a limitation of latent search. **Gotcha:** the completed-Q target re-signs each root Q itself, so an oracle on the returned policy cannot see a wrong halving *ranking* -- reverting batch's ranking sign passed it 27/27. The batch-equals-`GumbelMCTS` gate exists because of that negative control (it fails 24/72 on the toy and 6/12 on MicroCiv). |
 | 2026-11-12 | Release Evidence: one verdict implementation, recomputed, never trusted (LF-D8, T14) | `a1_protocol.compute_verdict` (table in `verdict_from_bounds`, so the 0.5 edges are testable on exact bounds) is the only implementation of the section 7.1 verdict; `scripts/verify_release_evidence.py` recomputes every stored count, interval, hull and verdict from the arms' per-game records, re-hashes every component, reads the rc's check runs through `release_checks.ci_snapshot`, and checks freshness against `scripts/release_play_path.txt`. The job lives in its own PR-only workflow (`release-evidence.yml`, `edited` included): in `ci.yml` every push to qa left a constant n/a run of the same name on the release PR's head SHA, which could stand in for the real one. Its n/a decision is a stdlib-only `--scope` step whose output gates the later steps. Non-obvious parts (review fix round 1 included): (1) FAIL/INCONCLUSIVE **pass** when recorded honestly, but **a VOID does not** -- it records no learning result; each role needs exactly one non-VOID attempt, VOID attempts stay listed (section 7.1 "After a VOID"); (2) `run.json` must be section 7.1's commands **at the run's commit** (`alpha_zero/evaluation/a1_registration.py`, branch in force included) and each arm's `evidence.command` its launched invocation -- swapping two 60-game secondary arms passes every statistical check; (3) freshness reads the **highest** rc and diffs the play path to the release head too, or an rcfix to the search ships unmeasured; (4) action 9a waits until `origin/main` carries T14, so a `hotfix/*` PR into main is never blocked by a check its base cannot produce. |
 | 2026-11-11 | A1 registered as EVALUATION.md section 7.1 (LF-A1, task T13) | The protocol is frozen by the sha256 of the text between two HTML-comment markers, CRLF normalised to LF -- this checkout runs `core.autocrlf`, so an unnormalised hash would differ between a Windows and a Linux checkout of one commit (`alpha_zero/evaluation/a1_protocol.py`, `check_learning_trend.py --print-protocol-sha`). `tests/scripts/test_a1_registration.py` reads the commands **out of the hashed region**, prices them with each runner's own parser (980, each <= 1,000, also for the 60-game positive-control branch), and holds `configs/run_cards/a1.yaml` / `a1r.yaml` to them token for token. **Found while registering:** the plan's arms table abbreviates, and its "final vs random agent" row omits `--checkpoint` -- taken literally, that arm would score a freshly initialised network; 7.1 names `checkpoint_20.pt` and says so. The cards carry an all-zero `sha` so a premature run fails closed at the pin. LF-A5 had no maintainer decision, so the current Gumbel settings (Option A) are registered field by field and a test compares them with what `training_civ6` resolves; `MCTS_*` overrides are VOID because `run.json` records variable names only. The positive-control calibration is P(hull L <= 0.5) (T11 review I2) by a seeded **pair bootstrap** of T0b's measured seat-swapped pairs, through `interval_summary` -- an iid simulation cannot see map clustering, which is what the hull is for (T13 review I1: 2.75% iid vs 7.2% clustered at d = 0.3); the iid number is kept as an informational lower bound. Fix round 2: the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) (outer resampling of T0b's pairs around the inner pair bootstrap), "A1-family run" is defined so T0b's calibration runs lock nothing, and `run_card` resolves `<sha>^{commit}` before claiming the run directory, so a typo'd or unfetched sha cannot burn it either. Either branch (40 or 60 games) is plausible: the iid bound crosses 5% near d = 0.23. **Fix round 1 also:** `run_card` refuses an all-zero `sha` after pricing and before the run directory is claimed; the region holds no `python` fence (ruff >= 0.16 formats fenced Python in Markdown, which would silently move the digest) and a registration log after the end marker is pinned by `tests/regression/test_a1_registration_digest_regression.py`; after any exploratory run starts, only the "pending T0b" slots may be amended; the two-card sharded form is not registered. `check_learning_trend.py` (LF-A2) is descriptive only (exit 0 trend / 1 malformed / 2 < 3 points). OpenSpec `public-release-readiness` and `reproducible-runs` archived (both merged). |
@@ -1376,6 +1377,11 @@ validation" below was a pre-fix measurement. Releases through v1.8.0:
 > maintainer's: T0b, the section 7.1 slot fill-in, A1, A1-R and the release. v2.2 (the local
 > training loop, gap-register rows L0-L6) has no task plan yet; the program plan gives each
 > later release its own, and most of v2.2 is CONFIRM-FIRST.
+>
+> **Amended 2026-11-18:** `scripts/check_determinism.py` has now been verified live on dual
+> GPUs (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128` -> `REPRODUCED`). Formal
+> single-use T0b/A1/A1-R run-card execution via `scripts/run_card.py` and the section 7.1 slot
+> fill-in remain in the maintainer's hands.
 
 > Two previously-listed items were deleted on 2026-07-25 as untrue. **N-player
 > MicroCiv** (former item 1) landed on 2026-07-05 — `training_civ6.py` threads
@@ -1493,7 +1499,7 @@ human-readable instructions in this CLAUDE.md file.
 | `.claude/settings.json` | Project | Committed | Team-wide permissions, hooks, env vars |
 | `.claude/settings.local.json` | Personal | Gitignored | Personal overrides (API tokens, etc.) |
 | `.claude/skills/*/SKILL.md` | Project | Committed | Handoff skills (KB workflow), plus `verify` and `negative-control` |
-| `.claude/hooks/*.sh` | Project | Committed | The five hook scripts registered in `settings.json` (SessionStart, PreToolUse, two PostToolUse, PreCompact), plus two guards that role subagents attach in their own frontmatter (`readonly_shell_guard.sh`, `tests_only_write_guard.sh`) |
+| `.claude/hooks/*.sh` | Project | Committed | The five hook scripts registered in `settings.json` (SessionStart, PreToolUse, two PostToolUse, PreCompact), `_resolve_python.sh` (shared Python ≥ 3.11 discovery skipping `WindowsApps`), plus two guards that role subagents attach in their own frontmatter (`readonly_shell_guard.sh`, `tests_only_write_guard.sh`) |
 | `.claude/agents/sdlc-*.md` | Project | Committed | The eight SDLC role subagents (section 15.3a), validated by `scripts/validate_claude_agents.py` |
 
 ### 15.3 What the Harness Does
@@ -1507,11 +1513,12 @@ use `python3 -m mypy` (which is what `make typecheck` does). Note `.[dev]` can f
 `chess` source build, which aborts the whole extra; the hook now says so instead of
 reporting "pytest ready" regardless.
 
-**PostToolUse hooks (Write|Edit):** Two run. `posttooluse_lint.sh` runs `ruff check --fix`
+**PostToolUse hooks (Write|Edit):** Two run, resolving a real Python >= 3.11 interpreter first
+(skipping the Windows Store `python3` alias). `posttooluse_lint.sh` runs `ruff check --fix`
 and `ruff format` on the edited Python file (deferring F401/RUF100 — see §5.3), so manual
 linting after edits is unnecessary. `posttooluse_governance.sh` runs the matching governance
 validator for the edited path: `--path` mode for `openspec/`, `kb/` and skills, and a
-whole-repo `check_doc_sync.py` (~95 ms) for documentation, `pyproject.toml` and
+whole-repo `check_doc_sync.py` (~95 ms) for documentation, `pyproject.toml`, `CITATION.cff` and
 `alpha_zero/__init__.py`, so doc drift surfaces at edit time rather than at CI.
 
 **PreCompact hook:** Before context compaction, dumps KB session state, recent ledger entries,
@@ -1582,7 +1589,7 @@ outputs, Constraints and Hand-off.
 - **Dispatch.** `planning-handoff` dispatches product-owner, scrum-master and architect, plus
   ml-scientist or ai-engineer when relevant; `dev-sqe-handoff` dispatches developer and qa-sdet;
   `pre-pr-handoff` step 2b uses qa-sdet and step 5b uses release-manager.
-- **Gate.** `python scripts/validate_claude_agents.py` (stdlib only; exit 0/1/2; `--path` mode)
+- **Gate.** `python scripts/validate_claude_agents.py` (stdlib only; exit 0/1/2; `--path`, `--verbose`, and `--json` modes)
   enforces C1 name = stem with the `sdlc-` prefix, C2 non-vacuous description, C3 known tools,
   tools exactly as the role table, no Edit/Write on read-only roles, no `permissionMode` or
   `mcpServers`, only the approved hooks, C4 valid model equal to the table, C5 required sections
@@ -1615,6 +1622,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-11-15*
+*Last updated: 2026-11-18*
 *Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*

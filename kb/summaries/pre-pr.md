@@ -5,6 +5,18 @@
 
 <!-- entries below -->
 
+## 2026-11-18 - Post-merge Windows & dual-GPU E2E hardening, zero-warning `Agent.md`, and deterministic validators
+- **Session:** 31c93d11-adb3-4751-9d30-11395c290068
+- **Validating:** Branch `fix/post-merge-gpu-e2e-aqa-hardening` against `origin/claude/civ6-alphazero-implementation-vMnun` (`439ee9c4`). Fixed `RAGClient._call_safely` native panic handling, shared `audit_import_graph.iter_python_files` + PEP 405/worktree pruning, portable Windows Python/Git Bash resolution across `Makefile`, `.claude/hooks/*.sh`, and `tests/governance/_bash.py`, deterministic sorted `--json`/`--verbose` validators + synced `readonly_shell_guard.sh`, `.gitignore`/`.dockerignore`/`.gitleaks.toml` virtualenv/worktree exclusions (without `.env*`), C4 `log_evaluation_result()` 15-metric alignment, and burned down all `Agent.md` warnings (`22 -> 0`). `docs/EVALUATION.md` §7.1 untouched (`REGISTRATION_DIGEST e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17`).
+- **Lint:** pass (`uvx ruff==0.15.8 check .` + `format --check .`, 986 files)
+- **Types:** pass (`uvx mypy==1.19.1 alpha_zero/ --show-error-codes`, 346 files, 0 issues)
+- **Security:** pass (`bandit` 0 high issues across 121,932 lines; `gitleaks dir` 6.96s & `gitleaks git --log-opts=HEAD` 3.02s -> 0 leaks)
+- **Tests:** governance `790 passed`; regression/sanity/security/smoke/inference/cloud-smoke `543 passed`; CI coverage sweep (`unit`/`sanity`/`integration`/`cloud/unit`/`regression`, `-m "not slow and not requires_env"`) `12,834 passed, 50 skipped, 60 deselected, 7 xfailed`, total coverage `89.31%` (gate 85%); `scripts`+`e2e` `952 passed, 11 skipped, 8 deselected`; cloud floor `831 + 36 passed` (`60.1%` vs `58%` floor); registration `102 passed`; `eval-llm` `12/12 + 8/8` PASS; `measure_debt` & all 6 `make validate` checks pass.
+- **Smoke Tests & Live Dual-GPU:** `training_civ6 --dry_run` exit 0; `orchestrator --preset fast --checkpoint-dir <tmp> --dry_run` exit 0; `scripts/check_determinism.py --train-device cuda:0 --arena-device cuda:1` -> `REPRODUCED` (`differences: []`, RTX 5060 Ti + RTX 5060, `torch 2.11.0+cu128`).
+- **Review:** Isolated `/narrow-critic` subagent review completed; resolved both surfaced hook findings via shared `.claude/hooks/_resolve_python.sh` (`${CLAUDE_PROJECT_DIR:-.}/.venv` + `>= 3.11` check across all 4 Python hooks, `cd "$CLAUDE_PROJECT_DIR"` before resolution in `posttooluse_governance.sh` / `precompact_state.sh`) with outside-cwd regression test in `tests/governance/test_hook_guard_json.py`.
+- **Status:** PR-ready; awaiting human push and PR creation against `origin/claude/civ6-alphazero-implementation-vMnun`.
+- **Next:** Human push of `fix/post-merge-gpu-e2e-aqa-hardening`; maintainer T0b single-use `run_card.py` execution + A1/A1-R runs + branch cut-over.
+
 ## 2026-11-15 - v2.1 local close-out (PR #140)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
 - **Validating:** 19 commits on `claude/cool-lovelace-o02vn9` over `6d548d8`: rehearsal-first run cards, the torch wheel record, atomic checkpoint and result writes, the driver record, the release verifier applying the "After a VOID" rule, and the archive of five merged OpenSpec changes. No edit inside the hashed region of `docs/EVALUATION.md` (digest `e460a353…7c17`).

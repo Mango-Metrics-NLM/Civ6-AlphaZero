@@ -20,8 +20,8 @@ This module provides the foundational utilities consumed by all other modules:
 - **Agent Tools**: Code exploration, debug helpers, task tracking for agentic coding
 - **Factories**: Dependency injection via factory functions for all components
 - **Training Improvements**: Curriculum learning, enhanced rewards, environment tuning
-- **W&B Logger**: Weights & Biases integration (optional)
-- **RAG Client**: Thin RAG pipeline client (optional)
+- **RAG Client**: Thin RAG pipeline client with graceful degradation over non-fatal native panics (`_FATAL_BASE_EXCEPTIONS` preserved)
+- **W&B Logger (Retired)**: Weights & Biases retired 2026-07-13; legacy alias warns in favor of MLflow
 
 ---
 

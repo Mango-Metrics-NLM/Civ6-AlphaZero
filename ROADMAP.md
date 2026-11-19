@@ -39,8 +39,9 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   rulesets and release gates of the local-first plan.
 - `openspec/changes/harden-governance-gates`: governance-gate hardening.
 - `openspec/changes/add-gpu-first-run-cards`: GPU-first registered runs (pinned
-  CUDA torch, device checks, the reproduction check). Open until T0b has run on
-  the maintainer's GPU machine.
+  CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
+  reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
+  and A1/A1-R run-card execution remains open until run on the maintainer's GPU machine.
 
 ### Next — v2.1 "First validated learning run"
 
