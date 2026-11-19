@@ -16,13 +16,14 @@ without staling any evidence run. Later rungs build on it, each under its own ch
   `ModifierSpec`, `VictorySpec`, `RulesetSpec`), `loader.py` (strict load,
   canonical JSON, content hash), `validate.py`, `queries.py`, `registry.py`,
   `builtin.py`, `Agent.md`.
-- `alpha_zero/rules/data/science_v1.yaml`: the original rule set of plan
+- `alpha_zero/rules/data/science_v1_draft.yaml`: the first-pass rule set of plan
   section 3.3, shipped as package data (`[tool.setuptools.package-data]`) and
-  pinned by id and hash in `builtin.py`.
+  pinned in `builtin.py` as `science-v1-draft` with status `draft`. The id
+  `science-v1` is reserved for the calibrated tree, frozen after v2.1.0.
 - `python -m alpha_zero.rules` with `validate` and `hash` (GM-K1), then `pace`
   and `import-gameinfo` (GM-K2: `pacing.py`, `gameinfo.py`).
-- An append-only hash log in `docs/GAME_RULES.md`, held equal to the pinned
-  hashes by a test.
+- An append-only hash log in `docs/GAME_RULES.md`, held equal to the frozen
+  pins by a test. It stays empty in this change, which adds no frozen rule set.
 - A `docs/MODULE_REFERENCE.md` row for `rules` (submodule count 30 to 31).
 
 ## Impact

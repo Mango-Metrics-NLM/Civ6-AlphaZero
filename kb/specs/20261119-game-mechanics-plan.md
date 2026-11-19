@@ -225,8 +225,9 @@ random draws at most 0.10 and capstone finishes at most 5%; seat balance by an e
 - Clone at most 1.25x (GM-S1) or 1.5x (GM-S2) of the default's cost, and seconds per game at most 1.5x or 2x at
   an equal horizon, measured with `scripts/calibrate_throughput.py` and recorded under `docs/evidence/`. These
   are ratios until T0b gives absolute numbers.
-- A "one tech from victory" oracle that every search variant solves, with the vacuity guards of
-  `tests/unit/test_forced_win_oracle.py`.
+- For a rule set that declares a capstone: a "one tech from victory" oracle that every search variant
+  solves, with the vacuity guards of `tests/unit/test_forced_win_oracle.py`. A rule set without a capstone
+  (`growth-v1`) names its own known-answer position in its OpenSpec change.
 - Probes, each its own run card under 1,000 games on existing runners (no new cost model): random against
   random (600 games, 300 pairs: draws and seat balance; the seat-0 score needs a small tool over the per-game
   records, since the paired design cancels seat bias out of the headline score); a scripted positive control (3 x 200) from a new, measured

@@ -26,13 +26,19 @@ setting, `gameplay_preset` (the term `docs/EVALUATION.md` section 7.1 registers)
   change, confirmed when it is proposed.
 - **Identity.** A rule set is `(id, sha256 of its canonical parsed form)`. The
   form is canonical so that line endings and key order cannot change the hash.
-- **A rule change is a new id** (for example `science-v2`), never an edit under
-  an old one.
+- **A rule change to a frozen rule set is a new id** (for example `science-v2`),
+  never an edit under an old one.
+- **Drafts.** A calibration draft is a built-in whose id ends in `-draft` (for
+  example `science-v1-draft`, the first-pass tree of the plan). Its hash is
+  pinned and checked on load, but it may be re-pinned, it is never logged, and
+  nothing confirmatory runs on it. Freezing creates a new entry under the
+  target id.
 
 ## 2. Rule-set log
 
-Append-only, newest last. A row is added when a rule set's hash is pinned for
-confirmation, whatever the confirmation then shows.
+Append-only, newest last. A row is added when a rule set is frozen for
+confirmation (section 3, step 3), whatever the confirmation then shows. The log
+has no row while only drafts exist.
 
 | Id | Content sha256 | Date | What changed | OpenSpec change |
 |---|---|---|---|---|
@@ -41,12 +47,14 @@ Rules for appending:
 
 1. A rule change is a new id and a new row; an existing row is never edited or
    removed, and a pinned hash is never edited.
-2. The id and hash in a row equal the pinned values in the kernel's builtin table.
-   Once the kernel lands (GM-K1), a test holds this log equal to those values, as
+2. The id and hash in a row equal the pinned values of a frozen entry in the
+   kernel's builtin table, and every frozen entry has a row. Once the kernel
+   lands (GM-K1), a test holds this log equal to those entries, as
    `tests/regression/test_a1_registration_digest_regression.py` does for section 7.1.
-3. Calibration drafts are not logged. A rule set enters the log when it is frozen
-   for confirmation (section 3, step 3). If its confirmation fails, the row stays,
-   and the probe verdict lives in its evidence artifact.
+3. Calibration drafts (ids ending in `-draft`) are not logged. A rule set enters
+   the log when it is frozen for confirmation (section 3, step 3), under an id
+   without the suffix. If its confirmation fails, the row stays, and the probe
+   verdict lives in its evidence artifact.
 
 ## 3. Probe protocol (pre-registration template)
 
@@ -55,9 +63,11 @@ its OpenSpec change), fill in every bracket, and commit it **before** step 4.
 
 **Steps.** (1) Zero-game pacing model (`python -m alpha_zero.rules pace`, once it
 exists). (2) Exploratory calibration sweeps on calibration seeds only, tuning
-costs one factor at a time; the scripted agent may change here too. (3) Freeze:
-pin the hash, freeze the scripted agent's code, append the log row, commit this
-template filled in. (4) One confirmation run on held-out seeds. Nothing is tuned
+costs one factor at a time, loading each candidate rule set by path and recording
+its content sha256 in the sweep's artifact; the scripted agent may change here
+too. (3) Freeze: add a frozen built-in entry under the target id (for example
+`science-v1`) with its pinned hash, freeze the scripted agent's code, append the
+log row, commit this template filled in. (4) One confirmation run on held-out seeds. Nothing is tuned
 after step 3.
 
 **Hypothesis.** Rule set `[id]` at `[hash]` (board `[8]`, `max_turns` `[60]`) is
@@ -83,7 +93,10 @@ here before step 2: calibration `[3001-3099]`, confirmation `[one seed per card
 from 5001-5999]`. None may be 1001-1003, 20261111 or 20261112 (section 7.1). A
 confirmation seed that has been run is spent.
 
-**Bands** (all must hold; reading the intervals at the stated levels, in pairs):
+**Bands** (all that apply must hold; reading the intervals at the stated levels, in pairs).
+B1 and B4 apply only to a rule set that declares a capstone. A rule set without one (for
+example `growth-v1`) must pre-register its own pacing criterion in their place, in the same
+file and before step 4; it may not simply drop them:
 
 | Band | Statistic | Passes when |
 |---|---|---|
