@@ -34,7 +34,7 @@ or removed.
 | `storage` | 9 | Storage backends (local/GCS), streaming replay buffer, factory |
 | `tournament` | 9 | ELO rating, matchmaking, analysis, tournament telemetry |
 | `web` | 12 | FastAPI + WebSocket game UI: routes, static assets |
-| `gameplay` | 8 | Gameplay systems: terrain, fog of war, tech tree, combat |
+| `gameplay` | 8 | Gameplay systems: combat, economy, fog of war, terrain, city growth, victory (no tech tree yet; one is planned as GM-S2) |
 | `human_interface` | 4 | Human gameplay interface |
 | `monitoring` | 6 | MLflow experiment tracking: `MLflowConfig`, `MLflowLogger`, metric helpers, dashboards |
 | `inference` | 4 | Inference service: client, engine, schemas (HTTP server lives in `serving/`) |
