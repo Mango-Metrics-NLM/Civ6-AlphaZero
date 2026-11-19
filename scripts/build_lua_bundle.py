@@ -50,7 +50,14 @@ HEADER = (
     "\n"
     "\n"
 )
-_FILE_ENTRY = re.compile(r"<File>\s*" + SCRIPTS_SUBDIR + r"/([^<\s]+\.lua)\s*</File>")
+_LUA_SUFFIX = ".lua"
+# The modinfo is read with three small patterns, not an XML parser: the standard
+# library's parsers are flagged as unsafe for untrusted input, and this needs
+# only comments removed, the <Files> block found and its <File> entries listed.
+_XML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
+_FILES_BLOCK = re.compile(r"<Files\s*>(.*?)</Files\s*>", re.DOTALL)
+_FILE_ENTRY = re.compile(r"<File\s*>(.*?)</File\s*>", re.DOTALL)
+_BOM = "\ufeff"
 
 
 class BundleError(Exception):
@@ -68,7 +75,19 @@ def end_marker(name: str) -> str:
 
 
 def _read(path: Path) -> str:
-    return path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+    """The file as text with LF line endings; a file Lua could not load is refused.
+
+    A byte-order mark is refused, not stripped: in the middle of the bundle it
+    would be a syntax error to Lua, and silently changing a module is not this
+    script's job.
+    """
+    try:
+        text = path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise BundleError(f"{path.name} is not UTF-8 ({exc.reason} at byte {exc.start})") from exc
+    if text.startswith(_BOM):
+        raise BundleError(f"{path.name} starts with a byte-order mark; save it without one")
+    return text.replace("\r\n", "\n")
 
 
 def find_modinfo(mod_dir: Path) -> Path:
@@ -80,16 +99,41 @@ def find_modinfo(mod_dir: Path) -> Path:
 
 
 def module_order(mod_dir: Path) -> list[str]:
-    """The Lua module file names, in the order the modinfo lists them.
+    """The Lua module file names, in the order the modinfo's ``<Files>`` lists them.
 
-    The bundle itself is listed there too and is left out. A name listed twice
-    is an error: it would be bundled twice.
+    XML comments are removed first, so a commented-out entry is not an entry. The
+    bundle itself is listed there too and is left out. Every other ``.lua`` entry
+    must be spelled ``Scripts/<name>.lua`` with forward slashes: an entry in any
+    other spelling is refused, never skipped, because a skipped module would
+    silently not ship. A name listed twice is an error: it would be bundled twice.
     """
-    names = [
-        name for name in _FILE_ENTRY.findall(_read(find_modinfo(mod_dir))) if name != BUNDLE_NAME
-    ]
+    modinfo = find_modinfo(mod_dir)
+    blocks = _FILES_BLOCK.findall(_XML_COMMENT.sub("", _read(modinfo)))
+    if len(blocks) != 1:
+        raise BundleError(
+            f"{modinfo.name} must hold exactly one <Files> block, found {len(blocks)}"
+        )
+    prefix = f"{SCRIPTS_SUBDIR}/"
+    names = []
+    for raw in _FILE_ENTRY.findall(blocks[0]):
+        listed = raw.strip()
+        if not listed.lower().endswith(_LUA_SUFFIX):
+            continue
+        if (
+            not listed.startswith(prefix)
+            or not listed.endswith(_LUA_SUFFIX)
+            or "\\" in listed
+            or ".." in listed.split("/")
+        ):
+            raise BundleError(
+                f"{modinfo.name} lists {listed!r}; a Lua entry must be spelled "
+                f"{prefix}<name>{_LUA_SUFFIX}"
+            )
+        name = listed[len(prefix) :]
+        if name != BUNDLE_NAME:
+            names.append(name)
     if not names:
-        raise BundleError(f"{find_modinfo(mod_dir).name} lists no Lua module")
+        raise BundleError(f"{modinfo.name} lists no Lua module")
     repeated = sorted({name for name in names if names.count(name) > 1})
     if repeated:
         raise BundleError(f"the modinfo lists {', '.join(repeated)} more than once")
@@ -149,10 +193,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     bundle_path = args.mod_dir / SCRIPTS_SUBDIR / BUNDLE_NAME
     try:
         generated = build_bundle(args.mod_dir)
+        committed = _read(bundle_path) if bundle_path.is_file() else None
     except (BundleError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_USAGE
-    committed = _read(bundle_path) if bundle_path.is_file() else None
     if committed == generated:
         print(f"{bundle_path.name}: up to date")
         return EXIT_OK
