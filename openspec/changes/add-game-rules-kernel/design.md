@@ -31,9 +31,21 @@ booleans where integers are expected. Percentages are integer percent.
 
 A rule set is `(id, sha256)`. The hash is taken over
 `json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True)`,
-so CRLF in a Windows checkout and key order cannot move it. A content change is a
-new id (`science-v2`), never a re-pin. `docs/GAME_RULES.md` keeps the append-only
-log, and a test holds it equal to `builtin.py`, as the A1 registration digest is held.
+so CRLF in a Windows checkout and key order cannot move it. Each built-in entry
+carries a status. A `frozen` entry is immutable: a content change is a new id
+(`science-v2`), never a re-pin. A `draft` entry (its id ends in `-draft`) may be
+re-pinned while it is calibrated, and the hash check still catches an edit
+without a re-pin. `docs/GAME_RULES.md` keeps the append-only log of frozen
+entries only, and a test holds it equal to the frozen entries of `builtin.py`, as
+the A1 registration digest is held.
+
+GM-K1 ships `science-v1-draft`, the first-pass tree of plan section 3.3, and no
+frozen entry, so the log stays empty. Pinning `science-v1` now would put an
+uncalibrated tree under the registered preset name, permanently, because the log
+is append-only. Freezing (GAME_RULES.md section 3, step 3) adds a new frozen
+entry under the target id, `science-v1`, with its own resource and a log row.
+Calibration sweeps load candidate files by path, so the draft stays the
+first-pass tree that `pace` reports as 580 and 780.
 
 ## Victory and imported trees
 
