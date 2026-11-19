@@ -83,33 +83,32 @@ def _unresolved_prerequisites(spec: RulesetSpec) -> list[Issue]:
 
 
 def _cycles(spec: RulesetSpec) -> list[Issue]:
-    """Report the techs left over when prerequisite-free techs are peeled away.
+    """Report the techs that are on a prerequisite cycle.
 
-    Only edges between declared techs count, so an unresolved prerequisite is
-    not also reported as a cycle. Techs that merely depend on a cycle are
-    peeled off the other end, so only the cycle's own members are named.
+    A tech is on a cycle exactly when it is among its own transitive
+    prerequisites. Only edges between declared techs count, so an unresolved
+    prerequisite is not also reported as a cycle; and a tech that merely
+    depends on a cycle, feeds one, or sits between two is not named.
     """
     known = {t.id for t in spec.techs}
     requires = {t.id: {p for p in t.prerequisites if p in known} for t in spec.techs}
-    remaining = set(requires)
-    changed = True
-    while changed:
-        changed = False
-        for tech_id in sorted(remaining):
-            if not requires[tech_id] & remaining:
-                remaining.discard(tech_id)
-                changed = True
-    # Drop techs nothing in the remainder depends on: downstream of a cycle, not in it.
-    changed = True
-    while changed:
-        changed = False
-        for tech_id in sorted(remaining):
-            if not any(tech_id in requires[other] for other in remaining):
-                remaining.discard(tech_id)
-                changed = True
-    if not remaining:
+
+    def reaches_itself(start: str) -> bool:
+        seen: set[str] = set()
+        stack = list(requires[start])
+        while stack:
+            name = stack.pop()
+            if name == start:
+                return True
+            if name not in seen:
+                seen.add(name)
+                stack.extend(requires[name])
+        return False
+
+    on_cycle = sorted(name for name in requires if reaches_itself(name))
+    if not on_cycle:
         return []
-    members = ", ".join(repr(name) for name in sorted(remaining))
+    members = ", ".join(repr(name) for name in on_cycle)
     return [Issue(RULE_PREREQUISITE_CYCLE, f"prerequisite cycle among techs {members}")]
 
 

@@ -27,6 +27,10 @@ class Registry:
     building_index: Mapping[str, int]
     fingerprint: str
 
+    def __hash__(self) -> int:
+        # The generated hash would hash the (unhashable) mapping proxies.
+        return hash((self.ruleset_id, self.fingerprint))
+
     @property
     def tech_names(self) -> tuple[str, ...]:
         """Tech ids by index."""

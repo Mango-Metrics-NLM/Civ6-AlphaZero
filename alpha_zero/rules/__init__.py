@@ -30,7 +30,7 @@ from alpha_zero.rules.spec import (
     UnitSpec,
     VictorySpec,
 )
-from alpha_zero.rules.validate import Issue, RulesetValidationError, ensure_valid, validate
+from alpha_zero.rules.validate import Issue, RulesetValidationError, ensure_valid
 
 __all__ = [
     "BUILTIN",
@@ -56,5 +56,4 @@ __all__ = [
     "parse_ruleset",
     "prerequisite_closure",
     "research_cost",
-    "validate",
 ]

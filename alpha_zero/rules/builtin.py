@@ -52,6 +52,26 @@ BUILTIN: dict[str, BuiltinRuleset] = {
 }
 
 
+class BuiltinTableError(ValueError):
+    """An entry of the built-in table breaks the status rule."""
+
+
+def entry_problem(ruleset_id: str, entry: BuiltinRuleset) -> str | None:
+    """Why a table entry is not allowed, or ``None``.
+
+    The status is one of the two known values, and the id ends in ``-draft``
+    exactly when the status is ``draft``.
+    """
+    if entry.status not in (STATUS_DRAFT, STATUS_FROZEN):
+        return f"built-in {ruleset_id!r}: unknown status {entry.status!r}"
+    if ruleset_id.endswith(DRAFT_SUFFIX) != (entry.status == STATUS_DRAFT):
+        return (
+            f"built-in {ruleset_id!r} has status {entry.status!r}: an id ends in "
+            f"{DRAFT_SUFFIX!r} exactly when its status is {STATUS_DRAFT!r}"
+        )
+    return None
+
+
 def builtin_ids() -> tuple[str, ...]:
     """Ids of the built-in rule sets, in declared order."""
     return tuple(BUILTIN)
@@ -76,8 +96,12 @@ def load_builtin(ruleset_id: str) -> RulesetSpec:
         RulesetHashMismatchError: the data's content hash differs from the pin, or the
             file declares another id than the table.
         RulesetLoadError, RulesetValidationError: the data is malformed.
+        BuiltinTableError: the table entry itself breaks the status rule.
     """
     entry = BUILTIN[ruleset_id]
+    problem = entry_problem(ruleset_id, entry)
+    if problem:
+        raise BuiltinTableError(problem)
     spec = parse_ruleset(read_builtin_text(ruleset_id))
     if spec.id != ruleset_id:
         raise RulesetHashMismatchError(

@@ -2,8 +2,8 @@
 
 ``TARGET`` is a built-in id (``science-v1-draft``) or a path to a rule-set file.
 
-Exit codes: 0 success; 1 the rule set is invalid, malformed or does not match its
-pin; 2 usage error (unknown subcommand, or a target that is neither a built-in id
+Exit codes: 0 success; 1 the rule set is invalid, malformed, unreadable or does not
+match its pin; 2 usage error (unknown subcommand, or a target that is neither a built-in id
 nor an existing file).
 """
 
@@ -14,7 +14,13 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from alpha_zero.rules.builtin import BUILTIN, RulesetHashMismatchError, builtin_ids, load_builtin
+from alpha_zero.rules.builtin import (
+    BUILTIN,
+    BuiltinTableError,
+    RulesetHashMismatchError,
+    builtin_ids,
+    load_builtin,
+)
 from alpha_zero.rules.loader import RulesetLoadError, content_sha256, load_ruleset
 from alpha_zero.rules.queries import available
 from alpha_zero.rules.registry import build_registry
@@ -77,7 +83,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for issue in exc.issues:
             print(f"  {issue}", file=sys.stderr)
         return EXIT_INVALID
-    except (RulesetLoadError, RulesetHashMismatchError) as exc:
+    except (RulesetLoadError, RulesetHashMismatchError, BuiltinTableError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return EXIT_INVALID
     return EXIT_OK

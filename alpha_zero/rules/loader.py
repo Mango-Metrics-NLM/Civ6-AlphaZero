@@ -75,6 +75,9 @@ class _StrictLoader(yaml.SafeLoader):
                 line = key_node.start_mark.line + 1
                 raise RulesetLoadError(f"merge key '<<' at line {line} is not allowed")
             key = self.construct_object(key_node, deep=deep)
+            if not isinstance(key, Hashable):
+                line = key_node.start_mark.line + 1
+                raise RulesetLoadError(f"mapping key at line {line} is not a scalar")
             if key in seen:
                 line = key_node.start_mark.line + 1
                 raise RulesetLoadError(f"duplicate key {key!r} at line {line}")
@@ -280,8 +283,17 @@ def parse_ruleset(text: str) -> RulesetSpec:
 
 
 def load_ruleset(path: Path) -> RulesetSpec:
-    """Read and parse the rule-set file at ``path`` (UTF-8)."""
-    return parse_ruleset(Path(path).read_text(encoding="utf-8"))
+    """Read and parse the rule-set file at ``path`` (UTF-8).
+
+    Raises:
+        RulesetLoadError: the file is not UTF-8, or :func:`parse_ruleset` refuses it.
+        OSError: the file cannot be read.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise RulesetLoadError(f"{path}: not UTF-8 text ({exc.reason})") from exc
+    return parse_ruleset(text)
 
 
 def _without_defaults(instance: Any) -> dict[str, Any]:
