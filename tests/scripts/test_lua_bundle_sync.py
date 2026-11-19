@@ -179,8 +179,8 @@ def test_edited_module_fails_check_then_rewrite_fixes(
     assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 1
     err = capsys.readouterr().err
     assert "out of date" in err
-    # Header is 7 lines, BEGIN marker is line 8, so Config.lua line 4 is bundle line 11.
-    assert re.search(r"line 11:", err), err
+    # Header is 7 lines, BEGIN marker is line 8, so Config.lua line 4 is bundle line 12.
+    assert re.search(r"line 12:", err), err
     assert "negative control edit" in err
     assert bundle.read_bytes() == before, "--check must not write"
 
