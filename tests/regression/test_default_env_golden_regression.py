@@ -40,6 +40,7 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,25 @@ def build_fixture() -> dict[str, Any]:
         "numpy_stream_canary": numpy_stream_canary(),
         "cases": cases,
     }
+
+
+def write_fixture(path: Path) -> None:
+    """Build the fixture, then publish it in one step.
+
+    The text is built and serialised before anything is opened, written to a
+    temporary file beside ``path`` and moved into place with ``os.replace``. A
+    failure at any point leaves an existing fixture untouched (review finding:
+    opening ``path`` with ``"w"`` first truncated the old baseline, and the next
+    ``--regenerate`` then failed to parse the empty file).
+    """
+    text = json.dumps(build_fixture(), indent=2, sort_keys=True) + "\n"
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        with tmp.open("w", encoding="utf-8", newline="\n") as handle:
+            handle.write(text)
+        os.replace(tmp, path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _load_fixture() -> dict[str, Any]:
@@ -448,6 +468,34 @@ def test_negative_control_a_changed_probability_moves_the_digest(
     assert moved, "auto-found probability 0.10 -> 0.15 moved no golden digest"
 
 
+def test_a_failed_regeneration_leaves_the_fixture_untouched(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A raising ``build_fixture`` must not truncate or replace the old baseline."""
+    target = tmp_path / "fixture.json"
+    target.write_bytes(b'{"old": "baseline"}\n')
+
+    def _boom() -> dict[str, Any]:
+        raise RuntimeError("generation failed")
+
+    monkeypatch.setattr(sys.modules[__name__], "build_fixture", _boom)
+    with pytest.raises(RuntimeError, match="generation failed"):
+        write_fixture(target)
+    assert target.read_bytes() == b'{"old": "baseline"}\n'
+    assert list(tmp_path.iterdir()) == [target], "a temporary file was left behind"
+
+
+def test_write_fixture_replaces_the_file_and_leaves_no_temporary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "fixture.json"
+    target.write_bytes(b"old\n")
+    monkeypatch.setattr(sys.modules[__name__], "build_fixture", lambda: {"b": 2, "a": 1})
+    write_fixture(target)
+    assert target.read_bytes() == b'{\n  "a": 1,\n  "b": 2\n}\n'
+    assert list(tmp_path.iterdir()) == [target]
+
+
 if __name__ == "__main__":
     if "--regenerate" not in sys.argv:
         sys.exit("refusing to run without --regenerate (the fixture is never rewritten silently)")
@@ -461,6 +509,5 @@ if __name__ == "__main__":
                 "bump ENV_VERSION for a rule change"
             )
         print(f"numpy's Generator stream moved: rewriting {FIXTURE_PATH.name}")
-    with FIXTURE_PATH.open("w", encoding="utf-8", newline="\n") as handle:
-        handle.write(json.dumps(build_fixture(), indent=2, sort_keys=True) + "\n")
+    write_fixture(FIXTURE_PATH)
     print(f"wrote {FIXTURE_PATH}")
