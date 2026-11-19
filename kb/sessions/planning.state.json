@@ -1,28 +1,26 @@
 {
-    "last_session_id": "session_9a6019a1-f6d9-4e79-9f63-04002716a56d",
-    "last_timestamp": "2026-11-11T17:05:00Z",
-    "current_focus": "Program plan v3 handed to DEV-SQE: local-first gap closure + dev/qa/main branching. v2.1 (governance, branching, first post-fix learning evidence) is decomposed into tasks T0a-T18; later releases get their own task plans at sprint planning.",
+    "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+    "last_timestamp": "2026-11-19T03:15:34Z",
+    "current_focus": "Game-mechanics gap closure program handed to DEV-SQE: Phase 1 (docs, rules kernel outside the play path, bridge parity) is sliced GM-S0a, GM-K1, GM-K2, GM-B0..GM-B5; simulator rungs GM-S0..S7 wait for v2.1.0 and get their own task plans. The local-first program plan (v2.1 runs, v2.2 local loop) remains the sequencing authority for releases.",
     "resume_pointers": {
-        "current_task": "Sprint 0: maintainer actions 1-5, then DEV-SQE T0a, T1, T2, T3a, T4 (R1); cut-over with T6 (R2)",
+        "current_task": "Plan GM-S0 (preset seam and hardening) once v2.1.0 ships; plan v2.2 (local loop L0-L6) at its sprint planning",
         "blocked_on": [
-            "Maintainer: revoke W&B key + ask GitHub Support to purge refs/pull/72/head (LF-G1)",
-            "Maintainer: create machine user civ6az-agent (agent-identity answer was interrupted; machine user is the default, alternatives in plan section 3.6)",
-            "Maintainer: tag v2.0.0 on c214daa after T3a and T4 merge",
-            "Maintainer: LF-A5/A12 decision after T12, before T13 registers EVALUATION.md section 7.1"
+            "Maintainer: T0b, A1 and A1-R runs on the GPU machine (v2.1)",
+            "Maintainer: merge of the Phase 1 PRs; live Civ6 checklist after GM-B2 and GM-B4",
+            "Maintainer decisions in spec section 10 (science-v1 probe horizon; `enhanced` alias; LF-B4/LF-B5 on default or preset-only; release slots for GM-S1 and GM-S2)"
         ],
         "next_steps": [
-            "T0a Windows baseline + harness (no ETA claim)",
-            "T1 data root + pinned env; T2 GCP isolation (GCSBackend raises LocalModeViolation(BaseException))",
-            "T3a charter amendment (maintainer merges); T4 guard/settings/triggers",
-            "Cut-over via scripts/maintainer/branch_cutover.sh with T6",
-            "Plan v2.2 (local loop L0-L6) at Sprint 4 planning"
+            "DEV-SQE: GM-S0a golden fingerprint (own OpenSpec change), then GM-K1 and GM-K2",
+            "DEV-SQE: GM-B0 generated Lua bundle, GM-B1 harness, GM-B2/B3 exporter parity and wiring, GM-B4 snapshot, GM-B5 --mcts refusal",
+            "After v2.1.0: OpenSpec change and task plan for GM-S0"
         ]
     },
     "context_files": [
+        "kb/specs/20261119-game-mechanics-plan.md",
+        "kb/specs/20261119-game-mechanics-gap-register.md",
+        "docs/GAME_RULES.md",
         "kb/specs/20261111-local-first-and-branching-plan.md",
         "kb/specs/20261111-local-first-gap-register.md",
-        "docs/audits/2026-11-11-local-first-plan-review.md",
-        "kb/specs/20260902-validated-learning-plan.md",
         "docs/EVALUATION.md",
         "CLAUDE.md"
     ]
