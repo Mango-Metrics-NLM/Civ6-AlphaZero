@@ -91,11 +91,13 @@ _StrictLoader.add_constructor(_INT_TAG, _StrictLoader.construct_yaml_int)
 def _reject_yaml_features(text: str) -> None:
     """Refuse anchors, aliases and explicit tags before anything is constructed."""
     for event in yaml.parse(text, Loader=yaml.SafeLoader):
-        line = event.start_mark.line + 1
+        mark = event.start_mark
+        line = mark.line + 1 if mark is not None else 0
+        anchor = getattr(event, "anchor", None)
         if isinstance(event, yaml.AliasEvent):
-            raise RulesetLoadError(f"alias '*{event.anchor}' at line {line} is not allowed")
-        if getattr(event, "anchor", None) is not None:
-            raise RulesetLoadError(f"anchor '&{event.anchor}' at line {line} is not allowed")
+            raise RulesetLoadError(f"alias '*{anchor}' at line {line} is not allowed")
+        if anchor is not None:
+            raise RulesetLoadError(f"anchor '&{anchor}' at line {line} is not allowed")
         tag = getattr(event, "tag", None)
         if tag is not None:
             raise RulesetLoadError(f"explicit tag {tag!r} at line {line} is not allowed")
