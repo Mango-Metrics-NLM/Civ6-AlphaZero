@@ -13,10 +13,10 @@
 - [ ] 1.10 Empty play-path diff; `tests/scripts/test_release_play_path_closure.py` and the debt ratchet pass; coverage at or above 85%
 
 ## 2. GM-K2: kernel tooling
-- [ ] 2.1 `pacing.py` and `pace`: science-v1-draft reports capstone path cost 580 and full-tree cost 780
-- [ ] 2.2 `gameinfo.py` and `import-gameinfo`: synthetic export fixture to a rule set that passes `validate`; refuses an output path inside the checkout
-- [ ] 2.3 CLI exit codes 0 / 1 / 2 tested for every subcommand
-- [ ] 2.4 `docs/MODULE_REFERENCE.md` `rules` file count updated
+- [x] 2.1 `pacing.py` and `pace`: science-v1-draft reports capstone path cost 580 and full-tree cost 780
+- [x] 2.2 `gameinfo.py` and `import-gameinfo`: synthetic export fixture to a rule set that passes `validate`; refuses an output path inside the checkout
+- [x] 2.3 CLI exit codes 0 / 1 / 2 tested for every subcommand
+- [x] 2.4 `docs/MODULE_REFERENCE.md` `rules` file count updated
 
 ## 3. Close-out
 - [ ] 3.1 CLAUDE.md section 5.1 rows for the CLI and a section 5.2 row; `make verify`

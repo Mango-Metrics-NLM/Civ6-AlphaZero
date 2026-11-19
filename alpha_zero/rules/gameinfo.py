@@ -1,0 +1,308 @@
+"""Turn an export of the game's own GameInfo tables into a rule-set file.
+
+The real technology tree is the user's own game data. It is never committed:
+the bridge can snapshot it from a running game (slice GM-B4), and this module
+turns such a snapshot into a rule set the kernel can load, so the same engine
+that runs the small built-in tree can run the real one.
+
+Input: one JSON object whose keys are table names and whose values are lists of
+rows. Recognised tables and the columns read from them:
+
+``Technologies``       ``TechnologyType``, ``Cost``, ``EraType`` (or integer ``Era``)
+``TechnologyPrereqs``  ``Technology``, ``PrereqTech``
+``Buildings``          ``BuildingType``, ``Cost``, optional ``PrereqTech``
+``Units``              ``UnitType``, ``Cost``, optional ``Combat``, ``BaseMoves``, ``PrereqTech``
+``Civics``, ``CivicPrereqs``  accepted and counted, **not imported**: schema
+                       version 1 has no civic tree (it arrives with ``civics-v1``).
+
+Every value must be an identifier, an integer or null: the snapshot holds names
+and numbers, no text. Rows whose cost is not positive (the game marks unbuildable
+entries so) are skipped and counted. No modifier and no victory is imported.
+
+The output must lie outside the repository checkout. A leaf package cannot use
+``alpha_zero.utils.data_root``, so this module reads ``CIV6AZ_DATA_ROOT`` from
+the environment itself and finds the checkout as the nearest ancestor of this
+package that holds a ``pyproject.toml``.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+from alpha_zero.rules.loader import RULESET_ID, parse_ruleset, to_canonical_dict
+from alpha_zero.rules.spec import SCHEMA_VERSION
+from alpha_zero.rules.validate import ensure_valid
+
+DATA_ROOT_ENV = "CIV6AZ_DATA_ROOT"
+DEFAULT_SUBDIR = "gameinfo"
+DEFAULT_RULESET_ID = "gameinfo-import"
+
+IMPORTED_TABLES: tuple[str, ...] = ("Technologies", "TechnologyPrereqs", "Buildings", "Units")
+COUNTED_TABLES: tuple[str, ...] = ("Civics", "CivicPrereqs")
+
+#: The game's era identifiers, in order; an integer ``Era`` column is also accepted.
+ERA_ORDER: tuple[str, ...] = (
+    "ERA_ANCIENT",
+    "ERA_CLASSICAL",
+    "ERA_MEDIEVAL",
+    "ERA_RENAISSANCE",
+    "ERA_INDUSTRIAL",
+    "ERA_MODERN",
+    "ERA_ATOMIC",
+    "ERA_INFORMATION",
+    "ERA_FUTURE",
+)
+
+_IDENTIFIER = re.compile(r"[A-Za-z][A-Za-z0-9_]*")
+
+
+class GameInfoError(ValueError):
+    """The export is not in the expected format. The message names the place."""
+
+
+class RefusedPathError(ValueError):
+    """The output path is not allowed (inside the checkout, or no data root)."""
+
+
+@dataclass(frozen=True)
+class ImportSummary:
+    """What an import read, skipped and wrote."""
+
+    ruleset_id: str
+    techs: int
+    units: int
+    buildings: int
+    skipped_non_positive_cost: int
+    civics_not_imported: int
+    text: str
+
+
+def checkout_root() -> Path | None:
+    """The repository root this package sits in, or ``None`` (an installed wheel)."""
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def resolve_output(out: str | None, ruleset_id: str) -> Path:
+    """Where the rule-set file goes: ``out``, or ``<CIV6AZ_DATA_ROOT>/gameinfo/<id>.yaml``.
+
+    Raises:
+        RefusedPathError: no ``out`` and no data root, or the path resolves to a
+            place inside the repository checkout.
+    """
+    if out is not None:
+        path = Path(out)
+    else:
+        root = os.environ.get(DATA_ROOT_ENV, "").strip()
+        if not root:
+            raise RefusedPathError(f"no --out given and {DATA_ROOT_ENV} is not set")
+        path = Path(root) / DEFAULT_SUBDIR / f"{ruleset_id}.yaml"
+    resolved = path.resolve()
+    repo = checkout_root()
+    if repo is not None and resolved.is_relative_to(repo):
+        raise RefusedPathError(
+            f"{resolved} is inside the repository checkout ({repo}); game data is never "
+            "written there"
+        )
+    return resolved
+
+
+def _item_id(value: Any, where: str) -> str:
+    if type(value) is not str or not _IDENTIFIER.fullmatch(value):
+        raise GameInfoError(f"{where}: expected an identifier, got {value!r}")
+    return value.lower()
+
+
+def _integer(value: Any, where: str) -> int:
+    if type(value) is not int:
+        raise GameInfoError(f"{where}: expected an integer, got {value!r}")
+    return value
+
+
+def _rows(document: dict[str, Any], table: str) -> list[dict[str, Any]]:
+    rows = document.get(table, [])
+    if not isinstance(rows, list):
+        raise GameInfoError(f"{table}: expected a list of rows")
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise GameInfoError(f"{table}[{index}]: expected an object")
+        for column, value in row.items():
+            if value is None or type(value) is int:
+                continue
+            if type(value) is str and _IDENTIFIER.fullmatch(value):
+                continue
+            raise GameInfoError(
+                f"{table}[{index}].{column}: expected an identifier, an integer or null, "
+                f"got {value!r}"
+            )
+    return rows
+
+
+def _required(row: dict[str, Any], column: str, where: str) -> Any:
+    if row.get(column) is None:
+        raise GameInfoError(f"{where}: missing column {column!r}")
+    return row[column]
+
+
+def _era(row: dict[str, Any], where: str) -> int:
+    if row.get("Era") is not None:
+        return _integer(row["Era"], f"{where}.Era")
+    era_type = _required(row, "EraType", where)
+    if era_type not in ERA_ORDER:
+        raise GameInfoError(f"{where}.EraType: unknown era {era_type!r}")
+    return ERA_ORDER.index(era_type) + 1
+
+
+def _optional_tech(row: dict[str, Any], where: str) -> str | None:
+    if row.get("PrereqTech") is None:
+        return None
+    return _item_id(row["PrereqTech"], f"{where}.PrereqTech")
+
+
+def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummary:
+    """Convert a parsed export into rule-set YAML text that loads and validates.
+
+    Raises:
+        GameInfoError: the export is malformed; the message names the table and row.
+        RulesetLoadError, RulesetValidationError: the converted rule set is not
+            valid (an unknown prerequisite or a cycle in the game data, say).
+    """
+    if not RULESET_ID.fullmatch(ruleset_id):
+        raise GameInfoError(f"rule-set id {ruleset_id!r} must match {RULESET_ID.pattern}")
+    if not isinstance(document, dict):
+        raise GameInfoError("expected a JSON object of tables")
+    for table in document:
+        if table not in IMPORTED_TABLES + COUNTED_TABLES:
+            raise GameInfoError(f"unknown table {table!r}")
+
+    skipped = 0
+    techs: dict[str, dict[str, Any]] = {}
+    for index, row in enumerate(_rows(document, "Technologies")):
+        where = f"Technologies[{index}]"
+        cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        if cost <= 0:
+            skipped += 1
+            continue
+        tech_id = _item_id(_required(row, "TechnologyType", where), f"{where}.TechnologyType")
+        techs[tech_id] = {
+            "id": tech_id,
+            "era": _era(row, where),
+            "cost": cost,
+            "prerequisites": [],
+            "unlocks_units": [],
+            "unlocks_buildings": [],
+        }
+    for index, row in enumerate(_rows(document, "TechnologyPrereqs")):
+        where = f"TechnologyPrereqs[{index}]"
+        tech_id = _item_id(_required(row, "Technology", where), f"{where}.Technology")
+        prerequisite = _item_id(_required(row, "PrereqTech", where), f"{where}.PrereqTech")
+        if tech_id not in techs:
+            raise GameInfoError(f"{where}: unknown technology {tech_id!r}")
+        techs[tech_id]["prerequisites"].append(prerequisite)
+
+    def unlock(kind: str, item_id: str, tech_id: str | None, where: str) -> None:
+        if tech_id is None:
+            return
+        if tech_id not in techs:
+            raise GameInfoError(f"{where}: unknown technology {tech_id!r}")
+        techs[tech_id][kind].append(item_id)
+
+    buildings: list[dict[str, Any]] = []
+    for index, row in enumerate(_rows(document, "Buildings")):
+        where = f"Buildings[{index}]"
+        cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        if cost <= 0:
+            skipped += 1
+            continue
+        building_id = _item_id(_required(row, "BuildingType", where), f"{where}.BuildingType")
+        buildings.append({"id": building_id, "cost": cost})
+        unlock("unlocks_buildings", building_id, _optional_tech(row, where), where)
+
+    units: list[dict[str, Any]] = []
+    for index, row in enumerate(_rows(document, "Units")):
+        where = f"Units[{index}]"
+        cost = _integer(_required(row, "Cost", where), f"{where}.Cost")
+        if cost <= 0:
+            skipped += 1
+            continue
+        unit_id = _item_id(_required(row, "UnitType", where), f"{where}.UnitType")
+        units.append(
+            {
+                "id": unit_id,
+                "cost": cost,
+                "strength": max(0, _integer(row.get("Combat") or 0, f"{where}.Combat")),
+                "moves": max(0, _integer(row.get("BaseMoves") or 0, f"{where}.BaseMoves")),
+            }
+        )
+        unlock("unlocks_units", unit_id, _optional_tech(row, where), where)
+
+    civics = len(_rows(document, "Civics"))
+    _rows(document, "CivicPrereqs")
+
+    raw = {
+        "schema_version": SCHEMA_VERSION,
+        "id": ruleset_id,
+        "techs": list(techs.values()),
+        "units": units,
+        "buildings": buildings,
+    }
+    # Round-trip through the strict loader and the validator: what is written is
+    # exactly what the kernel will accept, in its canonical field layout.
+    spec = ensure_valid(parse_ruleset(yaml.safe_dump(raw, sort_keys=False)))
+    canonical = {"schema_version": SCHEMA_VERSION, "id": ruleset_id, **to_canonical_dict(spec)}
+    text = (
+        "# Imported from a GameInfo export by `python -m alpha_zero.rules import-gameinfo`.\n"
+        "# Game data: keep it outside the repository.\n"
+        + yaml.safe_dump(canonical, sort_keys=False)
+    )
+    ensure_valid(parse_ruleset(text))
+    return ImportSummary(
+        ruleset_id=ruleset_id,
+        techs=len(spec.techs),
+        units=len(spec.units),
+        buildings=len(spec.buildings),
+        skipped_non_positive_cost=skipped,
+        civics_not_imported=civics,
+        text=text,
+    )
+
+
+def import_gameinfo(
+    source: Path, out: str | None, ruleset_id: str = DEFAULT_RULESET_ID
+) -> tuple[Path, ImportSummary]:
+    """Read ``source``, convert it and write the rule-set file.
+
+    Returns the written path and what was imported, skipped and left out.
+
+    The destination is checked **before** anything is read or written, and the
+    file is published through a temporary file, so a refusal or a failure leaves
+    nothing behind.
+
+    Raises:
+        RefusedPathError: see :func:`resolve_output`.
+        GameInfoError: the export is malformed or is not JSON.
+        OSError: the source cannot be read or the destination cannot be written.
+    """
+    destination = resolve_output(out, ruleset_id)
+    try:
+        document = json.loads(Path(source).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise GameInfoError(f"{source}: not UTF-8 JSON ({exc})") from exc
+    summary = convert(document, ruleset_id)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(destination.name + ".tmp")
+    try:
+        temporary.write_text(summary.text, encoding="utf-8", newline="\n")
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return destination, summary
