@@ -410,7 +410,7 @@ def write_run(
         interruptions.append(f"run.json status is {spec.status!r}")
     if spec.resumed:
         interruptions.append("resumed")
-    if any(n.startswith("MCTS_") for n in spec.env_var_names):
+    if any(str(n).upper().startswith("MCTS_") for n in spec.env_var_names):
         interruptions.append("MCTS_")
     judged = None
     if set(JUDGED_ARMS) <= set(arm_records):

@@ -110,7 +110,15 @@ TORCH_REPORT_CODE = (
     "    _smi = subprocess.run(['nvidia-smi', '--query-gpu="
     + ",".join(NVIDIA_SMI_QUERY_FIELDS)
     + "', '--format=csv,noheader'], capture_output=True, text=True, timeout=30)\n"
-    "    info['nvidia_smi'] = [ln.strip() for ln in _smi.stdout.splitlines() if ln.strip()]\n"
+    "    if _smi.returncode != 0:\n"
+    "        _detail = (_smi.stderr or _smi.stdout or '').strip()[:200]\n"
+    "        info['nvidia_smi'] = {\n"
+    "            'error': 'CalledProcessError',\n"
+    "            'returncode': _smi.returncode,\n"
+    "            'detail': _detail,\n"
+    "        }\n"
+    "    else:\n"
+    "        info['nvidia_smi'] = [ln.strip() for ln in _smi.stdout.splitlines() if ln.strip()]\n"
     "except Exception as exc:\n"
     "    info['nvidia_smi'] = {'error': type(exc).__name__}\n"
 )

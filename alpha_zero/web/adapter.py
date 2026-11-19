@@ -19,6 +19,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from alpha_zero.utils.constants import discrete_action_count
+
 if TYPE_CHECKING:
     from alpha_zero.envs.microciv import MicroCivEnv
 
@@ -56,7 +58,7 @@ class MicroCivGameAdapter:
     @property
     def action_space_size(self) -> int:
         """Total number of actions in the action space."""
-        return int(self._env.action_space.n)
+        return discrete_action_count(self._env.action_space)
 
     @property
     def board_size(self) -> int:

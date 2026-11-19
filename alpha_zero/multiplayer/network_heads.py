@@ -25,9 +25,16 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE, NETWORK
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_invalid_action_logit(dtype: torch.dtype) -> float:
+    """Return a finite invalid-action mask logit safe for ``dtype``."""
+    if dtype.is_floating_point:
+        return max(NETWORK.INVALID_ACTION_LOGIT, float(torch.finfo(dtype).min) / 2.0)
+    return NETWORK.INVALID_ACTION_LOGIT
 
 
 @dataclass
@@ -269,7 +276,9 @@ class NPlayerNetworkAdapter(nn.Module):
 
         # Action masking
         if action_mask is not None:
-            policy_logits = policy_logits.masked_fill(action_mask == 0, -1e9)
+            policy_logits = policy_logits.masked_fill(
+                action_mask == 0, _safe_invalid_action_logit(policy_logits.dtype)
+            )
 
         # N-player value from new head
         player_values = self.nplayer_value_head(spatial_features, vector_features)

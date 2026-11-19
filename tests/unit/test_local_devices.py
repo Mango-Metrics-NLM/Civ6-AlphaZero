@@ -23,6 +23,7 @@ Negative controls (recorded when this file was written, then reverted):
 
 from __future__ import annotations
 
+import subprocess
 from typing import Any
 
 import pytest
@@ -214,7 +215,9 @@ def test_the_plan_records_the_torch_pin() -> None:
 def _run_report() -> dict[str, Any]:
     scope: dict[str, Any] = {"info": {}}
     exec(compile(devices.TORCH_REPORT_CODE, "<torch-report>", "exec"), scope)  # noqa: S102
-    return scope["info"]["torch"]
+    report = scope["info"]["torch"]
+    assert isinstance(report, dict)
+    return report
 
 
 def _ones_on_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -311,7 +314,65 @@ def test_report_code_records_the_driver_listing_or_why_not() -> None:
     scope: dict[str, Any] = {"info": {}}
     exec(compile(devices.TORCH_REPORT_CODE, "<torch-report>", "exec"), scope)  # noqa: S102
     smi = scope["info"]["nvidia_smi"]
-    assert isinstance(smi, list) or set(smi) == {"error"}
+    assert isinstance(smi, list) or (isinstance(smi, dict) and isinstance(smi.get("error"), str))
+
+
+@pytest.mark.parametrize(
+    ("stdout", "stderr", "expected_detail"),
+    [
+        (
+            "",
+            "NVIDIA-SMI has failed because it couldn't communicate\n",
+            "NVIDIA-SMI has failed because it couldn't communicate",
+        ),
+        (
+            "Failed to initialize NVML: Driver/library version mismatch\n",
+            "",
+            "Failed to initialize NVML: Driver/library version mismatch",
+        ),
+        ("", "x" * 250, "x" * 200),
+    ],
+)
+def test_report_code_records_nonzero_nvidia_smi_exit_as_error_dict(
+    monkeypatch: pytest.MonkeyPatch, stdout: str, stderr: str, expected_detail: str
+) -> None:
+    def fake_run(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            ["nvidia-smi"], returncode=2, stdout=stdout, stderr=stderr
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    scope: dict[str, Any] = {"info": {}}
+    exec(compile(devices.TORCH_REPORT_CODE, "<torch-report>", "exec"), scope)  # noqa: S102
+    smi = scope["info"]["nvidia_smi"]
+    assert smi == {"error": "CalledProcessError", "returncode": 2, "detail": expected_detail}
+    assert devices.driver_versions(smi) is None
+    problem = devices.device_problem(
+        {"train": "cuda:0"},
+        BLACKWELL,
+        torch_pin=TorchPin("torch==2.11.0+cu128", _CU128),
+        driver_report=smi,
+    )
+    assert problem is not None
+    assert "driver version could not be read" in problem
+    assert "CalledProcessError" in problem
+
+
+def test_report_code_records_nvidia_smi_lines_on_zero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(*_args: Any, **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(
+            ["nvidia-smi"],
+            returncode=0,
+            stdout="\n".join(_DRIVER_LINES) + "\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    scope: dict[str, Any] = {"info": {}}
+    exec(compile(devices.TORCH_REPORT_CODE, "<torch-report>", "exec"), scope)  # noqa: S102
+    assert devices.driver_versions(scope["info"]["nvidia_smi"]) == ("581.15", "581.15")
 
 
 def test_report_code_records_a_kernel_that_does_not_run(monkeypatch: pytest.MonkeyPatch) -> None:

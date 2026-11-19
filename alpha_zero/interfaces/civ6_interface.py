@@ -24,10 +24,9 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import numpy as np
-from gymnasium import spaces
 
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.envs.real_civ6_env import MockCiv6Env, RealCiv6Env
@@ -38,6 +37,7 @@ from alpha_zero.interfaces.base_interface import (
     GameStatus,
     StepResult,
 )
+from alpha_zero.utils.constants import discrete_action_count
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +116,7 @@ class Civ6Interface(BaseGameInterface):
 
             # Update action space size from environment. The env declares a
             # generic Space; the bridge envs always use Discrete (int-valued n).
-            self.config.action_space_size = int(cast(spaces.Discrete, self._env.action_space).n)
+            self.config.action_space_size = discrete_action_count(self._env.action_space)
 
             self._connected = True
             self._game_status = GameStatus.NOT_STARTED

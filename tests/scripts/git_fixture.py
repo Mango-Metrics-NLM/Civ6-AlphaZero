@@ -12,9 +12,18 @@ repository in the same temporary directory.
 
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
+import sys
+import time
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+_WIN_RETRY_ATTEMPTS = 3
+_WIN_RETRY_DELAY_S = 0.2
+_TRANSIENT_WIN_PERMISSION_ERROR = "permission denied"
 
 _IDENTITY = {
     "GIT_AUTHOR_NAME": "t",
@@ -46,14 +55,34 @@ class GitRepo:
 
     # -- plumbing ---------------------------------------------------------
     def git(self, *args: str, check: bool = True) -> str:
-        proc = subprocess.run(
-            ["git", *args],
-            cwd=self.path,
-            env=git_env(),
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        proc: subprocess.CompletedProcess[str] | None = None
+        for attempt in range(_WIN_RETRY_ATTEMPTS):
+            proc = subprocess.run(
+                ["git", *args],
+                cwd=self.path,
+                env=git_env(),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            if (
+                sys.platform == "win32"
+                and proc.returncode != 0
+                and attempt + 1 < _WIN_RETRY_ATTEMPTS
+                and _TRANSIENT_WIN_PERMISSION_ERROR in (proc.stderr or "").lower()
+            ):
+                logger.warning(
+                    "retrying git %s after transient Windows Permission denied (attempt %d/%d): %s",
+                    " ".join(args),
+                    attempt + 1,
+                    _WIN_RETRY_ATTEMPTS,
+                    proc.stderr.strip(),
+                )
+                time.sleep(_WIN_RETRY_DELAY_S * (attempt + 1))
+                continue
+            break
+        if proc is None:  # pragma: no cover - loop executes at least once
+            raise RuntimeError(f"git {' '.join(args)} did not run")
         if check and proc.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)} failed: {proc.stderr}")
         return proc.stdout.strip()

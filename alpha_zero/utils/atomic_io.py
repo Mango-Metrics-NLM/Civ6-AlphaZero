@@ -5,25 +5,25 @@ A run that is interrupted mid-write must not leave a torn checkpoint or a torn
 VOID") compares what an interrupted attempt left with what its re-run produced,
 and a file that cannot be read cannot be shown to reproduce.
 
-Both helpers write to ``<name>.tmp`` beside the target (the same directory, so
-the same filesystem) and then give it the target's name in one step:
+Both helpers write to a sibling temporary file in the same directory (the same
+filesystem) and then give it the target's name in one step:
 
-* :func:`write_atomically` replaces the target (``os.replace``);
-* :func:`create_atomically` refuses an existing target, for files that must never
-  be overwritten.
+* :func:`write_atomically` writes to ``<name>.tmp`` and replaces the target
+  (``os.replace``), assuming one writer per target (e.g. a claimed run directory);
+* :func:`create_atomically` writes to a unique sibling temporary file
+  (``tempfile.mkstemp``) and refuses an existing target (never calling
+  ``os.replace``), for files that must never be overwritten even under concurrent
+  writers.
 
 The bytes written are exactly what the caller's writer produces; nothing here
 changes a file's content. Needs only the standard library.
-
-One writer per target: the temporary name is fixed, so two processes writing the
-same target at once would share it. Callers own that (a run directory is claimed
-by one run; a benchmark ``--out`` belongs to one arm).
 """
 
 from __future__ import annotations
 
 import logging
 import os
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -47,6 +47,39 @@ def _discard(tmp: Path) -> None:
         tmp.unlink(missing_ok=True)
     except OSError as exc:  # a leftover .tmp is harmless; never mask the real error
         logger.warning("could not remove %s: %s", tmp, exc)
+
+
+def _is_windows() -> bool:
+    return os.name == "nt"
+
+
+def _create_unique_temporary_file(target: Path) -> Path:
+    fd, raw_path = tempfile.mkstemp(
+        prefix=f"{target.name}.",
+        suffix=TEMPORARY_SUFFIX,
+        dir=target.parent,
+    )
+    tmp = Path(raw_path)
+    try:
+        os.close(fd)
+    except BaseException:
+        _discard(tmp)
+        raise
+    return tmp
+
+
+def _publish_exclusive(tmp: Path, target: Path) -> None:
+    try:
+        os.link(tmp, target)  # atomic, and fails if the target appeared meanwhile
+    except FileExistsError:
+        raise
+    except OSError as exc:  # a filesystem without hard links (exFAT, some shares)
+        if _is_windows():
+            logger.debug("no hard link for %s (%s); renaming instead", target, exc)
+            os.rename(tmp, target)
+            return
+        logger.warning("atomic exclusive creation requires hard links on %s (%s)", target, exc)
+        raise
 
 
 def write_atomically(path: str | os.PathLike[str], write: Writer) -> None:
@@ -74,20 +107,12 @@ def create_atomically(path: str | os.PathLike[str], write: Writer) -> None:
             created it while ``write`` ran). It is left untouched.
     """
     target = Path(path)
-    if target.exists():
+    if target.exists() or target.is_symlink():
         raise FileExistsError(f"{target} already exists; it is never overwritten")
-    tmp = temporary_path(target)
+    tmp = _create_unique_temporary_file(target)
     try:
         write(tmp)
-        try:
-            os.link(tmp, target)  # atomic, and fails if the target appeared meanwhile
-        except FileExistsError:
-            raise
-        except OSError as exc:  # a filesystem without hard links (exFAT, some shares)
-            logger.debug("no hard link for %s (%s); renaming instead", target, exc)
-            if target.exists():
-                raise FileExistsError(f"{target} already exists; it is never overwritten") from exc
-            os.replace(tmp, target)
+        _publish_exclusive(tmp, target)
     finally:
         _discard(tmp)
 

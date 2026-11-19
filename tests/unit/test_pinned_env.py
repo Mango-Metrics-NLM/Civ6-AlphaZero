@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
+import threading
+import time
 import types
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -21,6 +24,7 @@ import pytest
 
 import alpha_zero
 from alpha_zero.local import pinned_env as pe
+from alpha_zero.utils import atomic_io
 
 REPO = Path(alpha_zero.__file__).resolve().parents[1]
 
@@ -454,3 +458,213 @@ def test_a_marker_without_torch_wheel_is_reused(
     assert runner.count("venv") == 1, "an old marker must not force a rebuild"
     assert reused.torch_wheel is None and reused.wheel_sha256 == built.wheel_sha256
     assert "no torch wheel hash" in caplog.text and "without recording it" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# Per-venv locking and corrupt marker recovery
+# --------------------------------------------------------------------------
+
+
+class _BlockingRunner(FakeRunner):
+    """Thread-safe FakeRunner that pauses the first ``-m venv`` call until released."""
+
+    def __init__(self, *, block_once: bool = True) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._block_once = block_once
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        argv = [str(c) for c in cmd]
+        should_block = False
+        with self._lock:
+            self.calls.append(argv)
+            if "venv" in argv and self._block_once:
+                self._block_once = False
+                should_block = True
+        if should_block:
+            self.entered.set()
+            assert self.release.wait(timeout=10.0), "timed out waiting to release venv build"
+        if argv[0] == "git":
+            return "0123456789abcdef0123456789abcdef01234567\n"
+        if "venv" in argv:
+            venv = Path(argv[-1])
+            (venv / "Scripts").mkdir(parents=True, exist_ok=True)
+            (venv / "Scripts" / "python.exe").write_text("")
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("")
+        if "wheel" in argv:
+            out = Path(argv[argv.index("-w") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "alpha_zero-2.0.0-py3-none-any.whl").write_bytes(b"wheel-bytes")
+        return ""
+
+    def count(self, needle: str) -> int:
+        with self._lock:
+            return sum(1 for c in self.calls if needle in c)
+
+
+def test_concurrent_prepare_pinned_run_serializes_by_venv_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _BlockingRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    results: list[pe.PinnedEnv] = []
+    errors: list[BaseException] = []
+
+    def worker(run_name: str) -> None:
+        try:
+            results.append(pe.prepare_pinned_run("0123456789abcdef", tmp_path / run_name, **kwargs))
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=worker, args=("r1",))
+    t2 = threading.Thread(target=worker, args=("r2",))
+    t1.start()
+    assert runner.entered.wait(timeout=5.0)
+    t2.start()
+    time.sleep(0.05)
+    assert t2.is_alive(), "second caller must block on the same venv lock"
+    runner.release.set()
+    t1.join(timeout=10.0)
+    t2.join(timeout=10.0)
+
+    assert not errors, errors
+    assert len(results) == 2
+    assert runner.count("venv") == 1
+    assert results[0].venv == results[1].venv
+    assert results[0].wheel_sha256 == results[1].wheel_sha256
+    lock_file = Path(kwargs["envs_root"]) / f"{results[0].venv.name}{pe.VENV_LOCK_SUFFIX}"
+    assert lock_file.is_file(), "lockfile must remain on disk to avoid inode-swap races"
+
+
+def test_concurrent_prepare_pinned_run_for_different_pins_do_not_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _BlockingRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    cpu_results: list[pe.PinnedEnv] = []
+    errors: list[BaseException] = []
+
+    def cpu_worker() -> None:
+        try:
+            cpu_results.append(pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs))
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=cpu_worker)
+    t1.start()
+    assert runner.entered.wait(timeout=5.0)
+
+    gpu_env = pe.prepare_pinned_run(
+        "0123456789abcdef",
+        tmp_path / "r2",
+        torch_pin=pin,
+        lock_timeout_s=5.0,
+        **kwargs,
+    )
+    assert gpu_env.torch_pin == pin
+    assert t1.is_alive(), "different torch_pin must not block behind CPU venv build"
+
+    runner.release.set()
+    t1.join(timeout=10.0)
+    assert not errors, errors
+    assert len(cpu_results) == 1
+    assert cpu_results[0].venv != gpu_env.venv
+
+
+def test_venv_lock_os_contention_timeout_and_invalid_bounds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    envs_root = Path(kwargs["envs_root"])
+    envs_root.mkdir(parents=True, exist_ok=True)
+    lock_path = envs_root / f"0123456789ab{pe.VENV_LOCK_SUFFIX}"
+
+    for bad_timeout in (-0.1, float("nan"), float("inf"), True):
+        bad_run = tmp_path / f"bad_{bad_timeout}"
+        with pytest.raises(pe.PinnedEnvError, match="lock_timeout_s"):
+            pe.prepare_pinned_run("0123456789abcdef", bad_run, lock_timeout_s=bad_timeout, **kwargs)
+        assert not (bad_run / "src").exists()
+
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    pe._try_lock_fd(fd)
+    try:
+        with caplog.at_level(logging.INFO, logger=pe.logger.name):
+            with pytest.raises(pe.PinnedEnvError, match="timed out"):
+                pe.prepare_pinned_run(
+                    "0123456789abcdef", tmp_path / "r1", lock_timeout_s=0.15, **kwargs
+                )
+        assert "waiting for pinned venv lock" in caplog.text
+    finally:
+        pe._release_file_lock(fd)
+        os.close(fd)
+
+    env = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", lock_timeout_s=1.0, **kwargs)
+    assert env.venv.is_dir()
+
+
+@pytest.mark.parametrize(
+    "corrupt_payload",
+    [
+        "{not json",
+        "[]",
+        json.dumps(
+            {
+                "sha": "0123456789abcdef0123456789abcdef01234567",
+                "torch": None,
+                "wheel_sha256": None,
+            }
+        ),
+    ],
+)
+def test_corrupt_or_incomplete_marker_is_rebuilt_under_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    corrupt_payload: str,
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    first = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+    marker_path = first.venv / pe.MARKER_NAME
+    marker_path.write_text(corrupt_payload, encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        rebuilt = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", **kwargs)
+
+    assert runner.count("venv") == 2
+    assert "corrupt pinned venv marker" in caplog.text
+    restored = json.loads((rebuilt.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))
+    assert restored["wheel_sha256"] == rebuilt.wheel_sha256
+
+
+def test_failed_atomic_marker_write_leaves_no_partial_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+
+    class _MarkerWriteError(RuntimeError):
+        pass
+
+    def _boom(_tmp: Path, _text: str, _encoding: str) -> None:
+        raise _MarkerWriteError("simulated crash during marker write")
+
+    with monkeypatch.context() as mp:
+        mp.setattr(atomic_io, "_write_text", _boom)
+        with pytest.raises(_MarkerWriteError):
+            pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+
+    venv = Path(kwargs["envs_root"]) / "0123456789ab"
+    assert not (venv / pe.MARKER_NAME).exists()
+    assert not list(venv.glob("*.tmp"))
+
+    rebuilt = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", **kwargs)
+    assert runner.count("venv") == 2
+    assert (rebuilt.venv / pe.MARKER_NAME).is_file()

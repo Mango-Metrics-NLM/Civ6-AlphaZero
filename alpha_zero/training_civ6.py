@@ -9,6 +9,7 @@ Implements the AlphaZero self-play training loop:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import logging
 import os
@@ -19,7 +20,7 @@ import sys
 import time
 import warnings
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol, TypedDict, cast
@@ -39,7 +40,7 @@ from alpha_zero.core.civ6_mcts import (
     MCTSConfig,
     SimpleMCTS,
 )
-from alpha_zero.core.civ6_network import MicroCivNetwork, compute_loss
+from alpha_zero.core.civ6_network import MicroCivNetwork
 from alpha_zero.core.mcts.gumbel import POLICY_TARGET_COMPLETED_Q, VALID_POLICY_TARGETS
 from alpha_zero.core.mcts_constants import GREEDY_THRESHOLD
 from alpha_zero.envs.microciv import MicroCivEnv
@@ -62,7 +63,7 @@ from alpha_zero.utils.checkpoint import (
     read_git_sha,
     safe_load_checkpoint,
 )
-from alpha_zero.utils.constants import MCTS
+from alpha_zero.utils.constants import MCTS, TRAINING, discrete_action_count
 from alpha_zero.utils.data_root import (
     assert_safe_data_root,
     default_checkpoint_dir,
@@ -482,6 +483,14 @@ class ReplayBuffer:
         return float(np.mean([example.value for example in self.buffer]))
 
 
+def _to_float32_tensor(array: np.ndarray) -> torch.Tensor:
+    """Convert a NumPy array to a writable, C-contiguous float32 torch Tensor."""
+    contiguous = np.ascontiguousarray(array, dtype=np.float32)
+    if not contiguous.flags.writeable:
+        contiguous = contiguous.copy()
+    return torch.from_numpy(contiguous)
+
+
 class ReplayDataset(Dataset):
     """PyTorch dataset for replay buffer."""
 
@@ -501,14 +510,14 @@ class ReplayDataset(Dataset):
         # Per-player value vector (N-player) when present; scalar otherwise.
         # Both collate cleanly: scalars stack to (B,), vectors to (B, P).
         if ex.value_vector is not None:
-            value = torch.from_numpy(np.asarray(ex.value_vector)).float()
+            value = _to_float32_tensor(np.asarray(ex.value_vector))
         else:
-            value = torch.tensor(ex.value).float()
+            value = torch.tensor(ex.value, dtype=torch.float32)
         return {
-            "spatial": torch.from_numpy(ex.spatial).float(),
-            "vector": torch.from_numpy(ex.vector).float(),
-            "action_mask": torch.from_numpy(ex.action_mask).float(),
-            "policy": torch.from_numpy(ex.policy).float(),
+            "spatial": _to_float32_tensor(ex.spatial),
+            "vector": _to_float32_tensor(ex.vector),
+            "action_mask": _to_float32_tensor(ex.action_mask),
+            "policy": _to_float32_tensor(ex.policy),
             "value": value,
         }
 
@@ -925,9 +934,29 @@ def _masked_policy_loss(
     """
     if action_mask is not None:
         target_policy = target_policy * action_mask
-        target_policy = target_policy / (target_policy.sum(dim=-1, keepdim=True) + 1e-8)
+        target_policy = target_policy / (
+            target_policy.sum(dim=-1, keepdim=True) + MCTS.PRIOR_EPSILON
+        )
     log_probs = F.log_softmax(policy_logits, dim=-1)
     return -torch.sum(target_policy * log_probs, dim=-1).mean()
+
+
+@contextlib.contextmanager
+def _eval_batchnorm_if_single(network: torch.nn.Module, batch_size: int) -> Iterator[None]:
+    """Temporarily switch BatchNorm layers to eval mode when batch_size == 1."""
+    if batch_size != 1:
+        yield
+        return
+    prior_states: list[tuple[torch.nn.modules.batchnorm._BatchNorm, bool]] = []
+    for module in network.modules():
+        if isinstance(module, torch.nn.modules.batchnorm._BatchNorm) and module.training:
+            prior_states.append((module, module.training))
+            module.eval()
+    try:
+        yield
+    finally:
+        for module, was_training in prior_states:
+            module.train(was_training)
 
 
 def train_epoch(
@@ -962,8 +991,9 @@ def train_epoch(
 
         optimizer.zero_grad()
 
-        # Forward pass
-        policy_logits, value = network(spatial, vector, action_mask)
+        # Forward pass (temporarily switch BatchNorm to eval if batch_size == 1)
+        with _eval_batchnorm_if_single(network, int(spatial.size(0))):
+            policy_logits, value = network(spatial, vector, action_mask)
 
         # Compute loss. For N-player training the value tensor is per-player
         # (B, P), so use the N-player value loss; the 2-player path is
@@ -993,13 +1023,9 @@ def train_epoch(
             v_loss = compute_nplayer_value_loss(value, target_value, config.num_players)
             loss = p_loss + v_loss
         else:
-            loss, p_loss, v_loss = compute_loss(
-                policy_logits,
-                value,
-                target_policy,
-                target_value,
-                action_mask,
-            )
+            p_loss = _masked_policy_loss(policy_logits, target_policy, action_mask)
+            v_loss = F.mse_loss(value, target_value)
+            loss = p_loss + v_loss
 
         # Backward pass
         loss.backward()
@@ -1013,6 +1039,16 @@ def train_epoch(
         policy_loss += p_loss.item()
         value_loss += v_loss.item()
         num_batches += 1
+
+    if num_batches == 0:
+        logger.warning(
+            "train_epoch received an empty dataloader (0 batches); returning zero losses."
+        )
+        return {
+            "total_loss": 0.0,
+            "policy_loss": 0.0,
+            "value_loss": 0.0,
+        }
 
     return {
         "total_loss": total_loss / num_batches,
@@ -1112,7 +1148,7 @@ def evaluate_against_random(
                     # Random player's turn
                     mask = env.get_valid_actions()
                     valid = np.where(mask > 0)[0]
-                    action = rng.choice(valid) if len(valid) > 0 else 0
+                    action = int(rng.choice(valid)) if len(valid) > 0 else 0
 
                 _obs, _, terminated, truncated, info = env.step(action)
 
@@ -1385,7 +1421,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
         num_players=config.num_players,
         seed=config.seed,
     )
-    action_space_size = env.action_space.n
+    action_space_size = discrete_action_count(env.action_space)
     sample_obs, _ = env.reset(seed=config.seed)
     spatial_channels = int(sample_obs["spatial"].shape[0])
 
@@ -1404,7 +1440,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
     # NPlayerValueHead that outputs a per-player value vector.
     network = MicroCivNetwork(
         board_size=config.board_size,
-        action_space_size=int(action_space_size),
+        action_space_size=action_space_size,
         num_res_blocks=config.num_res_blocks,
         num_filters=config.num_filters,
         spatial_channels=spatial_channels,
@@ -1563,7 +1599,7 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
             start_time = time.time()
 
             # Sample from replay buffer
-            sample_size = min(len(replay_buffer), config.batch_size * 100)
+            sample_size = min(len(replay_buffer), config.batch_size * TRAINING.SAMPLE_MULTIPLIER)
             train_examples = replay_buffer.sample(sample_size)
 
             # Create dataloader
@@ -1584,6 +1620,8 @@ def train(config: TrainingConfig, dry_run: bool = False) -> None:
                 shuffle=True,
                 num_workers=0,
                 generator=loader_generator,
+                drop_last=len(dataset) > config.batch_size
+                and len(dataset) % config.batch_size == 1,
             )
 
             # Train for multiple epochs

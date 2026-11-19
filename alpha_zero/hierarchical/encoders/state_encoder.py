@@ -276,8 +276,8 @@ class StrategicStateEncoder(StateEncoder):
             padded = np.zeros(self.config.embed_dim, dtype=np.float32)
             padded[: len(combined)] = combined
             return padded
-        else:
-            return combined[: self.config.embed_dim].astype(np.float32)
+        encoded: np.ndarray = combined[: self.config.embed_dim].astype(np.float32)
+        return encoded
 
     def _encode_victory_progress(self, game_state: dict[str, Any]) -> np.ndarray:
         """Encode victory progress indicators."""

@@ -63,6 +63,8 @@ class RAGClient:
 
     def __init__(self, config: RAGConfig | None = None) -> None:
         self.config = config or RAGConfig.from_env()
+        self.client: Any = None
+        self.collection: Any = None
 
         if not CHROMA_AVAILABLE:
             logger.warning("chromadb not installed. RAG features disabled.")
@@ -78,16 +80,13 @@ class RAGClient:
         try:
             # Ensure persist directory exists
             Path(self.config.persist_directory).mkdir(parents=True, exist_ok=True)
-
             self.client = chromadb.PersistentClient(path=self.config.persist_directory)
-
             # Use sentence-transformers if available, otherwise default
-            embedding_func = None
+            embedding_func: Any = None
             if SENTENCE_TRANSFORMERS_AVAILABLE:
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
                     model_name=self.config.embedding_model,
                 )
-
             self.collection = self.client.get_or_create_collection(
                 name=self.config.collection_name,
                 embedding_function=embedding_func,
