@@ -369,6 +369,9 @@ class StateConverter:
                 self.research_registry.fingerprint if self.research_registry else None
             ),
             "_map_size": (state.map_data.width, state.map_data.height),
+            # The board every position above is scaled onto. ``_map_size`` is
+            # the game's own map; the two differ on any map that is scaled.
+            "_board_size": self.board_size,
             "_player_id": state.player_id,
             # Pass-through reference to the original GameStateData so downstream
             # callers (e.g. agent_loop._build_observation) can re-encode without

@@ -81,6 +81,8 @@ def make_state(
     *,
     player_id: int = 0,
     size: int = 16,
+    width: int | None = None,
+    height: int | None = None,
     units: Sequence[UnitData] = (),
     cities: Sequence[CityData] = (),
     tiles: Sequence[TileData] = (),
@@ -93,6 +95,8 @@ def make_state(
     Args:
         player_id: The game player id the AI plays as (``GameStateData.player_id``).
         size: Map width and height.
+        width: Map width when it differs from ``size`` (a non-square map).
+        height: Map height when it differs from ``size``.
         units: Every unit on the map, own and other.
         cities: Every city on the map, own and other.
         tiles: Tiles that are not the converter's default plains.
@@ -101,6 +105,10 @@ def make_state(
         turn_id: The game turn.
     """
     state = minimal_state(player_id=player_id, board_size=size, turn_id=turn_id)
+    if width is not None:
+        state.map_data.width = width
+    if height is not None:
+        state.map_data.height = height
     state.map_data.tiles = list(tiles)
     state.units = list(units)
     state.cities = list(cities)

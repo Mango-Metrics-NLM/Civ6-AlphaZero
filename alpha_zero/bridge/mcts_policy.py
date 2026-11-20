@@ -97,10 +97,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         max_turns: int = _DEFAULT_MAX_TURNS,
     ) -> None:
         self._converted_state = converted_state
-        board_size_tuple: tuple[int, int] = converted_state.get("_map_size", (16, 16))
-        # The encoder outputs spatial tensors with size (board_size, board_size).
-        # We need the max dimension for the MicroCivEnv.
-        board_size = max(board_size_tuple[0], board_size_tuple[1])
+        board_size = self._simulator_board_size(converted_state)
 
         # Determine number of players from the state.  Start with the minimum
         # and expand as we find units / cities belonging to higher player IDs.
@@ -201,6 +198,23 @@ class BridgeMCTSEnv(EnvironmentProtocol):
                 units_not_represented,
                 units_not_represented + len(self.env.units),
             )
+
+    @staticmethod
+    def _simulator_board_size(converted_state: dict[str, Any]) -> int:
+        """The board the simulator is built on.
+
+        Every position in a converted state is scaled onto the converter's
+        board, which the converter names in ``_board_size``. ``_map_size`` is
+        the game's own map: building the simulator at that size on a scaled
+        map leaves it mostly cells that hold nothing and can be walked into.
+        A hand-written converted state without ``_board_size`` keeps the old
+        reading, the larger side of ``_map_size``.
+        """
+        board_size = converted_state.get("_board_size")
+        if isinstance(board_size, int) and not isinstance(board_size, bool) and board_size > 0:
+            return board_size
+        map_size: tuple[int, int] = converted_state.get("_map_size", (16, 16))
+        return max(map_size[0], map_size[1])
 
     @staticmethod
     def _clamp_player(player: int, max_player_index: int) -> int:

@@ -192,6 +192,60 @@ class TestMain:
         assert any("GM-B6" in m for m in _error_messages(caplog))
 
 
+class TestConfigFile:
+    """The refusal holds when the search mode comes from ``--config FILE`` (a YAML file)."""
+
+    @staticmethod
+    def _yaml(tmp_path: Path, mode: str, use_mcts: bool) -> list[str]:
+        path = tmp_path / "local.yaml"
+        path.write_text(f"mode: {mode}\nuse_mcts: {str(use_mcts).lower()}\n")
+        return ["--config", str(path)]
+
+    @pytest.mark.parametrize("dry_run", [False, True])
+    def test_a_civ6_search_file_is_refused(
+        self,
+        dry_run: bool,
+        tmp_path: Path,
+        side_effects: list[str],
+        caplog: pytest.LogCaptureFixture,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        argv = [*self._yaml(tmp_path, "civ6", True), *_bridge_args(tmp_path)]
+        if dry_run:
+            argv.append("--dry-run")
+        with caplog.at_level(logging.ERROR):
+            rc = _call(main, argv)
+
+        assert rc == 1
+        assert side_effects == []
+        assert "Configuration valid" not in capsys.readouterr().out
+        assert any("GM-B6" in m for m in _error_messages(caplog))
+
+    def test_no_mcts_on_the_command_line_wins_over_the_file(
+        self, tmp_path: Path, side_effects: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        argv = [
+            *self._yaml(tmp_path, "civ6", True),
+            "--no-mcts",
+            "--dry-run",
+            *_bridge_args(tmp_path),
+        ]
+        rc = _call(main, argv)
+
+        assert rc == 0
+        assert "use_mcts: False" in capsys.readouterr().out
+
+    def test_a_microciv_search_file_is_not_refused(
+        self, tmp_path: Path, side_effects: list[str], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = _call(main, [*self._yaml(tmp_path, "microciv", True), "--dry-run"])
+
+        assert rc == 0
+        out = capsys.readouterr().out
+        assert "Configuration valid" in out
+        assert "use_mcts: True" in out
+
+
 class TestEnvironmentSwitch:
     def test_env_var_with_the_mode_flag_is_refused(
         self,
