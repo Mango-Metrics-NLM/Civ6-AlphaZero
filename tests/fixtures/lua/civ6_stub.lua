@@ -25,9 +25,17 @@
 --   Civ6Stub.notifications[id]           notifications; none by default
 --   Civ6Stub.canEndTurn                  nil: derived from the notifications;
 --                                        true / false: forced answer
--- UI.RequestPlayerOperation only records: like the game's, it changes nothing
--- by the time it returns. The GameCore setters (SetResearchingTech,
--- SetProgressingCivic) record and do change the state.
+-- UI.RequestPlayerOperation records and queues: like the game's, it changes
+-- nothing by the time it returns. Civ6Stub.applyRequests() plays the "next
+-- frame": a queued research request takes effect only if its type parameter
+-- is the row's Hash (what the game's own choosers send) and the player can
+-- research it now; anything else is dropped without an error, as the game
+-- drops it. ASSUMPTION, not checked against a game: when research is set this
+-- way the stub also dismisses the "choose research" notification, as the
+-- game's own notification system is taken to do (its chooser does not dismiss
+-- anything itself). The GameCore setters (SetResearchingTech,
+-- SetProgressingCivic) record and change the state at once, and touch no
+-- notification.
 -- ============================================================================
 
 Civ6Stub = { calls = {} }
@@ -81,11 +89,13 @@ GameInfo = {
     Improvements = rows({
         { Index = 0, ImprovementType = "IMPROVEMENT_FARM" },
     }),
+    -- Hash values are invented and deliberately far from the indexes, so a
+    -- request that sends an index where a hash is due matches nothing.
     Civics = rows({
-        { Index = 0, CivicType = "CIVIC_CODE_OF_LAWS" },
-        { Index = 1, CivicType = "CIVIC_CRAFTSMANSHIP" },
-        { Index = 2, CivicType = "CIVIC_FOREIGN_TRADE" },
-        { Index = 3, CivicType = "CIVIC_EARLY_EMPIRE" },
+        { Index = 0, Hash = 8100, CivicType = "CIVIC_CODE_OF_LAWS" },
+        { Index = 1, Hash = 8111, CivicType = "CIVIC_CRAFTSMANSHIP" },
+        { Index = 2, Hash = 8122, CivicType = "CIVIC_FOREIGN_TRADE" },
+        { Index = 3, Hash = 8133, CivicType = "CIVIC_EARLY_EMPIRE" },
     }),
     -- Craftsmanship and Foreign Trade need Code of Laws; Early Empire needs
     -- Foreign Trade.
@@ -95,10 +105,10 @@ GameInfo = {
         { Civic = "CIVIC_EARLY_EMPIRE", PrereqCivic = "CIVIC_FOREIGN_TRADE" },
     }),
     Technologies = rows({
-        { Index = 0, TechnologyType = "TECH_POTTERY" },
-        { Index = 1, TechnologyType = "TECH_MINING" },
-        { Index = 2, TechnologyType = "TECH_WRITING" },
-        { Index = 3, TechnologyType = "TECH_BRONZE_WORKING" },
+        { Index = 0, Hash = 7100, TechnologyType = "TECH_POTTERY" },
+        { Index = 1, Hash = 7111, TechnologyType = "TECH_MINING" },
+        { Index = 2, Hash = 7122, TechnologyType = "TECH_WRITING" },
+        { Index = 3, Hash = 7133, TechnologyType = "TECH_BRONZE_WORKING" },
     }),
 }
 
@@ -112,7 +122,8 @@ ActionTypes = { ACTION_ENDTURN = 7 }
 -- Invented numbers; only their identity matters.
 PlayerOperations = {
     RESEARCH = 11, PROGRESS_CIVIC = 12,
-    PARAM_TECH_TYPE = 501, PARAM_CIVIC_TYPE = 502,
+    PARAM_TECH_TYPE = 501, PARAM_CIVIC_TYPE = 502, PARAM_INSERT_MODE = 503,
+    VALUE_EXCLUSIVE = 601, VALUE_APPEND = 602,
 }
 
 EndTurnBlockingTypes = {
@@ -227,17 +238,22 @@ function Units.GetUnitsInPlot(plot)
 end
 
 -- Stubville has a monument (building 0) and two districts: the city centre
--- (district 0) and a campus (district 1).
+-- (district 0) and a campus (district 1). A district entry is its type, or
+-- { type = n, complete = false } for one still under construction.
 Civ6Stub.cities = {
     [301] = { buildings = { [0] = true }, districts = { 0, 1 } },
 }
 
-local function makeDistrict(districtType, x, y)
+local function makeDistrict(entry, x, y)
+    local districtType, complete = entry, true
+    if type(entry) == "table" then
+        districtType, complete = entry.type, entry.complete ~= false
+    end
     local district = {}
     function district:GetType() return districtType end
     function district:GetX() return x end
     function district:GetY() return y end
-    function district:IsComplete() return true end
+    function district:IsComplete() return complete end
     function district:IsPillaged() return false end
     return district
 end
@@ -279,7 +295,9 @@ end
 -- (index 0), is researching TECH_MINING (index 1; 20 of 50 done, 8 turns left,
 -- boost triggered), is working on CIVIC_CRAFTSMANSHIP (index 1; 10 of 40 done,
 -- 15 turns left, no boost) and has one city. It can research TECH_MINING and
--- TECH_WRITING now; TECH_BRONZE_WORKING is out of reach.
+-- TECH_WRITING now; TECH_BRONZE_WORKING is out of reach. It can progress
+-- CIVIC_CRAFTSMANSHIP and CIVIC_FOREIGN_TRADE; CIVIC_EARLY_EMPIRE is out of
+-- reach (`can` is what the game answers; the prerequisite table agrees).
 -- ----------------------------------------------------------------------------
 local function researchState()
     return {
@@ -295,8 +313,10 @@ local function researchState()
         civic = {
             current = 1,
             has = { [0] = true },
+            can = { [1] = true, [2] = true },
             cost = { [0] = 20, [1] = 40, [2] = 40, [3] = 70 },
             progress = { [0] = 20, [1] = 10 },
+            turns = { [1] = 15, [2] = 20, [3] = 35 },
             turnsLeft = 15,
             boosted = {},
         },
@@ -334,6 +354,8 @@ local function makePlayer(id, cities)
         function c:GetCultureCost(index) return state().cost[index] or 0 end
         function c:GetCulturalProgress(index) return state().progress[index] or 0 end
         function c:GetTurnsLeftOnCurrentCivic() return state().turnsLeft end
+        function c:GetTurnsToProgressCivic(index) return state().turns[index] or -1 end
+        function c:CanProgress(index) return state().can[index] == true end
         function c:HasBoostBeenTriggered(index) return state().boosted[index] == true end
         function c:SetProgressingCivic(index)
             record("SetProgressingCivic", id, index)
@@ -423,6 +445,23 @@ function NotificationManager.Find(player, notificationId)
     function entry:GetTypeName() return notification.typeName end
     return entry
 end
+-- The game's own queries (its action panel uses these two).
+function NotificationManager.GetFirstEndTurnBlocking(player)
+    for _, notification in ipairs(Civ6Stub.notifications[player] or {}) do
+        if not notification.dismissed and (notification.blocking or 0) ~= 0 then
+            return notification.blocking
+        end
+    end
+    return EndTurnBlockingTypes.NO_ENDTURN_BLOCKING
+end
+function NotificationManager.FindEndTurnBlocking(blocking, player)
+    for _, notification in ipairs(Civ6Stub.notifications[player] or {}) do
+        if not notification.dismissed and notification.blocking == blocking then
+            return NotificationManager.Find(player, notification.id)
+        end
+    end
+    return nil
+end
 function NotificationManager.SendActivated(player, notificationId)
     record("NotificationManager.SendActivated", player, notificationId)
 end
@@ -434,8 +473,44 @@ end
 
 UI = {}
 function UI.RequestAction(action) record("UI.RequestAction", action) end
+Civ6Stub.pendingRequests = {}
 function UI.RequestPlayerOperation(player, operation, params)
-    record("UI.RequestPlayerOperation", player, operation, shallowCopy(params))
+    local copy = shallowCopy(params)
+    record("UI.RequestPlayerOperation", player, operation, copy)
+    table.insert(Civ6Stub.pendingRequests, { player = player, operation = operation, params = copy })
+end
+
+-- The "next frame": apply the queued requests as the game is taken to.
+-- Returns how many took effect.
+local RESEARCH_REQUESTS = {
+    [PlayerOperations.RESEARCH] = {
+        rows = GameInfo.Technologies, param = PlayerOperations.PARAM_TECH_TYPE,
+        state = "tech", blocker = EndTurnBlockingTypes.ENDTURN_BLOCKING_RESEARCH,
+    },
+    [PlayerOperations.PROGRESS_CIVIC] = {
+        rows = GameInfo.Civics, param = PlayerOperations.PARAM_CIVIC_TYPE,
+        state = "civic", blocker = EndTurnBlockingTypes.ENDTURN_BLOCKING_CIVIC,
+    },
+}
+function Civ6Stub.applyRequests()
+    local applied = 0
+    for _, request in ipairs(Civ6Stub.pendingRequests) do
+        local kind = RESEARCH_REQUESTS[request.operation]
+        local state = kind and Civ6Stub.players[request.player] and Civ6Stub.players[request.player][kind.state]
+        if state then
+            for row in kind.rows() do
+                if row.Hash == request.params[kind.param] and state.can[row.Index] and not state.has[row.Index] then
+                    state.current = row.Index
+                    applied = applied + 1
+                    for _, notification in ipairs(Civ6Stub.notifications[request.player] or {}) do
+                        if notification.blocking == kind.blocker then notification.dismissed = true end
+                    end
+                end
+            end
+        end
+    end
+    Civ6Stub.pendingRequests = {}
+    return applied
 end
 function UI.CanEndTurn()
     if Civ6Stub.canEndTurn ~= nil then return Civ6Stub.canEndTurn end
