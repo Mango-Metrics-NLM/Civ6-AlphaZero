@@ -243,3 +243,61 @@ class TestCommandCap:
         game = c.loaded_turn()
         exchange(game, [SKIP, SKIP, SKIP, SKIP], 1)
         assert c.acks(game)[-1]["success"] is True
+
+
+# ---------------------------------------------------------------------------
+# Review of GM-B7a (H1): the cap must not trap a turn behind an end-of-turn blocker
+# ---------------------------------------------------------------------------
+PRODUCE_WARRIOR = {"action_type": "city_produce", "city_id": 301, "item_id": "UNIT_WARRIOR"}
+
+
+class TestTheCapAndAnEndOfTurnBlocker:
+    def _blocked_at_the_cap(self) -> Any:
+        game = c.loaded_turn(PRODUCTION_BLOCKER)
+        game.execute("AlphaZeroConfig.Set('MAX_COMMANDS_PER_TURN', 3)")
+        exchange(game, [SKIP, SKIP, SKIP], 1)
+        exchange(game, [END_TURN], 2)
+        ack = c.acks(game)[-1]
+        assert ack["success"] is False, "premise: the turn cannot end, production is not chosen"
+        assert end_turns_requested(game) == 0
+        return game
+
+    def test_a_command_that_clears_the_blocker_is_still_carried_out(self) -> None:
+        game = self._blocked_at_the_cap()
+        exchange(game, [PRODUCE_WARRIOR], 3)
+        assert c.acks(game)[-1]["success"] is True
+        assert game.eval("Civ6Stub.city(301).building") == "UNIT_WARRIOR"
+        exchange(game, [END_TURN], 4)
+        assert c.acks(game)[-1]["success"] is True
+        assert end_turns_requested(game) == 1
+
+    def test_any_other_command_is_still_refused_while_blocked(self) -> None:
+        game = self._blocked_at_the_cap()
+        exchange(game, [c.unit_move(102, 0, 1)], 3)
+        assert c.acks(game)[-1]["error_code"] == "COMMAND_CAP_REACHED"
+        assert game.eval("Civ6Stub.unit(102).x") == 1
+
+    def test_without_a_blocker_the_same_command_is_refused_past_the_cap(self, capped: Any) -> None:
+        exchange(capped, [SKIP, SKIP, SKIP], 1)
+        exchange(capped, [PRODUCE_WARRIOR], 2)
+        assert c.acks(capped)[-1]["error_code"] == "COMMAND_CAP_REACHED"
+        assert capped.eval("Civ6Stub.city(301).building") is None
+
+    def test_the_allowance_is_bounded_too(self) -> None:
+        # A blocker the commands never clear must not make the turn endless: past twice
+        # the cap nothing but end_turn is carried out.
+        game = c.loaded_turn(PRODUCTION_BLOCKER)
+        game.execute("AlphaZeroConfig.Set('MAX_COMMANDS_PER_TURN', 3)")
+        game.execute("Civ6Stub.cities[301].canProduce = { UNIT_WARRIOR = 'later' }")
+        exchange(game, [SKIP, SKIP, SKIP], 1)
+        for number in (2, 3, 4):
+            exchange(game, [PRODUCE_WARRIOR], number)
+            assert c.acks(game)[-1]["error_code"] != "COMMAND_CAP_REACHED"
+        exchange(game, [PRODUCE_WARRIOR], 5)
+        assert c.acks(game)[-1]["error_code"] == "COMMAND_CAP_REACHED"
+
+    def test_a_message_the_cap_refused_does_not_keep_the_window_open(self, capped: Any) -> None:
+        exchange(capped, [SKIP, SKIP, SKIP], 1, at=0)
+        exchange(capped, [c.unit_move(102, 0, 1)], 2, at=20)  # refused by the cap
+        exchange(capped, [c.unit_move(102, 0, 1)], 3, at=40)  # more than 30 s after message 1
+        assert c.pending(capped), "the mod went on listening on the strength of a refused message"

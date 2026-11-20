@@ -4,10 +4,9 @@
 > Civilization VI and read the game state back. What has actually been verified
 > against a real game (2026-07-12) is **four autonomous turns, all `END_TURN`,
 > driven by a randomly initialised network**. No unit or city command has been
-> seen to work, and read against the game's own UI scripts the ones shipped
-> cannot (a move names an operation type the game does not have; a production
-> order carries a raw id where the game expects a hash). That is being corrected
-> as GM-B7 (`kb/specs/20261120-live-command-layer-plan.md`). Nothing here is
+> seen to work. Eight of them were rewritten from the game's own UI scripts in
+> GM-B7a (`kb/specs/20261120-live-command-layer-plan.md`) and have not been run
+> in a real game; the rest are still written from memory. Nothing here is
 > evidence that the agent plays Civilization VI well. The open issues are listed
 > under *Known limitations*.
 
@@ -218,31 +217,45 @@ Nothing below can be checked without the game. After `python scripts/install_civ
 
 ### Unit and city commands (GM-B7a)
 
-Until GM-B7a the mod's unit and city commands could not be carried out by the game: a move
-named an operation type the game does not have, skip, fortify and sleep were sent as commands
-under names the game's UI does not use, and a production order carried a raw id. They now go
-the way the game's own UI sends them:
+GM-B7a rewrote eight commands from the game's own UI code: `unit_move`, `unit_attack`,
+`unit_ranged_attack`, `unit_skip`, `unit_fortify`, `unit_sleep`, `unit_found_city` and
+`city_produce`. Before it, a move named an operation type the game does not have and a
+production order carried a raw id where the game expects a hash (both certain); skip, fortify
+and sleep were sent as unit commands under names the game's UI does not use (likely wrong, not
+proven). **The other commands are unchanged and still written from memory**: `unit_build`,
+`unit_promote`, `city_buy` and `city_citizen` should be expected not to work.
+
+The eight now go the way the game's own UI sends them:
 
 - A unit action is looked up by type name in the game's own tables (`GameInfo.UnitOperations`,
   then `GameInfo.UnitCommands`), requested by that row's hash, and only after the game's strict
-  check says the unit can start it now. A refusal comes back as `OPERATION_REFUSED` with the
-  game's reason; a name this version of the game does not have comes back as a failure that
-  names it. The names used: `UNITOPERATION_MOVE_TO`, `UNITOPERATION_RANGE_ATTACK`,
+  check says the unit can start it now. A refusal comes back as `OPERATION_REFUSED`, with the
+  game's reason where the game gives one; a name this version of the game does not have comes
+  back as a failure that names it. The names used: `UNITOPERATION_MOVE_TO`, `UNITOPERATION_RANGE_ATTACK`,
   `UNITOPERATION_SKIP_TURN`, `UNITOPERATION_FORTIFY`, `UNITOPERATION_SLEEP`,
   `UNITOPERATION_FOUND_CITY`. **The names for skip and sleep are the least certain**: they
   live in the game's database, not in the UI code this was written from.
-- A move carries no attack modifier, so it cannot become an attack. An attack is its own
-  command. Neither is sent when the game says it would start a war (`WOULD_START_WAR`), or
-  when the game cannot be asked.
+- A move carries no attack modifier and is meant never to become an attack; an attack is its
+  own command. That rests on the game's strict check refusing a move onto another player's
+  unit, which the game's UI never asks and is therefore unverified (checklist item 12).
+  Neither is sent when the game says it would start a war (`WOULD_START_WAR`), or when the
+  game cannot be asked. A move into a tile the player cannot see is not asked about, as in
+  the game's own move routine.
 - `city_produce` takes a type name (`"UNIT_WARRIOR"`) or a row index, and sends the row's hash
-  with the exclusive insert mode: the item replaces what the city was building. Districts and
-  wonders need a plot and are refused (`NOT_IMPLEMENTED`).
+  with the exclusive insert mode: the item replaces what the city was building. Districts,
+  and buildings whose row says they need placement (wonders), need a plot and are refused
+  (`NOT_IMPLEMENTED`). The greedy policy can still choose them; each such choice is a refused
+  command.
 - A success answer means the game was *asked*. The game carries a request out after the script
   returns, so the mod exports the next state `STATE_EXPORT_DELAY_TICKS` frames later (default
   2), not in the same frame, and reads no command in between.
 - The mod keeps listening for `COMMAND_TIMEOUT` seconds after the *last* command, not after the
   turn's start. After `MAX_COMMANDS_PER_TURN` commands (default 200) in a turn it accepts only
-  `end_turn` and answers anything else with `COMMAND_CAP_REACHED`.
+  `end_turn` and answers anything else with `COMMAND_CAP_REACHED`. One exception, so the cap
+  cannot trap a turn: while the game refuses to end the turn, commands that can answer the
+  open choice (research, production, skip, fortify, sleep) are still carried out, up to twice
+  the cap. When the window does run out, the mod stops listening and the turn stays open
+  until someone ends it by hand, as before.
 
 All of this has run only against the hand-written stand-in for the game
 (`tests/fixtures/lua/civ6_stub_commands.lua`), which was written from the same reading of the
@@ -260,6 +273,21 @@ Live checklist, continuing the one above:
     If two frames is too few, raise `STATE_EXPORT_DELAY_TICKS`.
 11. Send `unit_attack` on a unit of a player you are at peace with: the answer is
     `WOULD_START_WAR` and no war starts.
+12. Send `unit_move` onto a tile holding a unit you are at war with: it is refused and there
+    is no combat. Then `unit_attack` on it: combat happens. (The stand-in invents both.)
+13. Send `unit_move` to a tile three or more steps away, and one into the fog: both are
+    accepted, or the refusal's text says why.
+14. `unit_ranged_attack` with a ranged unit, `unit_found_city` with a settler, and
+    `city_produce` by row index: each takes effect.
+15. Send `city_produce` naming a wonder: `NOT_IMPLEMENTED`, and nothing is queued.
+16. Note the text of one refusal: whether it carries the game's reason, and in what form.
+
+What the stand-in cannot tell us, because it was written from the same reading as the mod:
+whether skip, sleep and fortify are operations under those names; whether the strict check
+accepts a reachable tile and refuses an occupied one; whether the attack modifier alone
+carries out a melee attack; whether `unit:GetAttacksRemaining()` exists in the mod's Lua
+context (without it every attack fails with an exception message); and how many published
+frames the game takes to carry a request out.
 
 ## Steps
 

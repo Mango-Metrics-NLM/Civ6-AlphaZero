@@ -616,3 +616,56 @@ class TestProduction:
         # CONTROL
         game = c.load()
         assert run(game, {"action_type": "city_produce", "city_id": 301})[1] == "INVALID_COMMAND"
+
+
+# ---------------------------------------------------------------------------
+# Review of GM-B7a: a wonder by name, reasons for a targeted refusal, fog, item_type
+# ---------------------------------------------------------------------------
+GRANARY_NEEDS_A_PLOT = (
+    "for row in GameInfo.Buildings() do"
+    " if row.BuildingType == 'BUILDING_GRANARY' then row.RequiresPlacement = true end end\n"
+)
+
+
+class TestReviewFindings:
+    @pytest.mark.parametrize("command", [produce("BUILDING_GRANARY"), produce(1, "building")])
+    def test_a_building_that_needs_a_plot_is_refused_however_it_is_named(
+        self, command: dict[str, Any]
+    ) -> None:
+        game = c.load(GRANARY_NEEDS_A_PLOT)
+        success, code, message = run(game, command)
+        assert (success, code) == (False, "NOT_IMPLEMENTED")
+        assert "placement" in message.lower()
+        assert nothing_requested(game)
+
+    @pytest.mark.parametrize("item_type", ["project", "improvement", ""])
+    def test_an_unknown_item_type_is_not_read_as_a_unit(self, item_type: str) -> None:
+        game = c.load()
+        success, code, _ = run(game, produce(1, item_type))
+        assert (success, code) == (False, "INVALID_COMMAND")
+        assert nothing_requested(game)
+
+    def test_a_targeted_check_asks_for_the_games_reasons(self) -> None:
+        # The game's UI passes `true` after a parameter table when it wants results back.
+        game = c.load(c.CHECK_LOG)
+        run(game, WARRIOR_MOVE)
+        targeted = [check for check in iter_checks(game) if isinstance(check["fourth"], dict)]
+        assert targeted, "premise: the move asked a check with its parameters"
+        assert all(check["fifth"] is True for check in targeted)
+
+    def test_a_move_into_a_tile_the_player_cannot_see_does_not_ask_about_war(self) -> None:
+        # The game's own move routine asks only for a visible plot.
+        fog = (
+            "PlayersVisibility = { [0] = { IsVisible = function() return false end } }\n"
+            "CombatManager.IsAttackChangeWarState = function() error('asked about fog') end\n"
+        )
+        game = c.load(fog)
+        assert run(game, WARRIOR_MOVE)[:2] == (True, None)
+        c.frame(game)
+        assert (units(game, 102, "x"), units(game, 102, "y")) == (0, 1)
+
+    def test_an_attack_always_asks_about_war_even_in_fog(self) -> None:
+        fog = "PlayersVisibility = { [0] = { IsVisible = function() return false end } }\n" + PEACE
+        game = c.load(fog)
+        assert run(game, attack())[:2] == (False, "WOULD_START_WAR")
+        assert nothing_requested(game)

@@ -184,7 +184,13 @@ local function failureReasons(results, key)
     if type(reasons) ~= "table" or #reasons == 0 then return nil end
     local parts = {}
     for _, reason in ipairs(reasons) do
-        table.insert(parts, tostring(reason))
+        -- The game gives text keys; show the text where it can be looked up.
+        local text = tostring(reason)
+        if Locale and Locale.Lookup then
+            local ok, shown = pcall(Locale.Lookup, reason)
+            if ok and type(shown) == "string" and shown ~= "" then text = shown end
+        end
+        table.insert(parts, text)
     end
     return table.concat(parts, "; ")
 end
@@ -210,7 +216,10 @@ local function requestUnitAction(unit, typeName, params, label)
         reasonsKey = UnitOperationResults and UnitOperationResults.FAILURE_REASONS
     else
         canStart, request = UnitManager.CanStartCommand, UnitManager.RequestCommand
-        reasonsKey = UnitCommandResults and UnitCommandResults.FAILURE_REASONS
+        -- The game's unit panel reads a command's reasons under the
+        -- operation results key.
+        reasonsKey = (UnitOperationResults and UnitOperationResults.FAILURE_REASONS)
+            or (UnitCommandResults and UnitCommandResults.FAILURE_REASONS)
     end
     if not canStart or not request then
         return false, ERROR_CODES.EXECUTION_FAILED,
@@ -223,7 +232,8 @@ local function requestUnitAction(unit, typeName, params, label)
     if kind == "command" then
         ok, allowed, results = pcall(canStart, unit, hash, false, true)
     elseif params then
-        ok, allowed, results = pcall(canStart, unit, hash, nil, params)
+        -- `true` after the parameters asks for results (the reasons).
+        ok, allowed, results = pcall(canStart, unit, hash, nil, params, true)
     else
         ok, allowed, results = pcall(canStart, unit, hash, nil, false,
             OperationResultsTypes and OperationResultsTypes.NO_TARGETS)
@@ -248,6 +258,18 @@ local function requestUnitAction(unit, typeName, params, label)
         return false, ERROR_CODES.EXECUTION_FAILED, label .. ": the request raised: " .. tostring(err)
     end
     return true, nil, nil
+end
+
+-- Whether the player can see the plot. True when the game cannot say.
+local function plotIsVisible(playerId, x, y)
+    local visible = true
+    pcall(function()
+        local visibility = PlayersVisibility and PlayersVisibility[playerId]
+        if visibility and visibility.IsVisible then
+            visible = visibility:IsVisible(x, y) == true
+        end
+    end)
+    return visible
 end
 
 -- Refuse anything that would put the player at war: nil when it would not,
@@ -342,9 +364,13 @@ local function executeUnitMove(playerId, command)
         return false, ERROR_CODES.EXECUTION_FAILED, "Move unavailable: no UnitOperationTypes in this Lua context"
     end
 
-    local warCode, warMessage = warRefusal(unit, target.x, target.y)
-    if warCode then
-        return false, warCode, warMessage
+    -- As the game's own move routine does, ask about war only for a plot the
+    -- player can see: a move into the fog is a move toward it, not onto it.
+    if plotIsVisible(playerId, target.x, target.y) then
+        local warCode, warMessage = warRefusal(unit, target.x, target.y)
+        if warCode then
+            return false, warCode, warMessage
+        end
     end
 
     local ok, code, message = requestUnitAction(
@@ -513,7 +539,8 @@ local function resolveProductionItem(item, itemType)
         end
         return nil, nil
     end
-    local kind = PRODUCTION_KINDS[itemType or "unit"] or PRODUCTION_KINDS.unit
+    local kind = PRODUCTION_KINDS[itemType or "unit"]
+    if not kind then return nil, nil end
     local row = findProductionRow(kind, function(r) return r.Index == item end)
     return row, kind
 end
@@ -546,7 +573,9 @@ local function executeCityProduce(playerId, command)
         return false, ERROR_CODES.INVALID_COMMAND, "Unknown production item: " .. tostring(itemId)
     end
     local typeName = tostring(row[kind.column])
-    if kind.placed then
+    -- A district always needs a plot; a building does when its row says so
+    -- (wonders), as the game's production panel checks before it builds one.
+    if kind.placed or row.RequiresPlacement == true then
         return false, ERROR_CODES.NOT_IMPLEMENTED,
             typeName .. " needs a plot; placement is not supported"
     end

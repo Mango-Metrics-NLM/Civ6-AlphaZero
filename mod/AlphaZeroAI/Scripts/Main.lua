@@ -276,7 +276,11 @@ function AlphaZeroBridge.PollCommands()
             return
         end
         bridgeState.exportAfterTicks = nil
-        AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        local exported, exportErr = AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        if not exported then
+            if Log then Log.Error("Failed to export state after a command: %s", tostring(exportErr)) end
+            bridgeState.lastError = exportErr
+        end
         return
     end
 
@@ -321,23 +325,44 @@ function AlphaZeroBridge.PollCommands()
     AlphaZeroBridge.ProcessCommands(commandMessage)
 end
 
+-- Commands that can answer what blocks the end of a turn.
+local UNBLOCKING_ACTIONS = {
+    research_tech = true, research_civic = true, city_produce = true,
+    unit_skip = true, unit_fortify = true, unit_sleep = true,
+}
+
 -- Process a command message
 function AlphaZeroBridge.ProcessCommands(commandMessage)
     if Log then Log.Info("Processing commands: msg_id=%s", tostring(commandMessage.msg_id)) end
 
-    bridgeState.lastCommandTime = (os and os.time) and os.time() or 0
-
-    -- A cap on commands per turn. Past it only END_TURN is carried out, so a
-    -- loop that keeps sending a command the game ignores cannot run forever.
+    -- A cap on commands per turn, so a loop that keeps sending a command the
+    -- game ignores stops. Past it only END_TURN is carried out, with one
+    -- exception: while the game refuses to end the turn (a research,
+    -- production or unit-orders choice is open), the commands that can answer
+    -- that choice are still carried out, or the cap itself would trap the
+    -- turn. That allowance ends at twice the cap.
     local commands = commandMessage.commands or {}
     local cap = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("MAX_COMMANDS_PER_TURN")) or 200
-    local onlyEndTurn = #commands > 0
+    local onlyEndTurn, onlyUnblocking = #commands > 0, #commands > 0
     for _, command in ipairs(commands) do
-        if command.action_type ~= "end_turn" then onlyEndTurn = false end
+        if command.action_type ~= "end_turn" then
+            onlyEndTurn = false
+            if not UNBLOCKING_ACTIONS[command.action_type] then onlyUnblocking = false end
+        end
+    end
+
+    local overCap = bridgeState.actionsThisTurn >= cap and not onlyEndTurn
+    if overCap and onlyUnblocking and bridgeState.actionsThisTurn < 2 * cap then
+        local blocker = nil
+        if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
+            local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
+            blocker = ok and found or nil
+        end
+        if blocker then overCap = false end
     end
 
     local results, errorCode
-    if bridgeState.actionsThisTurn >= cap and not onlyEndTurn then
+    if overCap then
         local message = string.format(
             "%d commands already handled this turn (the cap is %d); only end_turn is accepted",
             bridgeState.actionsThisTurn, cap)
@@ -345,6 +370,8 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         results = { msg_id = commandMessage.msg_id, success = false, executed = {}, errors = { message } }
         errorCode = "COMMAND_CAP_REACHED"
     else
+        -- Only a message that is carried out keeps the command window open.
+        bridgeState.lastCommandTime = (os and os.time) and os.time() or 0
         results = AlphaZeroActionExecutor.ExecuteCommands(bridgeState.aiPlayerId, commandMessage)
         errorCode = "EXECUTION_ERROR"
         bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #commands
