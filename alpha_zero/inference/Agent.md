@@ -43,7 +43,53 @@ coverage gate (see `docs/MODULE_REFERENCE.md` coverage notes).
 
 ## Key Files
 
-- `api_schemas.py` — request/response schemas.
-- `inference_engine.py` — batched inference with masking.
-- `client.py` — client SDK.
-- `README.md` — quick start.
+| File | Responsibility |
+|------|---------------|
+| `api_schemas.py` | Request/response Pydantic contracts (`GameState`, `InferenceRequest`, `InferenceResponse`, `ActionDistribution`) |
+| `inference_engine.py` | `InferenceConfig`, `InferenceEngine`, `ModelCache` batched inference with action masking |
+| `client.py` | `InferenceClient` HTTP client SDK and `create_random_game_state` helper |
+| `README.md` | Quick start guide |
+
+---
+
+## Skills
+
+- **Batch Inference**: Queue and evaluate MCTS requests cleanly under `torch.no_grad()`
+- **Schema Evolution**: Validate board dimensions, channel counts, and action masks before network calls
+- **Model Caching**: Thread-safe LRU model caching and hot-swapping via `ModelCache`
+
+---
+
+## Sub-Agents
+
+| Agent | Role | When to Invoke |
+|-------|------|----------------|
+| **Latency Profiler** | Verify batch timeout & warmup throughput | Inference latency regressions |
+| **Schema Validator** | Check request/response schema backwards compatibility | Updating `api_schemas.py` |
+
+---
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/inference/test_inference_engine.py -v` | Run inference engine unit tests (requires `web` extra) |
+| `pytest tests/unit/test_inference_benchmark.py -v` | Run inference benchmark unit tests |
+| `pytest tests/unit/test_inference_threads.py -v` | Verify `inference_thread_limit()` behaviour |
+
+---
+
+## Invariants
+
+1. Inference evaluation runs under `torch.no_grad()` and respects action-mask constraints
+2. Schema field bounds (`board_size`, channel shapes, `action_mask` length) are validated by Pydantic
+3. Model loading validates architecture dimensions before serving requests
+4. Hot-swapping via `ModelCache` synchronizes concurrent readers safely under a lock
+
+---
+
+## Dependencies
+
+- **Internal**: `alpha_zero.core.civ6_mcts`, `alpha_zero.core.transformer_network`, `alpha_zero.cloud.gcp.config`, `alpha_zero.cloud.gcp.storage`, `alpha_zero.bridge.utils`
+- **External**: `torch`, `numpy`, `pydantic`, `httpx`
+- **Consumed by**: `alpha_zero.serving.inference_server`

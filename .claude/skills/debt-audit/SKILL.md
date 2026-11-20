@@ -15,7 +15,7 @@ Dead code was counted by hand three times in this project's history and the
 three counts disagreed, because "unused" is not greppable — `from pkg import
 Name` resolves through a package `__init__` re-export table, and a package
 re-exporting its own submodule looks like a use while proving the opposite.
-`scripts/audit_import_graph.py` resolves that with an AST import graph, so the
+`scripts/audit_import_graph.py` resolves that with an AST import graph (sharing `iter_python_files` with `scripts/measure_debt.py` and pruning PEP 405 `pyvenv.cfg` environments and linked `.git` worktrees), so the
 census is a command rather than an opinion.
 
 `scripts/measure_debt.py` then turns the plan's tracked numbers into JSON, and

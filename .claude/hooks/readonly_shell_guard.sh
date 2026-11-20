@@ -385,10 +385,10 @@ script_check() {
   local opts
   case "$sub" in
     scripts/validate_agents.py) opts=" --path --quiet --json --verbose --max-warnings " ;;
-    scripts/validate_claude_agents.py) opts=" --path --quiet --verbose " ;;
+    scripts/validate_claude_agents.py) opts=" --path --quiet --json --verbose " ;;
     scripts/validate_kb.py) opts=" --git --no-git --path --quiet --json " ;;
     scripts/validate_openspec.py) opts=" --change --path --quiet --json " ;;
-    scripts/validate_skills.py) opts=" --path --quiet --json " ;;
+    scripts/validate_skills.py) opts=" --path --quiet --json --verbose " ;;
     scripts/check_doc_sync.py) opts=" --root --quiet --json " ;;
     scripts/check_coverage_floors.py) opts=" --report --floors --package --allow-empty --verbose -v " ;;
     scripts/check_branch_direction.py) opts=" " ;;

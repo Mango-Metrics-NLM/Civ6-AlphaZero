@@ -12,15 +12,8 @@
     "and set max_warnings to the new measured number in the same change.",
     "Raising it requires a recorded reason in this file."
   ],
-  "max_warnings": 22,
-  "measured_on": "2026-09-04",
+  "max_warnings": 0,
+  "measured_on": "2026-11-18",
   "measured_by": "python scripts/validate_agents.py --json",
-  "docs_with_warnings": [
-    "alpha_zero/cloud/Agent.md",
-    "alpha_zero/hexcrystal/Agent.md",
-    "alpha_zero/inference/Agent.md",
-    "alpha_zero/opponents/Agent.md",
-    "alpha_zero/serving/Agent.md",
-    "tests/Agent.md"
-  ]
+  "docs_with_warnings": []
 }

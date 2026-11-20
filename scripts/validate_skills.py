@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import sys
 from dataclasses import dataclass
@@ -43,6 +44,7 @@ SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
 # tests/governance/ keeps working unchanged.
 AGENT_SKILLS_DIR = REPO_ROOT / ".agents" / "skills"
 PYPROJECT = REPO_ROOT / "pyproject.toml"
+logger = logging.getLogger("validate_skills")
 
 _KB_PATH_RE = re.compile(r"kb/[\w./-]+\.\w+")
 # A description that reduces to one of these is the signature of a parser that
@@ -153,6 +155,7 @@ def _is_concrete_kb_path(candidate: str) -> bool:
 def _validate_skill(skill_md: Path, issues: list[Issue], gate: int | None) -> None:
     dir_name = skill_md.parent.name
     lines = skill_md.read_text(encoding="utf-8").splitlines()
+    logger.debug("scanning %s (%d lines)", skill_md, len(lines))
     front = _parse_frontmatter(lines)
     if front is None:
         issues.append(Issue("S1", "SKILL.md has no YAML frontmatter block", skill_md, 1))
@@ -201,7 +204,9 @@ def _skill_trees() -> list[Path]:
 
 
 def _validate_all(issues: list[Issue], gate: int | None) -> None:
-    for tree in _skill_trees():
+    trees = _skill_trees()
+    logger.debug("skill trees: %s | coverage gate: %s", [str(t) for t in trees], gate)
+    for tree in trees:
         for skill_dir in sorted(p for p in tree.iterdir() if p.is_dir()):
             skill_md = skill_dir / "SKILL.md"
             if not skill_md.is_file():
@@ -215,7 +220,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--path", help="validate a single SKILL.md")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="log every scanned skill document and resolved gate (stderr)",
+    )
     args = parser.parse_args(argv)
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
 
     gate = _coverage_gate()
     issues: list[Issue] = []
@@ -239,19 +254,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    issues.sort(key=lambda i: (_relpath(i.file).as_posix(), i.line or 0, i.code, i.message))
     errors = [i for i in issues if not i.warning]
+    warnings = [i for i in issues if i.warning]
+    logger.debug(
+        "finished: %d issue(s) -- %d error(s), %d warning(s)",
+        len(issues),
+        len(errors),
+        len(warnings),
+    )
     if args.json:
         payload = [
             {
                 "code": i.code,
                 "message": i.message,
-                "file": str(_relpath(i.file)),
+                "file": _relpath(i.file).as_posix(),
                 "line": i.line,
                 "warning": i.warning,
             }
             for i in issues
         ]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for issue in issues:
             print(issue.render(), file=sys.stderr)

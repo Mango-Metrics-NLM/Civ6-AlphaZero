@@ -881,3 +881,19 @@ def test_developer_does_not_claim_to_act_as_the_machine_user_today() -> None:
     assert "You act as the machine user" not in text
     assert "against `dev`, as `civ6az-agent`" not in text
     assert "the current default branch" in text
+
+
+def test_json_output_schema_on_valid_and_failing_tree(
+    tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    assert vca.main(["--json"]) == 0
+    ok_payload = json.loads(capsys.readouterr().out)
+    assert ok_payload == {"issues": [], "ok": True, "warning_count": 0}
+
+    _edit(_agent(tree, "architect"), "model: opus", "model: haiku")
+    assert vca.main(["--json"]) == 1
+    fail_payload = json.loads(capsys.readouterr().out)
+    assert fail_payload["ok"] is False
+    assert any(item["code"] == "C4" for item in fail_payload["issues"])

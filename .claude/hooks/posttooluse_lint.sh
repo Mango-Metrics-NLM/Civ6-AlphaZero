@@ -10,16 +10,23 @@
 # availability-probe imports intact.
 set -uo pipefail
 
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_python.sh
+. "${HOOK_DIR}/_resolve_python.sh"
+
+PY="$(resolve_python "${CLAUDE_PROJECT_DIR:-.}" || true)"
+[ -n "$PY" ] || exit 0
+
 input="$(cat)"
-f="$(printf '%s' "$input" | python3 -c \
+f="$(printf '%s' "$input" | "$PY" -c \
   'import json,sys; d=json.load(sys.stdin); print(d.get("tool_response",{}).get("filePath") or d.get("tool_input",{}).get("file_path") or "")' \
   2>/dev/null || true)"
 [ -z "$f" ] && exit 0
 
 case "$f" in
   *.py)
-    ruff check --fix --quiet --extend-ignore F401,RUF100 "$f" 2>/dev/null || true
-    ruff format --quiet "$f" 2>/dev/null || true
+    "$PY" -m ruff check --fix --quiet --extend-ignore F401,RUF100 "$f" 2>/dev/null || ruff check --fix --quiet --extend-ignore F401,RUF100 "$f" 2>/dev/null || true
+    "$PY" -m ruff format --quiet "$f" 2>/dev/null || ruff format --quiet "$f" 2>/dev/null || true
     ;;
 esac
 exit 0
