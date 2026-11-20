@@ -47,7 +47,7 @@ from alpha_zero.cloud.gcp.config import (
     NetworkArchitectureConfig,
 )
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
-from alpha_zero.utils.seeding import SeedStream, derive_seed
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger(__name__)
 
@@ -633,8 +633,14 @@ def dummy_trajectory(
     return trajectory
 
 
-def _apply_search_seed(mcts_kwargs: dict[str, Any], *, seed: int | None, game_idx: int) -> None:
-    """Thread a deterministic per-game search seed into ``mcts_kwargs`` when seeded."""
+def _apply_search_seed(
+    mcts_kwargs: dict[str, Any], seed: int | None, game_idx: int, device: str, preset: str
+) -> None:
+    """Thread a per-game search seed into ``mcts_kwargs``; a seeded run needs deterministic CUDA."""
+    if seed is not None and game_idx == 0:
+        enforce_deterministic_backend(device)
+        if preset != "default":  # its clones and combat draw from generators no seed reaches
+            logger.warning("seed=%d does not make gameplay preset %r repeat", seed, preset)
     search_seed = derive_seed(seed, SeedStream.SELF_PLAY_SEARCH, game_idx)
     if search_seed is not None and seed is not None and "seed" not in mcts_kwargs:
         mcts_kwargs["seed"] = search_seed
@@ -791,7 +797,7 @@ def run_selfplay(
                     continue
                 mcts_kwargs[k] = v
 
-        _apply_search_seed(mcts_kwargs, seed=seed, game_idx=game_idx)
+        _apply_search_seed(mcts_kwargs, seed, game_idx, device, gameplay_preset)
         mcts = create_mcts(
             variant=mcts_type,
             network=model,
@@ -968,7 +974,7 @@ def run_muzero_selfplay(
                 if v is not None:
                     mcts_kwargs[k] = v
 
-        _apply_search_seed(mcts_kwargs, seed=seed, game_idx=game_idx)
+        _apply_search_seed(mcts_kwargs, seed, game_idx, device, gameplay_preset)
         mcts = create_mcts(
             variant="muzero",
             network=model,

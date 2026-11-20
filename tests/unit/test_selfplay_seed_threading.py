@@ -227,3 +227,53 @@ class TestArenaSeeding:
             )
 
         assert all(call.kwargs["seed"] is None for call in factory.call_args_list)
+
+
+class TestSeededRunPreconditions:
+    """A seeded run turns deterministic kernels on itself and says what a seed cannot reach."""
+
+    @staticmethod
+    def _calls(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+        from alpha_zero.cloud.gcp import selfplay_worker
+
+        seen: list[Any] = []
+        monkeypatch.setattr(selfplay_worker, "enforce_deterministic_backend", seen.append)
+        return seen
+
+    def test_a_seeded_run_enforces_the_deterministic_backend_for_its_device(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from alpha_zero.cloud.gcp.selfplay_worker import _apply_search_seed
+
+        seen = self._calls(monkeypatch)
+        for game_idx in (0, 1, 2):
+            _apply_search_seed({}, 42, game_idx, "cuda:1", "default")
+        assert seen == ["cuda:1"], "once per run, with the run's own device"
+
+    def test_an_unseeded_run_leaves_the_backend_alone(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from alpha_zero.cloud.gcp.selfplay_worker import _apply_search_seed
+
+        seen = self._calls(monkeypatch)
+        _apply_search_seed({}, None, 0, "cuda:0", "default")
+        assert seen == []
+
+    def test_a_seed_on_another_preset_is_warned_about(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from alpha_zero.cloud.gcp.selfplay_worker import _apply_search_seed
+
+        self._calls(monkeypatch)
+        with caplog.at_level("WARNING", logger="alpha_zero.cloud.gcp.selfplay_worker"):
+            _apply_search_seed({}, 42, 0, "cpu", "enhanced")
+            _apply_search_seed({}, 42, 0, "cpu", "default")
+        warned = [r.getMessage() for r in caplog.records if "repeat" in r.getMessage()]
+        assert len(warned) == 1 and "enhanced" in warned[0]
+
+    def test_run_selfplay_reaches_it(
+        self, model: torch.nn.Module, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen = self._calls(monkeypatch)
+        run_selfplay(model=model, num_games=1, mcts_sims=2, board_size=5, max_turns=3, seed=7)
+        assert seen == ["cpu"]

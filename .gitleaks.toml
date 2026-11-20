@@ -61,7 +61,7 @@ paths = [
     '''^\.venv/''',
     '''^\.venv.*/''',
     '''^venv/''',
-    '''^venv.*/''',
+    '''^venv\.bak/''',
     '''^\.tools/''',
     '''^\.claude/worktrees/''',
     '''^\.worktrees/''',

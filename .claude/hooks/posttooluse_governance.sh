@@ -40,7 +40,12 @@ cmd="$(printf '%s\n' "$parsed" | sed -n 2p)"
 [ -z "$f" ] && [ -z "$cmd" ] && exit 0
 
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
-rel="${f#"${CLAUDE_PROJECT_DIR:-.}"/}"
+# Windows hands over native or mixed paths (C:\repo\mod\x.lua); every route
+# below matches forward slashes, so both sides are normalised first.
+root="${CLAUDE_PROJECT_DIR:-.}"
+root="${root//\\//}"
+f="${f//\\//}"
+rel="${f#"${root}"/}"
 
 # Run the debt ratchet and surface its report on stderr. ~10-22 s depending on
 # machine load, so every caller below gates it on an event that can actually

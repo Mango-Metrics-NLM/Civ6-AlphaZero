@@ -418,3 +418,22 @@ def test_posttooluse_governance_routes_lua_mod_edits_to_bundle_check(tmp_path: P
     assert bad_proc.returncode == 2, (
         "posttooluse_governance.sh failed to block on failing build_lua_bundle.py --check"
     )
+
+    # Windows hands the hook native or mixed paths; the route must be the same.
+    as_posix = lua_file.as_posix()
+    mixed = (
+        proj_dir.as_posix() + "\\" + lua_file.relative_to(proj_dir).as_posix().replace("/", "\\")
+    )
+    for spelling in (as_posix.replace("/", "\\"), mixed):
+        native_proc = subprocess.run(
+            [BASH, (_HOOKS / "posttooluse_governance.sh").as_posix()],
+            cwd=proj_dir,
+            input=json.dumps({"tool_input": {"file_path": spelling}}),
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert native_proc.returncode == 2, (
+            f"a backslash-separated path skipped the Lua bundle check: {spelling!r}"
+        )

@@ -58,9 +58,10 @@ def _live_devices() -> list[str]:
 
 @contextlib.contextmanager
 def _preserve_rng_state() -> Iterator[None]:
-    """Snapshot and restore process-global numpy and torch RNG states."""
+    """Snapshot and restore process-global numpy and torch RNG states, CUDA generators included."""
     np_state = np.random.get_state()
-    with torch.random.fork_rng(devices=[]):
+    cuda = list(range(torch.cuda.device_count())) if torch.cuda.is_available() else []
+    with torch.random.fork_rng(devices=cuda):
         try:
             yield
         finally:
@@ -212,10 +213,11 @@ def test_run_selfplay_and_muzero_seed_determinism_without_global_rng() -> None:
             "import numpy as np, torch\n"
             "from alpha_zero.cloud.gcp.selfplay_worker import run_muzero_selfplay, run_selfplay\n"
             "from alpha_zero.cloud.gcp.training_worker import create_model, create_muzero_model\n"
-            "from alpha_zero.utils.seeding import enforce_deterministic_backend\n"
+            # The backend is NOT configured here: the seeded worker call has to do it.
+            # A fresh process starts with the deterministic flags off.
+            "assert not torch.are_deterministic_algorithms_enabled()\n"
             "for idx in range(torch.cuda.device_count()):\n"
             "    dev = f'cuda:{idx}'\n"
-            "    enforce_deterministic_backend(dev)\n"
             "    torch.manual_seed(0)\n"
             "    az = create_model(board_size=6, num_res_blocks=1, num_filters=16, num_heads=2).to(dev).eval()\n"
             "    mz = create_muzero_model(board_size=6, num_res_blocks=1, num_filters=16).to(dev).eval()\n"
@@ -223,6 +225,8 @@ def test_run_selfplay_and_muzero_seed_determinism_without_global_rng() -> None:
             "    np.random.random(256); torch.rand(256)\n"
             "    a2 = [t['actions'] for t in run_selfplay(model=az, num_games=1, mcts_sims=2, mcts_type='gumbel', board_size=6, max_turns=4, device=dev, seed=4242)]\n"
             "    assert a1 and a1[0] and a1 == a2, (dev, a1, a2)\n"
+            "    assert torch.are_deterministic_algorithms_enabled(), 'the seeded run left the backend as it was'\n"
+            "    assert torch.backends.cudnn.deterministic and not torch.backends.cudnn.benchmark\n"
             "    m1 = [t['actions'] for t in run_muzero_selfplay(model=mz, num_games=1, mcts_sims=2, board_size=6, max_turns=4, device=dev, seed=4242)]\n"
             "    np.random.random(256); torch.rand(256)\n"
             "    m2 = [t['actions'] for t in run_muzero_selfplay(model=mz, num_games=1, mcts_sims=2, board_size=6, max_turns=4, device=dev, seed=4242)]\n"
@@ -473,7 +477,10 @@ def test_unmocked_rules_bridge_lua_and_device_roundtrip(tmp_path: Path) -> None:
         assert mask[writing_idx] == 1.0
         cmd = ac.convert(writing_idx, converted, sample.legal_actions)
         assert cmd == LuaCommand(action_type=ActionType.RESEARCH_TECH, item_id="TECH_WRITING")
-        return
+        # The Python half held, but neither the network nor the Lua ran. The harness
+        # reports that as a skip (a failure under CIV6AZ_REQUIRE_LUA=1), never as a pass.
+        h.import_lua51()
+        raise AssertionError("unreachable: import_lua51 skips or fails without lupa")
 
     runtime = h.load_mod()
     parsed = GameStateData.from_dict(h.export_state(runtime))
@@ -504,17 +511,29 @@ def test_unmocked_rules_bridge_lua_and_device_roundtrip(tmp_path: Path) -> None:
         .to(target_dev)
         .eval()
     )
+    # The policy is restricted to the research the game offered, and the command is built
+    # from the index the network's own output selects, not from a number written here.
+    research_start = ac.action_space.category_offsets[ActionCategory.RESEARCH_TECH]
+    research_mask = np.zeros_like(mask)
+    research_mask[research_start : research_start + len(reg.tech_ids)] = mask[
+        research_start : research_start + len(reg.tech_ids)
+    ]
+    assert research_mask.sum() >= 1.0, "premise: the game offers at least one technology"
     with torch.no_grad():
         logits, val = net(
             sp_batch.float().to(target_dev),
             vec_batch.float().to(target_dev),
-            torch.from_numpy(mask.astype(np.float32)).unsqueeze(0).to(target_dev),
+            torch.from_numpy(research_mask.astype(np.float32)).unsqueeze(0).to(target_dev),
         )
         probs = torch.softmax(logits, dim=-1)
         assert torch.isfinite(probs).all() and torch.isfinite(val).all()
         assert torch.isclose(probs.sum(), torch.tensor(1.0, device=target_dev), atol=1e-5)
+        chosen = int(torch.argmax(probs, dim=-1).item())
+    assert research_mask[chosen] == 1.0, "the network chose an action outside the offered research"
 
-    cmd = ac.convert(writing_idx, converted, parsed.legal_actions)
+    cmd = ac.convert(chosen, converted, parsed.legal_actions)
+    assert cmd.action_type == ActionType.RESEARCH_TECH
+    assert chosen == writing_idx, "the stand-in game offers TECH_WRITING only"
     assert cmd == LuaCommand(action_type=ActionType.RESEARCH_TECH, item_id="TECH_WRITING")
     ok, err, _msg = h.execute(runtime, cmd.to_dict())
     assert ok is True and err is None

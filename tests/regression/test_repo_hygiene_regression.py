@@ -235,7 +235,8 @@ class TestSecretScanningConfig:
             ".venv/lib/python3.11/site-packages/pkg.py",
             ".venv-scan/pyvenv.cfg",
             ".venv2/Scripts/activate",
-            "venv-dev/pyvenv.cfg",
+            "venv/pyvenv.cfg",
+            "venv.bak/pyvenv.cfg",
             ".claude/worktrees/topic/alpha_zero/core/civ6_network.py",
             ".tools/gitleaks-8.30.0",
             "mlartifacts/0/model.bin",
@@ -247,6 +248,12 @@ class TestSecretScanningConfig:
         for sensitive in (".env", ".env.local", ".env.production"):
             assert not any(rx.search(sensitive) for rx in compiled), (
                 f"{sensitive} must NEVER be allowlisted in .gitleaks.toml"
+            )
+        # A source directory that merely starts with "venv" is not a virtual environment
+        # and is not ignored by git: a credential in it must still be scanned.
+        for source in ("venv-service/config.py", "venv-dev/settings.py", "venvs/app.py"):
+            assert not any(rx.search(source) for rx in compiled), (
+                f"{source} is ordinary source and must not be allowlisted in .gitleaks.toml"
             )
 
     def test_dockerignore_excludes_local_mlflow_and_eval_without_hiding_rules_data(self) -> None:
