@@ -222,3 +222,19 @@ def test_s5_applies_to_the_agent_tree_too(tmp_path, monkeypatch, capsys):
     _write_empty_skill_dir(tmp_path, "hollow-skill", tree=".agents")
     assert vs.main([]) == 1
     assert "S5" in capsys.readouterr().err
+
+
+def test_verbose_logging_and_sorted_json_output(tmp_path, monkeypatch, capsys, caplog):
+    import json
+    import logging
+
+    _point_at(monkeypatch, tmp_path)
+    _write_skill(tmp_path, "zeta-skill", VALID_SKILL.replace("demo-skill", "wrong-z"))
+    _write_skill(tmp_path, "alpha-skill", VALID_SKILL.replace("demo-skill", "wrong-a"))
+    with caplog.at_level(logging.DEBUG, logger="validate_skills"):
+        rc = vs.main(["--json", "--verbose"])
+    assert rc == 1
+    assert any("scanning" in rec.message for rec in caplog.records)
+    payload = json.loads(capsys.readouterr().out)
+    files = [item["file"] for item in payload]
+    assert files == sorted(files) and len(files) == 2

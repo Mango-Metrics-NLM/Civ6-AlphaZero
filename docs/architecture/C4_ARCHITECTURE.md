@@ -144,7 +144,7 @@ flowchart LR
     classDef util fill:#067D26,color:#fff,stroke:#055E1C
 
     subgraph Monitoring["alpha_zero/monitoring/"]
-        MLflowLogger["MLflowLogger\nmlflow_logger.py\n• start_run() / end_run()\n• log_evaluation_result() → 14 metrics\n• FINISHED / FAILED lifecycle"]:::comp
+        MLflowLogger["MLflowLogger\nmlflow_logger.py\n• start_run() / end_run()\n• log_evaluation_result() → 15 metrics\n• FINISHED / FAILED lifecycle"]:::comp
         MLflowConfig["MLflowConfig\nconfig.py\n(MonitoringConfig = back-compat alias)\n• tracking_uri, experiment_name\n• SQLite backend settings"]:::comp
         AZEvaluator["AlphaZeroMLflowEvaluator\nmlflow_evaluator.py\ncompute_metrics() →\npolicy_entropy · value_mae\npolicy_top1_acc · action_diversity"]:::comp
     end
@@ -183,13 +183,13 @@ flowchart LR
     MLflowConfig -->|"reads via"| EnvLoader
 ```
 
-**14 metrics logged by `log_evaluation_result()`:**
+**15 metrics logged by `log_evaluation_result()` (`{prefix}/<metric>`):**
 
 | Category | Metrics |
 |----------|---------|
-| Counts (4) | `n_games`, `n_wins`, `n_losses`, `n_draws` |
-| Normalised rates (3) | `win_rate` (0-1), `loss_rate`, `draw_rate` |
-| Game stats (7) | `avg_game_length`, `max_game_length`, `min_game_length`, `avg_score_diff`, `total_turns`, `games_per_second`, `eval_duration_s` |
+| Counts (4) | `wins`, `losses`, `draws`, `total_games` |
+| Normalised rates (4) | `win_rate`, `score_rate`, `draw_rate`, `loss_rate` (fractions 0–1) |
+| Game stats (7) | `avg_game_length`, `avg_cities_won`, `avg_cities_lost`, `avg_units_won`, `avg_units_lost`, `total_evaluation_time`, `value_correlation` |
 
 ---
 
@@ -386,7 +386,7 @@ flowchart TD
     GCSCheckpoints -->|"load checkpoint"| EP
 
     subgraph MLflowLogging["MLflow Logging"]
-        LER["log_evaluation_result()\n14 metrics per run"]:::mlflow
+        LER["log_evaluation_result()\n15 metrics per run"]:::mlflow
         MLflowDB["MLflow SQLite DB\n(mlflow.db)\nexperiment per checkpoint"]:::mlflow
         LER --> MLflowDB
     end
@@ -518,14 +518,26 @@ all three.
 lets a re-run of an interrupted card be a *reproduction check* instead of a second draw:
 `alpha_zero/evaluation/reproduction.py` compares the two attempts' checkpoints tensor by tensor
 and their arena games one by one. `scripts/check_determinism.py` runs the same comparison on two
-fresh A1-shaped runs, each in its own process, as T0b's precondition for the GPU registration.
+fresh A1-shaped runs, each in its own process, as T0b's precondition for the GPU registration;
+live dual-GPU execution (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128`)
+reported `REPRODUCED`, while formal single-use T0b/A1 run-card execution via
+`scripts/run_card.py` remains the maintainer gate.
+
+**Governance & AST Debt Auditing.** Static governance and hygiene checks (`scripts/validate_*.py`,
+`scripts/check_doc_sync.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
+canonical sorted `--json` / `--verbose` reporting and single-source tree discovery
+(`audit_import_graph.iter_python_files`, pruning PEP 405 virtual environments via `pyvenv.cfg` and
+linked git worktrees) so measurements remain deterministic and free of virtualenv/worktree noise.
 
 ---
 
-*Last revised: 2026-11-14 — run cards, the pinned environment and the device check
-(`alpha_zero/local/`) added as a component view, with the reproduction check. Previously
-2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search package
-(one sign-correct value backup for all five variants), `utils/seeding.py` and the local
+*Last revised: 2026-11-18 — corrected `log_evaluation_result()` to 15 metrics (matching
+`alpha_zero/monitoring/mlflow_logger.py`), documented live dual-GPU `check_determinism.py`
+verification alongside single-use T0b/A1 pending status, and recorded shared PEP 405/worktree
+pruning and deterministic governance validator contracts. Previously 2026-11-14 — run cards, the
+pinned environment and the device check (`alpha_zero/local/`) added as a component view, with the
+reproduction check. Previously 2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search
+package (one sign-correct value backup for all five variants), `utils/seeding.py` and the local
 training loop added to the container and component views. Previously 2026-09-02: Tier A
 dead-code removal (44 modules / 21,903 lines; the four per-role Dockerfiles and
 `docker-compose.yml` with them), W&B removed from the context diagram, one-image container

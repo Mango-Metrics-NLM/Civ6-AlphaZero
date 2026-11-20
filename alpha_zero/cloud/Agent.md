@@ -37,7 +37,9 @@ This module provides cloud-native training infrastructure:
 
 ---
 
-## Key Files (Top-Level)
+## Key Files
+
+### Top-Level
 
 | File | Responsibility |
 |------|---------------|
@@ -45,7 +47,7 @@ This module provides cloud-native training infrastructure:
 | `protocols.py` | Protocol interfaces for all cloud operations |
 | `exceptions.py` | Cloud-specific exception hierarchy |
 
-## Key Files (GCP Sub-module)
+### GCP Sub-module
 
 | File | Responsibility |
 |------|---------------|
@@ -100,11 +102,13 @@ This module provides cloud-native training infrastructure:
 
 | Tool | Purpose |
 |------|---------|
-| `make build-all` | Build all Docker images |
-| `make push` | Push images to Artifact Registry |
-| `make local-test` | Run local docker-compose test |
-| `python -m infra.vertex_launcher --mode=selfplay --dry-run` | Dry-run self-play job |
+| `make build-all` | Build the deployed Vertex AI image (`dockerfiles/Dockerfile.vertex`) |
+| `make push` | Push image to Artifact Registry |
+| `make local-smoke` | Dry-run the deployed self-play worker locally |
+| `python -m alpha_zero.cloud.gcp.vertex_orchestrator --help` | Deployed Vertex AI pipeline orchestrator |
+| `python -m infra.vertex_launcher --mode=selfplay --dry-run` | Legacy launcher (dry-run only) |
 | `pytest tests/cloud/ -v` | Test cloud components |
+| `make test-cloud-coverage` | Measure `alpha_zero/cloud` against `coverage-floors.json` |
 
 ---
 

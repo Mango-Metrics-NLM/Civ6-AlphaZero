@@ -41,8 +41,10 @@ bash .claude/hooks/sessionstart_bootstrap.sh
 
 It reports missing dependencies and — importantly — whether `mypy` or `ruff`
 resolve to an isolated tool venv that cannot see this project's type stubs. If
-it reports a tool/interpreter split, use `python3 -m mypy`, not `mypy`; the
-bare command reports dozens of phantom `import-untyped` errors.
+it reports a tool/interpreter split, use `python3 -m mypy` (or `python -m mypy`
+on Windows where `python3` may resolve the Store alias), not `mypy`; the bare
+command reports dozens of phantom `import-untyped` errors. `make typecheck` handles
+interpreter selection automatically.
 
 ### 3. What it covers
 

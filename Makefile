@@ -36,9 +36,10 @@ BASE_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-base:$(VERSION)
 # Local image names (for development)
 LOCAL_BASE_IMAGE ?= civ6-alphazero-base:$(VERSION)
 
-# Python
-PYTHON ?= python3
-PIP ?= pip3
+# Python — prefer a real Python >=3.11 interpreter (avoiding the Windows Store
+# alias on Windows while staying overridable with `PYTHON=... make ...`).
+PYTHON ?= $(shell python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) and 'WindowsApps' not in sys.executable else 1)" 2>/dev/null && echo python3 || echo python)
+PIP ?= $(PYTHON) -m pip
 
 # Hugging Face namespace for `publish-spaces`. The maintainer's account unless
 # overridden; the Space names below are the ones .github/workflows/deploy_spaces.yml
@@ -375,7 +376,7 @@ validate:
 .PHONY: verify-registration
 verify-registration:
 	$(PYTHON) -m alpha_zero.evaluation.a1_protocol digest
-	OMP_NUM_THREADS=2 $(PYTHON) -m pytest -q -p no:cacheprovider \
+	$(PYTHON) -m pytest -q -p no:cacheprovider \
 		tests/regression/test_a1_registration_digest_regression.py \
 		tests/scripts/test_a1_registration.py \
 		tests/scripts/test_t0b_calibration.py

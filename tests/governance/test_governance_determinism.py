@@ -33,10 +33,15 @@ both real validators are reported identical.
 
 from __future__ import annotations
 
+import json
+import os
+import shutil
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
+
+import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = REPO_ROOT / "scripts"
@@ -45,54 +50,87 @@ SCRIPTS = REPO_ROOT / "scripts"
 # randomisation, the rest are arbitrary distinct values.
 HASH_SEEDS = ("0", "1", "42", "12345", "99999")
 
+# All six enterprise governance validators, with the offline/deterministic flags
+# for repeated and cross-HASH_SEED verification (text and JSON modes).
+VALIDATOR_INVOCATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("validate_skills.py", ()),
+    ("validate_skills.py", ("--json",)),
+    ("validate_agents.py", ()),
+    ("validate_agents.py", ("--json",)),
+    ("validate_claude_agents.py", ()),
+    ("validate_claude_agents.py", ("--json",)),
+    ("validate_kb.py", ("--no-git",)),
+    ("validate_kb.py", ("--no-git", "--json")),
+    ("validate_openspec.py", ()),
+    ("validate_openspec.py", ("--json",)),
+    ("check_doc_sync.py", ()),
+    ("check_doc_sync.py", ("--json",)),
+)
 
-def _run(script: Path, hash_seed: str = "0") -> tuple[int, str, str]:
+
+def _deterministic_env(hash_seed: str) -> dict[str, str]:
+    """Minimal cross-platform env isolating PYTHONHASHSEED while keeping git/Windows DLLs working."""
+    path_parts = [os.path.dirname(sys.executable)]
+    git_bin = shutil.which("git")
+    if git_bin:
+        path_parts.append(os.path.dirname(git_bin))
+    path_parts.extend(["/usr/bin", "/bin", "/usr/local/bin"])
+    env = {"PATH": os.pathsep.join(path_parts), "PYTHONHASHSEED": hash_seed}
+    for key in ("SystemRoot", "SYSTEMROOT"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+    return env
+
+
+def _run(script: Path, *args: str, hash_seed: str = "0") -> tuple[int, str, str]:
     """Run one validator in a fresh interpreter and capture everything it emits."""
     proc = subprocess.run(
-        [sys.executable, str(script)],
+        [sys.executable, str(script), *args],
         capture_output=True,
         text=True,
         cwd=REPO_ROOT,
-        env={"PATH": "/usr/bin:/bin:/usr/local/bin", "PYTHONHASHSEED": hash_seed},
+        env=_deterministic_env(hash_seed),
         timeout=120,
         check=False,
     )
     return proc.returncode, proc.stdout, proc.stderr
 
 
-def _run_repeatedly(script: Path, runs: int = 3) -> list[tuple[int, str, str]]:
-    return [_run(script) for _ in range(runs)]
+def _run_repeatedly(script: Path, *args: str, runs: int = 3) -> list[tuple[int, str, str]]:
+    return [_run(script, *args) for _ in range(runs)]
 
 
 def _all_identical(results: list[tuple[int, str, str]]) -> bool:
     return all(r == results[0] for r in results)
 
 
-def test_validate_skills_is_deterministic() -> None:
-    """Five in-repo runs of validate_skills.py must agree byte for byte."""
-    results = _run_repeatedly(SCRIPTS / "validate_skills.py", runs=5)
-    assert _all_identical(results), f"validate_skills.py output varied across runs: {results}"
+@pytest.mark.parametrize(
+    "script_name", ("validate_skills.py", "validate_agents.py", "validate_claude_agents.py")
+)
+def test_skill_and_agent_validators_are_deterministic(script_name: str) -> None:
+    """Five fresh-process runs of each skill/agent validator must agree byte for byte."""
+    results = _run_repeatedly(SCRIPTS / script_name, runs=5)
+    assert _all_identical(results), f"{script_name} output varied across runs: {results}"
 
 
-def test_validate_agents_is_deterministic() -> None:
-    """Five in-repo runs of validate_agents.py must agree byte for byte."""
-    results = _run_repeatedly(SCRIPTS / "validate_agents.py", runs=5)
-    assert _all_identical(results), f"validate_agents.py output varied across runs: {results}"
-
-
-def test_validators_are_deterministic_across_hash_seeds() -> None:
-    """Set/dict iteration order must not reach the report.
-
-    ``PYTHONHASHSEED`` is the only lever that changes ``set`` ordering between
-    processes, so varying it is the discriminating test for "we iterated a set".
-    """
-    for script_name in ("validate_skills.py", "validate_agents.py", "validate_claude_agents.py"):
-        script = SCRIPTS / script_name
-        results = [_run(script, hash_seed=seed) for seed in HASH_SEEDS]
-        assert _all_identical(results), (
-            f"{script_name} output depends on PYTHONHASHSEED -- "
-            f"something iterates a set or dict without sorting: {results}"
-        )
+@pytest.mark.parametrize(
+    ("script_name", "extra_args"),
+    VALIDATOR_INVOCATIONS,
+    ids=[f"{s}[{' '.join(a) or 'default'}]" for s, a in VALIDATOR_INVOCATIONS],
+)
+def test_validators_are_deterministic_across_hash_seeds(
+    script_name: str, extra_args: tuple[str, ...]
+) -> None:
+    """Set/dict iteration order must not reach text or JSON validator reports."""
+    script = SCRIPTS / script_name
+    results = [_run(script, *extra_args, hash_seed=seed) for seed in HASH_SEEDS]
+    assert _all_identical(results), (
+        f"{script_name} {' '.join(extra_args)} output depends on PYTHONHASHSEED -- "
+        f"something iterates a set or dict without sorting: {results}"
+    )
+    if "--json" in extra_args:
+        parsed = json.loads(results[0][1])
+        assert isinstance(parsed, (list, dict))
 
 
 def test_negative_control_detects_a_nondeterministic_validator(tmp_path: Path) -> None:

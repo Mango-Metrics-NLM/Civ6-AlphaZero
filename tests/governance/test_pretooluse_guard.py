@@ -21,11 +21,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.governance._bash import resolve_bash
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 GUARD = REPO_ROOT / ".claude" / "hooks" / "pretooluse_guard.sh"
-# Resolved through PATH, not left to the OS: on Windows, CreateProcess searches
-# System32 before PATH and finds WSL's bash.exe, which cannot see this checkout.
-BASH = shutil.which("bash") or "bash"
+# Resolved explicitly so Windows does not select the System32 WSL stub before Git Bash.
+BASH = resolve_bash()
 
 DEFAULT_BRANCH = "trunk"  # deliberately not `main`
 FEATURE_BRANCH = "feature/work"

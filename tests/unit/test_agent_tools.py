@@ -441,3 +441,24 @@ class TestConvenienceFunctions:
         # Just verify it doesn't raise
         results = find_definition("TestClass")
         assert isinstance(results, list)
+
+    def test_find_python_files_excludes_pep405_venvs_and_worktrees(self, tmp_path: Path):
+        """CodeExplorer must prune .venv-*, pyvenv.cfg envs, and nested git worktrees."""
+        (tmp_path / "alpha_zero").mkdir()
+        kept = tmp_path / "alpha_zero" / "real_mod.py"
+        kept.write_text("class Target: pass\n", encoding="utf-8")
+
+        for excluded in (".venv-scan", "custom_env", ".claude/worktrees/wt1", "nested_wt"):
+            sub = tmp_path / excluded
+            sub.mkdir(parents=True, exist_ok=True)
+            if excluded == "custom_env":
+                (sub / "pyvenv.cfg").write_text("home = /usr/bin\n", encoding="utf-8")
+            elif excluded == "nested_wt":
+                (sub / ".git").write_text("gitdir: ../.git/worktrees/nested_wt\n", encoding="utf-8")
+            (sub / "ignored.py").write_text("class Target: pass\n", encoding="utf-8")
+
+        explorer = CodeExplorer(tmp_path)
+        found = explorer.find_python_files()
+        assert found == [kept]
+        defs = explorer.find_definitions("Target")
+        assert [d.location.file_path for d in defs] == [kept]

@@ -57,7 +57,7 @@ coverage.xml
 !.env.template
 !.env.example
 .venv
-.venv-*/
+.venv*/
 env/
 venv/
 ENV/
@@ -357,8 +357,11 @@ alpha_zero/serving/logs/
 alpha_zero/serving/metrics/
 alpha_zero/serving/models/export/
 inference_performance.json
-# Claude Code worktrees (isolated dev sandboxes)
+# Claude Code worktrees & local scheduler lockfiles (isolated dev sandboxes)
 .claude/worktrees/
+.claude/scheduled_tasks.lock
+.worktrees/
+worktrees/
 
 # ===========================================
 # Sprint 3: Convergence Validation & N-Player (v1.3.0)
