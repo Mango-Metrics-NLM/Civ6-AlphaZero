@@ -63,20 +63,20 @@ end
 
 GameInfo = {
     Units = rows({
-        { Index = 0, UnitType = "UNIT_SETTLER", Combat = 0, FormationClass = "FORMATION_CLASS_CIVILIAN",
+        { Index = 0, Hash = 6100, UnitType = "UNIT_SETTLER", Combat = 0, FormationClass = "FORMATION_CLASS_CIVILIAN",
           Cost = 80, BaseMoves = 2 },
-        { Index = 1, UnitType = "UNIT_WARRIOR", Combat = 20, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
+        { Index = 1, Hash = 6111, UnitType = "UNIT_WARRIOR", Combat = 20, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
           Cost = 40, BaseMoves = 2 },
-        { Index = 2, UnitType = "UNIT_ARCHER", Combat = 15, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
+        { Index = 2, Hash = 6122, UnitType = "UNIT_ARCHER", Combat = 15, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
           Cost = 60, BaseMoves = 2, PrereqTech = "TECH_BRONZE_WORKING" },
     }),
     Buildings = rows({
-        { Index = 0, BuildingType = "BUILDING_MONUMENT", Cost = 60 },
-        { Index = 1, BuildingType = "BUILDING_GRANARY", Cost = 65, PrereqTech = "TECH_POTTERY" },
+        { Index = 0, Hash = 6200, BuildingType = "BUILDING_MONUMENT", Cost = 60 },
+        { Index = 1, Hash = 6211, BuildingType = "BUILDING_GRANARY", Cost = 65, PrereqTech = "TECH_POTTERY" },
     }),
     Districts = rows({
-        { Index = 0, DistrictType = "DISTRICT_CITY_CENTER" },
-        { Index = 1, DistrictType = "DISTRICT_CAMPUS" },
+        { Index = 0, Hash = 6300, DistrictType = "DISTRICT_CITY_CENTER" },
+        { Index = 1, Hash = 6311, DistrictType = "DISTRICT_CAMPUS" },
     }),
     Terrains = rows({
         { Index = 0, TerrainType = "TERRAIN_GRASS" },
@@ -182,8 +182,16 @@ end
 -- ----------------------------------------------------------------------------
 -- Units and cities
 -- ----------------------------------------------------------------------------
+-- One object per record, kept: a test that replaces a method on a unit or a
+-- city it got from the stand-in must find the same object again.
+local objects = setmetatable({}, { __mode = "k" })
+
 local function makeUnit(spec)
-    local unit = {}
+    if objects[spec] then return objects[spec] end
+    local unit = { _spec = spec }
+    objects[spec] = unit
+    function unit:GetComponentID() return { player = spec.owner, id = spec.id, type = 1 } end
+    function unit:GetMovesRemaining() return spec.moves end
     function unit:GetID() return spec.id end
     function unit:GetOwner() return spec.owner end
     function unit:GetX() return spec.x end
@@ -219,15 +227,24 @@ local function collection(list)
     return c
 end
 
-local allUnits = {
-    makeUnit({ id = 101, owner = 0, x = 0, y = 0, unitType = 0, moves = 2 }),                           -- settler
-    makeUnit({ id = 102, owner = 0, x = 1, y = 0, unitType = 1, moves = 2, combat = 20, attacks = 1 }), -- warrior
-    makeUnit({ id = 201, owner = 1, x = 2, y = 0, unitType = 1, moves = 2, combat = 20, attacks = 1 }), -- enemy warrior
+-- One changeable record per unit. Unit objects read their record when a method
+-- is called, so a test (or an applied request) that changes a record changes
+-- what the mod sees. Extra fields used by the command stand-in
+-- (civ6_stub_commands.lua): activity ("fortified" / "sleeping"), skipped.
+Civ6Stub.units = {
+    { id = 101, owner = 0, x = 0, y = 0, unitType = 0, moves = 2 },                           -- settler
+    { id = 102, owner = 0, x = 1, y = 0, unitType = 1, moves = 2, combat = 20, attacks = 1 }, -- warrior
+    { id = 201, owner = 1, x = 2, y = 0, unitType = 1, moves = 2, combat = 20, attacks = 1 }, -- enemy warrior
 }
+local function allUnits()
+    local list = {}
+    for _, spec in ipairs(Civ6Stub.units) do table.insert(list, makeUnit(spec)) end
+    return list
+end
 
 local function unitsOf(owner)
     local list = {}
-    for _, unit in ipairs(allUnits) do
+    for _, unit in ipairs(allUnits()) do
         if unit:GetOwner() == owner then table.insert(list, unit) end
     end
     return collection(list)
@@ -236,7 +253,7 @@ end
 Units = {}
 function Units.GetUnitsInPlot(plot)
     local list = {}
-    for _, unit in ipairs(allUnits) do
+    for _, unit in ipairs(allUnits()) do
         if unit:GetX() == plot:GetX() and unit:GetY() == plot:GetY() then
             table.insert(list, unit)
         end
@@ -266,7 +283,9 @@ local function makeDistrict(entry, x, y)
 end
 
 local function makeCity(spec)
-    local city = {}
+    if objects[spec] then return objects[spec] end
+    local city = { _spec = spec }
+    objects[spec] = city
     local queue = {}
     local function state() return Civ6Stub.cities[spec.id] or {} end
     function city:GetBuildings()
@@ -284,8 +303,21 @@ local function makeCity(spec)
     end
     function queue:CurrentlyBuilding() return spec.building end
     function queue:GetTurnsLeft() return 3 end
-    -- Only units can be produced in this invented city.
-    function queue:CanProduce(index, _) return index == 1 end
+    -- Asked by row Hash (what the game's own production panel sends):
+    -- `CanProduce(hash, true)` is the loose check, `CanProduce(hash, false, true)`
+    -- the strict one ("can start now"), and the two differ for the settler.
+    -- Asked by a small number, it answers as it did before the command
+    -- stand-in existed: row 1 of whatever table. The exporter still asks that
+    -- way (a known defect, GM-B7b); this branch goes when it is fixed.
+    function queue:CanProduce(ref, loose, strictFlag)
+        local name = Civ6Stub.producibleName and Civ6Stub.producibleName(ref)
+        if not name then return ref == 1 end
+        local table_ = state().canProduce or Civ6Stub.defaultCanProduce
+        local entry = table_[name]
+        if entry == nil then return false end
+        if loose == false and strictFlag == true then return entry == "now" end
+        return true
+    end
     function city:GetID() return spec.id end
     function city:GetName() return spec.name end
     function city:GetX() return spec.x end
@@ -331,13 +363,28 @@ local function researchState()
 end
 
 Civ6Stub.players = { [0] = researchState(), [1] = researchState() }
-local function makePlayer(id, cities)
+-- One changeable record per city, by owner; city objects read it when called.
+-- `building` is what the city is producing (a type name), nil for nothing.
+Civ6Stub.cityRecords = {
+    [0] = { { id = 301, name = "Stubville", x = 1, y = 1, population = 3 } },
+    [1] = {},
+}
+-- What a city can produce unless Civ6Stub.cities[id].canProduce says otherwise:
+-- "now" passes the strict check, "later" only the loose one.
+Civ6Stub.defaultCanProduce = {
+    UNIT_WARRIOR = "now", BUILDING_GRANARY = "now", DISTRICT_CAMPUS = "now", UNIT_SETTLER = "later",
+}
+local function makePlayer(id)
     local player = {}
     function player:GetID() return id end
     function player:IsAlive() return true end
     function player:IsHuman() return id == 0 end
     function player:GetUnits() return unitsOf(id) end
-    function player:GetCities() return collection(cities) end
+    function player:GetCities()
+        local list = {}
+        for _, spec in ipairs(Civ6Stub.cityRecords[id] or {}) do table.insert(list, makeCity(spec)) end
+        return collection(list)
+    end
     function player:GetScore() return 10 + id end
     function player:GetTreasury()
         local t = {}
@@ -396,8 +443,8 @@ local function makePlayer(id, cities)
 end
 
 Players = {
-    [0] = makePlayer(0, { makeCity({ id = 301, name = "Stubville", x = 1, y = 1, population = 3 }) }),
-    [1] = makePlayer(1, {}),
+    [0] = makePlayer(0),
+    [1] = makePlayer(1),
 }
 
 PlayerConfigurations = {}
@@ -537,6 +584,12 @@ local function event()
         end
     end
     function e.Count() return #handlers end
+    -- Not the game's: lets a test play "the game published a frame".
+    function e.Fire(...)
+        local snapshot = {}
+        for i, h in ipairs(handlers) do snapshot[i] = h end
+        for _, h in ipairs(snapshot) do h(...) end
+    end
     return e
 end
 
