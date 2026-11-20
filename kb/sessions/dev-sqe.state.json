@@ -1,29 +1,26 @@
 {
-    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-15T21:45:00Z",
-    "current_focus": "v2.1 local close-out on PR #140 (rehearsal-first run cards, torch wheel record, atomic writes, driver record, the release verifier's re-run rule, OpenSpec archive); handed off to Pre-PR and the maintainer. Section 7.1 digest unchanged (e460a353...7c17).",
+    "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+    "last_timestamp": "2026-11-20T00:55:00Z",
+    "current_focus": "Game-mechanics program, Phase 1. Merged: #142. Open: #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), and GM-B1 on claude/gm-b1-lua-harness. Kernel track complete in code; bridge track has its generator and its Lua harness.",
     "resume_pointers": {
-        "current_task": "None in flight. v2.1's remaining work is the maintainer's (T0b, the section 7.1 slot fill-in, A1, A1-R, the release).",
+        "current_task": "None in flight. Next slice: GM-B2 (exporter parity, research legal actions, END_TURN reporting a blocked turn), test-first on tests/fixtures/lua_harness.py.",
         "blocked_on": [
-            "maintainer: review PR #140 (CONFIRM-FIRST items and conservative readings are in its body); it is a draft and is not to be merged or marked ready by an agent",
-            "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
-            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation"
+            "maintainer: review and merge #143, #146, #147, #148 and the GM-B1 PR; agents do not merge",
+            "maintainer: confirm the END_TURN change (GM-B2) and decide on the two pieces in bundle-drift.md; confirm GM-B3's four-module span at its PR",
+            "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
-            "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
-            "Then A1 and A1-R on the rc SHA; after an interruption run reproduction compare before any other card; build_release_bundle.py --compare; verify_release_evidence.py",
-            "Open follow-ups on openspec/changes/add-gpu-first-run-cards: 4c.7 (the bundle after a non-reproducing re-run) and 4c.11 (three checks the verifier does not make)",
-            "v2.2 (local training loop, gap-register rows L0-L6) needs its own task plan; most of it is CONFIRM-FIRST"
+            "After each merge, merge the default branch into the PRs still open (ledger, summary, and pytest_skip_sites in the debt baseline all collide)",
+            "Base every follow-up PR on the default branch, never on another PR's branch",
+            "GM-B2 needs both GM-B0 (generated bundle) and GM-B1 (harness) merged first",
+            "Never load the mod's Lua without the harness lockdown: it writes into the working directory"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md",
-        "openspec/changes/add-gpu-first-run-cards/tasks.md",
-        "docs/evidence/SCHEMA.md",
-        "docs/EVALUATION.md",
-        "docs/runbooks/branching-and-release.md",
-        ".claude/skills/a1-reregister/SKILL.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md"
+        "kb/handoffs/20261120-devsqe-to-prepr-gm-b1-lua-harness.md",
+        "tests/fixtures/lua_harness.py",
+        "tests/fixtures/lua/civ6_stub.lua",
+        "openspec/changes/add-bridge-research-parity/tasks.md",
+        "kb/specs/20261119-game-mechanics-plan.md"
     ]
 }
