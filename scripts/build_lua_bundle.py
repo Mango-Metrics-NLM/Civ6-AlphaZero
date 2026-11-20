@@ -134,7 +134,7 @@ def module_order(mod_dir: Path) -> list[str]:
             not listed.startswith(prefix)
             or not listed.endswith(_LUA_SUFFIX)
             or "\\" in listed
-            or ".." in listed.split("/")
+            or any(part in ("", ".", "..") for part in listed.split("/"))
         ):
             raise BundleError(
                 f"{modinfo.name} lists {listed!r}; a Lua entry must be spelled "

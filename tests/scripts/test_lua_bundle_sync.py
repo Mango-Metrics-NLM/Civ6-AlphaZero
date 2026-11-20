@@ -610,3 +610,24 @@ def test_cdata_wrapped_entry_is_not_silently_dropped(
     code = bb.main(["--check", "--mod-dir", str(mod_copy)])
     capsys.readouterr()
     assert code in (0, 2)
+
+
+@pytest.mark.parametrize(
+    "entry",
+    ["Scripts/./AlphaZeroMain.lua", "Scripts//AlphaZeroMain.lua", "Scripts/./Logger.lua"],
+)
+def test_dot_and_empty_path_components_are_refused(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str], entry: str
+) -> None:
+    """Review finding on PR 148: ``Scripts/./AlphaZeroMain.lua`` passed the spelling
+    check under the name ``./AlphaZeroMain.lua``, escaped the bundle's own exclusion
+    and embedded the previous bundle in the new one."""
+    modinfo = _modinfo(mod_copy)
+    text = modinfo.read_text(encoding="utf-8")
+    marker = "<File>Scripts/Main.lua</File>"
+    assert marker in text
+    modinfo.write_text(text.replace(marker, f"{marker}\n        <File>{entry}</File>"), "utf-8")
+    before = _cbundle(mod_copy).read_bytes()
+    assert bb.main(["--mod-dir", str(mod_copy)]) == 2
+    assert entry in capsys.readouterr().err
+    assert _cbundle(mod_copy).read_bytes() == before, "a refused layout must not rewrite the bundle"
