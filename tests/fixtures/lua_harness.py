@@ -32,8 +32,17 @@ STUB = Path(__file__).resolve().parent / "lua" / "civ6_stub.lua"
 REQUIRE_ENV = "CIV6AZ_REQUIRE_LUA"
 
 #: Run before anything else: take away what the game's sandbox does not have, and
-#: everything that could touch the file system or load code.
+#: everything that could touch the file system or load code. Lua 5.1's ``module``
+#: goes too: ``module('os')`` hands back the original library from the
+#: loaded-module registry even after the global is gone, so the registry entries
+#: are cleared first and then ``module`` itself.
 _LOCKDOWN = """
+if package and package.loaded then
+    for _, name in ipairs({"io", "os", "debug", "package"}) do
+        package.loaded[name] = nil
+    end
+end
+module = nil
 io = nil
 dofile = nil
 loadfile = nil
