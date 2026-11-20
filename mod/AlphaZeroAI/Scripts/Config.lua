@@ -30,6 +30,7 @@ local DEFAULT_CONFIG = {
     ACK_FILE = "ack.json",
     HEARTBEAT_FILE = "heartbeat.txt",
     ERROR_FILE = "errors.json",
+    GAMEINFO_FILE = "gameinfo.json",
 
     -- Polling intervals (in seconds)
     COMMAND_POLL_INTERVAL = 0.01,  -- 10ms
@@ -47,6 +48,7 @@ local DEFAULT_CONFIG = {
     ENABLE_DETAILED_UNITS = true,
     ENABLE_DETAILED_CITIES = true,
     ENABLE_LEGAL_ACTIONS = true,
+    ENABLE_GAMEINFO_EXPORT = true,  -- Write the rule-table snapshot once per game load
 
     -- Player configuration
     AI_PLAYER_ID = nil,            -- Auto-detect first human player
@@ -158,6 +160,7 @@ function AlphaZeroConfig.Init()
     currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
     currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
     currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
+    currentConfig.GAMEINFO_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.GAMEINFO_FILE
 
     -- Try to load override configuration
     AlphaZeroConfig.LoadOverrides()
@@ -198,6 +201,7 @@ function AlphaZeroConfig.LoadOverrides()
                 currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
                 currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
                 currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
+                currentConfig.GAMEINFO_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.GAMEINFO_FILE
             end
         elseif err then
             print("[AlphaZero] Config override parse error: " .. tostring(err))

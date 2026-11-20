@@ -157,6 +157,18 @@ function AlphaZeroBridge.Initialize()
         AlphaZeroFileIO.WriteHeartbeat()
     end
 
+    -- Write the game's rule tables once per load, for the Python side to
+    -- capture (GM-B4). The tables do not change during a game. Never fatal:
+    -- the bridge works without the snapshot.
+    if AlphaZeroGameInfo and AlphaZeroConfig and AlphaZeroConfig.IsEnabled("GAMEINFO_EXPORT") then
+        local ok, written, err = pcall(AlphaZeroGameInfo.ExportAndWrite)
+        if not ok or not written then
+            if Log then
+                Log.Warn("GameInfo snapshot not written: %s", tostring(ok and err or written))
+            end
+        end
+    end
+
     bridgeState.initialized = true
     if Log then Log.Info("AlphaZero Bridge initialized successfully") end
 

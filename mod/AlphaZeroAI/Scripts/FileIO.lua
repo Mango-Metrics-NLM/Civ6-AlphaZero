@@ -331,6 +331,46 @@ function AlphaZeroFileIO.WriteState(state)
     end
 end
 
+-- Write the rule-table snapshot (GM-B4): a file when file access exists,
+-- otherwise printed like a state, under its own prefixes so the state reader
+-- does not take it for one.
+function AlphaZeroFileIO.WriteGameInfo(document)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
+    local json, err = AlphaZeroJson.Encode(document, false)
+    if not json then
+        return false, err
+    end
+
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if not path then return false, "GAMEINFO_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    end
+
+    -- Lua.log truncates long lines, so a long snapshot is cut into pieces:
+    -- AZ_GAMEINFO_CHUNK:seq/total:data ... AZ_GAMEINFO_END:total
+    local MAX_CHUNK = 1800
+    local jsonLen = #json
+    if jsonLen <= MAX_CHUNK then
+        print("AZ_GAMEINFO:" .. json)
+    else
+        local totalChunks = math.ceil(jsonLen / MAX_CHUNK)
+        for i = 1, totalChunks do
+            local startPos = (i - 1) * MAX_CHUNK + 1
+            local endPos = math.min(i * MAX_CHUNK, jsonLen)
+            print("AZ_GAMEINFO_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. json:sub(startPos, endPos))
+        end
+        print("AZ_GAMEINFO_END:" .. totalChunks)
+    end
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = json
+    end
+    return true, nil
+end
+
 -- Read commands from either file or ExposedMembers
 function AlphaZeroFileIO.ReadCommands()
     if HAS_IO then
