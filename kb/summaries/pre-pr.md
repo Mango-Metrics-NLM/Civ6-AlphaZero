@@ -5,6 +5,11 @@
 
 <!-- entries below -->
 
+## 2026-11-19 - PR #145 triage: merge PR #142 base, fix K6 state JSON, `_resolve_python.sh`, and Linux/LF hook tests
+- **Session:** 31c93d11-adb3-4751-9d30-11395c290068
+- **Validating:** Merged `origin/claude/civ6-alphazero-implementation-vMnun` (`690fe16`, PR #142) cleanly into `fix/post-merge-gpu-e2e-aqa-hardening` (resolved `ROADMAP.md` and `kb/ledger/ledger.jsonl` preserving both streams), repaired corrupted `kb/sessions/pre-pr.state.json` (eliminating CI K6 failure across `Governance Gates` and `Test Python 3.11/3.12/3.13`), guarded unset `$VIRTUAL_ENV` and enumerated multi-hit `PATH` interpreters via `type -aP` in `.claude/hooks/_resolve_python.sh`, and enforced explicit LF newlines + POSIX non-python `safe_bin` isolation in `tests/governance/test_hook_guard_json.py`.
+- **Status:** Verified locally after final edit; ready for push to PR #145.
+
 ## 2026-11-18 - Post-merge Windows & dual-GPU E2E hardening, zero-warning `Agent.md`, and deterministic validators
 - **Session:** 31c93d11-adb3-4751-9d30-11395c290068
 - **Validating:** Branch `fix/post-merge-gpu-e2e-aqa-hardening` against `origin/claude/civ6-alphazero-implementation-vMnun` (`439ee9c4`). Fixed `RAGClient._call_safely` native panic handling, shared `audit_import_graph.iter_python_files` + PEP 405/worktree pruning, portable Windows Python/Git Bash resolution across `Makefile`, `.claude/hooks/*.sh`, and `tests/governance/_bash.py`, deterministic sorted `--json`/`--verbose` validators + synced `readonly_shell_guard.sh`, `.gitignore`/`.dockerignore`/`.gitleaks.toml` virtualenv/worktree exclusions (without `.env*`), C4 `log_evaluation_result()` 15-metric alignment, and burned down all `Agent.md` warnings (`22 -> 0`). `docs/EVALUATION.md` §7.1 untouched (`REGISTRATION_DIGEST e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17`).

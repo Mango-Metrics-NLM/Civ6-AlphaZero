@@ -42,6 +42,14 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
   reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
   and A1/A1-R run-card execution remains open until run on the maintainer's GPU machine.
+- `openspec/changes/add-game-rules-kernel`: planned (documentation and tracking
+  only so far): a data-driven rules kernel outside the play path, the golden
+  fingerprint of the default env and the kernel tooling (GM-S0a, GM-K1, GM-K2;
+  plan `kb/specs/20261119-game-mechanics-plan.md`).
+- `openspec/changes/add-bridge-research-parity`: planned: a generated Lua
+  bundle, a Lua test harness, exporter and Python wiring for researched techs,
+  buildings and research actions, the GameInfo snapshot and the `--mcts`
+  refusal (GM-B0..GM-B5).
 
 ### Next — v2.1 "First validated learning run"
 
@@ -78,6 +86,13 @@ the maintainer; A1 registers the current settings), and the seed-overlap memo
   tech-debt workstreams (below).
 - M5: fog of war via information-set sampling, the full-scale encoder and action
   space against the real game, sustained live play with a trained checkpoint.
+- Game mechanics (planned; none implemented): after v2.1.0 ships, opt-in
+  MicroCiv rule sets as rungs GM-S0..GM-S7 (preset seam, growth, science and
+  technology, warfare, then civics, districts, world and society), each with
+  its own OpenSpec change and each confirmed again before it starts.
+- M5 end state, as an aim and not a promise: every Civ6 system class has a
+  MicroCiv counterpart at an agreed abstraction, with bridge parity for its
+  state and actions and a passed probe. It is not a rules-exact clone.
 
 ---
 

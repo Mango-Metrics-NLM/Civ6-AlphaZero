@@ -64,6 +64,7 @@ walkthrough is a welcome contribution.
 | [`model_cards/README.md`](model_cards/README.md) | Index of model cards and what a card must state. | user | Reference | 2026-11-10 |
 | [`model_cards/hexcrystal_encoder.md`](model_cards/hexcrystal_encoder.md) | Model card for the published hex-crystalline encoder. | user | Reference | 2026-11-10 |
 | [`evidence/SCHEMA.md`](evidence/SCHEMA.md) | The contract every committed measurement under `evidence/` must satisfy. | contributor | Reference | 2026-11-10 |
+| [`GAME_RULES.md`](GAME_RULES.md) | The game rule-set log (id, hash, status) and the probe protocol for MicroCiv presets; planned rule sets only, none implemented yet. | contributor | Current | 2026-11-19 |
 
 ## Explanation
 

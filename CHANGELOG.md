@@ -87,6 +87,7 @@ The A1 learning run is registered, not run: no verdict exists yet.
 ### Known limitations
 - **Formal single-use run-card execution on T0b/A1 has not run yet.** Live dual-GPU execution (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128`) and Windows governance, regression, and GPU E2E suites have been verified directly (`scripts/check_determinism.py` -> `REPRODUCED`), while the formal single-use `scripts/run_card.py` T0b rehearsal/execution and A1/A1-R runs remain open. GPU reproduction is scoped to one commit, torch wheel, NVIDIA driver and GPU per ordinal.
 - After a non-reproducing re-run, section 7.1 requires a new registration and a bundle that lists both attempts. The release verifier does not model that bundle yet.
+- **No tech tree, research or science yield exists in the training environment**, although earlier documents claimed one. Corrected in the 0.14.1 erratum below; the planned program is `kb/specs/20261119-game-mechanics-plan.md` (documentation only so far: no rule, kernel or bridge change is implemented).
 - The reproduction record's checkpoint digests are not anchored to anything in a release bundle, because checkpoints are too large to bundle; its arena and iteration digests are checked against the bundled files.
 - **MuZero search is not two-player sign-correct** (known defect, CLAUDE.md section 5.3; the fix is confirm-first): its backup sums mover-relative rewards with no sign flip, and its value targets use a third frame. A1 does not use MuZero. The alternating forced-win case is a strict `xfail`.
 - The branch model, rulesets and agent identity are not enforced until the maintainer's cut-over; until then the guard is the only barrier, and it is an accident net.
@@ -567,6 +568,8 @@ After this fix, training iterations will:
 - **Fog of war** (`envs/micro_civ_fog.py`): Per-player visibility with sight-range mechanics and exploration state
 - **Tech tree** (`envs/micro_civ_tech.py`): 15-tech tree with prerequisites, era progression, and unlock effects
 - **Combat system** (`envs/micro_civ_combat.py`): Terrain-aware combat with flanking, fortification, and ranged attacks
+
+> **Erratum (2026-11-19).** The four files named in this section (`envs/micro_civ_terrain.py`, `envs/micro_civ_fog.py`, `envs/micro_civ_tech.py`, `envs/micro_civ_combat.py`) are not present in the tree today. The gameplay systems live in `alpha_zero/gameplay/` (terrain, fog of war, economy, city growth, combat, victory). No tech tree is present anywhere in the tree; one is planned (`kb/specs/20261119-game-mechanics-plan.md`, GM-S2). This checkout's history was not searched to say where the files went. The entry above is left as written.
 
 #### Test Suite
 

@@ -38,7 +38,7 @@ logic involves: game simulation (MicroCiv/Unciv), neural network training, MCTS 
 distributed self-play across multiple actors.
 
 **Paragraph 2 - Data Flows:**
-Data flows from game environments (MicroCiv for training, Unciv for production) through state
+Data flows from game environments (MicroCiv for training; real Civ6 through the bridge for deployment) through state
 encoders (13-channel MicroCiv, 84-channel full Civ6) to the neural network. The network outputs
 policy distributions and value estimates. MCTS uses these to build search trees. Training samples
 (state, policy, value) accumulate in replay buffers. The learner samples batches for gradient
@@ -754,7 +754,7 @@ Civ6-AlphaZero/
 │   ├── mechanics/              # Game mechanics: diplomacy, trade, espionage,
 │   │                           #   religion, government, climate, eras (12 files)
 │   ├── evaluation/             # Evaluation + LLM eval harness, llm_harness/ (14 files)
-│   ├── gameplay/               # Gameplay systems: terrain, fog of war, tech, combat (8)
+│   ├── gameplay/               # Gameplay systems: combat, economy, fog of war, terrain, city growth, victory (8; no tech tree)
 │   ├── optimizations/         # Training optimization strategies (10 files)
 │   ├── opponents/             # Opponent types & strategies (4 files)
 │   ├── spacetimedb/           # SpacetimeDB integration (9 files)
@@ -1622,6 +1622,6 @@ This file is gitignored and never committed.
 
 ---
 
-*Last updated: 2026-11-18*
+*Last updated: 2026-11-19*
 *Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — N-player training runs, batch self-play in cloud, W&B→MLflow sweep, omit-list shrink. Governance: PROJECT_CHARTER.md*
