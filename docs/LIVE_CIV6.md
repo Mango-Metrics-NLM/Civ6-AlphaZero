@@ -321,14 +321,19 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   rule was added, so there is no water, no embarking and no ranged attack in
   the search. Before this, a settler reached the simulator as a "civilian",
   which could not found a city, and a mountain as "grassland", which could
-  be walked over.
+  be walked over. Three limits that remain: a unit the converter's own table
+  does not know is counted as a melee unit, so an unlisted ship becomes a
+  warrior standing on water; on a map larger than the board several game
+  tiles share one board tile, and that tile is impassable when any of them
+  is; and because units are left out, a unit's position in the simulator's
+  list is not its position in the live list.
 - **A game where the agent is not player 0 (fixed 2026-11-20, not seen
   live).** With two players the converter numbers the agent's own units 0
   whatever the agent's player id in the game is, but it reported the acting
   player as that game id. When the two differed, the encoder put the agent's
-  units in the enemy's channels and no unit action was legal, so only
-  `END_TURN` was left. The acting player is now reported by the same
-  numbering. A single-player game normally makes the human seat player 0,
+  units in the enemy's channels and no unit or city action was legal (ending
+  the turn, and research the game offered, still were). The acting player is
+  now reported by the same numbering. A single-player game normally makes the human seat player 0,
   which is why this did not show in the sessions run so far.
 - **A blocked `END_TURN` is now reported, and the agent cannot clear every
   blocker (GM-B2 done 2026-11-20, not yet seen live).** When a notification
