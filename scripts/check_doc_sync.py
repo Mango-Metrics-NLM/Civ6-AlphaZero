@@ -33,6 +33,8 @@ Exit codes: 0 = pass, 1 = violations, 2 = usage / internal error.
 from __future__ import annotations
 
 import argparse
+import json
+import logging
 import re
 import sys
 import tomllib
@@ -40,6 +42,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+logger = logging.getLogger("check_doc_sync")
 
 FORBIDDEN_README_PATTERNS = (
     "wandb",
@@ -386,6 +390,9 @@ def _check_changelog(root: Path, pyproject: dict, issues: list[Issue]) -> None:
 def run(root: Path) -> list[Issue]:
     issues: list[Issue] = []
     pyproject = _load_pyproject(root)
+    canonical = pyproject.get("project", {}).get("version")
+    gate = pyproject.get("tool", {}).get("coverage", {}).get("report", {}).get("fail_under")
+    logger.debug("scanning root=%s (version=%s, coverage_gate=%s)", root, canonical, gate)
     _check_versions(root, pyproject, issues)
     _check_module_reference(root, issues)
     _check_coverage_gate(root, pyproject, issues)
@@ -396,6 +403,8 @@ def run(root: Path) -> list[Issue]:
     _check_docs_index(root, issues)
     _check_roadmap_now(root, issues)
     _check_changelog(root, pyproject, issues)
+    issues.sort(key=lambda i: (str(i.file), i.line or 0, i.code, i.message))
+    logger.debug("finished: %d issue(s)", len(issues))
     return issues
 
 
@@ -404,7 +413,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--root", default=str(REPO_ROOT), help="repository root to check")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="log checked repository root, version/coverage metadata and outcome (stderr)",
+    )
     args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
 
     root = Path(args.root).resolve()
     try:
@@ -414,13 +434,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     if args.json:
-        import json
-
         payload = [
             {"code": i.code, "message": i.message, "file": str(i.file), "line": i.line}
             for i in issues
         ]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for issue in issues:
             print(issue.render(root), file=sys.stderr)

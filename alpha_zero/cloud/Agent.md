@@ -56,7 +56,7 @@ This module provides cloud-native training infrastructure:
 | `gcp/storage.py` | GCSBackend, GCSModelStorage, GCSTrajectoryStorage, GCSCheckpointStorage, ModelMetadata |
 | `gcp/vertex_jobs.py` | VertexAIClient, VertexSelfPlayJob, VertexTrainingJob, VertexTournamentJob, JobSpec, JobResult |
 | `gcp/vertex_orchestrator.py` | Full pipeline orchestration on Vertex AI |
-| `gcp/selfplay_worker.py` | GCP self-play worker entry point |
+| `gcp/selfplay_worker.py` | GCP self-play worker entry point (`SeedStream.SELF_PLAY_SEARCH` seeding on `run_selfplay` / `run_muzero_selfplay`, shared reward signing and cleanup helpers) |
 | `gcp/training_worker.py` | GCP training worker entry point |
 | `gcp/evaluation_worker.py` | GCP evaluation worker entry point |
 | `gcp/tournament_worker.py` | GCP tournament worker entry point |

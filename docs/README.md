@@ -43,7 +43,7 @@ walkthrough is a welcome contribution.
 
 | Doc | What it helps you do | Audience | Status | Last verified |
 |-----|----------------------|----------|--------|---------------|
-| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: four `END_TURN`s on random weights are all that has been verified). | user | Current | 2026-11-10 |
+| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: four `END_TURN`s on random weights verified live; GM-B0..B3 Lua bundle/harness/schema-2 research wiring tested offline). | user | Current | 2026-11-20 |
 | [`HF_PUBLISHING.md`](HF_PUBLISHING.md) | Stage and publish the hex-crystalline encoder to the Hugging Face Hub. | contributor | Current | 2026-08-11 |
 | [`INFERENCE_SERVICE.md`](INFERENCE_SERVICE.md) | Run and call the FastAPI inference server. | operator | Current | 2026-08-11 |
 | [`GCP_INFRA.md`](GCP_INFRA.md) | Stand up the Vertex AI / GCS training infrastructure. | operator | Current | 2026-09-02 |
@@ -58,13 +58,13 @@ walkthrough is a welcome contribution.
 
 | Doc | What it is | Audience | Status | Last verified |
 |-----|------------|----------|--------|---------------|
-| [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md) | The `alpha_zero/` module inventory, one row per subpackage (gated by `check_doc_sync` D2). | contributor | Reference | 2026-09-04 |
+| [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md) | The `alpha_zero/` module inventory, one row per subpackage (gated by `check_doc_sync` D2). | contributor | Reference | 2026-11-20 |
 | [`architecture/README.md`](architecture/README.md) | Entry to the architecture tree (C4 model + ADRs). | contributor | Reference | 2026-07-25 |
 | [`NAMING_CONVENTIONS.md`](NAMING_CONVENTIONS.md) | Environment variables, image tags and GCS path conventions. | operator | Reference | 2026-02-20 |
 | [`model_cards/README.md`](model_cards/README.md) | Index of model cards and what a card must state. | user | Reference | 2026-11-10 |
 | [`model_cards/hexcrystal_encoder.md`](model_cards/hexcrystal_encoder.md) | Model card for the published hex-crystalline encoder. | user | Reference | 2026-11-10 |
 | [`evidence/SCHEMA.md`](evidence/SCHEMA.md) | The contract every committed measurement under `evidence/` must satisfy. | contributor | Reference | 2026-11-10 |
-| [`GAME_RULES.md`](GAME_RULES.md) | The game rule-set log (id, hash, status) and the probe protocol for MicroCiv presets; planned rule sets only, none implemented yet. | contributor | Current | 2026-11-19 |
+| [`GAME_RULES.md`](GAME_RULES.md) | The game rule-set log (id, hash, status) and the probe protocol for MicroCiv presets (`alpha_zero/rules/` leaf kernel shipped; no training environment uses it yet). | contributor | Current | 2026-11-20 |
 
 ## Explanation
 
