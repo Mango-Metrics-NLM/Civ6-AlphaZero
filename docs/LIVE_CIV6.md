@@ -120,17 +120,32 @@ civic tree yet, so civic slots follow the `Civics` table of a GameInfo export, i
 | Encoder | Researched techs (and civics, with `CIV6AZ_BRIDGE_GAMEINFO`) set their slots. | Technology and civic positions stay zero, as before. Counted, and warned about once. |
 | Research actions | A choice is offered when the rule set has a slot for it. The command names it by the game's type name, and the mod finds its own row. | A choice's action is the game's own row index, so research can be chosen with no setup. |
 
-What is lost is counted, not hidden (`StateConverter.research_stats`,
-`ActionConverter.research_stats`): researched or offered items the rule set does not know, and
-slots beyond what the encoder (100 each) or the action space (73 technologies, 56 civics) has
-room for. The current game has more technologies and civics than the action space has
-research actions; those cannot be chosen until the action space is sized from the rule set,
-which is a change on the release play path and waits for v2.1.0.
+**Turning the registry on can make the live agent worse at clearing a blocked turn.** A
+choice the rule set has no slot for cannot be offered, and the small built-in rule set knows
+few of the real game's technologies and no civics at all: with it, a turn blocked on a civic
+choice cannot be cleared, where the default mode would have offered every civic by row
+index. Use a registry when a network trained with that rule set is loaded; for a
+random-weights session the default is the better choice. The rule set that covers the real
+tree is the one `python -m alpha_zero.rules import-gameinfo` writes from a GameInfo export;
+capturing that export from a running game is GM-B4. No network has been trained with any of
+these slots.
 
-With the small built-in rule set most of the real game's technologies have no slot, so they
-are neither encoded nor offered. The rule set that covers the real tree is the one
-`python -m alpha_zero.rules import-gameinfo` writes from a GameInfo export; capturing that
-export from a running game is GM-B4. No network has been trained with any of these slots.
+What to look for in the log:
+
+- At start-up each converter says which mode it is in: the rule set, the start of its
+  fingerprint and the number of technology and civic slots, or "no research registry". A
+  registry with no civic slots gets a warning.
+- The two converters must use the same registry. The state carries the registry's
+  fingerprint, and the action converter refuses a state numbered by another one.
+- What is lost is counted, not hidden, and warned about once, naming the first item
+  (`StateConverter.research_stats`, `ActionConverter.research_stats`): researched or offered
+  items the rule set does not know, and slots beyond what the encoder (100 each) or the
+  action space (73 technologies, 56 civics) has room for. A state converted twice in a row
+  is counted once. The counters are not yet part of the agent loop's own statistics.
+
+The current game has more technologies and civics than the action space has research
+actions; those cannot be chosen until the action space is sized from the rule set, which is
+a change on the release play path and waits for v2.1.0.
 
 ### Live checklist for the maintainer (GM-B2)
 
