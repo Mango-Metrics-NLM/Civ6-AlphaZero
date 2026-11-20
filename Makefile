@@ -85,6 +85,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make install           Install the project with the dev extra (pip install -e '.[dev]')"
+	@echo "  make install-lua       The same plus the Lua runtime that 'make verify' requires"
 	@echo "  make install-dev       Alias of install"
 	@echo "  make lint              Run linting (ruff)"
 	@echo "  make typecheck         Run type checking (mypy)"
@@ -133,6 +134,12 @@ install:
 
 .PHONY: install-dev
 install-dev: install
+
+# The dev extra plus the Lua runtime (lupa) that `make verify` and CI's test job
+# require for the Civ6 mod's Lua tests.
+.PHONY: install-lua
+install-lua:
+	$(PIP) install -e '.[dev,lua]'
 
 .PHONY: install-cloud
 install-cloud: install
@@ -393,6 +400,12 @@ hooks-install:
 # anything, which is the failure this target exists to prevent. It previously
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
+# CI's test job requires the Lua runtime for the mod's Lua tests (it sets
+# CIV6AZ_REQUIRE_LUA=1), so `verify` does too: without it those tests would skip
+# here and pass there for a different reason. Plain `make test` and plain pytest
+# leave it optional. Install it with `make install-lua`.
+verify: export CIV6AZ_REQUIRE_LUA = 1
+
 .PHONY: verify
 verify: lint-check typecheck test test-security security-secrets test-governance validate test-all test-cloud-coverage eval-llm
 	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage (global + cloud floor) and eval gates"

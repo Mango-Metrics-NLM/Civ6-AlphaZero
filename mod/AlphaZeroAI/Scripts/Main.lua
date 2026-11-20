@@ -256,8 +256,13 @@ function AlphaZeroBridge.PollCommands()
         return
     end
 
-    -- Write heartbeat periodically
-    local heartbeatInterval = (AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_INTERVAL")) or 1.0
+    -- Write heartbeat periodically, every HEARTBEAT_INTERVAL seconds. A value
+    -- that is not a positive number (a typo in the override file) falls back to
+    -- one second: an error here would stop command polling.
+    local heartbeatInterval = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_INTERVAL"))
+    if not heartbeatInterval or heartbeatInterval <= 0 then
+        heartbeatInterval = 1.0
+    end
     local now = (os and os.time) and os.time() or 0
     if now - bridgeState.lastHeartbeatTime >= heartbeatInterval then
         if AlphaZeroFileIO then

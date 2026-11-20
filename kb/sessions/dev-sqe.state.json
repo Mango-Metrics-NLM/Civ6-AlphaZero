@@ -1,29 +1,28 @@
 {
-    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-15T21:45:00Z",
-    "current_focus": "v2.1 local close-out on PR #140 (rehearsal-first run cards, torch wheel record, atomic writes, driver record, the release verifier's re-run rule, OpenSpec archive); handed off to Pre-PR and the maintainer. Section 7.1 digest unchanged (e460a353...7c17).",
+    "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+    "last_timestamp": "2026-11-20T01:15:00Z",
+    "current_focus": "Game-mechanics program, Phase 1. Merged: #142. Open: #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), #149 (GM-B1), and GM-B2 on claude/gm-b2-exporter-parity. The mod now exports research state and reports a blocked end of turn; nothing on the Python side uses it yet.",
     "resume_pointers": {
-        "current_task": "None in flight. v2.1's remaining work is the maintainer's (T0b, the section 7.1 slot fill-in, A1, A1-R, the release).",
+        "current_task": "None in flight. Next slice: GM-B3 (tech registry, encoder tech and civic slots, research in the action mask). It spans four bridge modules and needs the maintainer's confirmation first.",
         "blocked_on": [
-            "maintainer: review PR #140 (CONFIRM-FIRST items and conservative readings are in its body); it is a draft and is not to be merged or marked ready by an agent",
-            "maintainer: on the GPU machine, python scripts/run_card.py configs/run_cards/t0b.yaml --probe, then the T0b card; its determinism invocation must report REPRODUCED",
-            "maintainer: still open from PR #135 -- cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, W&B key revocation"
+            "maintainer: review and merge #143, #146, #147, #148, #149 and the GM-B2 PR; agents do not merge",
+            "maintainer: the GM-B2 live checklist in docs/LIVE_CIV6.md (nothing was run against a real game)",
+            "maintainer: confirm GM-B3's four-module span",
+            "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "After T0b: python -m alpha_zero.evaluation.a1_protocol calibrate DIR... --throughput JSON --arena-throughput JSON; fill the section 7.1 slots, pin the cards' sha and add the registration row in one PR (skill a1-reregister, gate make verify-registration)",
-            "If the determinism check does not reproduce: re-register section 7.1 on cpu or on devices where it passes (a1-reregister)",
-            "Then A1 and A1-R on the rc SHA; after an interruption run reproduction compare before any other card; build_release_bundle.py --compare; verify_release_evidence.py",
-            "Open follow-ups on openspec/changes/add-gpu-first-run-cards: 4c.7 (the bundle after a non-reproducing re-run) and 4c.11 (three checks the verifier does not make)",
-            "v2.2 (local training loop, gap-register rows L0-L6) needs its own task plan; most of it is CONFIRM-FIRST"
+            "After each merge, merge the default branch into the PRs still open (ledger, summary, session state, CLAUDE.md footer and pytest_skip_sites all collide; skip sites must be 150 once #147 and #149 are both in)",
+            "Base every follow-up PR on the default branch, never on another PR's branch",
+            "For a game API, read the game's own UI Lua (CQUI Community Edition has a copy) before a third-party project",
+            "After v2.1.0: alpha_zero/envs/real_civ6_env.py should not treat END_TURN_BLOCKED as an invalid action",
+            "Never load the mod's Lua without the harness lockdown: it writes into the working directory"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md",
-        "openspec/changes/add-gpu-first-run-cards/tasks.md",
-        "docs/evidence/SCHEMA.md",
-        "docs/EVALUATION.md",
-        "docs/runbooks/branching-and-release.md",
-        ".claude/skills/a1-reregister/SKILL.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md"
+        "kb/handoffs/20261120-devsqe-to-prepr-gm-b2-exporter-parity.md",
+        "docs/LIVE_CIV6.md",
+        "tests/fixtures/lua/civ6_stub.lua",
+        "openspec/changes/add-bridge-research-parity/tasks.md",
+        "kb/specs/20261119-game-mechanics-plan.md"
     ]
 }

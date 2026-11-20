@@ -42,6 +42,9 @@ local ERROR_CODES = {
     NOT_ENOUGH_MOVEMENT = "NOT_ENOUGH_MOVEMENT",
     EXECUTION_FAILED = "EXECUTION_FAILED",
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED",
+    -- The game will not end the turn until a pending choice is made. Not a
+    -- malformed command: the agent clears the blocker and asks again.
+    END_TURN_BLOCKED = "END_TURN_BLOCKED",
 }
 
 -- ----------------------------------------------------------------------------
@@ -92,17 +95,44 @@ end
 -- Action Execution Functions
 -- ----------------------------------------------------------------------------
 
--- End the current player's turn
+-- End the current player's turn.
+-- The request is refused, and nothing is sent to the game, while a
+-- notification blocks ending the turn (an unanswered research or production
+-- choice, for example): the game would ignore the request and the caller would
+-- wait for a turn that never comes. UI.CanEndTurn, where it exists, has the
+-- last word: if the game says the turn can end, it is requested.
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
+
+    local blocker, blockerMessage = nil, nil
+    if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
+        blocker, blockerMessage = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    end
+
+    if blocker then
+        local canEnd = false
+        if UI and UI.CanEndTurn then
+            local ok, answer = pcall(UI.CanEndTurn)
+            canEnd = ok and answer == true
+        end
+        if not canEnd then
+            local message = "End turn blocked: " .. tostring(blocker)
+            if blockerMessage then
+                message = message .. " (" .. tostring(blockerMessage) .. ")"
+            end
+            if Log then Log.Warn(message) end
+            return false, ERROR_CODES.END_TURN_BLOCKED, message
+        end
+    end
 
     -- In Civ6, ending turn is handled through the UI
     if UI and UI.RequestAction and ActionTypes then
         UI.RequestAction(ActionTypes.ACTION_ENDTURN)
-        return true, nil, "Turn ended"
+        return true, nil, "End turn requested"
     end
 
-    return true, nil, "End turn requested"
+    return false, ERROR_CODES.EXECUTION_FAILED,
+        "End turn unavailable: no UI.RequestAction in this Lua context"
 end
 
 -- Move a unit to target position using RequestOperation (correct Civ6 API)
@@ -386,68 +416,165 @@ local function executeCityProduce(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Production set failed"
 end
 
--- Research a technology
-local function executeResearchTech(playerId, command)
-    local techId = command.item_id
+-- ----------------------------------------------------------------------------
+-- Research (technologies and civics)
+-- ----------------------------------------------------------------------------
 
-    if not techId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (tech)"
+-- Resolve a research item to its GameInfo row. The item is a row index (what
+-- the Python action space sends) or a type name such as "TECH_MINING".
+-- Returns index, type name and hash; all nil when the GameInfo table is there
+-- and has no such row. Without the table an index is passed through unchecked.
+local function resolveResearchItem(tableName, typeField, item)
+    local gameTable = GameInfo and GameInfo[tableName]
+    if not gameTable then
+        if type(item) == "number" then
+            return item, tostring(item), nil
+        end
+        return nil, nil, nil
     end
 
-    if Log then Log.Info("Executing: RESEARCH_TECH tech=%s", tostring(techId)) end
+    local index, typeName, hash = nil, nil, nil
+    pcall(function()
+        for row in gameTable() do
+            if row.Index == item or row[typeField] == item then
+                index, typeName, hash = row.Index, row[typeField], row.Hash
+                break
+            end
+        end
+    end)
+    return index, typeName, hash
+end
+
+-- Call a method on a game object; nil when it is missing or raises.
+local function callIfPresent(object, methodName, ...)
+    if object == nil then return nil end
+    local okMethod, method = pcall(function() return object[methodName] end)
+    if not okMethod or not method then return nil end
+    local okCall, result = pcall(method, object, ...)
+    if okCall then return result end
+    return nil
+end
+
+-- Shared by technologies and civics. `kind` names the differences:
+--   table/typeField   GameInfo table and its type-name column
+--   getter            player method returning the progress object
+--   has/can           its "already has" and "can choose now" methods (by index)
+--   operation/param   PlayerOperations keys for the UI request
+--   setter            GameCore method on the progress object (fallback)
+local function executeResearch(playerId, command, kind)
+    local item = command.item_id
+    if item == nil then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (" .. kind.label .. ")"
+    end
+
+    if Log then Log.Info("Executing: %s item=%s", kind.logName, tostring(item)) end
 
     if not Players then
         return false, ERROR_CODES.EXECUTION_FAILED, "Players table not available"
     end
-
     local player = Players[playerId]
     if not player then
         return false, ERROR_CODES.EXECUTION_FAILED, "Player not found"
     end
 
-    local playerTech = player:GetTechs()
-    if not playerTech then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player tech not available"
+    local index, typeName, hash = resolveResearchItem(kind.table, kind.typeField, item)
+    if index == nil then
+        return false, ERROR_CODES.INVALID_TARGET,
+            "Unknown " .. kind.label .. ": " .. tostring(item)
     end
 
-    if playerTech.SetResearchingTech then
-        playerTech:SetResearchingTech(techId)
-        return true, nil, "Researching tech: " .. tostring(techId)
+    -- Refuse what the game would drop without a word. Each check is skipped
+    -- when its method is missing in this Lua context.
+    local progressObject = callIfPresent(player, kind.getter)
+    if callIfPresent(progressObject, kind.has, index) == true then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " is already researched"
+    end
+    if callIfPresent(progressObject, kind.can, index) == false then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " cannot be chosen now"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Tech research failed"
+    -- Primary path: ask the game as its own research and civics choosers do:
+    -- the type parameter is the row's Hash (not its Index), with an exclusive
+    -- insert mode so the choice replaces the queue. The request is
+    -- fire-and-forget: the game applies it after this call returns and drops
+    -- it without an error if it does not like it, so success here means
+    -- "requested", not "done". The next exported state shows what the game
+    -- did. No notification is touched: the game clears its own "choose
+    -- research" blocker when the choice takes effect.
+    local requested = false
+    if hash ~= nil and UI and UI.RequestPlayerOperation and PlayerOperations
+       and PlayerOperations[kind.operation] and PlayerOperations[kind.param] then
+        local params = {}
+        params[PlayerOperations[kind.param]] = hash
+        if PlayerOperations.PARAM_INSERT_MODE and PlayerOperations.VALUE_EXCLUSIVE then
+            params[PlayerOperations.PARAM_INSERT_MODE] = PlayerOperations.VALUE_EXCLUSIVE
+        end
+        requested = pcall(function()
+            UI.RequestPlayerOperation(playerId, PlayerOperations[kind.operation], params)
+        end)
+    end
+    if requested then
+        return true, nil, kind.requestedMessage .. tostring(typeName)
+    end
+
+    -- Fallback: the GameCore setter, which takes the row index and exists
+    -- only in gameplay contexts.
+    if not progressObject then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Player " .. kind.label .. " data not available"
+    end
+    local okSetter, setter = pcall(function() return progressObject[kind.setter] end)
+    if not okSetter or not setter then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            "No way to set the " .. kind.label .. " in this Lua context"
+    end
+    local okSet, setErr = pcall(setter, progressObject, index)
+    if not okSet then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            kind.setter .. " failed: " .. tostring(setErr)
+    end
+    return true, nil, kind.setMessage .. tostring(typeName)
+end
+
+local RESEARCH_TECH_KIND = {
+    label = "tech",
+    logName = "RESEARCH_TECH",
+    table = "Technologies",
+    typeField = "TechnologyType",
+    getter = "GetTechs",
+    has = "HasTech",
+    can = "CanResearch",
+    operation = "RESEARCH",
+    param = "PARAM_TECH_TYPE",
+    setter = "SetResearchingTech",
+    requestedMessage = "Research requested: ",
+    setMessage = "Researching tech: ",
+}
+
+local RESEARCH_CIVIC_KIND = {
+    label = "civic",
+    logName = "RESEARCH_CIVIC",
+    table = "Civics",
+    typeField = "CivicType",
+    getter = "GetCulture",
+    has = "HasCivic",
+    can = "CanProgress",
+    operation = "PROGRESS_CIVIC",
+    param = "PARAM_CIVIC_TYPE",
+    setter = "SetProgressingCivic",
+    requestedMessage = "Civic requested: ",
+    setMessage = "Progressing civic: ",
+}
+
+-- Research a technology
+local function executeResearchTech(playerId, command)
+    return executeResearch(playerId, command, RESEARCH_TECH_KIND)
 end
 
 -- Research a civic
 local function executeResearchCivic(playerId, command)
-    local civicId = command.item_id
-
-    if not civicId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (civic)"
-    end
-
-    if Log then Log.Info("Executing: RESEARCH_CIVIC civic=%s", tostring(civicId)) end
-
-    if not Players then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Players table not available"
-    end
-
-    local player = Players[playerId]
-    if not player then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player not found"
-    end
-
-    local playerCulture = player:GetCulture()
-    if not playerCulture then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player culture not available"
-    end
-
-    if playerCulture.SetProgressingCivic then
-        playerCulture:SetProgressingCivic(civicId)
-        return true, nil, "Researching civic: " .. tostring(civicId)
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Civic research failed"
+    return executeResearch(playerId, command, RESEARCH_CIVIC_KIND)
 end
 
 -- ----------------------------------------------------------------------------
@@ -660,6 +787,8 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
         return false, ERROR_CODES.EXECUTION_FAILED, "Diplomacy table unavailable"
     end
 
+    -- The error of the last path that was tried and raised, so a failure says
+    -- why instead of claiming there was nothing to call.
     local lastError = nil
 
     -- Primary path: GetDiplomacy():DoAction(...). Civ6 expects a string or

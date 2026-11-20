@@ -50,19 +50,33 @@ flag, and each city's buildings and districts. Every new game call MUST be
 ### Requirement: Research is offered and executed through official surfaces
 
 Research SHALL appear in the legal actions exactly for the techs and civics the
-game reports as researchable. Executing it MUST use `UI.RequestPlayerOperation`,
-with the GameCore setter as a fallback.
+game reports as open (`CanResearch`, `CanProgress`; the prerequisite table where
+`CanProgress` is missing), leaving out the one already in progress. Executing it
+MUST use `UI.RequestPlayerOperation` with the row's hash and an exclusive insert
+mode, as the game's own choosers do, with the GameCore setter as a fallback, and
+MUST refuse a choice the player already has or the game reports as closed.
 
 #### Scenario: Researchable techs
 
-- **WHEN** the stub reports two researchable techs
-- **THEN** the legal actions include exactly two research-tech actions naming them
+- **WHEN** the stub reports two researchable techs and none is in progress
+- **THEN** the legal actions include one research-tech action whose items are exactly those two, by row index and by type name
+
+#### Scenario: A request the game drops
+
+- **WHEN** a research command is sent while end-turn is blocked on a research choice and the game does not apply the request
+- **THEN** the mod dismisses no notification and END_TURN still reports blocked
+
+#### Scenario: No UI request available
+
+- **WHEN** `UI.RequestPlayerOperation` is missing and a research command is executed
+- **THEN** the GameCore setter is called with the row index and the command succeeds
 
 ### Requirement: A blocked end of turn is reported, not hidden
 
 END_TURN SHALL report a blocked turn with the blocking type instead of returning
-success unconditionally. The Python agent loop MUST handle a blocked report
-without raising and count it.
+success unconditionally, and MUST NOT send the request to the game while the turn
+is blocked. The Python agent loop MUST handle a blocked report without raising
+and count it.
 
 #### Scenario: Unanswered research choice
 
@@ -72,8 +86,10 @@ without raising and count it.
 ### Requirement: Wire changes are additive
 
 New protocol fields SHALL be optional with defaults, and no existing field MUST
-be renamed, retyped or removed. A payload without the new fields, or without
-`schema_version`, MUST parse.
+be renamed, retyped or removed, with one stated exception: `player.current_research`,
+which the mod wrote as a raw row index although the reader declares a type name,
+is a type name from schema 2 on (the index is in `research_status.index`). A
+payload without the new fields, or without `schema_version`, MUST parse.
 
 #### Scenario: Legacy payload
 
