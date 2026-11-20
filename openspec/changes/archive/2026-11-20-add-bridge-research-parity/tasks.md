@@ -31,3 +31,4 @@
 
 ## 6. Close-out
 - [ ] 6.1 Empty play-path diff on every PR; `make verify`; maintainer live checklist (reinstall the mod, one research choice, one reported blocker, one snapshot)
+  - Archived 2026-11-20 with this item open: the play-path diff and CI gates held on every PR (#148 to #153); the maintainer's live checklist has not been run. It is carried, unticked, into the next change on this capability (`fix-live-command-layer`, GM-B7) and stays in `docs/LIVE_CIV6.md`.
