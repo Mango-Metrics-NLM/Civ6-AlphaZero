@@ -638,3 +638,51 @@ class TestSpecScenarioEdges:
         assert (success, code) == (False, "END_TURN_BLOCKED")
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_RESEARCH")
         assert "UI.RequestAction" not in h.stub_calls(runtime)
+
+
+DECLARE_WAR = {"action_type": "diplomacy", "metadata": {"sub_action": 0, "target_player_id": 1}}
+
+
+def _diplomacy(body: str) -> str:
+    """Lua setup: player 0 has a diplomacy object whose ``DoAction`` runs ``body``."""
+    return (
+        "Players[0].GetDiplomacy = function(self) local d = {}"
+        f" function d:DoAction(action, target) {body} end return d end"
+    )
+
+
+class TestDiplomacyFailureIsReported:
+    """A piece the hand-edited bundle had lost (bundle-drift.md), brought back in GM-B2."""
+
+    def test_a_raising_diplomacy_call_reports_its_error(self) -> None:
+        runtime = h.load_mod(setup=_diplomacy("error('war refused')"))
+        success, code, message = h.execute(runtime, DECLARE_WAR)
+        assert (success, code) == (False, "EXECUTION_FAILED")
+        assert message.startswith("Diplomacy action DECLARE_WAR failed:")
+        assert "war refused" in message
+
+    def test_the_last_path_tried_is_the_error_reported(self) -> None:
+        setup = _diplomacy("error('first path')") + (
+            "\nUI.RequestDiplomacyMove = function() error('second path') end"
+        )
+        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        assert (success, code) == (False, "EXECUTION_FAILED")
+        assert "second path" in message
+        assert "first path" not in message
+
+    def test_the_ui_path_still_rescues_a_failed_first_path(self) -> None:
+        setup = _diplomacy("error('first path')") + "\nUI.RequestDiplomacyMove = function() end"
+        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        assert (success, code) == (True, None)
+        assert "requested via UI" in message
+
+    def test_with_no_api_to_call_the_old_message_stays(self) -> None:
+        setup = "Players[0].GetDiplomacy = function(self) return {} end"
+        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        assert (success, code) == (False, "EXECUTION_FAILED")
+        assert message == "No diplomacy API available for DECLARE_WAR"
+
+    def test_a_working_call_succeeds(self) -> None:
+        success, code, message = h.execute(h.load_mod(setup=_diplomacy("")), DECLARE_WAR)
+        assert (success, code) == (True, None)
+        assert message == "DECLARE_WAR against player 1"
