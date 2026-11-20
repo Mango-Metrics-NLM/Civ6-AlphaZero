@@ -70,16 +70,20 @@ def band_science_rates(
     if max_turns <= 0:
         raise ValueError(f"max_turns must be positive, got {max_turns}")
     low_percent, high_percent = band_percent
-    rates = [
-        rate
-        for rate in range(1, max(cost, 1) + 1)
-        if low_percent * max_turns
-        <= turns_to_research(cost, rate) * _PERCENT
-        <= high_percent * max_turns
-    ]
-    if not rates:
+    # Whole turns inside the band: low% * T <= 100 * t <= high% * T.
+    first_turn = max(1, -(-low_percent * max_turns // _PERCENT))
+    last_turn = high_percent * max_turns // _PERCENT
+    if cost <= 0 or last_turn < first_turn:
         return None
-    return (rates[0], rates[-1])
+    # ceil(cost / r) <= last_turn   <=>  r >= ceil(cost / last_turn)
+    slowest = -(-cost // last_turn)
+    # ceil(cost / r) >= first_turn  <=>  r < cost / (first_turn - 1); a one-turn
+    # finish has no upper rate, and rates above the cost are not listed.
+    fastest = cost if first_turn == 1 else -(-cost // (first_turn - 1)) - 1
+    fastest = min(fastest, cost)
+    if slowest > fastest:
+        return None
+    return (slowest, fastest)
 
 
 @dataclass(frozen=True)

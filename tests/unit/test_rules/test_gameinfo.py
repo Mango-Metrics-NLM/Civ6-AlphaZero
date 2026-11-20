@@ -390,6 +390,21 @@ def test_checkout_root_is_the_repository_root() -> None:
     assert checkout_root() == REPO_ROOT
 
 
+def _symlink_into_tests(tmp_path: Path) -> Path:
+    """A symlink in ``tmp_path`` pointing at this checkout's ``tests`` directory.
+
+    A Windows account without the symlink privilege cannot create one. That is a
+    property of the machine, not of the importer, so the case is skipped there
+    (review finding on PR 147: it used to fail the suite).
+    """
+    link = tmp_path / "link"
+    try:
+        link.symlink_to(REPO_ROOT / "tests", target_is_directory=True)
+    except (OSError, NotImplementedError):  # pragma: no cover - platform without symlinks
+        pytest.skip("this platform cannot create a symlink")
+    return link
+
+
 def _assert_refused(out: str | None) -> None:
     """``resolve_output`` must refuse ``out``."""
     with pytest.raises(RefusedPathError, match="inside the repository"):
@@ -430,11 +445,7 @@ def test_a_relative_path_is_judged_against_the_working_directory(
 
 
 def test_a_symlink_into_the_checkout_is_refused(tmp_path: Path) -> None:
-    link = tmp_path / "link"
-    try:
-        link.symlink_to(REPO_ROOT / "tests", target_is_directory=True)
-    except (OSError, NotImplementedError):  # pragma: no cover - platform without symlinks
-        pytest.fail("this platform cannot create a symlink; the case is untested")
+    link = _symlink_into_tests(tmp_path)
     _assert_refused(str(link / "probe.yaml"))
 
 
@@ -460,10 +471,46 @@ def test_a_data_root_inside_the_checkout_is_refused(monkeypatch: pytest.MonkeyPa
         resolve_output(None, "x")
 
 
-def test_without_a_checkout_any_path_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_from_an_installed_package_a_path_inside_a_git_checkout_is_still_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding on PR 147: an installed wheel knows no checkout of its own.
+
+    ``checkout_root()`` is then ``None``, and the guard used to accept any path,
+    this working tree included. The destination's own ancestors decide now.
+    """
     monkeypatch.setattr(gameinfo, "checkout_root", lambda: None)
-    inside = REPO_ROOT / "would-be-refused.yaml"
-    assert resolve_output(str(inside), "x") == inside.resolve()
+    _assert_refused(str(REPO_ROOT / "would-be-refused.yaml"))
+    other = tmp_path / "someone-elses-repo"
+    (other / ".git").mkdir(parents=True)
+    _assert_refused(str(other / "data" / "x.yaml"))
+    worktree = tmp_path / "worktree"
+    worktree.mkdir()
+    (worktree / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")
+    _assert_refused(str(worktree / "x.yaml"))
+    outside = tmp_path / "plain" / "x.yaml"
+    assert resolve_output(str(outside), "x") == outside.resolve()
+
+
+def test_enclosing_checkout_finds_the_nearest_git_directory(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    assert gameinfo.enclosing_checkout(repo / "a" / "b.yaml") == repo
+    assert gameinfo.enclosing_checkout(tmp_path / "plain" / "b.yaml") is None
+
+
+def test_a_tilde_in_the_data_root_and_in_out_means_the_home_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Review finding: ``~/data`` was resolved as a directory named ``~`` under the cwd."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
+    monkeypatch.chdir(REPO_ROOT)
+    monkeypatch.setenv("CIV6AZ_DATA_ROOT", "~/civ6az-data")
+    assert resolve_output(None, "x") == (home / "civ6az-data" / "gameinfo" / "x.yaml").resolve()
+    assert resolve_output("~/out.yaml", "x") == (home / "out.yaml").resolve()
 
 
 def test_checkout_root_is_none_when_no_pyproject_is_above(
@@ -578,11 +625,7 @@ def test_cli_refuses_a_relative_path_inside_the_repository(
 def test_cli_refuses_a_symlink_into_the_repository(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    link = tmp_path / "link"
-    try:
-        link.symlink_to(REPO_ROOT / "tests", target_is_directory=True)
-    except (OSError, NotImplementedError):  # pragma: no cover
-        pytest.fail("this platform cannot create a symlink; the case is untested")
+    link = _symlink_into_tests(tmp_path)
     real = REPO_ROOT / "tests" / "gm_k2_probe_symlink.yaml"
     try:
         assert_refused_and_nothing_written(link / real.name, capsys, REPO_ROOT / "tests")
@@ -794,3 +837,65 @@ def test_an_integer_beyond_the_digit_limit_in_the_export_is_exit_one_not_a_trace
     assert main(["import-gameinfo", str(source), "--out", str(out)]) == 1
     assert "not UTF-8 JSON" in capsys.readouterr().err
     assert not out.exists()
+
+
+# --------------------------------------------------------------------------
+# Review findings on PR 147: incomplete, ambiguous and colliding inputs
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("missing", ["Technologies", "TechnologyPrereqs"])
+def test_an_export_without_a_required_table_is_refused(missing: str) -> None:
+    """Without ``TechnologyPrereqs`` every technology would import prerequisite-free."""
+    document = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    del document[missing]
+    with pytest.raises(GameInfoError, match=f"missing table '{missing}'"):
+        convert(document)
+
+
+def test_an_empty_export_is_refused_but_empty_required_tables_are_allowed() -> None:
+    with pytest.raises(GameInfoError, match="missing table"):
+        convert({})
+    summary = convert({"Technologies": [], "TechnologyPrereqs": []})
+    assert summary.techs == 0
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '{"Technologies": [], "TechnologyPrereqs": [], "Technologies": []}',
+        '{"Technologies": [{"TechnologyType": "T_A", "Cost": 5, "Cost": 9, "Era": 1}],'
+        ' "TechnologyPrereqs": []}',
+    ],
+)
+def test_a_repeated_json_key_is_exit_one_and_nothing_is_written(
+    text: str, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``json.loads`` keeps the last of two equal keys; the importer must not."""
+    source = tmp_path / "dup.json"
+    source.write_text(text, encoding="utf-8")
+    out = tmp_path / "out.yaml"
+    assert main(["import-gameinfo", str(source), "--out", str(out)]) == 1
+    assert "duplicate key" in capsys.readouterr().err
+    assert not out.exists()
+
+
+def test_a_predictable_tmp_sibling_is_never_written_through(tmp_path: Path) -> None:
+    """A ``<name>.tmp`` beside the destination (a symlink, the input, another import's
+    staging file) must be left exactly as it was: staging uses a fresh exclusive file."""
+    out = tmp_path / "out.yaml"
+    sibling = tmp_path / "out.yaml.tmp"
+    sibling.write_bytes(b"someone else's file\n")
+    written, _ = import_gameinfo(FIXTURE, str(out), "tmp-test")
+    assert written == out.resolve() and out.is_file()
+    assert sibling.read_bytes() == b"someone else's file\n"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["out.yaml", "out.yaml.tmp"]
+
+
+def test_the_input_export_may_sit_at_the_old_staging_name(tmp_path: Path) -> None:
+    source = tmp_path / "out.yaml.tmp"
+    source.write_bytes(FIXTURE.read_bytes())
+    out = tmp_path / "out.yaml"
+    assert main(["import-gameinfo", str(source), "--out", str(out)]) == 0
+    assert source.read_bytes() == FIXTURE.read_bytes()
+    assert main(["validate", str(out)]) == 0

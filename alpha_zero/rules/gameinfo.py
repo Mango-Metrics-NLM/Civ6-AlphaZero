@@ -37,6 +37,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,9 @@ DEFAULT_RULESET_ID = "gameinfo-import"
 
 IMPORTED_TABLES: tuple[str, ...] = ("Technologies", "TechnologyPrereqs", "Buildings", "Units")
 COUNTED_TABLES: tuple[str, ...] = ("Civics", "CivicPrereqs")
+#: Tables that must be present (possibly empty): without them an incomplete
+#: capture would silently change the tree.
+REQUIRED_TABLES: tuple[str, ...] = ("Technologies", "TechnologyPrereqs")
 
 #: The game's era identifiers, in order; an integer ``Era`` column is also accepted.
 ERA_ORDER: tuple[str, ...] = (
@@ -99,26 +103,41 @@ def checkout_root() -> Path | None:
     return None
 
 
+def enclosing_checkout(path: Path) -> Path | None:
+    """The git checkout ``path`` lies in, or ``None``.
+
+    This does not depend on where the package is installed: from an installed
+    wheel :func:`checkout_root` knows no repository, yet the destination may
+    still be inside one (the working tree the user is standing in, say).
+    """
+    for parent in path.parents:
+        if (parent / ".git").exists():
+            return parent
+    return None
+
+
 def resolve_output(out: str | None, ruleset_id: str) -> Path:
     """Where the rule-set file goes: ``out``, or ``<CIV6AZ_DATA_ROOT>/gameinfo/<id>.yaml``.
 
     Raises:
         RefusedPathError: no ``out`` and no data root, or the path resolves to a
-            place inside the repository checkout.
+            place inside this repository's checkout or inside any git checkout.
     """
     if out is not None:
-        path = Path(out)
+        path = Path(out).expanduser()
     else:
         root = os.environ.get(DATA_ROOT_ENV, "").strip()
         if not root:
             raise RefusedPathError(f"no --out given and {DATA_ROOT_ENV} is not set")
-        path = Path(root) / DEFAULT_SUBDIR / f"{ruleset_id}.yaml"
+        # `~` is expanded, as alpha_zero.utils.data_root does for the same variable.
+        path = Path(root).expanduser() / DEFAULT_SUBDIR / f"{ruleset_id}.yaml"
     resolved = path.resolve()
     repo = checkout_root()
-    if repo is not None and resolved.is_relative_to(repo):
+    if repo is None or not resolved.is_relative_to(repo):
+        repo = enclosing_checkout(resolved)
+    if repo is not None:
         raise RefusedPathError(
-            f"{resolved} is inside the repository checkout ({repo}); game data is never "
-            "written there"
+            f"{resolved} is inside the repository checkout ({repo}); game data is never written there"
         )
     return resolved
 
@@ -189,6 +208,12 @@ def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummar
     for table in document:
         if table not in IMPORTED_TABLES + COUNTED_TABLES:
             raise GameInfoError(f"unknown table {table!r}")
+    for table in REQUIRED_TABLES:
+        if table not in document:
+            raise GameInfoError(
+                f"missing table {table!r}: an export without it would import every technology "
+                "with no prerequisites; write an empty list if the table really is empty"
+            )
 
     skipped = 0
     skipped_techs: set[str] = set()
@@ -308,6 +333,16 @@ def convert(document: Any, ruleset_id: str = DEFAULT_RULESET_ID) -> ImportSummar
     )
 
 
+def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """``json`` keeps the last of two equal keys; a GameInfo export may not repeat one."""
+    seen: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise GameInfoError(f"duplicate key {key!r}")
+        seen[key] = value
+    return seen
+
+
 def import_gameinfo(
     source: Path, out: str | None, ruleset_id: str = DEFAULT_RULESET_ID
 ) -> tuple[Path, ImportSummary]:
@@ -326,16 +361,27 @@ def import_gameinfo(
     """
     destination = resolve_output(out, ruleset_id)
     try:
-        document = json.loads(Path(source).read_text(encoding="utf-8"))
+        document = json.loads(
+            Path(source).read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys
+        )
+    except GameInfoError as exc:
+        raise GameInfoError(f"{source}: {exc}") from exc
     except ValueError as exc:
         # JSONDecodeError and UnicodeDecodeError are ValueErrors; so is Python's
         # refusal to convert an integer beyond its digit limit.
         raise GameInfoError(f"{source}: not UTF-8 JSON ({exc})") from exc
     summary = convert(document, ruleset_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = destination.with_name(destination.name + ".tmp")
+    # A fresh, exclusively created temporary file: a predictable sibling name
+    # could be a symlink into a checkout, the input file itself, or another
+    # import's staging file.
+    handle, name = tempfile.mkstemp(
+        dir=destination.parent, prefix=destination.name + ".", suffix=".tmp"
+    )
+    temporary = Path(name)
     try:
-        temporary.write_text(summary.text, encoding="utf-8", newline="\n")
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(summary.text)
         os.replace(temporary, destination)
     finally:
         temporary.unlink(missing_ok=True)
