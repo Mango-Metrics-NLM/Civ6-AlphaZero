@@ -23,6 +23,7 @@ Usage:
 from __future__ import annotations
 
 import ast
+import fnmatch
 import logging
 import os
 import re
@@ -34,6 +35,10 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+_DEFAULT_EXCLUDE_DIRS = frozenset(
+    "__pycache__ .git .claude .worktrees worktrees .venv venv node_modules "
+    ".mypy_cache .pytest_cache .tox .eggs alpha_zero.egg-info build dist".split()
+)
 
 
 # =============================================================================
@@ -91,37 +96,31 @@ class CodeExplorer:
         """
         self.root_path = Path(root_path) if root_path else Path.cwd()
 
-    def find_by_pattern(
-        self,
-        pattern: str,
-        exclude_dirs: list[str] | None = None,
-    ) -> list[Path]:
-        """Find files matching a glob pattern.
+    @staticmethod
+    def _is_excluded_dir(name: str, dir_path: Path, exclude_set: set[str]) -> bool:
+        return (
+            name in exclude_set
+            or name.startswith((".venv", "venv"))
+            or (dir_path / "pyvenv.cfg").is_file()
+            or (dir_path / ".git").exists()
+        )
 
-        Args:
-            pattern: Glob pattern (e.g., "**/*.py").
-            exclude_dirs: Directories to exclude.
-
-        Returns:
-            List of matching file paths.
-        """
-        exclude_dirs = exclude_dirs or [
-            "__pycache__",
-            ".git",
-            ".venv",
-            "venv",
-            "node_modules",
-            ".mypy_cache",
-            ".pytest_cache",
-            "build",
-            "dist",
-        ]
-
-        results = []
-        for path in self.root_path.glob(pattern):
-            if not any(ex in path.parts for ex in exclude_dirs):
-                results.append(path)
-
+    def find_by_pattern(self, pattern: str, exclude_dirs: list[str] | None = None) -> list[Path]:
+        """Find files matching ``pattern``, pruning excluded, venv, and worktree dirs."""
+        ex = set(exclude_dirs) if exclude_dirs is not None else set(_DEFAULT_EXCLUDE_DIRS)
+        results: list[Path] = []
+        if pattern.startswith("**/") and "/" not in pattern[3:] and "\\" not in pattern[3:]:
+            glob_pat = pattern[3:]
+            for dirpath, dirnames, filenames in os.walk(self.root_path):
+                dp = Path(dirpath)
+                dirnames[:] = [d for d in dirnames if not self._is_excluded_dir(d, dp / d, ex)]
+                results.extend(dp / f for f in filenames if fnmatch.fnmatch(f, glob_pat))
+            return sorted(results)
+        for p in self.root_path.glob(pattern):
+            n_parents = len(p.relative_to(self.root_path).parts) - 1
+            ancestors = (p, *p.parents[:n_parents]) if p.is_dir() else p.parents[:n_parents]
+            if not any(self._is_excluded_dir(d.name, d, ex) for d in ancestors):
+                results.append(p)
         return sorted(results)
 
     def find_python_files(self) -> list[Path]:

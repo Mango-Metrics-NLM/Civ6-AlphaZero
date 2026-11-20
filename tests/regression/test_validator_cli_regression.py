@@ -174,6 +174,16 @@ class TestValidatorsShareOneContract:
         assert result.returncode == 0, f"{script} --help exited {result.returncode}"
         assert result.stdout.strip(), f"{script} --help printed nothing"
 
+    @pytest.mark.parametrize("script", ALL_VALIDATORS)
+    def test_json_output_is_valid_json(self, script: str) -> None:
+        import json
+
+        extra = ("--no-git", "--json") if script == "validate_kb.py" else ("--json",)
+        result = _run(script, *extra)
+        assert result.returncode == 0, f"{script} --json exited {result.returncode}"
+        parsed = json.loads(result.stdout)
+        assert isinstance(parsed, (list, dict))
+
     def test_every_path_validator_is_listed_here(self) -> None:
         """Keeps PATH_VALIDATORS honest as validators are added.
 

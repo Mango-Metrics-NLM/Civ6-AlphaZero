@@ -34,6 +34,7 @@ class TestDeriveSeed:
 
     def test_seed_is_stable_across_processes(self) -> None:
         """Must not depend on PYTHONHASHSEED; that is why it is not ``hash()``."""
+        import os
         import subprocess
         import sys
 
@@ -46,7 +47,7 @@ class TestDeriveSeed:
             capture_output=True,
             text=True,
             check=True,
-            env={"PYTHONHASHSEED": "12345", "PATH": "/usr/bin:/bin"},
+            env={**os.environ, "PYTHONHASHSEED": "12345"},
         )
         assert int(out.stdout.strip()) == derive_seed(42, SeedStream.SELF_PLAY_ENV, 3, 7)
 

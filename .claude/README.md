@@ -12,7 +12,7 @@ caveats in *Threat model* below.
 |------|-----|---------|
 | `settings.json` | committed | Permission allow/deny lists, hook registrations, environment variables. |
 | `settings.local.json` | gitignored | Personal overrides (tokens, machine-specific paths). Never committed. |
-| `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`, plus `readonly_shell_guard.sh` and `tests_only_write_guard.sh`, which role subagents attach in their own frontmatter. |
+| `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`, `readonly_shell_guard.sh` and `tests_only_write_guard.sh` (attached by role subagents), plus the shared `_resolve_python.sh` helper. |
 | `agents/sdlc-*.md` | committed | The eight SDLC role subagents (product-owner, scrum-master, architect, ml-scientist, ai-engineer, developer, qa-sdet, release-manager). Validated by `scripts/validate_claude_agents.py`. |
 | `skills/*/SKILL.md` | committed | Eleven skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`, `a1-reregister` (the section 7.1 re-registration procedure; gate: `make verify-registration`). Each has frontmatter validated by `scripts/validate_skills.py`. |
 
@@ -25,11 +25,11 @@ as gated documentation (CLAUDE.md §5.2, row dated 2026-09-02).
 
 | Event | Script | Behaviour |
 |-------|--------|-----------|
-| `SessionStart` | `hooks/sessionstart_bootstrap.sh` | Checks Python ≥ 3.11, installs the `dev` extra, and reports what is *actually* true: install failure with the log tail, missing packages, and a tool/interpreter split (a `mypy` resolved from an isolated tool venv cannot see the project's stubs and reports phantom errors). It used to print "pytest ready" unconditionally. |
+| `SessionStart` | `hooks/sessionstart_bootstrap.sh` | Resolves a real Python ≥ 3.11 interpreter via `hooks/_resolve_python.sh` (search order: active `$VIRTUAL_ENV` when set → all non-`WindowsApps` `PATH` `python3`/`python` hits → `$CLAUDE_PROJECT_DIR/.venv`), installs the `dev` extra, and reports what is *actually* true: install failure with the log tail, missing packages, and a tool/interpreter split (a `mypy` resolved from an isolated tool venv cannot see the project's stubs and reports phantom errors). It used to print "pytest ready" unconditionally. |
 | `PreToolUse` (Bash **and** PowerShell) | `hooks/pretooluse_guard.sh` | **Denies** commits/pushes while on a protected branch, pushes to or deletions of one in any refspec form, tag pushes (`refs/tags/*`, `--tags`, `--follow-tags`), `--all`/`--mirror`, `git tag` with any non-listing argument, force-pushes (`--force-with-lease` allowed), `gh pr merge`, `gh release`, `gh repo edit`, `gh ruleset`, `gh api` with a method/body field or `graphql`, and an explicit game count above 1000 without `--approval_ref` (the guard cannot price a run; the runner's `game_budget` refuses the worst case). **Asks** (prompts you) on `--approval_ref`, `--preset production`, `--config` on a game runner, and unknown game runners. Protected = `dev qa main` + the default branch + `CIV6AZ_PROTECTED_BRANCHES`. Unwraps `pwsh -c`, `powershell -Command`, `cmd /c`, `bash -c`, `iex`, `&` and launchers (`env`, `command`, `sudo`, `nohup`, `timeout`, ...) first; program names match case-insensitively (`GIT`, `git.EXE`); quotes inside arguments (`HEAD:"qa"`) and PowerShell backtick escapes (`` g`it ``) are removed; a quoted program path (`& 'C:\Program Files\Git\cmd\git.exe'`) is reduced to its basename. Matching is anchored to the command itself so a quoted mention does not trip it. If no parser (jq, python3, python) can read the payload, or the script fails for any reason, it **denies** (exit 0 + JSON), because a guard that fails open is invisible. |
-| `PostToolUse` (Write/Edit) | `hooks/posttooluse_lint.sh` | `ruff check --fix` + `ruff format` on the edited Python file. F401 and RUF100 are deferred to the commit-time gates so an import added in one edit is not stripped before its first use lands in the next. Never fails the originating tool call. |
-| `PostToolUse` (Write/Edit **and** Bash) | `hooks/posttooluse_governance.sh` | Runs the matching governance validator in single-file mode for `openspec/`, `kb/`, skills and `.claude/agents/` role subagents, a whole-repo `check_doc_sync.py` for documentation, and the dead-code ratchet when a file appears under or leaves `alpha_zero/` (which is why it is also on the Bash matcher — a deletion is not a Write). |
-| `PreCompact` | `hooks/precompact_state.sh` | Folds KB session state, recent ledger lines and a `git diff --stat` into the compacted context so workflow state survives compaction. |
+| `PostToolUse` (Write/Edit) | `hooks/posttooluse_lint.sh` | Resolves a real Python ≥ 3.11 interpreter and runs `ruff check --fix` + `ruff format` on the edited Python file. F401 and RUF100 are deferred to the commit-time gates so an import added in one edit is not stripped before its first use lands in the next. Never fails the originating tool call. |
+| `PostToolUse` (Write/Edit **and** Bash) | `hooks/posttooluse_governance.sh` | Runs the matching governance validator via the resolved Python interpreter in single-file mode for `openspec/`, `kb/`, skills and `.claude/agents/` role subagents, a whole-repo `check_doc_sync.py` for documentation (including `CITATION.cff`), and the dead-code ratchet when a file appears under or leaves `alpha_zero/` (which is why it is also on the Bash matcher — a deletion is not a Write). |
+| `PreCompact` | `hooks/precompact_state.sh` | Resolves a real Python interpreter and folds KB session state, recent ledger lines and a `git diff --stat` into the compacted context so workflow state survives compaction. |
 | `Stop` | inline `echo` | Reminds the agent to run its role's handoff skill (CLAUDE.md §14). |
 
 ## Role subagents (`agents/`)
@@ -58,7 +58,8 @@ exactly one plain command: `git log|show|diff|status|rev-parse|merge-base|ls-fil
 `git tag -l`, `gh pr view|list|checks`, `gh api` (GET only: ONE relative API path -- never a URL,
 scheme or host -- plus `--jq`/`-q` with a plain field path that is not `env`, `--paginate`,
 `-H X-GitHub-Api-Version:...`) and one of ten vetted `python scripts/*.py` checkers, matched by exact
-case-sensitive name and exact options (argparse accepts abbreviations, so `--wr` is `--write`).
+case-sensitive name and exact options (`validate_claude_agents.py` includes `--json`, `validate_skills.py`
+includes `--verbose`, and argparse accepts abbreviations, so `--wr` is `--write`).
 A payload whose `command` is missing or not a string is denied.
 It rejects every metacharacter (`; & | < > ( ) { } $` backtick, quotes, backslash, `, @ # %`),
 every glob character, every flag not on the per-command allowlist, and anything it cannot parse.
