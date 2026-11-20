@@ -62,7 +62,47 @@ them, each between a `BEGIN` and an `END` marker.
 Before 2026-11-19 the bundle was edited by hand and the module files had drifted from it,
 so an edit to a module file changed nothing in the game. The module files were made equal
 to the bundle (the bundle is what ran); what they lost is recorded in
-`openspec/changes/add-bridge-research-parity/bundle-drift.md`.
+`openspec/changes/add-bridge-research-parity/bundle-drift.md`, and both lost pieces were
+brought back on 2026-11-20 (GM-B2).
+
+## What the mod exports (state schema 2)
+
+The state the mod writes carries `schema_version: 2` since GM-B2; a state without the key is
+version 1. Every addition is optional on the Python side (`alpha_zero/bridge/protocol.py`),
+so a version 1 state still parses.
+
+| Where | Field | Meaning |
+|---|---|---|
+| top level | `schema_version` | `2` |
+| top level | `end_turn_blocking`, `end_turn_blocking_message` | Name of the `EndTurnBlockingTypes` value of the first notification that blocks ending the turn, and its message. Absent when nothing blocks. |
+| `player` | `techs_researched`, `civics_researched` | Type names the player has (`HasTech`, `HasCivic`). |
+| `player` | `current_research`, `current_civic` | Type name in progress (the tech was a raw row index in version 1). Absent when none. |
+| `player` | `research_status`, `civic_status` | `{type, index, cost, progress, turns_left, boost_triggered}` for the one in progress. |
+| each own city | `buildings`, `districts` | Type names. Other players' cities stay empty. |
+| `legal_actions` | `research_tech`, `research_civic` | `items` are row indexes and `item_names` the type names of what can be chosen now, without the one already in progress. Techs come from `CanResearch`; civics from the prerequisite table, because no "can progress" call is known to work. |
+
+Commands: `research_tech` and `research_civic` take `item_id` as a row index or a type name.
+`end_turn` answers `END_TURN_BLOCKED` while a notification blocks the turn, unless
+`UI.CanEndTurn()` says the turn can end.
+
+Each game call added for this is guarded, so a call that does not exist in the game's Lua
+context costs one field, not the export. The calls were taken from a project that plays the
+real game over the same debug protocol ([civ6-mcp](https://github.com/lmwilki/civ6-mcp), MIT);
+they have not been run against a game from this repository.
+
+### Live checklist for the maintainer (GM-B2)
+
+Nothing below can be checked without the game. After `python scripts/install_civ6_mod.py`:
+
+1. Start a game and read one exported state: `schema_version` is 2, `techs_researched` and the
+   capital's `districts` are not empty, `research_status` has a cost and a progress.
+2. With no research chosen, send `end_turn`: the answer is `END_TURN_BLOCKED` naming
+   `ENDTURN_BLOCKING_RESEARCH`, and the next state carries `end_turn_blocking`.
+3. Send `research_tech` with an `item_id` from the `research_tech` legal action: the next
+   state (or the one after: the request is applied after the command returns) shows it as
+   `current_research`, and the research notification is gone.
+4. Send `end_turn` again: the turn ends.
+5. Note any field that stays empty in the real game and any call the log reports as failing.
 
 ## Steps
 
@@ -130,12 +170,19 @@ to the bundle (the bundle is what ran); what they lost is recorded in
   (`max_units=20`, `max_cities=5`, `num_production_items=20` at the configured
   board size), not the full 84-channel / hierarchical space described for the
   real game.
-- **Research and buildings are not exported or offered (GM-B2, GM-B3: planned,
-  not done).** The Lua exporter never fills researched techs or civics, and
-  per-city buildings and districts are always empty, so the encoder's tech and
-  civic slots are always zero. Research can be executed
-  (`executeResearchTech`, `executeResearchCivic`) but is never offered as a
-  legal action. Plan: `kb/specs/20261119-game-mechanics-plan.md`.
+- **Research and buildings are exported and offered by the mod, but the agent
+  does not use them yet (GM-B2 done 2026-11-20, tested on a stand-in for the
+  game only; GM-B3 planned).** The exporter now writes researched techs and
+  civics by type name, the current research and civic with cost, progress and
+  boost, each of the player's cities' buildings and districts, and research
+  choices as legal actions; research is executed through
+  `UI.RequestPlayerOperation` with the GameCore setter as the fallback (see
+  "What the mod exports" below). **None of this has run in a real game:** the
+  tests execute the mod's Lua against `tests/fixtures/lua/civ6_stub.lua`, which
+  is hand-written. On the Python side the new fields are parsed and nothing
+  else: the encoder's tech and civic slots are still zero and the action mask
+  ignores research actions until GM-B3. Plan:
+  `kb/specs/20261119-game-mechanics-plan.md`.
 - **`--mcts` search mode is not usable as wired (GM-B5: planned, not done).** It
   pairs the 84-channel network with the 13-channel MicroCiv simulator and
   decodes a simulator action index as a hierarchical action; an exception in
@@ -143,13 +190,19 @@ to the bundle (the bundle is what ran); what they lost is recorded in
   the plan, not yet shown by a test; GM-B5 starts by writing that test, then
   makes the mode refuse at start-up, citing its gap id, until an action
   translator exists. It does not refuse today.
-- **`END_TURN` is reported as successful unconditionally (GM-B2: planned, not
-  done).** The mod does not read the end-turn blocking type, so a pending
-  research choice or other blocker is not reported. Whether this explains the
-  turn-cycle stall above is a hypothesis to check in a live session, not a
-  finding.
-- **The loaded Lua bundle has drifted from its module sources (GM-B0:
-  planned).** 27 lines differ; GM-B0 generates the bundle and adds a sync gate.
+- **A blocked `END_TURN` is now reported, and the agent cannot clear every
+  blocker (GM-B2 done 2026-11-20, not yet seen live).** When a notification
+  blocks ending the turn (an unanswered research or production choice, for
+  example), `END_TURN` answers `END_TURN_BLOCKED` with the blocking type, sends
+  nothing to the game, and the mod exports the state again with
+  `end_turn_blocking` set and keeps listening. Before, it answered "Turn ended"
+  whatever the game did and stopped listening. The agent loop counts these
+  (`blocked_end_turns`) instead of treating them as invalid actions. Two
+  limits: the agent does not yet choose research (GM-B3), so a research blocker
+  repeats until the mod's command timeout; and blockers with no action in the
+  action space (a policy slot, a governor, a pantheon) cannot be cleared by the
+  agent at all. Whether a pending choice explains the turn-cycle stall above is
+  still a hypothesis to check in a live session, not a finding.
 - **Windows-only paths and a single machine.** The game, the mod and the agent
   must share a filesystem and a loopback interface.
 

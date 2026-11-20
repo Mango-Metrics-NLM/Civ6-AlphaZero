@@ -11,6 +11,13 @@ change to live behaviour. Whitespace-only differences (a trailing blank line per
 Non-blank lines that differed: 24, in three modules. Bundle sha256 before and after: `e33177f9c33c11e1fcf6e2986bec3d97097868ef51fafce39f0caa7ba80622f6`.
 
 
+**Status, 2026-11-20 (GM-B2):** both `-` blocks below that carried behaviour were brought back as reviewed
+changes, each in its own commit with tests that run the Lua: the diplomacy error reporting in
+`ActionExecutor.lua`, and the config-read heartbeat interval in `Main.lua` (with one addition: a value that
+is not a positive number falls back to one second). The `Config.lua` lines were only ever in the bundle and
+are unchanged.
+
+
 ## `Config.lua` (8 lines)
 
 ```diff

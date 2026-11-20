@@ -49,20 +49,28 @@ flag, and each city's buildings and districts. Every new game call MUST be
 
 ### Requirement: Research is offered and executed through official surfaces
 
-Research SHALL appear in the legal actions exactly for the techs and civics the
-game reports as researchable. Executing it MUST use `UI.RequestPlayerOperation`,
-with the GameCore setter as a fallback.
+Research SHALL appear in the legal actions exactly for the techs the game reports
+as researchable and for the civics whose listed prerequisites the player has (no
+"can progress" call for civics is known to work), leaving out the one already in
+progress. Executing it MUST use `UI.RequestPlayerOperation`, with the GameCore
+setter as a fallback.
 
 #### Scenario: Researchable techs
 
-- **WHEN** the stub reports two researchable techs
-- **THEN** the legal actions include exactly two research-tech actions naming them
+- **WHEN** the stub reports two researchable techs and none is in progress
+- **THEN** the legal actions include one research-tech action whose items are exactly those two, by row index and by type name
+
+#### Scenario: No UI request available
+
+- **WHEN** `UI.RequestPlayerOperation` is missing and a research command is executed
+- **THEN** the GameCore setter is called with the row index and the command succeeds
 
 ### Requirement: A blocked end of turn is reported, not hidden
 
 END_TURN SHALL report a blocked turn with the blocking type instead of returning
-success unconditionally. The Python agent loop MUST handle a blocked report
-without raising and count it.
+success unconditionally, and MUST NOT send the request to the game while the turn
+is blocked. The Python agent loop MUST handle a blocked report without raising
+and count it.
 
 #### Scenario: Unanswered research choice
 
