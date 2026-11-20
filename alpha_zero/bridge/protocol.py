@@ -888,6 +888,95 @@ class CityData:
         return (self.x, self.y)
 
 
+#: Error code the Lua executor gives ``end_turn`` while a notification blocks
+#: ending the turn (``ERROR_CODES.END_TURN_BLOCKED`` in ``ActionExecutor.lua``).
+#: It arrives per command, in ``AckMessage.executed``.
+END_TURN_BLOCKED = "END_TURN_BLOCKED"
+
+#: ``schema_version`` of a state payload that does not carry the key.
+LEGACY_STATE_SCHEMA_VERSION = 1
+
+
+def _optional_text(value: Any) -> str | None:
+    """A non-empty string, or None."""
+    return value if isinstance(value, str) and value else None
+
+
+def _optional_number(value: Any) -> float | None:
+    """A JSON number as float; anything else (bool included) as None."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
+def _optional_int(value: Any) -> int | None:
+    """A whole JSON number as int; anything else (bool included) as None."""
+    number = _optional_number(value)
+    if number is None or number != int(number):
+        return None
+    return int(number)
+
+
+@dataclass
+class ResearchStatus:
+    """The tech or civic a player is working on (state schema 2).
+
+    Every field but ``type`` is optional: the mod leaves one out when the game
+    call behind it is missing in the game's Lua context.
+
+    Attributes:
+        type: Type name, for example ``"TECH_MINING"``.
+        index: Row index in the game's table (what research commands take).
+        cost: Total cost, in science or culture.
+        progress: Amount already accumulated.
+        turns_left: Turns to completion as the game reports them.
+        boost_triggered: Whether the boost (eureka or inspiration) was triggered.
+    """
+
+    type: str
+    index: int | None = None
+    cost: float | None = None
+    progress: float | None = None
+    turns_left: int | None = None
+    boost_triggered: bool | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary, leaving out the fields that are None."""
+        result: dict[str, Any] = {"type": self.type}
+        for key in ("index", "cost", "progress", "turns_left", "boost_triggered"):
+            value = getattr(self, key)
+            if value is not None:
+                result[key] = value
+        return result
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ResearchStatus:
+        """Create from dictionary.
+
+        Raises:
+            ProtocolValidationError: If data is not a dictionary.
+        """
+        _validate_type(data, dict, "data", context="ResearchStatus.from_dict")
+        boost = data.get("boost_triggered")
+        return cls(
+            type=_validate_string(
+                data.get("type"), "type", context="ResearchStatus", default="UNKNOWN"
+            ),
+            index=_optional_int(data.get("index")),
+            cost=_optional_number(data.get("cost")),
+            progress=_optional_number(data.get("progress")),
+            turns_left=_optional_int(data.get("turns_left")),
+            boost_triggered=boost if isinstance(boost, bool) else None,
+        )
+
+
+def _parse_research_status(value: Any) -> ResearchStatus | None:
+    """A status object, or None when the payload has none or it is not an object."""
+    if not isinstance(value, dict):
+        return None
+    return ResearchStatus.from_dict(value)
+
+
 @dataclass
 class PlayerData:
     """Data for a player."""
@@ -906,6 +995,8 @@ class PlayerData:
     current_research: str | None = None
     civics_researched: list[str] = field(default_factory=list)
     current_civic: str | None = None
+    research_status: ResearchStatus | None = None
+    civic_status: ResearchStatus | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -933,6 +1024,10 @@ class PlayerData:
             result["civics_researched"] = self.civics_researched
         if self.current_civic is not None:
             result["current_civic"] = self.current_civic
+        if self.research_status is not None:
+            result["research_status"] = self.research_status.to_dict()
+        if self.civic_status is not None:
+            result["civic_status"] = self.civic_status.to_dict()
         return result
 
     @classmethod
@@ -997,6 +1092,8 @@ class PlayerData:
             current_research=data.get("current_research"),
             civics_researched=civics_researched,
             current_civic=data.get("current_civic"),
+            research_status=_parse_research_status(data.get("research_status")),
+            civic_status=_parse_research_status(data.get("civic_status")),
         )
 
 
@@ -1017,6 +1114,8 @@ class LegalAction:
             to its category (e.g., "unit", "building", "wonder", "district").
             Populated by StateExporter.lua's ``collectProducibleItems`` for
             city production actions.
+        item_names: Type names aligned with ``items``, sent by research actions
+            (state schema 2), whose ``items`` are row indexes.
     """
 
     action_type: str
@@ -1026,6 +1125,7 @@ class LegalAction:
     items: list[int | str] = field(default_factory=list)
     item_type: str | None = None
     item_types: dict[str, str] = field(default_factory=dict)
+    item_names: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization.
@@ -1046,6 +1146,8 @@ class LegalAction:
             result["item_type"] = self.item_type
         if self.item_types:
             result["item_types"] = self.item_types
+        if self.item_names:
+            result["item_names"] = self.item_names
         return result
 
     @classmethod
@@ -1131,6 +1233,16 @@ class LegalAction:
         # stringified raw item id (matching ``items`` before hashing).
         item_types = _validate_dict(data.get("item_types"), "item_types", context="LegalAction")
 
+        # Type names aligned with ``items`` (research actions). The mod's JSON
+        # encoder writes an empty Lua table as an object, so anything but a
+        # list reads as "no names".
+        raw_item_names = data.get("item_names")
+        item_names = (
+            [name for name in raw_item_names if isinstance(name, str)]
+            if isinstance(raw_item_names, list)
+            else []
+        )
+
         return cls(
             action_type=action_type,
             unit_id=unit_id,
@@ -1139,6 +1251,7 @@ class LegalAction:
             items=items,
             item_type=data.get("item_type"),
             item_types=item_types,
+            item_names=item_names,
         )
 
 
@@ -1214,6 +1327,12 @@ class GameStateData:
     game_speed: str = "GAMESPEED_STANDARD"
     is_game_over: bool = False
     winner_id: int | None = None
+    #: Shape version the mod wrote; 1 for a payload without the key.
+    schema_version: int = LEGACY_STATE_SCHEMA_VERSION
+    #: Name of the game's end-turn blocking type (for example
+    #: ``"ENDTURN_BLOCKING_RESEARCH"``), or None when nothing blocks the turn.
+    end_turn_blocking: str | None = None
+    end_turn_blocking_message: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GameStateData:
@@ -1330,6 +1449,9 @@ class GameStateData:
             ),
             is_game_over=bool(data.get("is_game_over", data.get("game_over", False))),
             winner_id=winner_id,
+            schema_version=_optional_int(data.get("schema_version")) or LEGACY_STATE_SCHEMA_VERSION,
+            end_turn_blocking=_optional_text(data.get("end_turn_blocking")),
+            end_turn_blocking_message=_optional_text(data.get("end_turn_blocking_message")),
         )
 
 

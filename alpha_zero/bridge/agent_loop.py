@@ -52,6 +52,7 @@ from alpha_zero.bridge.health_checker import (
     GameBridgeHealthChecker,
 )
 from alpha_zero.bridge.protocol import (
+    END_TURN_BLOCKED,
     CommandMessage,
     GameStateData,
     LuaCommand,
@@ -320,6 +321,23 @@ class AgentLoopConfig:
         return cls(**kwargs)
 
 
+def _blocked_end_turn_message(ack: Any) -> str | None:
+    """The mod's message when ``ack`` reports a blocked end of turn, else None.
+
+    The code arrives per command, in ``ack.executed``; the ack's own
+    ``error_code`` is a generic one. A blocked report without a message still
+    counts, so it yields a placeholder.
+    """
+    executed = getattr(ack, "executed", None)
+    if not isinstance(executed, list):
+        return None
+    for entry in executed:
+        if isinstance(entry, dict) and entry.get("error_code") == END_TURN_BLOCKED:
+            message = entry.get("message")
+            return message if isinstance(message, str) and message else END_TURN_BLOCKED
+    return None
+
+
 @dataclass
 class _SessionStats:
     """Internal per-session counters surfaced via :meth:`BridgeAgentLoop.stats`."""
@@ -331,6 +349,11 @@ class _SessionStats:
     reconnects: int = 0
     fallback_end_turns: int = 0
     fallback_zero_observations: int = 0
+    # end_turn commands the game refused because a pending choice blocks the
+    # turn (the mod's END_TURN_BLOCKED). Not an invalid action: the command was
+    # well-formed and the mod keeps listening.
+    blocked_end_turns: int = 0
+    last_end_turn_blocker: str | None = None
     turn_latencies_ms: list[float] = field(default_factory=list)
     last_error: str | None = None
 
@@ -350,6 +373,8 @@ class _SessionStats:
             "reconnects": self.reconnects,
             "fallback_end_turns": self.fallback_end_turns,
             "fallback_zero_observations": self.fallback_zero_observations,
+            "blocked_end_turns": self.blocked_end_turns,
+            "last_end_turn_blocker": self.last_end_turn_blocker,
             "mean_turn_latency_ms": mean,
             "p95_turn_latency_ms": p95,
             "last_error": self.last_error,
@@ -650,13 +675,28 @@ class BridgeAgentLoop:
             self._maybe_log_snapshot(state, command, None, exc)
         else:
             if not ack.success:
-                self._stats.invalid_actions += 1
-                logger.warning(
-                    "Lua mod returned ack.success=False (msg_id=%d, code=%s): %s",
-                    ack.msg_id,
-                    ack.error_code,
-                    ack.error_message,
-                )
+                blocker = _blocked_end_turn_message(ack)
+                if blocker is not None:
+                    # The game will not end the turn until a pending choice is
+                    # made. The mod sent nothing to the game, exports the state
+                    # again (with end_turn_blocking set) and keeps listening,
+                    # so the next step sees the blocker.
+                    self._stats.blocked_end_turns += 1
+                    self._stats.last_end_turn_blocker = blocker
+                    logger.warning(
+                        "End turn blocked by the game (#%d, msg_id=%s): %s",
+                        self._stats.blocked_end_turns,
+                        getattr(ack, "msg_id", None),
+                        blocker,
+                    )
+                else:
+                    self._stats.invalid_actions += 1
+                    logger.warning(
+                        "Lua mod returned ack.success=False (msg_id=%d, code=%s): %s",
+                        ack.msg_id,
+                        ack.error_code,
+                        ack.error_message,
+                    )
 
     async def _handle_disconnect(self, exc: ConnectionLostError) -> bool:
         """Apply the configured disconnect strategy. Returns True if recovered."""
