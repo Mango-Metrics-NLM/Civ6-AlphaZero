@@ -8,7 +8,9 @@ The runtime is locked down before the mod runs. The mod uses ``io.open``,
 ``os.execute``, ``os.remove``, ``os.rename`` and ``dofile`` when it finds them,
 and with them it would create directories and files in the working directory.
 In the game the Lua sandbox has no ``io`` library, so removing them here is the
-game's own situation, not a test convenience. Python is not reachable from Lua.
+game's own situation, not a test convenience. Whether the game also lacks the
+other names removed here was not verified against a running game. lupa's
+``python`` table is removed too, so Lua cannot reach Python.
 
 ``lupa`` is an optional extra (``pip install -e '.[lua]'``). Tests skip without
 it, except where ``CIV6AZ_REQUIRE_LUA=1`` is set (CI's test job sets it): there a
@@ -38,6 +40,7 @@ loadfile = nil
 require = nil
 package = nil
 debug = nil
+python = nil
 os = { time = os.time, clock = os.clock, date = os.date }
 """
 
