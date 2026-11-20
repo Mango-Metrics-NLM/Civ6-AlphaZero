@@ -12,7 +12,10 @@ moves with the version unchanged is a behaviour change nobody declared.
 
 Regenerate deliberately (never during a test run)::
 
-    python tests/regression/test_default_env_golden_regression.py --regenerate
+    python -m tests.regression.test_default_env_golden_regression --regenerate
+
+(from the repository root; ``-m`` puts the root first on ``sys.path``, and the
+script refuses when ``alpha_zero`` was imported from anywhere else).
 
 A fixture is written once per ``ENV_VERSION``: ``--regenerate`` refuses when the
 file for the current version exists, unless numpy's Generator stream itself moved
@@ -226,6 +229,28 @@ def build_fixture() -> dict[str, Any]:
     }
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def foreign_env_source(module_file: str | None = None) -> str | None:
+    """Why the imported environment must not be fingerprinted, or ``None``.
+
+    Run as a script, this file's directory heads ``sys.path``, not the repository
+    root, so ``alpha_zero`` may resolve to an installed copy or to another
+    checkout while the fixture is written into this one: a baseline for the wrong
+    environment. The fixture may only be regenerated from this checkout's own
+    ``alpha_zero`` (review finding on the PR).
+    """
+    source = Path(module_file if module_file is not None else microciv.__file__).resolve()
+    if source.is_relative_to(REPO_ROOT / "alpha_zero"):
+        return None
+    return (
+        f"refusing to regenerate: alpha_zero.envs.microciv was imported from {source}, "
+        f"not from this checkout ({REPO_ROOT}). Run it from the repository root as: "
+        "python -m tests.regression.test_default_env_golden_regression --regenerate"
+    )
+
+
 def write_fixture(path: Path) -> None:
     """Build the fixture, then publish it in one step.
 
@@ -252,8 +277,8 @@ def _load_fixture() -> dict[str, Any]:
             f"ENV_VERSION is now {ENV_VERSION} and {FIXTURE_PATH.name} does not exist; "
             f"fixtures present: {present or 'none'}. "
             + ("ENV_VERSION moved: " if present else "")
-            + "regenerate under the new name and keep the old file: python "
-            "tests/regression/test_default_env_golden_regression.py --regenerate"
+            + "regenerate under the new name and keep the old file: python -m "
+            "tests.regression.test_default_env_golden_regression --regenerate"
         )
     return json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
 
@@ -496,9 +521,21 @@ def test_write_fixture_replaces_the_file_and_leaves_no_temporary(
     assert list(tmp_path.iterdir()) == [target]
 
 
+def test_regeneration_refuses_an_environment_from_another_place(tmp_path: Path) -> None:
+    """The fixture may only be regenerated from this checkout's own ``alpha_zero``."""
+    assert foreign_env_source() is None, "the tests themselves import another alpha_zero"
+    elsewhere = tmp_path / "site-packages" / "alpha_zero" / "envs" / "microciv.py"
+    message = foreign_env_source(str(elsewhere))
+    assert message is not None
+    assert str(elsewhere) in message and "python -m tests.regression" in message
+
+
 if __name__ == "__main__":
     if "--regenerate" not in sys.argv:
         sys.exit("refusing to run without --regenerate (the fixture is never rewritten silently)")
+    foreign = foreign_env_source()
+    if foreign is not None:
+        sys.exit(foreign)
     FIXTURE_DIR.mkdir(parents=True, exist_ok=True)
     if FIXTURE_PATH.exists():
         stored = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
