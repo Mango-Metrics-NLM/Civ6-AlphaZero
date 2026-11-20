@@ -154,7 +154,9 @@ copies a few of the game's `GameInfo` tables once per game load: technologies, c
 buildings and units with their costs, eras and prerequisites. Identifiers and whole numbers
 only, no text. With file access it writes `gameinfo.json` beside its other files; without
 (the usual case) it prints the snapshot to `Lua.log` as `AZ_GAMEINFO` lines, cut into pieces
-like a state. `ENABLE_GAMEINFO_EXPORT = false` in the mod's config turns it off.
+like a state. Each attempt starts with an `AZ_GAMEINFO_BEGIN` line (or, with file access, by
+deleting the previous `gameinfo.json`), and the closing line of a snapshot in pieces carries a
+checksum of the whole text. `ENABLE_GAMEINFO_EXPORT = false` in the mod's config turns it off.
 
 To use it:
 
@@ -174,9 +176,12 @@ refuses, with a one-line reason:
   set, or over an existing file;
 - a snapshot that lacks one of the six tables: the mod leaves a table out when it could
   not read it, and a rule set built from the rest would silently have no units, say;
-- when the newest snapshot in the log is unfinished. A `Lua.log` covers a whole launch and
+- when the newest snapshot in the log is unfinished: still being written, cut short, with
+  a line missing (the checksum then does not match, so pieces of two snapshots are never
+  joined), or an attempt that could read no table. A `Lua.log` covers a whole launch and
   holds one snapshot per game loaded, whose tables can differ; `--allow-earlier` files the
-  last complete one anyway and says so. The second writes a rule-set file, also under the data root. Then
+  last complete one anyway and says so. A game load with the export turned off leaves no
+  line at all, so the capture cannot know about it. The second writes a rule-set file, also under the data root. Then
 `CIV6AZ_BRIDGE_RULESET=<rule-set file>` and `CIV6AZ_BRIDGE_GAMEINFO=<snapshot>` give the
 bridge slots for the real trees ("Research slots" above).
 
