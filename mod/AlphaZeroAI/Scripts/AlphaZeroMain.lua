@@ -1469,6 +1469,15 @@ local buildingTypeCache = {}
 -- Sentinel value for invalid Civ6 type IDs (features, resources, improvements)
 local INVALID_TYPE_ID = -1
 
+-- Version of the exported state's shape; a state without it is version 1.
+-- 2: researched techs by name, current research and civic with cost, progress
+--    and boost, city buildings and districts, research legal actions, and the
+--    notification that blocks ending the turn.
+local STATE_SCHEMA_VERSION = 2
+
+-- GameInfo row type names by row Index, one table per GameInfo table name.
+local typeNameCaches = {}
+
 -- Hex-grid neighbor offsets (Civ6 uses offset coordinates).
 -- Neighbor positions differ based on whether the row (y) is even or odd.
 local HEX_EVEN_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
@@ -1577,6 +1586,70 @@ local function getImprovementTypeName(improvementTypeId)
         end
     end
     return nil
+end
+
+-- Call a method on a game object. Returns nil when the object or the method is
+-- missing, or when the call raises: which methods exist depends on the Lua
+-- context the game runs this script in, and a missing one must cost one field,
+-- not the whole export.
+local function safeCall(object, methodName, ...)
+    if object == nil then return nil end
+    local okMethod, method = pcall(function() return object[methodName] end)
+    if not okMethod or not method then return nil end
+    local okCall, result = pcall(method, object, ...)
+    if okCall then return result end
+    return nil
+end
+
+-- Type name of a GameInfo row by its Index; nil when the table or row is missing.
+local function typeNameByIndex(tableName, typeField, index)
+    local cache = typeNameCaches[tableName]
+    if not cache then
+        cache = {}
+        local gameTable = GameInfo and GameInfo[tableName]
+        if gameTable then
+            pcall(function()
+                for row in gameTable() do
+                    cache[row.Index] = row[typeField]
+                end
+            end)
+        end
+        -- Keep an empty result out of the cache: the table may not be ready yet.
+        if next(cache) ~= nil then
+            typeNameCaches[tableName] = cache
+        end
+    end
+    return cache[index]
+end
+
+-- Type names of the GameInfo rows for which owner:<hasMethod>(row.Index) is
+-- true, in GameInfo order (the techs a player has, the buildings in a city).
+local function collectOwnedTypes(tableName, typeField, owner, hasMethod)
+    local names = {}
+    local gameTable = GameInfo and GameInfo[tableName]
+    if not gameTable or owner == nil then
+        return names
+    end
+    pcall(function()
+        for row in gameTable() do
+            if safeCall(owner, hasMethod, row.Index) then
+                table.insert(names, row[typeField])
+            end
+        end
+    end)
+    return names
+end
+
+-- Name of an EndTurnBlockingTypes value.
+local function endTurnBlockingName(blocking)
+    if EndTurnBlockingTypes then
+        for name, value in pairs(EndTurnBlockingTypes) do
+            if value == blocking then
+                return name
+            end
+        end
+    end
+    return "ENDTURN_BLOCKING_UNKNOWN_" .. tostring(blocking)
 end
 
 -- Get civic type name from index
@@ -1898,6 +1971,28 @@ local function exportCities(playerId)
 
                         -- Only include detailed info for own cities
                         if pid == playerId then
+                            local cityBuildings = safeCall(city, "GetBuildings")
+                            if cityBuildings then
+                                cityData.buildings = collectOwnedTypes(
+                                    "Buildings", "BuildingType", cityBuildings, "HasBuilding")
+                            end
+
+                            local cityDistricts = safeCall(city, "GetDistricts")
+                            if cityDistricts then
+                                pcall(function()
+                                    for _, district in cityDistricts:Members() do
+                                        local districtType = safeCall(district, "GetType")
+                                        local districtName = districtType ~= nil
+                                            and typeNameByIndex("Districts", "DistrictType", districtType)
+                                        -- A district is listed once placed; only a finished
+                                        -- one counts. Without IsComplete it is listed.
+                                        if districtName and safeCall(district, "IsComplete") ~= false then
+                                            table.insert(cityData.districts, districtName)
+                                        end
+                                    end
+                                end)
+                            end
+
                             local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
                             if ok_bq and buildQueue then
                                 local ok_cb, currentProduction = pcall(function() return buildQueue:CurrentlyBuilding() end)
@@ -1974,8 +2069,27 @@ local function exportPlayer(playerId)
             end
         end
 
-        -- Export researched civics
-        if playerCulture.GetResearchedCivics then
+        -- Cost, progress and boost of the civic in progress
+        local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
+        if type(currentCivic) == "number" and currentCivic >= 0 then
+            playerData.civic_status = {
+                type = getCivicTypeName(currentCivic),
+                index = currentCivic,
+                cost = safeCall(playerCulture, "GetCultureCost", currentCivic),
+                progress = safeCall(playerCulture, "GetCulturalProgress", currentCivic),
+                turns_left = safeCall(playerCulture, "GetTurnsToProgressCivic", currentCivic)
+                    or safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
+                boost_triggered = safeCall(playerCulture, "HasBoostBeenTriggered", currentCivic),
+            }
+        end
+
+        -- Export researched civics: ask per civic; fall back to the list call
+        -- where HasCivic does not exist.
+        local okHasCivic, hasCivic = pcall(function() return playerCulture.HasCivic end)
+        if okHasCivic and hasCivic then
+            playerData.civics_researched = collectOwnedTypes(
+                "Civics", "CivicType", playerCulture, "HasCivic")
+        elseif playerCulture.GetResearchedCivics then
             local civics = playerCulture:GetResearchedCivics()
             if civics then
                 for _, civicId in ipairs(civics) do
@@ -1988,8 +2102,23 @@ local function exportPlayer(playerId)
     local playerTech = player:GetTechs()
     if playerTech then
         playerData.science_per_turn = playerTech:GetScienceYield() or 0
-        if playerTech.GetResearchingTech then
-            playerData.current_research = playerTech:GetResearchingTech()
+        playerData.techs_researched = collectOwnedTypes(
+            "Technologies", "TechnologyType", playerTech, "HasTech")
+
+        -- Current research by type name, with its cost, progress and boost
+        local currentTech = safeCall(playerTech, "GetResearchingTech")
+        if type(currentTech) == "number" and currentTech >= 0 then
+            local techName = typeNameByIndex("Technologies", "TechnologyType", currentTech)
+                or ("TECH_UNKNOWN_" .. tostring(currentTech))
+            playerData.current_research = techName
+            playerData.research_status = {
+                type = techName,
+                index = currentTech,
+                cost = safeCall(playerTech, "GetResearchCost", currentTech),
+                progress = safeCall(playerTech, "GetResearchProgress", currentTech),
+                turns_left = safeCall(playerTech, "GetTurnsToResearch", currentTech),
+                boost_triggered = safeCall(playerTech, "HasBoostBeenTriggered", currentTech),
+            }
         end
     end
 
@@ -2003,6 +2132,83 @@ local function exportPlayer(playerId)
     playerData.score = player:GetScore() or 0
 
     return playerData
+end
+
+-- Research choices open to the player now, as legal actions. `items` holds
+-- GameInfo row indexes (what the research commands take) and `item_names` the
+-- matching type names. The tech or civic already in progress is left out:
+-- choosing it again changes nothing.
+local function appendResearchActions(player, actions)
+    -- Technologies: the game answers directly.
+    local playerTech = safeCall(player, "GetTechs")
+    local techTable = GameInfo and GameInfo.Technologies
+    if playerTech and techTable then
+        local currentTech = safeCall(playerTech, "GetResearchingTech")
+        local items, names = {}, {}
+        for row in techTable() do
+            if row.Index ~= currentTech
+               and safeCall(playerTech, "CanResearch", row.Index)
+               and not safeCall(playerTech, "HasTech", row.Index) then
+                table.insert(items, row.Index)
+                table.insert(names, row.TechnologyType)
+            end
+        end
+        if #items > 0 then
+            table.insert(actions, { action = "research_tech", items = items, item_names = names })
+        end
+    end
+
+    -- Civics: the game answers directly (CanProgress, as its own civics chooser
+    -- asks). Where that method is missing, a civic is open when the player
+    -- lacks it and has every prerequisite listed for it.
+    local playerCulture = safeCall(player, "GetCulture")
+    local civicTable = GameInfo and GameInfo.Civics
+    local okHasCivic, hasCivicMethod = pcall(function() return playerCulture.HasCivic end)
+    if playerCulture and civicTable and okHasCivic and hasCivicMethod then
+        local okCanProgress, canProgressMethod = pcall(function() return playerCulture.CanProgress end)
+        local askTheGame = okCanProgress and canProgressMethod ~= nil
+        local prereqTable = GameInfo.CivicPrereqs
+
+        local indexByType, prereqs = {}, {}
+        if not askTheGame and prereqTable then
+            for row in civicTable() do
+                indexByType[row.CivicType] = row.Index
+            end
+            for row in prereqTable() do
+                prereqs[row.Civic] = prereqs[row.Civic] or {}
+                table.insert(prereqs[row.Civic], row.PrereqCivic)
+            end
+        end
+
+        local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
+        local items, names = {}, {}
+        if askTheGame or prereqTable then
+            for row in civicTable() do
+                if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
+                    local open
+                    if askTheGame then
+                        open = safeCall(playerCulture, "CanProgress", row.Index) and true or false
+                    else
+                        open = true
+                        for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
+                            local prereqIndex = indexByType[prereqType]
+                            if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
+                                open = false
+                                break
+                            end
+                        end
+                    end
+                    if open then
+                        table.insert(items, row.Index)
+                        table.insert(names, row.CivicType)
+                    end
+                end
+            end
+        end
+        if #items > 0 then
+            table.insert(actions, { action = "research_civic", items = items, item_names = names })
+        end
+    end
 end
 
 -- Export legal actions (with hex-grid neighbors and actual production items)
@@ -2148,6 +2354,13 @@ local function exportLegalActions(playerId)
         end
     end
 
+    -- Research choices. Guarded as a whole: a failure here must not cost the
+    -- unit and city actions above.
+    local okResearch, researchErr = pcall(appendResearchActions, player, actions)
+    if not okResearch and Log then
+        Log.Warn("Research legal actions failed: %s", tostring(researchErr))
+    end
+
     if Log then Log.Debug("Exported %d legal actions", #actions) end
     return actions
 end
@@ -2163,11 +2376,80 @@ function AlphaZeroStateExporter.Init()
     end
 end
 
+-- A notification's message as text, or nil.
+local function notificationMessage(entry)
+    local text = safeCall(entry, "GetMessage")
+    if type(text) == "string" and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+-- Whether an EndTurnBlockingTypes value means "something blocks".
+local function isBlocking(blocking)
+    if blocking == nil or blocking == 0 then
+        return false
+    end
+    return not (EndTurnBlockingTypes and blocking == EndTurnBlockingTypes.NO_ENDTURN_BLOCKING)
+end
+
+-- The reason the player's turn cannot end, if any.
+-- Returns the name of the EndTurnBlockingTypes value (for example
+-- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
+-- when nothing blocks or when this Lua context has no NotificationManager.
+-- Asks the game the way its own action panel does (GetFirstEndTurnBlocking);
+-- where that call is missing or fails, scans the notification list instead.
+function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    if not NotificationManager then
+        return nil, nil
+    end
+
+    if NotificationManager.GetFirstEndTurnBlocking then
+        local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
+        if okFirst then
+            if not isBlocking(blocking) then
+                return nil, nil
+            end
+            local message = nil
+            if NotificationManager.FindEndTurnBlocking then
+                local okFind, entry = pcall(NotificationManager.FindEndTurnBlocking, blocking, playerId)
+                if okFind and entry then
+                    message = notificationMessage(entry)
+                end
+            end
+            return endTurnBlockingName(blocking), message
+        end
+    end
+
+    local ok, blockerName, message = pcall(function()
+        local list = NotificationManager.GetList(playerId)
+        if not list then
+            return nil, nil
+        end
+        for _, notificationId in ipairs(list) do
+            local entry = NotificationManager.Find(playerId, notificationId)
+            if entry and not entry:IsDismissed() then
+                local blocking = entry:GetEndTurnBlocking()
+                if isBlocking(blocking) then
+                    return endTurnBlockingName(blocking), notificationMessage(entry)
+                end
+            end
+        end
+        return nil, nil
+    end)
+
+    if ok then
+        return blockerName, message
+    end
+    return nil, nil
+end
+
 -- Export full game state for a player
 function AlphaZeroStateExporter.ExportState(playerId)
     local startTime = os.clock and os.clock() or 0
 
     local state = {
+        schema_version = STATE_SCHEMA_VERSION,
         turn_id = 0,
         player_id = playerId,
         current_player = "",
@@ -2223,6 +2505,11 @@ function AlphaZeroStateExporter.ExportState(playerId)
             print("[AlphaZero] WARN: exportLegalActions failed: " .. tostring(result))
         end
     end
+
+    -- What stops the turn from ending, so the agent can clear it before it
+    -- asks to end the turn. Absent when nothing does.
+    state.end_turn_blocking, state.end_turn_blocking_message =
+        AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
 
     -- Check game end
     if Game then
@@ -2306,6 +2593,9 @@ local ERROR_CODES = {
     NOT_ENOUGH_MOVEMENT = "NOT_ENOUGH_MOVEMENT",
     EXECUTION_FAILED = "EXECUTION_FAILED",
     NOT_IMPLEMENTED = "NOT_IMPLEMENTED",
+    -- The game will not end the turn until a pending choice is made. Not a
+    -- malformed command: the agent clears the blocker and asks again.
+    END_TURN_BLOCKED = "END_TURN_BLOCKED",
 }
 
 -- ----------------------------------------------------------------------------
@@ -2356,17 +2646,44 @@ end
 -- Action Execution Functions
 -- ----------------------------------------------------------------------------
 
--- End the current player's turn
+-- End the current player's turn.
+-- The request is refused, and nothing is sent to the game, while a
+-- notification blocks ending the turn (an unanswered research or production
+-- choice, for example): the game would ignore the request and the caller would
+-- wait for a turn that never comes. UI.CanEndTurn, where it exists, has the
+-- last word: if the game says the turn can end, it is requested.
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
+
+    local blocker, blockerMessage = nil, nil
+    if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
+        blocker, blockerMessage = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    end
+
+    if blocker then
+        local canEnd = false
+        if UI and UI.CanEndTurn then
+            local ok, answer = pcall(UI.CanEndTurn)
+            canEnd = ok and answer == true
+        end
+        if not canEnd then
+            local message = "End turn blocked: " .. tostring(blocker)
+            if blockerMessage then
+                message = message .. " (" .. tostring(blockerMessage) .. ")"
+            end
+            if Log then Log.Warn(message) end
+            return false, ERROR_CODES.END_TURN_BLOCKED, message
+        end
+    end
 
     -- In Civ6, ending turn is handled through the UI
     if UI and UI.RequestAction and ActionTypes then
         UI.RequestAction(ActionTypes.ACTION_ENDTURN)
-        return true, nil, "Turn ended"
+        return true, nil, "End turn requested"
     end
 
-    return true, nil, "End turn requested"
+    return false, ERROR_CODES.EXECUTION_FAILED,
+        "End turn unavailable: no UI.RequestAction in this Lua context"
 end
 
 -- Move a unit to target position using RequestOperation (correct Civ6 API)
@@ -2650,68 +2967,165 @@ local function executeCityProduce(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Production set failed"
 end
 
--- Research a technology
-local function executeResearchTech(playerId, command)
-    local techId = command.item_id
+-- ----------------------------------------------------------------------------
+-- Research (technologies and civics)
+-- ----------------------------------------------------------------------------
 
-    if not techId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (tech)"
+-- Resolve a research item to its GameInfo row. The item is a row index (what
+-- the Python action space sends) or a type name such as "TECH_MINING".
+-- Returns index, type name and hash; all nil when the GameInfo table is there
+-- and has no such row. Without the table an index is passed through unchecked.
+local function resolveResearchItem(tableName, typeField, item)
+    local gameTable = GameInfo and GameInfo[tableName]
+    if not gameTable then
+        if type(item) == "number" then
+            return item, tostring(item), nil
+        end
+        return nil, nil, nil
     end
 
-    if Log then Log.Info("Executing: RESEARCH_TECH tech=%s", tostring(techId)) end
+    local index, typeName, hash = nil, nil, nil
+    pcall(function()
+        for row in gameTable() do
+            if row.Index == item or row[typeField] == item then
+                index, typeName, hash = row.Index, row[typeField], row.Hash
+                break
+            end
+        end
+    end)
+    return index, typeName, hash
+end
+
+-- Call a method on a game object; nil when it is missing or raises.
+local function callIfPresent(object, methodName, ...)
+    if object == nil then return nil end
+    local okMethod, method = pcall(function() return object[methodName] end)
+    if not okMethod or not method then return nil end
+    local okCall, result = pcall(method, object, ...)
+    if okCall then return result end
+    return nil
+end
+
+-- Shared by technologies and civics. `kind` names the differences:
+--   table/typeField   GameInfo table and its type-name column
+--   getter            player method returning the progress object
+--   has/can           its "already has" and "can choose now" methods (by index)
+--   operation/param   PlayerOperations keys for the UI request
+--   setter            GameCore method on the progress object (fallback)
+local function executeResearch(playerId, command, kind)
+    local item = command.item_id
+    if item == nil then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (" .. kind.label .. ")"
+    end
+
+    if Log then Log.Info("Executing: %s item=%s", kind.logName, tostring(item)) end
 
     if not Players then
         return false, ERROR_CODES.EXECUTION_FAILED, "Players table not available"
     end
-
     local player = Players[playerId]
     if not player then
         return false, ERROR_CODES.EXECUTION_FAILED, "Player not found"
     end
 
-    local playerTech = player:GetTechs()
-    if not playerTech then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player tech not available"
+    local index, typeName, hash = resolveResearchItem(kind.table, kind.typeField, item)
+    if index == nil then
+        return false, ERROR_CODES.INVALID_TARGET,
+            "Unknown " .. kind.label .. ": " .. tostring(item)
     end
 
-    if playerTech.SetResearchingTech then
-        playerTech:SetResearchingTech(techId)
-        return true, nil, "Researching tech: " .. tostring(techId)
+    -- Refuse what the game would drop without a word. Each check is skipped
+    -- when its method is missing in this Lua context.
+    local progressObject = callIfPresent(player, kind.getter)
+    if callIfPresent(progressObject, kind.has, index) == true then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " is already researched"
+    end
+    if callIfPresent(progressObject, kind.can, index) == false then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " cannot be chosen now"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Tech research failed"
+    -- Primary path: ask the game as its own research and civics choosers do:
+    -- the type parameter is the row's Hash (not its Index), with an exclusive
+    -- insert mode so the choice replaces the queue. The request is
+    -- fire-and-forget: the game applies it after this call returns and drops
+    -- it without an error if it does not like it, so success here means
+    -- "requested", not "done". The next exported state shows what the game
+    -- did. No notification is touched: the game clears its own "choose
+    -- research" blocker when the choice takes effect.
+    local requested = false
+    if hash ~= nil and UI and UI.RequestPlayerOperation and PlayerOperations
+       and PlayerOperations[kind.operation] and PlayerOperations[kind.param] then
+        local params = {}
+        params[PlayerOperations[kind.param]] = hash
+        if PlayerOperations.PARAM_INSERT_MODE and PlayerOperations.VALUE_EXCLUSIVE then
+            params[PlayerOperations.PARAM_INSERT_MODE] = PlayerOperations.VALUE_EXCLUSIVE
+        end
+        requested = pcall(function()
+            UI.RequestPlayerOperation(playerId, PlayerOperations[kind.operation], params)
+        end)
+    end
+    if requested then
+        return true, nil, kind.requestedMessage .. tostring(typeName)
+    end
+
+    -- Fallback: the GameCore setter, which takes the row index and exists
+    -- only in gameplay contexts.
+    if not progressObject then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Player " .. kind.label .. " data not available"
+    end
+    local okSetter, setter = pcall(function() return progressObject[kind.setter] end)
+    if not okSetter or not setter then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            "No way to set the " .. kind.label .. " in this Lua context"
+    end
+    local okSet, setErr = pcall(setter, progressObject, index)
+    if not okSet then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            kind.setter .. " failed: " .. tostring(setErr)
+    end
+    return true, nil, kind.setMessage .. tostring(typeName)
+end
+
+local RESEARCH_TECH_KIND = {
+    label = "tech",
+    logName = "RESEARCH_TECH",
+    table = "Technologies",
+    typeField = "TechnologyType",
+    getter = "GetTechs",
+    has = "HasTech",
+    can = "CanResearch",
+    operation = "RESEARCH",
+    param = "PARAM_TECH_TYPE",
+    setter = "SetResearchingTech",
+    requestedMessage = "Research requested: ",
+    setMessage = "Researching tech: ",
+}
+
+local RESEARCH_CIVIC_KIND = {
+    label = "civic",
+    logName = "RESEARCH_CIVIC",
+    table = "Civics",
+    typeField = "CivicType",
+    getter = "GetCulture",
+    has = "HasCivic",
+    can = "CanProgress",
+    operation = "PROGRESS_CIVIC",
+    param = "PARAM_CIVIC_TYPE",
+    setter = "SetProgressingCivic",
+    requestedMessage = "Civic requested: ",
+    setMessage = "Progressing civic: ",
+}
+
+-- Research a technology
+local function executeResearchTech(playerId, command)
+    return executeResearch(playerId, command, RESEARCH_TECH_KIND)
 end
 
 -- Research a civic
 local function executeResearchCivic(playerId, command)
-    local civicId = command.item_id
-
-    if not civicId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing item_id (civic)"
-    end
-
-    if Log then Log.Info("Executing: RESEARCH_CIVIC civic=%s", tostring(civicId)) end
-
-    if not Players then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Players table not available"
-    end
-
-    local player = Players[playerId]
-    if not player then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player not found"
-    end
-
-    local playerCulture = player:GetCulture()
-    if not playerCulture then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Player culture not available"
-    end
-
-    if playerCulture.SetProgressingCivic then
-        playerCulture:SetProgressingCivic(civicId)
-        return true, nil, "Researching civic: " .. tostring(civicId)
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Civic research failed"
+    return executeResearch(playerId, command, RESEARCH_CIVIC_KIND)
 end
 
 -- ----------------------------------------------------------------------------
@@ -2924,22 +3338,35 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
         return false, ERROR_CODES.EXECUTION_FAILED, "Diplomacy table unavailable"
     end
 
+    -- The error of the last path that was tried and raised, so a failure says
+    -- why instead of claiming there was nothing to call.
+    local lastError = nil
+
     -- Primary path: GetDiplomacy():DoAction(...). Civ6 expects a string or
     -- int action constant from DiplomaticActions table; pass civ6ActionName.
     if diplomacy.DoAction then
-        local ok = pcall(function() diplomacy:DoAction(civ6ActionName, targetPlayerId) end)
+        local ok, err = pcall(function() diplomacy:DoAction(civ6ActionName, targetPlayerId) end)
         if ok then
             return true, nil, string.format("%s against player %d", subActionName, targetPlayerId)
         end
+        lastError = err
+        if Log then Log.Warn("DoAction failed for %s: %s", subActionName, tostring(err)) end
     end
 
     -- Fallback: UI.RequestDiplomacyMove for older mod contexts.
     if UI and UI.RequestDiplomacyMove then
-        local ok = pcall(function() UI.RequestDiplomacyMove(civ6ActionName, targetPlayerId) end)
+        local ok, err = pcall(function() UI.RequestDiplomacyMove(civ6ActionName, targetPlayerId) end)
         if ok then
             return true, nil, string.format("%s requested via UI (player %d)",
                 subActionName, targetPlayerId)
         end
+        lastError = err
+        if Log then Log.Warn("RequestDiplomacyMove failed for %s: %s", subActionName, tostring(err)) end
+    end
+
+    if lastError then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("Diplomacy action %s failed: %s", subActionName, tostring(lastError))
     end
 
     return false, ERROR_CODES.EXECUTION_FAILED,
@@ -3459,9 +3886,15 @@ function AlphaZeroBridge.PollCommands()
         return
     end
 
-    -- Write heartbeat periodically
+    -- Write heartbeat periodically, every HEARTBEAT_INTERVAL seconds. A value
+    -- that is not a positive number (a typo in the override file) falls back to
+    -- one second: an error here would stop command polling.
+    local heartbeatInterval = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("HEARTBEAT_INTERVAL"))
+    if not heartbeatInterval or heartbeatInterval <= 0 then
+        heartbeatInterval = 1.0
+    end
     local now = (os and os.time) and os.time() or 0
-    if now - bridgeState.lastHeartbeatTime >= 1 then
+    if now - bridgeState.lastHeartbeatTime >= heartbeatInterval then
         if AlphaZeroFileIO then
             AlphaZeroFileIO.WriteHeartbeat()
         end

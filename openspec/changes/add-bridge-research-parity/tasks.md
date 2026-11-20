@@ -11,10 +11,11 @@
 - [x] 2.3 `tests/fixtures/lua/civ6_stub.lua` stubs `Players` and `GameInfo`; the current exporter runs against it
 
 ## 3. GM-B2 and GM-B3: exporter parity and Python wiring
-- [ ] 3.1 Tests first, against the stub: researched techs and civics, current research, buildings, districts, `schema_version`, research legal actions, a blocked END_TURN
-- [ ] 3.2 `StateExporter.lua`, `ActionExecutor.lua` (every new call `pcall`-guarded; `UI.RequestPlayerOperation` with setter fallback); regenerate the bundle
-- [ ] 3.3 `protocol.py` additive fields; a legacy payload without them still parses
-- [ ] 3.4 `agent_loop` handles a blocked END_TURN without raising, in the same PR as 3.2's END_TURN change
+- [x] 3.1 Tests first, against the stub: researched techs and civics, current research, buildings, districts, `schema_version`, research legal actions, a blocked END_TURN
+- [x] 3.2 `StateExporter.lua`, `ActionExecutor.lua` (every new call `pcall`-guarded; `UI.RequestPlayerOperation` with setter fallback); regenerate the bundle
+- [x] 3.3 `protocol.py` additive fields; a legacy payload without them still parses
+- [x] 3.4 `agent_loop` handles a blocked END_TURN without raising, in the same PR as 3.2's END_TURN change
+- [x] 3.4a Bring back the two pieces `bundle-drift.md` records (diplomacy error reporting, config-read heartbeat interval), each in its own commit with a harness test
 - [ ] 3.5 `tech_registry.py` through `alpha_zero.rules.registry`; encoder tech and civic slots non-zero on a fixture; a missing registry warns once and counts
 - [ ] 3.6 `docs/MODULE_REFERENCE.md` `bridge` count updated
 
