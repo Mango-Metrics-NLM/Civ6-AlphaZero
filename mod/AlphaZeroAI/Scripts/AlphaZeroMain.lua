@@ -545,11 +545,19 @@ local escapeChars = {
     ["\f"] = "\\f",
 }
 
+-- One pass over the characters JSON does not allow raw in a string: the quote,
+-- the backslash and the control characters (%c). The short forms come from
+-- escapeChars; any other control character is written as \u00XX.
+--
+-- This used to be two passes, the second with the pattern '[\x00-\x1f]'. Lua
+-- 5.1 has no \x escape, so that was the class "x, 0 to x, 1, f": it rewrote
+-- most letters, every digit and the underscore as \u00XX (six times the
+-- length), and re-escaped the backslashes the first pass had just written, so
+-- a newline came back as the two characters "\n" and a quote ended the string
+-- early.
 local function escapeString(str)
-    str = string.gsub(str, '[\\"\n\r\t\b\f]', escapeChars)
-    -- Escape control characters
-    str = string.gsub(str, '[\x00-\x1f]', function(c)
-        return string.format("\\u%04x", string.byte(c))
+    str = string.gsub(str, '[%c"\\]', function(c)
+        return escapeChars[c] or string.format("\\u%04x", string.byte(c))
     end)
     return str
 end

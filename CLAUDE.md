@@ -600,6 +600,7 @@ When making changes, update the relevant sections below:
 | Batch halving evaluated one leaf per pass-batch, so trees never grew past a ply per batch | Lockstep stepping (`_run_lockstep`), one simulation per tree per batch | 2026-11-12 |
 | Batch and MuZero Gumbel searches returned a one-hot that Gumbel noise could make a losing move | Shared completed-Q target (`gumbel_ops.policy_target_from_root_stats`); `one_hot` opt-in | 2026-11-12 |
 | MuZero root Q dropped the edge reward | `MuZeroMCTS._root_q` = `reward + discount * value` | 2026-11-12 |
+| The mod's JSON encoder wrote most ASCII as `\u00XX` (Lua 5.1 has no `\x` escape, so `'[\x00-\x1f]'` matched letters, digits and `_`): every message about 4x as long, a quote in a string gave invalid JSON, a newline came back as backslash-n | One pass over `[%c"\\]`; `tests/unit/test_lua_json_encoder.py` | 2026-11-20 |
 | The mod answered `end_turn` with success whatever the game did, then stopped listening for the turn | `END_TURN_BLOCKED` with the blocking type; the mod exports again and keeps listening | 2026-11-20 |
 | Research commands called only the GameCore setters, which a UI-context script does not have | `UI.RequestPlayerOperation` with the row's hash first, setter as fallback | 2026-11-20 |
 | On the socket transport every acknowledged command was followed by a fallback `end_turn` (the loop read the ack dict as an object) | `BridgeAgentLoop` accepts an `AckMessage` or a dict | 2026-11-20 |
