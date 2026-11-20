@@ -201,12 +201,18 @@ function AlphaZeroFileIO.Append(path, content)
 end
 
 -- Delete a file
+-- True when the file is gone afterwards (or was never there); false and why
+-- when it is still there. os.remove reports a failure by returning nil, which
+-- is not an error pcall sees, so the file is looked for again afterwards.
 function AlphaZeroFileIO.Delete(path)
-    if not os or not os.remove then return true, nil end
-    local ok, err = pcall(os.remove, path)
-    if not ok then
+    if not fileExists(path) then return true, nil end
+    if not os or not os.remove then
+        return false, "os.remove not available"
+    end
+    local ok, removed, err = pcall(os.remove, path)
+    if fileExists(path) then
         if Log then Log.Warn("Could not delete file: %s", path) end
-        return false, err
+        return false, (not ok and removed) or err or "os.remove failed"
     end
     return true, nil
 end
@@ -351,13 +357,19 @@ function AlphaZeroFileIO.BeginGameInfo()
         ExposedMembers.AlphaZeroGameInfo = nil
     end
     if HAS_IO then
+        -- Overwritten, not deleted: a delete can fail without a word, and the
+        -- previous load's snapshot would then stand as this load's. The
+        -- capture refuses a file that holds only this marker.
         local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
-        if path then
-            AlphaZeroFileIO.Delete(path)
+        if not path then return false end
+        local ok, err = AlphaZeroFileIO.Write(path, "AZ_GAMEINFO_BEGIN")
+        if not ok and Log then
+            Log.Warn("Could not mark the GameInfo snapshot as begun: %s", tostring(err))
         end
-        return
+        return ok and true or false
     end
     print("AZ_GAMEINFO_BEGIN")
+    return true
 end
 
 -- Write the rule-table snapshot (GM-B4): a file when file access exists,

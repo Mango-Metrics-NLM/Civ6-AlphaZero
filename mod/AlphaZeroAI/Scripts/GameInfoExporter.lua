@@ -42,8 +42,12 @@ local function sanitise(value)
     return nil
 end
 
--- The rows of one game table, or nil when the game has no such table or
--- reading it fails. A row left with no column at all is dropped.
+-- The rows of one game table, or nil when the game has no such table or it
+-- cannot be read whole. A column the game leaves empty (nil) is left out of
+-- its row. A column that is present but is not an identifier or a whole
+-- number, or a row with none of the columns, fails the whole table: dropping
+-- the value or the row would hand the importer a prerequisite that is not
+-- there or a move count of zero, and it could not tell.
 local function exportTable(spec)
     local gameTable = GameInfo and GameInfo[spec.name]
     if not gameTable then
@@ -55,15 +59,21 @@ local function exportTable(spec)
         for row in gameTable() do
             local copy, kept = {}, 0
             for _, column in ipairs(spec.columns) do
-                local value = sanitise(row[column])
-                if value ~= nil then
+                local raw = row[column]
+                if raw ~= nil then
+                    local value = sanitise(raw)
+                    if value == nil then
+                        error(string.format("%s.%s holds a value that is not exported",
+                            spec.name, column))
+                    end
                     copy[column] = value
                     kept = kept + 1
                 end
             end
-            if kept > 0 then
-                table.insert(rows, copy)
+            if kept == 0 then
+                error(string.format("%s has a row with none of its columns", spec.name))
             end
+            table.insert(rows, copy)
         end
     end)
     if not ok then

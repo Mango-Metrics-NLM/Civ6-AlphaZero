@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.bridge import tech_registry
 from alpha_zero.rules import gameinfo as rules_gameinfo
 
 #: The data root's variable. Read here, not through ``alpha_zero.utils.data_root``:
@@ -80,9 +81,15 @@ def _after(line: str, prefix: str) -> str | None:
 
 
 def _parse_document(text: str, where: str) -> dict[str, Any]:
+    """The snapshot in ``text``, read as strictly as the rules importer reads it.
+
+    A repeated key or a number too long for Python to convert is refused here,
+    in one line: read loosely, the first would be filed with one of its values
+    silently dropped and the second would end the tool with a traceback.
+    """
     try:
-        document = json.loads(text)
-    except json.JSONDecodeError as exc:
+        document = rules_gameinfo.loads(text)
+    except rules_gameinfo.GameInfoError as exc:
         raise GameInfoCaptureError(f"{where}: not valid JSON ({exc})") from exc
     if not isinstance(document, dict):
         raise GameInfoCaptureError(f"{where}: expected a JSON object of tables")
@@ -130,7 +137,10 @@ def scan_log(text: str) -> LogScan:
     pieces: dict[int, str] = {}
     totals: set[int] = set()
 
-    for line in text.splitlines():
+    lines = text.splitlines()
+    # A log read while the game is writing can end in half a line.
+    tail_unterminated = bool(text) and not text.endswith(("\n", "\r"))
+    for number, line in enumerate(lines):
         # The chunk and end markers start with the single-line marker's
         # letters, so they are tried first.
         chunk = _after(line, CHUNK_PREFIX)
@@ -157,6 +167,12 @@ def scan_log(text: str) -> LogScan:
             continue
         single = _after(line, LINE_PREFIX)
         if single is not None:
+            if tail_unterminated and number == len(lines) - 1 and not _is_document(single):
+                # Half a line: the newest message is unfinished, like an open
+                # chunk set. It must not hide an earlier complete one.
+                later_incomplete = last is not None
+                pieces, totals = {}, set()
+                continue
             last = single.strip()
             complete += 1
             later_incomplete = False
@@ -171,6 +187,14 @@ def scan_log(text: str) -> LogScan:
 
     document = None if last is None else _parse_document(last, "the GameInfo message in the log")
     return LogScan(document=document, complete=complete, later_incomplete=later_incomplete)
+
+
+def _is_document(text: str) -> bool:
+    """Whether ``text`` reads as a snapshot document (a JSON object)."""
+    try:
+        return isinstance(rules_gameinfo.loads(text), dict)
+    except rules_gameinfo.GameInfoError:
+        return False
 
 
 def _checked_join(end: str, pieces: dict[int, str], totals: set[int]) -> str | None:
@@ -229,6 +253,11 @@ def snapshot_from_file(path: str | os.PathLike[str]) -> dict[str, Any]:
         text = source.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise GameInfoCaptureError(f"cannot read {source}: {exc}") from exc
+    if text.strip() == BEGIN_MARKER:
+        raise GameInfoCaptureError(
+            f"{source}: the mod began a snapshot and did not finish it (it could read no "
+            "table, or was still writing); load a game with the mod enabled again"
+        )
     return _parse_document(text, str(source))
 
 
@@ -247,9 +276,19 @@ def check_snapshot(document: Any) -> rules_gameinfo.ImportSummary:
                 "would silently lack them"
             )
     try:
-        return rules_gameinfo.convert(document)
+        summary = rules_gameinfo.convert(document)
     except ValueError as exc:
         raise GameInfoCaptureError(f"the snapshot is not importable: {exc}") from exc
+    # The importer only counts civics; the research registry numbers its civic
+    # slots from them (CIV6AZ_BRIDGE_GAMEINFO). Apply the registry's own rule
+    # now, so a snapshot that is filed is one the registry accepts.
+    try:
+        tech_registry.civic_ids(tech_registry.civic_types_of(document, "the snapshot"))
+    except tech_registry.ResearchRegistryError as exc:
+        raise GameInfoCaptureError(
+            f"the snapshot's civics cannot number research slots: {exc}"
+        ) from exc
+    return summary
 
 
 def write_snapshot(document: Any, *, name: str | None = None) -> Path:
@@ -346,6 +385,12 @@ def _publish(temporary: Path, destination: Path) -> None:
             raise
 
 
+def _for_a_shell(path: Path) -> str:
+    """``path`` as it can be pasted into a command: in double quotes when it has a space."""
+    text = str(path)
+    return f'"{text}"' if any(character.isspace() for character in text) else text
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Capture a snapshot. Exit 0 written, 1 refused or unusable, 2 usage error."""
     parser = argparse.ArgumentParser(
@@ -411,8 +456,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         f"{summary.units} units; {summary.civics_not_imported} civics counted"
     )
     print("next:")
-    print(f"  python -m alpha_zero.rules import-gameinfo {written}")
-    print(f"  CIV6AZ_BRIDGE_GAMEINFO={written}")
+    shown = _for_a_shell(written)
+    print(f"  python -m alpha_zero.rules import-gameinfo {shown}")
+    print(f"  CIV6AZ_BRIDGE_GAMEINFO={shown}")
     return 0
 
 
