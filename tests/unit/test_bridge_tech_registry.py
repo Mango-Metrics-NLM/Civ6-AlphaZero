@@ -59,12 +59,6 @@ def write_gameinfo(path: Path, civics: list[Any]) -> Path:
     return path
 
 
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CIV6AZ_BRIDGE_RULESET", raising=False)
-    monkeypatch.delenv("CIV6AZ_BRIDGE_GAMEINFO", raising=False)
-
-
 @pytest.fixture
 def tr() -> ModuleType:
     return importlib.import_module("alpha_zero.bridge.tech_registry")
@@ -119,6 +113,33 @@ class TestConstantsAndShape:
         assert len({a, b, c}) == 2
         with pytest.raises(dataclasses.FrozenInstanceError):
             a.ruleset_id = "other"  # type: ignore[misc]
+
+
+class TestDescribe:
+    def reg(self, tr: ModuleType) -> Any:
+        return tr.ResearchRegistry(
+            ruleset_id="demo-rules",
+            fingerprint="abcdef012345" + "f" * 52,
+            tech_ids=tuple(f"t{i}" for i in range(37)),
+            civic_ids=tuple(f"c{i}" for i in range(11)),
+        )
+
+    def test_one_line_with_id_fingerprint_prefix_and_counts(self, tr: ModuleType) -> None:
+        reg = self.reg(tr)
+        text = reg.describe()
+        assert isinstance(text, str)
+        assert "\n" not in text
+        assert "demo-rules" in text
+        assert "abcdef012345" in text
+        assert "abcdef012345f" not in text, "more than 12 characters of the fingerprint"
+        assert "37" in text
+        assert "11" in text
+
+    def test_no_civics_is_visible(self, tr: ModuleType) -> None:
+        reg = tr.ResearchRegistry(
+            ruleset_id="demo-rules", fingerprint="abcdef012345" + "f" * 52, tech_ids=("a",)
+        )
+        assert re.search(r"\b0\b", reg.describe())
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +244,31 @@ class TestFromRuleset:
             tr.from_ruleset(spec, ("CIVIC_CODE_OF_LAWS", "civic_code_of_laws"))
         with pytest.raises(tr.ResearchRegistryError):
             tr.from_ruleset(spec, ("CIVIC_A", "CIVIC_B", "CIVIC_A"))
+
+    def test_two_techs_naming_the_same_game_type_are_refused(self, tr: ModuleType) -> None:
+        for ids in (["mining", "tech_mining"], ["tech_mining", "writing", "mining"]):
+            spec = parse_ruleset(ruleset_text(ids))
+            with pytest.raises(tr.ResearchRegistryError):
+                tr.from_ruleset(spec)
+
+    def test_distinct_techs_with_and_without_prefix_are_fine(self, tr: ModuleType) -> None:
+        spec = parse_ruleset(ruleset_text(["mining", "tech_writing", "pottery"]))
+        assert tr.from_ruleset(spec).tech_ids == ("mining", "tech_writing", "pottery")
+
+    @pytest.mark.parametrize(
+        "civics",
+        [("CIVIC_A", "a"), ("a", "civic_a"), ("civic_a", "CIVIC_B", "A")],
+    )
+    def test_two_civics_naming_the_same_game_type_are_refused(
+        self, tr: ModuleType, civics: tuple[str, ...]
+    ) -> None:
+        spec = parse_ruleset(ruleset_text(TECH_IDS))
+        with pytest.raises(tr.ResearchRegistryError):
+            tr.from_ruleset(spec, civics)
+
+    def test_distinct_civics_are_fine(self, tr: ModuleType) -> None:
+        spec = parse_ruleset(ruleset_text(TECH_IDS))
+        assert tr.from_ruleset(spec, ("CIVIC_A", "b")).civic_ids == ("civic_a", "b")
 
     def test_fingerprint_is_64_hex(self, tr: ModuleType) -> None:
         reg = tr.from_ruleset(parse_ruleset(ruleset_text(TECH_IDS)), CIVIC_TYPES)

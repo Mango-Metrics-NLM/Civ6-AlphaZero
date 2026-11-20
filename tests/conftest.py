@@ -189,6 +189,17 @@ def _strip_cloud_and_local_mode_env(monkeypatch: pytest.MonkeyPatch) -> None:
             monkeypatch.delenv(name, raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _strip_bridge_research_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the developer's research-registry variables out of every test.
+
+    ``CIV6AZ_BRIDGE_RULESET`` makes the bridge converters build a registry (and fail
+    when it is bad). A test that wants one sets it itself, after this runs.
+    """
+    monkeypatch.delenv("CIV6AZ_BRIDGE_RULESET", raising=False)
+    monkeypatch.delenv("CIV6AZ_BRIDGE_GAMEINFO", raising=False)
+
+
 @pytest.fixture
 def gcp_credentials_available() -> bool:
     """Check if GCP credentials are available.

@@ -30,7 +30,7 @@ import os
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from alpha_zero.rules import (
     RulesetSpec,
@@ -102,6 +102,13 @@ class ResearchRegistry:
         object.__setattr__(self, "_tech_slots", _slot_map(self.tech_ids))
         object.__setattr__(self, "_civic_slots", _slot_map(self.civic_ids))
 
+    def describe(self) -> str:
+        """One line for a log: the rule set, the start of the fingerprint, the slot counts."""
+        return (
+            f"rule set {self.ruleset_id!r} (fingerprint {self.fingerprint[:12]}): "
+            f"{len(self.tech_ids)} technology slots, {len(self.civic_ids)} civic slots"
+        )
+
     def tech_slot(self, type_name: Any) -> int | None:
         """Slot of a technology named as the game names it (``"TECH_MINING"``), or None."""
         return _lookup(self._tech_slots, type_name, _TECH_PREFIX)
@@ -119,6 +126,22 @@ class ResearchRegistry:
         return _type_name(self.civic_ids, slot, _CIVIC_PREFIX)
 
 
+def _reject_same_game_type(ids: tuple[str, ...], prefix: str, kind: str) -> None:
+    """Refuse two ids that are the same thing to the game (``mining`` and ``tech_mining``).
+
+    Both would answer to one game type name, so one slot could never come from
+    the game and the way back from a slot to a name would not be one-to-one.
+    """
+    first_by_game_type: dict[str, str] = {}
+    for name in ids:
+        game_type = name[len(prefix) :] if name.startswith(prefix) else name
+        other = first_by_game_type.setdefault(game_type, name)
+        if other != name:
+            raise ResearchRegistryError(
+                f"{kind} ids {other!r} and {name!r} are the same {kind} to the game"
+            )
+
+
 def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> ResearchRegistry:
     """Build the registry for ``spec``, with civic slots in the order of ``civic_types``.
 
@@ -127,6 +150,7 @@ def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> Research
     """
     rules = build_registry(spec)
     tech_ids = tuple(rules.tech_index)
+    _reject_same_game_type(tech_ids, _TECH_PREFIX, "technology")
 
     civic_ids: list[str] = []
     seen: set[str] = set()
@@ -138,6 +162,7 @@ def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> Research
             raise ResearchRegistryError(f"civic given twice: {civic!r}")
         seen.add(lowered)
         civic_ids.append(lowered)
+    _reject_same_game_type(tuple(civic_ids), _CIVIC_PREFIX, "civic")
 
     payload = json.dumps(
         {"rules": rules.fingerprint, "civics": civic_ids},
@@ -214,6 +239,19 @@ def load_registry(
     spec = _load_spec(os.fspath(ruleset))
     civics = civic_types_from_gameinfo(gameinfo) if gameinfo is not None else ()
     return from_ruleset(spec, civics)
+
+
+def choose_registry(given: ResearchRegistry | Literal[False] | None) -> ResearchRegistry | None:
+    """The registry a converter uses for its ``research_registry`` argument.
+
+    A registry is used as given; ``None`` asks the environment
+    (:func:`resolve_registry`); ``False`` means none, without asking.
+    """
+    if given is False:
+        return None
+    if given is None:
+        return resolve_registry()
+    return given
 
 
 def resolve_registry(env: Mapping[str, str] | None = None) -> ResearchRegistry | None:

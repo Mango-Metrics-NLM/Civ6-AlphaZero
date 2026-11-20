@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
@@ -34,7 +34,7 @@ from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_confi
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
-from alpha_zero.bridge.tech_registry import ResearchRegistry, resolve_registry
+from alpha_zero.bridge.tech_registry import ResearchRegistry, choose_registry
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
 __all__ = ["StateConverter", "TerrainMapping", "UnitMapping"]
@@ -246,7 +246,7 @@ class StateConverter:
         terrain_mapping: TerrainMapping | None = None,
         unit_mapping: UnitMapping | None = None,
         create_encoder: bool = True,
-        research_registry: ResearchRegistry | None = None,
+        research_registry: ResearchRegistry | Literal[False] | None = None,
     ) -> None:
         """Initialize the state converter.
 
@@ -257,8 +257,9 @@ class StateConverter:
             unit_mapping: Custom unit mappings (uses defaults if None).
             create_encoder: Whether to create an internal encoder.
             research_registry: Which encoder slot each technology and civic has.
-                None asks the environment (``CIV6AZ_BRIDGE_RULESET``); with no
-                registry the encoder's research positions stay zero.
+                None asks the environment (``CIV6AZ_BRIDGE_RULESET``); False
+                means none, without asking. With no registry the encoder's
+                research positions stay zero.
 
         Raises:
             ResearchRegistryError: If the environment names a registry that
@@ -266,9 +267,7 @@ class StateConverter:
         """
         self.board_size = board_size
         self.num_players = num_players
-        self.research_registry = (
-            research_registry if research_registry is not None else resolve_registry()
-        )
+        self.research_registry = choose_registry(research_registry)
         self._research_stats = {
             "conversions_without_registry": 0,
             "unmapped_techs": 0,
@@ -276,6 +275,14 @@ class StateConverter:
             "slots_out_of_range": 0,
         }
         self._warned_no_registry = False
+        self._warned_lost_research = False
+        # What the counters last counted, so that converting one state twice
+        # (the agent loop converts, then converts again to encode) counts once.
+        self._last_counted_research: tuple[Any, ...] | None = None
+        if self.research_registry is None:
+            logger.info("StateConverter: no research registry; research positions stay zero")
+        else:
+            logger.info("StateConverter research slots: %s", self.research_registry.describe())
         self.terrain_mapping = terrain_mapping or TerrainMapping()
         self.unit_mapping = unit_mapping or UnitMapping()
 
@@ -356,6 +363,11 @@ class StateConverter:
             "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
+            # Which registry numbered the research above (None: none), so the
+            # action converter can refuse to work with a different one.
+            "_research_fingerprint": (
+                self.research_registry.fingerprint if self.research_registry else None
+            ),
             "_map_size": (state.map_data.width, state.map_data.height),
             "_player_id": state.player_id,
             # Pass-through reference to the original GameStateData so downstream
@@ -798,10 +810,11 @@ class StateConverter:
     def research_stats(self) -> dict[str, int]:
         """Counters of research the encoder did not get, since construction.
 
-        ``conversions_without_registry``: conversions that had research to
-        encode and no registry. ``unmapped_techs`` / ``unmapped_civics``:
-        researched items the registry has no slot for. ``slots_out_of_range``:
-        items whose slot the encoder has no position for.
+        ``conversions_without_registry``: states that had research to encode
+        and no registry. ``unmapped_techs`` / ``unmapped_civics``: researched
+        items the registry has no slot for. ``slots_out_of_range``: items whose
+        slot the encoder has no position for. A state converted again straight
+        after itself (same turn, player and research) is counted once.
         """
         return dict(self._research_stats)
 
@@ -820,10 +833,15 @@ class StateConverter:
                 civic_types = list(player.civics_researched)
                 break
 
+        counted_key = (state.turn_id, state.player_id, tuple(tech_types), tuple(civic_types))
+        count = counted_key != self._last_counted_research
+        self._last_counted_research = counted_key
+
         registry = self.research_registry
         if registry is None:
             if tech_types or civic_types:
-                self._research_stats["conversions_without_registry"] += 1
+                if count:
+                    self._research_stats["conversions_without_registry"] += 1
                 if not self._warned_no_registry:
                     self._warned_no_registry = True
                     logger.warning(
@@ -837,23 +855,39 @@ class StateConverter:
             )
 
         return (
-            self._research_slots(tech_types, registry.tech_slot, "unmapped_techs"),
-            self._research_slots(civic_types, registry.civic_slot, "unmapped_civics"),
+            self._research_slots(tech_types, registry.tech_slot, "unmapped_techs", count),
+            self._research_slots(civic_types, registry.civic_slot, "unmapped_civics", count),
         )
 
     def _research_slots(
-        self, type_names: list[str], slot_of: Any, unmapped_counter: str
+        self, type_names: list[str], slot_of: Any, unmapped_counter: str, count: bool
     ) -> list[int]:
-        """Slots of ``type_names``, counting what has none or does not fit the encoder."""
+        """Slots of ``type_names``; what has none or does not fit the encoder is left out.
+
+        The loss is counted when ``count`` is set, and warned about once per converter.
+        """
         slots: list[int] = []
         for type_name in type_names:
             slot = slot_of(type_name)
-            if slot is None:
-                self._research_stats[unmapped_counter] += 1
-            elif slot >= ENCODER_RESEARCH_SLOTS:
-                self._research_stats["slots_out_of_range"] += 1
-            else:
+            if slot is not None and slot < ENCODER_RESEARCH_SLOTS:
                 slots.append(slot)
+                continue
+            counter = unmapped_counter if slot is None else "slots_out_of_range"
+            if count:
+                self._research_stats[counter] += 1
+            if not self._warned_lost_research:
+                self._warned_lost_research = True
+                reason = (
+                    "has no slot in the research registry"
+                    if slot is None
+                    else f"has slot {slot}, beyond the encoder's {ENCODER_RESEARCH_SLOTS}"
+                )
+                logger.warning(
+                    "Researched %s %s and is not encoded. Warned once; "
+                    "see StateConverter.research_stats for the counts.",
+                    type_name,
+                    reason,
+                )
         return slots
 
     def _extract_technologies(self, state: GameStateData) -> list[str]:

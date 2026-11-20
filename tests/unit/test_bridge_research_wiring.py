@@ -1,10 +1,10 @@
-"""GM-B3: research wiring, from the game's tech and civic names to encoder slots and actions.
+"""GM-B3: research wiring, protocol, state converter and action converter.
 
-Covers ``LuaCommand.item_id`` as a string, ``StateConverter`` (encoder slots 70+/180+),
-``ActionConverter`` (research bits in the mask, legality, the game type name in the command)
-and, through the Lua harness, the whole loop against the mod. Only ``TestEndToEnd`` needs
-lupa. ``alpha_zero.bridge.tech_registry`` is imported inside fixtures and tests, so while it
-does not exist only the tests that need it fail.
+Covers ``LuaCommand.item_id`` as a string, ``StateConverter`` (encoder slots 70+/180+)
+and ``ActionConverter`` (research bits in the mask, legality, the game type name in the
+command). The Lua-harness tests are in ``test_bridge_research_wiring_e2e.py`` and the review
+delta in ``test_bridge_research_wiring_review.py``. ``alpha_zero.bridge.tech_registry`` is
+imported inside fixtures and tests, so while it does not exist only the tests that need it fail.
 """
 
 from __future__ import annotations
@@ -21,49 +21,29 @@ from alpha_zero.bridge.action_converter import ActionConverter, InvalidActionErr
 from alpha_zero.bridge.config import GameConstants
 from alpha_zero.bridge.protocol import (
     ActionType,
-    GameStateData,
     LuaCommand,
     ProtocolValidationError,
 )
 from alpha_zero.bridge.state_converter import StateConverter
 from alpha_zero.core.civ6_actions import ActionCategory
 from alpha_zero.rules import parse_ruleset
-from tests.fixtures import lua_harness as h
-
-TECH_IDS = ["writing", "bronze_working", "pottery", "mining"]
-# Slots differ from the stub's GameInfo row indexes for every tech and civic used below, so a
-# converter that passes the row index through (or the other way round) cannot pass by luck.
-#   techs  : stub rows pottery 0, mining 1, writing 2, bronze_working 3
-#   civics : stub rows code_of_laws 0, craftsmanship 1, foreign_trade 2, early_empire 3
-CIVIC_TYPES = (
-    "CIVIC_FOREIGN_TRADE",
-    "CIVIC_CODE_OF_LAWS",
-    "CIVIC_EARLY_EMPIRE",
-    "CIVIC_CRAFTSMANSHIP",
+from tests.fixtures.research_wiring import (
+    CIVIC_RANGE,
+    CIVIC_TYPES,
+    END_ONLY,
+    GAME_STATE,
+    RULESET,
+    TECH_IDS,
+    TECH_RANGE,
+    action_converter,
+    big_registry,
+    civic_action,
+    encode,
+    flat,
+    payload,
+    research_bits,
+    tech_action,
 )
-RULESET = """\
-schema_version: 1
-id: research-test
-techs:
-{techs}
-units:
-  - {{id: sword, cost: 5, strength: 3, moves: 2}}
-buildings:
-  - id: hut
-    cost: 5
-    modifiers:
-      - {{yield: food, amount: 1}}
-"""
-END_TURN = {"action_type": "end_turn"}
-TECH_RANGE = ActionCategory.RESEARCH_TECH
-CIVIC_RANGE = ActionCategory.RESEARCH_CIVIC
-GAME_STATE: dict[str, Any] = {"units": [], "cities": [], "current_player": 0}
-
-
-@pytest.fixture(autouse=True)
-def _clean_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("CIV6AZ_BRIDGE_RULESET", raising=False)
-    monkeypatch.delenv("CIV6AZ_BRIDGE_GAMEINFO", raising=False)
 
 
 @pytest.fixture
@@ -75,62 +55,6 @@ def tr() -> ModuleType:
 def reg(tr: ModuleType) -> Any:
     techs = "\n".join(f"  - id: {i}\n    era: 1\n    cost: 10" for i in TECH_IDS)
     return tr.from_ruleset(parse_ruleset(RULESET.format(techs=techs)), CIVIC_TYPES)
-
-
-def big_registry(tr: ModuleType, techs: int, civics: int) -> Any:
-    return tr.ResearchRegistry(
-        ruleset_id="big",
-        fingerprint="0" * 64,
-        tech_ids=tuple(f"t{i}" for i in range(techs)),
-        civic_ids=tuple(f"c{i}" for i in range(civics)),
-    )
-
-
-def payload(techs: tuple[str, ...] = (), civics: tuple[str, ...] = ()) -> dict[str, Any]:
-    return {
-        "turn_id": 3,
-        "player_id": 0,
-        "map": {"width": 8, "height": 8, "tiles": []},
-        "units": [],
-        "cities": [],
-        "legal_actions": [{"action": "end_turn"}],
-        "players": [
-            {
-                "id": 0,
-                "civilization": "CIVILIZATION_STUB_A",
-                "techs_researched": list(techs),
-                "civics_researched": list(civics),
-            }
-        ],
-    }
-
-
-def encode(conv: StateConverter, state: Any) -> np.ndarray:
-    _, vector = conv.convert_and_encode(state)
-    return np.asarray(vector.detach().cpu().numpy())
-
-
-def research_bits(conv: ActionConverter, mask: np.ndarray, category: ActionCategory) -> set[int]:
-    offset = conv.action_space.category_offsets[category]
-    size = conv.action_space.category_sizes[category]
-    return {int(i) for i in np.nonzero(mask[offset : offset + size])[0]}
-
-
-def tech_action(names: list[str] | None, items: list[int] | None = None) -> dict[str, Any]:
-    action: dict[str, Any] = {"action": "research_tech", "items": items or [1, 2]}
-    if names is not None:
-        action["item_names"] = names
-    return action
-
-
-def civic_action(names: list[str] | None, items: list[int] | None = None) -> dict[str, Any]:
-    action: dict[str, Any] = {"action": "research_civic", "items": items or [1, 2]}
-    if names is not None:
-        action["item_names"] = names
-    return action
-
-
-END_ONLY: list[dict[str, Any]] = [{"action": "end_turn"}]
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +151,8 @@ class TestStateConverterWithRegistry:
 
     def test_unmapped_count_is_one_per_occurrence_per_conversion(self, reg: Any) -> None:
         conv = StateConverter(research_registry=reg)
-        conv.convert(payload(techs=("TECH_NOPE",)))
-        conv.convert(payload(techs=("TECH_NOPE",)))
+        conv.convert(payload(techs=("TECH_NOPE",), turn=3))
+        conv.convert(payload(techs=("TECH_NOPE",), turn=4))
         assert conv.research_stats["unmapped_techs"] == 2
 
     def test_slots_of_100_or_more_are_left_out_and_counted(self, tr: ModuleType) -> None:
@@ -372,8 +296,6 @@ class TestStateConverterStatsAndEnv:
 # ---------------------------------------------------------------------------
 # ActionConverter: the mask
 # ---------------------------------------------------------------------------
-def action_converter(registry: Any = None) -> ActionConverter:
-    return ActionConverter(board_size=8, research_registry=registry)
 
 
 class TestMaskWithRegistry:
@@ -556,8 +478,6 @@ class TestActionConverterStats:
 # ---------------------------------------------------------------------------
 # ActionConverter: convert()
 # ---------------------------------------------------------------------------
-def flat(conv: ActionConverter, category: ActionCategory, slot: int) -> int:
-    return conv.action_space.category_offsets[category] + slot
 
 
 class TestConvertWithRegistry:
@@ -649,199 +569,3 @@ class TestConvertWithoutRegistry:
         cmd = conv.convert(flat(conv, TECH_RANGE, 7), GAME_STATE, END_ONLY, validate=False)
         assert cmd.item_id == 7
         assert type(cmd.item_id) is int
-
-
-# ---------------------------------------------------------------------------
-# End to end against the mod, through the Lua harness
-# ---------------------------------------------------------------------------
-BLOCKERS = {
-    "tech": (
-        "{ id = 5, blocking = EndTurnBlockingTypes.ENDTURN_BLOCKING_RESEARCH,"
-        " message = 'Choose a technology', typeName = 'NOTIFICATION_CHOOSE_TECH',"
-        " dismissed = false }"
-    ),
-    "civic": (
-        "{ id = 6, blocking = EndTurnBlockingTypes.ENDTURN_BLOCKING_CIVIC,"
-        " message = 'Choose a civic', typeName = 'NOTIFICATION_CHOOSE_CIVIC',"
-        " dismissed = false }"
-    ),
-}
-BLOCKER_NAME = {"tech": "ENDTURN_BLOCKING_RESEARCH", "civic": "ENDTURN_BLOCKING_CIVIC"}
-CATEGORY = {"tech": TECH_RANGE, "civic": CIVIC_RANGE}
-ACTION_TYPE = {"tech": ActionType.RESEARCH_TECH, "civic": ActionType.RESEARCH_CIVIC}
-CHOICE = {"tech": "TECH_WRITING", "civic": "CIVIC_FOREIGN_TRADE"}
-MESSAGE = {
-    "tech": "Research requested: TECH_WRITING",
-    "civic": "Civic requested: CIVIC_FOREIGN_TRADE",
-}
-# What the choice is, with a registry (slot) and without one (the game's row index).
-SELECTOR = {True: {"tech": 0, "civic": 0}, False: {"tech": 2, "civic": 2}}
-# Everything offered once the current research is cleared, by the same two readings.
-OFFERED_WHEN_CLEARED = {
-    True: {"tech": {0, 3}, "civic": {0, 3}},
-    False: {"tech": {1, 2}, "civic": {1, 2}},
-}
-STATE_KEY = {"tech": "tech", "civic": "civic"}
-
-
-def current_of(parsed: GameStateData, kind: str) -> Any:
-    player = parsed.players[0]
-    if kind == "tech":
-        return player.current_research
-    return player.civic_status.type if player.civic_status else None
-
-
-class World:
-    """One mod runtime, its latest export and the converters, with or without a registry."""
-
-    def __init__(self, runtime: Any, registry: Any) -> None:
-        self.runtime = runtime
-        self.registry = registry
-        self.with_registry = registry is not None
-        self.state = StateConverter(research_registry=registry)
-        self.actions = ActionConverter(research_registry=registry)
-        self.refresh()
-
-    def refresh(self) -> None:
-        self.raw = h.export_state(self.runtime)
-        self.parsed = GameStateData.from_dict(self.raw)
-        self.converted = self.state.convert(self.parsed)
-        self.mask = self.actions.generate_action_mask(self.parsed.legal_actions, self.converted)
-
-    def bits(self, kind: str) -> set[int]:
-        return research_bits(self.actions, self.mask, CATEGORY[kind])
-
-    def command(self, kind: str, selector: int) -> LuaCommand:
-        index = flat(self.actions, CATEGORY[kind], selector)
-        assert self.mask[index] == 1.0, f"selector {selector} is not offered for {kind}"
-        return self.actions.convert(index, self.converted, self.parsed.legal_actions)
-
-    def apply(self) -> Any:
-        return self.runtime.eval("Civ6Stub.applyRequests()")
-
-
-@pytest.fixture(params=[True, False], ids=["registry", "no-registry"])
-def world(request: pytest.FixtureRequest) -> World:
-    registry = request.getfixturevalue("reg") if request.param else None
-    return World(h.load_mod(), registry)
-
-
-class TestStubPremises:
-    """What the end-to-end tests assume about the mod and the stub, without the feature."""
-
-    def test_default_offers_are_writing_and_foreign_trade(self) -> None:
-        state = h.export_state(h.load_mod())
-        by_name = {a["action"]: a for a in state["legal_actions"]}
-        assert by_name["research_tech"]["items"] == [2]
-        assert by_name["research_tech"]["item_names"] == ["TECH_WRITING"]
-        assert by_name["research_civic"]["items"] == [2]
-        assert by_name["research_civic"]["item_names"] == ["CIVIC_FOREIGN_TRADE"]
-
-    def test_clearing_the_current_choice_offers_two_of_each(self) -> None:
-        runtime = h.load_mod()
-        runtime.execute("Civ6Stub.players[0].tech.current = -1")
-        runtime.execute("Civ6Stub.players[0].civic.current = -1")
-        by_name = {a["action"]: a for a in h.export_state(runtime)["legal_actions"]}
-        assert by_name["research_tech"]["item_names"] == ["TECH_MINING", "TECH_WRITING"]
-        assert by_name["research_civic"]["item_names"] == [
-            "CIVIC_CRAFTSMANSHIP",
-            "CIVIC_FOREIGN_TRADE",
-        ]
-
-    @pytest.mark.parametrize("item", ["TECH_WRITING", 2])
-    def test_the_executor_takes_a_type_name_or_a_row_index(self, item: Any) -> None:
-        runtime = h.load_mod()
-        command = {"action_type": "research_tech", "item_id": item}
-        assert h.execute(runtime, command) == (True, None, "Research requested: TECH_WRITING")
-        assert runtime.eval("Civ6Stub.applyRequests()") == 1
-        parsed = GameStateData.from_dict(h.export_state(runtime))
-        assert parsed.players[0].current_research == "TECH_WRITING"
-
-    def test_the_default_blocker_is_the_one_the_tests_set(self) -> None:
-        runtime = h.load_mod()
-        runtime.execute(f"Civ6Stub.notifications[0] = {{ {BLOCKERS['tech']} }}")
-        runtime.execute("Civ6Stub.players[0].tech.current = -1")
-        success, code, _ = h.execute(runtime, END_TURN)
-        assert (success, code) == (False, "END_TURN_BLOCKED")
-        command = {"action_type": "research_tech", "item_id": "TECH_WRITING"}
-        assert h.execute(runtime, command)[0] is True
-        assert runtime.eval("Civ6Stub.applyRequests()") == 1
-        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
-
-
-class TestEndToEnd:
-    def test_exported_research_reaches_the_encoder_at_the_registry_slots(self, reg: Any) -> None:
-        runtime = h.load_mod()
-        state = GameStateData.from_dict(h.export_state(runtime))
-        conv = StateConverter(research_registry=reg)
-        vector = encode(conv, state)
-        # The stub's player has TECH_POTTERY (slot 2, row 0) and CIVIC_CODE_OF_LAWS (slot 1).
-        assert vector[70 + 2] == 1.0
-        assert vector[180 + 1] == 1.0
-        assert float(vector[70:170].sum()) == 1.0
-        assert float(vector[180:280].sum()) == 1.0
-        assert conv.research_stats == {
-            "conversions_without_registry": 0,
-            "unmapped_techs": 0,
-            "unmapped_civics": 0,
-            "slots_out_of_range": 0,
-        }
-
-    def test_without_a_registry_the_exported_research_is_not_encoded(self) -> None:
-        runtime = h.load_mod()
-        state = GameStateData.from_dict(h.export_state(runtime))
-        conv = StateConverter()
-        vector = encode(conv, state)
-        assert float(vector[70:170].sum()) == 0.0
-        assert float(vector[180:280].sum()) == 0.0
-        assert conv.research_stats["conversions_without_registry"] == 1
-
-    def test_the_mask_offers_exactly_the_default_choices(self, world: World) -> None:
-        with_registry = world.with_registry
-        assert world.bits("tech") == {SELECTOR[with_registry]["tech"]}
-        assert world.bits("civic") == {SELECTOR[with_registry]["civic"]}
-
-    def test_a_choice_goes_through_to_the_game(self, world: World) -> None:
-        with_registry = world.with_registry
-        for kind in ("tech", "civic"):
-            assert current_of(world.parsed, kind) != CHOICE[kind], "already chosen; vacuous"
-            cmd = world.command(kind, SELECTOR[with_registry][kind])
-            assert cmd.action_type == ACTION_TYPE[kind]
-            if with_registry:
-                assert cmd.item_id == CHOICE[kind]
-            else:
-                assert cmd.item_id == SELECTOR[False][kind]
-                assert type(cmd.item_id) is int
-            result = h.execute(world.runtime, cmd.to_dict())
-            assert result == (True, None, MESSAGE[kind])
-            assert world.apply() == 1
-            world.refresh()
-            assert current_of(world.parsed, kind) == CHOICE[kind]
-
-    @pytest.mark.parametrize("kind", ["tech", "civic"])
-    def test_a_blocked_turn_is_unblocked_by_the_choice(self, world: World, kind: str) -> None:
-        with_registry = world.with_registry
-        runtime = world.runtime
-        runtime.execute(f"Civ6Stub.notifications[0] = {{ {BLOCKERS[kind]} }}")
-        runtime.execute(f"Civ6Stub.players[0].{STATE_KEY[kind]}.current = -1")
-
-        success, code, message = h.execute(runtime, END_TURN)
-        assert (success, code) == (False, "END_TURN_BLOCKED")
-        assert BLOCKER_NAME[kind] in message
-
-        world.refresh()
-        assert world.parsed.end_turn_blocking == BLOCKER_NAME[kind]
-        assert world.bits(kind) == OFFERED_WHEN_CLEARED[with_registry][kind]
-
-        cmd = world.command(kind, SELECTOR[with_registry][kind])
-        if with_registry:
-            assert cmd.item_id == CHOICE[kind]
-        else:
-            assert cmd.item_id == SELECTOR[False][kind]
-        assert h.execute(runtime, cmd.to_dict()) == (True, None, MESSAGE[kind])
-        assert world.apply() == 1
-
-        world.refresh()
-        assert world.parsed.end_turn_blocking is None
-        assert current_of(world.parsed, kind) == CHOICE[kind]
-        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
