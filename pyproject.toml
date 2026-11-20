@@ -165,7 +165,7 @@ all = [
 # transitive chains (e.g. `python scripts/run_chess_training.py` triggering
 # `from alpha_zero.utils.checkpoint import ...` via env_factory -> microciv -> core).
 [tool.setuptools.package-data]
-alpha_zero = ["py.typed"]
+alpha_zero = ["py.typed", "rules/data/*.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["."]
