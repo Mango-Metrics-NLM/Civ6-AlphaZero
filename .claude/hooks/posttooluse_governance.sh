@@ -83,6 +83,9 @@ case "$rel" in
   .claude/skills/*|.agents/skills/*)
     "$PY" scripts/validate_skills.py --path "$rel" --quiet || exit 2
     ;;
+  mod/AlphaZeroAI/AlphaZeroAI.modinfo|mod/AlphaZeroAI/Scripts/*.lua)
+    "$PY" scripts/build_lua_bundle.py --check || exit 2
+    ;;
   CLAUDE.md|README.md|CONTRIBUTING.md|CHANGELOG.md|ROADMAP.md|CITATION.cff|docs/*|pyproject.toml|alpha_zero/__init__.py|setup.py)
     # Documentation drift is otherwise caught only by CI, so it lives in the
     # tree for a whole session. This validator has no --path mode (its checks

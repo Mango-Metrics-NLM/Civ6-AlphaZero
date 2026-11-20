@@ -55,16 +55,22 @@ HASH_SEEDS = ("0", "1", "42", "12345", "99999")
 VALIDATOR_INVOCATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("validate_skills.py", ()),
     ("validate_skills.py", ("--json",)),
+    ("validate_skills.py", ("--verbose",)),
     ("validate_agents.py", ()),
     ("validate_agents.py", ("--json",)),
+    ("validate_agents.py", ("--verbose",)),
     ("validate_claude_agents.py", ()),
     ("validate_claude_agents.py", ("--json",)),
+    ("validate_claude_agents.py", ("--verbose",)),
     ("validate_kb.py", ("--no-git",)),
     ("validate_kb.py", ("--no-git", "--json")),
+    ("validate_kb.py", ("--no-git", "--verbose")),
     ("validate_openspec.py", ()),
     ("validate_openspec.py", ("--json",)),
+    ("validate_openspec.py", ("--verbose",)),
     ("check_doc_sync.py", ()),
     ("check_doc_sync.py", ("--json",)),
+    ("check_doc_sync.py", ("--verbose",)),
 )
 
 
@@ -131,6 +137,13 @@ def test_validators_are_deterministic_across_hash_seeds(
     if "--json" in extra_args:
         parsed = json.loads(results[0][1])
         assert isinstance(parsed, (list, dict))
+        assert json.dumps(parsed, indent=2, sort_keys=True) == results[0][1].strip(), (
+            f"{script_name} --json output is not canonically sorted"
+        )
+    if "--verbose" in extra_args:
+        assert results[0][0] == 0 and bool(results[0][2].strip()), (
+            f"{script_name} --verbose failed or emitted empty stderr: {results[0]}"
+        )
 
 
 def test_negative_control_detects_a_nondeterministic_validator(tmp_path: Path) -> None:

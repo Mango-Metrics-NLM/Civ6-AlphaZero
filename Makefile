@@ -97,7 +97,8 @@ help:
 	@echo "  make verify-registration  A1 registration gate: digest, log row, constants, run cards"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
-	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
+	@echo "  make validate          Run governance validators (6 validators + Lua bundle sync)"
+	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -361,6 +362,10 @@ test:
 # passing with the rule unenforced is what the 2026-09-04 audit found (G7).
 # `git fetch --unshallow` once, or run `scripts/validate_kb.py` without the flag
 # for the K1-K6 subset.
+.PHONY: check-lua-bundle
+check-lua-bundle:
+	$(PYTHON) scripts/build_lua_bundle.py --check
+
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
@@ -369,6 +374,7 @@ validate:
 	$(PYTHON) scripts/validate_agents.py
 	$(PYTHON) scripts/validate_claude_agents.py
 	$(PYTHON) scripts/check_doc_sync.py
+	$(PYTHON) scripts/build_lua_bundle.py --check
 
 # The A1 registration gate (.claude/skills/a1-reregister): section 7.1's digest, the
 # registration log's last row and REGISTRATION_DIGEST agree; the run cards equal the

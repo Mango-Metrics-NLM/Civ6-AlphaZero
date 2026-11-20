@@ -1,24 +1,23 @@
 {
-    "last_session_id": "31c93d11-adb3-4751-9d30-11395c290068",
-    "last_timestamp": "2026-11-19T23:30:00Z",
-    "current_focus": "PR #145 (fix/post-merge-gpu-e2e-aqa-hardening) merged with origin/claude/civ6-alphazero-implementation-vMnun (690fe16); all Copilot review findings and CI K6 failure resolved.",
-    "resume_pointers": {
-        "current_task": "Verify PR #145 CI checks (Governance Gates, Test Python 3.11/3.12/3.13, Coverage Report) pass and hand off to maintainer for merge review.",
-        "blocked_on": [
-            "maintainer: review and merge PR #145 (fix/post-merge-gpu-e2e-aqa-hardening -> claude/civ6-alphazero-implementation-vMnun)",
-            "maintainer: formal single-use python scripts/run_card.py configs/run_cards/t0b.yaml --probe and T0b/A1/A1-R card executions",
-            "maintainer: branch cut-over (scripts/maintainer/branch_cutover.sh), civ6az-agent machine user, and W&B key rotation"
-        ],
-        "next_steps": [
-            "Confirm PR #145 CI is green across Python 3.11, 3.12, 3.13, Governance Gates, and Coverage Report",
-            "Maintainer runs single-use T0b card and fills docs/EVALUATION.md section 7.1 slots before A1/A1-R"
-        ]
-    },
-    "context_files": [
-        "kb/pr-drafts/20261118-gpu-e2e-harness-hardening.md",
-        "kb/specs/20261111-local-first-and-branching-plan.md",
-        "docs/architecture/C4_ARCHITECTURE.md",
-        "CHANGELOG.md",
-        "CLAUDE.md"
+  "context_files": [
+    "kb/specs/20261119-game-mechanics-plan.md",
+    "kb/pr-drafts/20261120-post-merge-gm-e2e-and-prepr-hardening.md",
+    "docs/architecture/C4_ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "ROADMAP.md",
+    "CLAUDE.md"
+  ],
+  "current_focus": "PR opened on fix/post-merge-gm-full-e2e-gpu-aqa targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
+  "last_session_id": "20261120-pre-pr-post-merge-gm",
+  "last_timestamp": "2026-11-20T22:50:00Z",
+  "resume_pointers": {
+    "blocked_on": [],
+    "current_task": "Monitor CI and maintainer review for fix/post-merge-gm-full-e2e-gpu-aqa PR targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
+    "next_steps": [
+      "Maintainer reviews PR targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
+      "Follow-up PR for pre-existing upstream GM-B4 Windows portability issues (JsonEncoder.lua [%c] UTF-8 handling + test_bridge_gameinfo_capture*.py POSIX/CRLF/symlink guards)",
+      "Run live Civ6 FireTuner smoke checklist (docs/LIVE_CIV6.md) when game client is attached",
+      "Execute T0b / A1 run cards from a clean tagged commit when ready"
     ]
+  }
 }

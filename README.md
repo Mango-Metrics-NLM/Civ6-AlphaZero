@@ -32,8 +32,8 @@ than rounding up.
 | Local training loop (CPU) | Runs end to end. **No committed run demonstrates learning**; the only run predates the search fixes and ends below parity against random | [`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md) (pre-fix) |
 | Evaluation and promotion | Score-rate statistics with ternary intervals are the single source of truth; the deployed promotion default still cannot promote at the measured 73.5% draw rate | [`docs/EVALUATION.md`](docs/EVALUATION.md), [`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md) |
 | Reproducibility | A seed determines the whole local run; every search owns its RNG | [`docs/evidence/seeded_probe_reproducibility/`](docs/evidence/seeded_probe_reproducibility/README.md) |
-| Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; self-play worker not yet seeded; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
-| Live Civilization VI bridge | Demo-grade: command delivery verified headless (four end-turn commands on random weights, 2026-07-12); turn-cycle stall open | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
+| Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; Python self-play worker API seeded (`seed=`), CLI `--seed` not yet exposed; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
+| Live Civilization VI bridge | Demo-grade: command delivery verified headless (four end-turn commands on random weights, 2026-07-12); turn-cycle stall open. Rules kernel (`alpha_zero/rules/`) + schema-2 Lua exporter / `lupa` harness / research wiring / GameInfo capture / `--mcts` refusal (GM-B0..B5) landed off the play path (`tests/unit/test_lua_harness.py`, unverified in a live game; live search translator GM-B6 open) | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
 | MuZero, N-player, PBT, fog of war, hierarchical planning | Built; unvalidated by any committed artifact | [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md) |
 | Hex-crystalline encoder | Published on the Hub; its head-to-head result is superseded (pre-fix, seed overlap) | [`docs/model_cards/hexcrystal_encoder.md`](docs/model_cards/hexcrystal_encoder.md) |
 | Hugging Face Spaces, transformer/MuZero Hub repos, Elo dataset | Scaffold / planned, not published | `spaces/`, [`docs/HF_PUBLISHING.md`](docs/HF_PUBLISHING.md) |
@@ -97,8 +97,9 @@ Optional extras (individually, or together with `.[all]`):
 | `tuning` | Optuna hyperparameter search |
 | `jax` | JAX backend (optional) |
 | `chess` | Chess benchmarking harness (its sdist does not build on current Debian setuptools, so it is kept out of `dev`) |
+| `lua` | Test-only `lupa` Lua 5.1 runtime for `mod/AlphaZeroAI/` harness tests (`make verify` and CI set `CIV6AZ_REQUIRE_LUA=1`) |
 | `eval` | Advisor output-contract harness, installed from a git URL; not part of `all` |
-| `all` | Every extra above except `eval` |
+| `all` | Every extra above except `eval` and test-only `lua` |
 
 There are no console scripts; run everything with `python -m`.
 
@@ -166,8 +167,9 @@ opponent, replay sampling, batch order and network initialisation. Streams are
 derived by name from one seed (`alpha_zero/utils/seeding.py`), so self-play varies
 with the iteration while evaluation stays on a fixed held-out set. Two runs at one
 seed are identical (`tests/regression/test_training_determinism_regression.py`).
-The deployed cloud workers are not yet seeded; that change touches distributed
-coordination and is tracked separately.
+The deployed self-play worker's Python API (`run_selfplay`, `run_muzero_selfplay`,
+`run_batch_selfplay`) is deterministically seeded when passed `seed=`, while its
+standalone CLI (`parse_args`) does not yet expose `--seed`.
 
 On a GPU, seeding is not enough: CUDA kernels are non-deterministic by default. A seeded
 run on a CUDA device therefore enforces deterministic algorithms, and an operation with no
@@ -204,6 +206,8 @@ python -m alpha_zero.civ6_local --mode civ6              # drive the game with t
 ## Development and quality gates
 
 ```bash
+make install-lua         # install dev extras plus the lupa Lua 5.1 harness runtime
+make check-lua-bundle    # verify AlphaZeroMain.lua matches its Lua source modules
 make verify-fast         # lint, types, regression and governance gates — the inner loop
 make verify              # every CI gate in one pass — run before opening a PR
 make test-all            # coverage, mirroring CI's coverage job (gate: 85%)

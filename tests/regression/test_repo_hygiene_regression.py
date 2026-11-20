@@ -235,8 +235,11 @@ class TestSecretScanningConfig:
             ".venv/lib/python3.11/site-packages/pkg.py",
             ".venv-scan/pyvenv.cfg",
             ".venv2/Scripts/activate",
+            "venv-dev/pyvenv.cfg",
             ".claude/worktrees/topic/alpha_zero/core/civ6_network.py",
             ".tools/gitleaks-8.30.0",
+            "mlartifacts/0/model.bin",
+            "eval_results/run.json",
         ):
             assert any(rx.search(generated) for rx in compiled), (
                 f"{generated} should be excluded by .gitleaks.toml allowlist"
@@ -245,3 +248,24 @@ class TestSecretScanningConfig:
             assert not any(rx.search(sensitive) for rx in compiled), (
                 f"{sensitive} must NEVER be allowlisted in .gitleaks.toml"
             )
+
+    def test_dockerignore_excludes_local_mlflow_and_eval_without_hiding_rules_data(self) -> None:
+        """Local dev tracking/eval artifacts stay out of Docker context; rules data stays in."""
+        dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+        entries = {
+            ln.strip()
+            for ln in dockerignore.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        }
+        for required in (
+            "mlruns/",
+            "mlflow.db",
+            "mlflow.db-shm",
+            "mlflow.db-wal",
+            "mlartifacts/",
+            "eval_results/",
+        ):
+            assert required in entries, f"{required!r} missing from .dockerignore"
+        assert not any(
+            pat in entries for pat in ("alpha_zero/", "alpha_zero/rules/", "alpha_zero/rules/data/")
+        ), ".dockerignore must not exclude packaged rules YAML data"

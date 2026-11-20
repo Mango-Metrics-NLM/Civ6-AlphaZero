@@ -364,3 +364,57 @@ def test_resolve_python_unset_virtual_env_prefers_path_and_set_virtual_env_wins(
     active_resolved = active_proc.stdout.strip()
     assert active_resolved.endswith("/active_venv/bin/python")
     assert _normalize_shell_path(active_resolved) == active_py.resolve()
+
+
+def test_posttooluse_governance_routes_lua_mod_edits_to_bundle_check(tmp_path: Path) -> None:
+    """Edits under ``mod/AlphaZeroAI/Scripts/*.lua`` gate on ``build_lua_bundle.py --check``."""
+    proj_dir = tmp_path / "proj"
+    venv_bin = proj_dir / ".venv" / "bin"
+    scripts_dir = proj_dir / "scripts"
+    lua_file = proj_dir / "mod" / "AlphaZeroAI" / "Scripts" / "Main.lua"
+    for d in (venv_bin, scripts_dir, lua_file.parent):
+        d.mkdir(parents=True)
+
+    real_py = Path(sys.executable).as_posix()
+    _write_shell_fixture(venv_bin / "python", _exec_python_shim(real_py))
+    lua_file.write_text("-- stub\n", encoding="utf-8", newline="\n")
+
+    bundle_checker = scripts_dir / "build_lua_bundle.py"
+    env = {
+        "PATH": os.pathsep.join(_minimal_hook_bin_dirs(tmp_path)),
+        "CLAUDE_PROJECT_DIR": proj_dir.as_posix(),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        "SystemRoot": os.environ.get("SystemRoot", ""),
+    }
+    payload = json.dumps({"tool_input": {"file_path": lua_file.as_posix()}})
+
+    bundle_checker.write_text(
+        "import sys; sys.exit(0 if '--check' in sys.argv else 1)\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    ok_proc = subprocess.run(
+        [BASH, (_HOOKS / "posttooluse_governance.sh").as_posix()],
+        cwd=proj_dir,
+        input=payload,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert ok_proc.returncode == 0, ok_proc.stderr
+
+    # Negative control: out-of-date bundle check exits 1 -> hook must exit 2.
+    bundle_checker.write_text("import sys; sys.exit(1)\n", encoding="utf-8", newline="\n")
+    bad_proc = subprocess.run(
+        [BASH, (_HOOKS / "posttooluse_governance.sh").as_posix()],
+        cwd=proj_dir,
+        input=payload,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bad_proc.returncode == 2, (
+        "posttooluse_governance.sh failed to block on failing build_lua_bundle.py --check"
+    )

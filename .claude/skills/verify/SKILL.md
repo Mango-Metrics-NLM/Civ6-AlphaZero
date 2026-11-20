@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Reproduce every CI gate locally in one pass — lint, format, types, the four test suites, security, governance, and the four governance validators. Use before any handoff, before opening or updating a PR, and after any change that could affect CI. Wraps `make verify`.
+description: Reproduce every CI gate locally in one pass — lint, format, types, all CI test suites (with CIV6AZ_REQUIRE_LUA=1), security, cloud coverage floor, governance, all six validators plus Lua bundle sync, and StrategyAdvisor offline eval. Use before any handoff, before opening or updating a PR, and after any change that could affect CI. Wraps `make verify`.
 allowed-tools: Bash, Read
 ---
 
@@ -28,10 +28,14 @@ flags (`--strict` locally, plain in CI), and `validate_kb` (with and without
 make verify
 ```
 
-This runs, in CI's order: `lint-check` (ruff check + format --check),
-`typecheck`, the four test suites CI runs with CI's marker filters,
-`test-security`, `test-governance`, and `validate` (openspec, kb, skills,
-doc-sync).
+This runs, in CI's order (with `CIV6AZ_REQUIRE_LUA=1` and `OMP_NUM_THREADS ?= 2`):
+`lint-check` (ruff check + format --check), `typecheck` (`mypy alpha_zero/`), all CI test
+suites (`unit`, `sanity`, `regression`, `integration`, `smoke`/`inference`, `scripts`, `e2e`,
+`cloud/unit`, `cloud/smoke`), `test-security` (security pytest + high/high `bandit`),
+`security-secrets` (`gitleaks`), `test-governance`, `validate` (all six governance
+validators — `openspec`, `kb --git`, `skills`, `agents`, `claude-agents`, `doc-sync` —
+plus `check-lua-bundle`), `test-all` (85% global coverage gate), `test-cloud-coverage`
+(per-package cloud floor check), and `eval-llm` (StrategyAdvisor offline output-contract gate).
 
 ### 2. If the environment is suspect, check it first
 
@@ -48,9 +52,11 @@ interpreter selection automatically.
 
 ### 3. What it covers
 
-`make verify` runs lint, format, types, CI's four test suites, security
-(pytest **and** the bandit scan CI runs), governance, the four validators,
-coverage (`test-all`, mirroring CI's gate), and the StrategyAdvisor eval harness (`make eval-llm`).
+`make verify` runs lint, format, types, all CI test suites (`test`, with `CIV6AZ_REQUIRE_LUA=1`
+via `make install-lua`), security (pytest **and** the high/high bandit scan CI runs), secret
+scanning (`security-secrets`), governance (`test-governance`), all six validators plus Lua bundle
+sync (`validate`), global coverage (`test-all`, 85% gate), cloud-package coverage floor check
+(`test-cloud-coverage`), and the StrategyAdvisor offline eval check (`make eval-llm`).
 
 It did not always. It shipped omitting coverage, bandit and `eval-llm` while its
 own echo claimed "all CI gates reproduced locally" — the exact drift this target

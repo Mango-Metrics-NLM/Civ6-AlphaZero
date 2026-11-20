@@ -77,7 +77,7 @@ flowchart TB
 
     subgraph VertexAI["Vertex AI — one image: dockerfiles/Dockerfile.vertex"]
         Entry["Container entrypoint\nalpha_zero/cloud/gcp/entrypoint.py\n--mode routes to one worker\n(orchestrator mode is refused here)"]:::infra
-        SPWorker["--mode=selfplay\ncloud/gcp/selfplay_worker.py\n(Gumbel / BatchGumbel MCTS + MicroCiv)"]:::worker
+        SPWorker["--mode=selfplay\ncloud/gcp/selfplay_worker.py\n(Gumbel / BatchGumbel / MuZero MCTS\nSeedStream.SELF_PLAY_SEARCH)"]:::worker
         TrainWorker["--mode=training\ncloud/gcp/training_worker.py\n(gradient updates, champion promotion)"]:::worker
         TournWorker["--mode=tournament\ncloud/gcp/tournament_worker.py\n(round-robin ELO evaluation)"]:::worker
         EvalWorker["--mode=evaluation\ncloud/gcp/evaluation_worker.py\n(arena.py scoring vs incumbent)"]:::worker
@@ -87,7 +87,9 @@ flowchart TB
         VOrch["Vertex Orchestrator\ncloud/gcp/vertex_orchestrator.py\n(job sequencing + preemption recovery)\nruns LOCALLY, not in the image"]:::infra
         MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator"]:::new
         WebUI["Web UI\nalpha_zero/web/\n(FastAPI + WebSocket game UI)"]:::worker
-        Bridge["Civ6 Bridge\nalpha_zero/bridge/\n(file IPC or FireTuner socket)"]:::worker
+        RulesKernel["Game Rules Kernel (off play path)\nalpha_zero/rules/\n(validated, sha256-pinned rule sets)"]:::new
+        Bridge["Civ6 Bridge (GM-B0..B5)\nalpha_zero/bridge/\n(TechRegistry · GameInfo · --mcts refusal)"]:::worker
+        LuaMod["Civ6 Mod Bundle & Harness\nmod/AlphaZeroAI/ (AlphaZeroMain.lua)\nlupa Lua 5.1 fixture harness"]:::new
         TrainLoop["Local training loop\nalpha_zero/training_civ6.py\n(--seed → utils/seeding.py streams)"]:::worker
     end
 
@@ -107,6 +109,8 @@ flowchart TB
     TrainWorker -->|"log training loss"| MonLayer
     MonLayer -->|"persist experiments"| MLiteDB
 
+    RulesKernel -->|"research slots"| Bridge
+    LuaMod <-->|"schema-2 state / commands"| Bridge
     Bridge -->|"game state / actions"| WebUI
 ```
 
@@ -114,14 +118,15 @@ flowchart TB
 
 | Unit | `--mode` | Technology | Hosts |
 |------|----------|-----------|-------|
-| Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel or BatchGumbel MCTS over MicroCiv |
+| Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel, BatchGumbel, or MuZero MCTS over MicroCiv (`SeedStream.SELF_PLAY_SEARCH` when `seed` is set) |
 | Training Worker | `training` | Python / PyTorch / Docker (Vertex) | SGD updates, weight promotion |
-| Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent |
+| Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent (`SeedStream.ARENA_SEARCH`) |
 | Tournament Worker | `tournament` | Python (Vertex) | Round-robin, ELO snapshots |
 | Vertex Orchestrator | — (local) | Python / google-cloud-aiplatform | Job sequencing, preemption recovery |
 | MLflow Monitoring Layer | — (local) | Python / MLflow / SQLite | Experiment tracking (sole tracker) |
 | Web UI | — (local) | FastAPI + WebSocket | Human-vs-AI browser interface |
-| Civ6 Bridge | — (local) | Python / Lua mod | File IPC or headless FireTuner socket |
+| Game Rules Kernel | — (local/leaf) | Python / PyYAML | Frozen integer-only rule sets, sha256 canonical hashing, pacing & GameInfo import (`alpha_zero/rules/`) |
+| Civ6 Bridge & Lua Mod | — (local/CI) | Python / Lua 5.1 (`lupa` test harness) | File IPC or headless FireTuner socket; research registry, GameInfo capture, `--mcts` refusal (pending GM-B6), schema-2 exporter, generated `AlphaZeroMain.lua` bundle |
 | Local training loop | — (local) | Python / PyTorch | Single-process self-play → train → evaluate; `--seed` determines the whole run |
 
 **Shared search internals.** The self-play worker, the arena inside the evaluation worker and
@@ -525,13 +530,59 @@ reported `REPRODUCED`, while formal single-use T0b/A1 run-card execution via
 
 **Governance & AST Debt Auditing.** Static governance and hygiene checks (`scripts/validate_*.py`,
 `scripts/check_doc_sync.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
-canonical sorted `--json` / `--verbose` reporting and single-source tree discovery
-(`audit_import_graph.iter_python_files`, pruning PEP 405 virtual environments via `pyvenv.cfg` and
-linked git worktrees) so measurements remain deterministic and free of virtualenv/worktree noise.
+canonical sorted `--json` (`sort_keys=True`) and `--verbose` structured stderr logging across all
+six governance validators, plus single-source tree discovery (`audit_import_graph.iter_python_files`,
+pruning PEP 405 virtual environments via `pyvenv.cfg` and linked git worktrees). Lua mod bundle
+parity (`scripts/build_lua_bundle.py --check`) is enforced across `make validate`, pre-commit,
+and `posttooluse_governance.sh`.
 
 ---
 
-*Last revised: 2026-11-18 — corrected `log_evaluation_result()` to 15 metrics (matching
+## Level 3 — Component Diagram (Game Rules Kernel & Live Bridge Research Wiring)
+
+> **Scope:** `alpha_zero/rules/` (GM-K1/K2) and `alpha_zero/bridge/` + `mod/AlphaZeroAI/` (GM-B0..GM-B5),
+> all kept outside `scripts/release_play_path.txt` so pre-v2.1.0 release evidence stays valid.
+
+```mermaid
+flowchart LR
+    classDef leaf fill:#e8f4ea,stroke:#2d6a4f,color:#1b4332
+    classDef bridge fill:#e7eefc,stroke:#1d4ed8,color:#1e3a8a
+    classDef lua fill:#fdf3e3,stroke:#b45309,color:#7c2d12
+    classDef test fill:#f3f4f6,stroke:#6b7280,color:#374151
+
+    subgraph Rules["alpha_zero/rules/ (leaf package)"]
+        Yaml["science_v1_draft.yaml\nand external RuleSet YAML"]:::leaf
+        Loader["loader.py + validate.py\nstrict YAML + canonical sha256"]:::leaf
+        Registry["registry.py + pacing.py + gameinfo.py\nvalidate | hash | pace | import-gameinfo"]:::leaf
+    end
+
+    subgraph BridgePy["alpha_zero/bridge/ (18 modules)"]
+        TechReg["tech_registry.py + gameinfo_capture.py\nfrom_ruleset() + GameInfo snapshot CLI"]:::bridge
+        Converters["state_converter.py + action_converter.py\nencoder tech/civic slots + offer mask"]:::bridge
+        ProxyRefusal["microciv_proxy.py + mcts_policy.py\nMicroCiv proxy (--mcts refused until GM-B6)"]:::bridge
+        Proto["protocol.py + tuner_socket_bridge.py\nschema_version 2 + end_turn_blocking"]:::bridge
+    end
+
+    subgraph ModLua["mod/AlphaZeroAI/Scripts/"]
+        SrcLua["Config / JsonEncoder / StateExporter /\nGameInfoExporter / ActionExecutor / Main.lua"]:::lua
+        Bundler["scripts/build_lua_bundle.py --check\nwrites AlphaZeroMain.lua"]:::lua
+        Harness["tests/fixtures/lua_harness.py\nlupa Lua 5.1 sandbox + civ6_stub.lua"]:::test
+    end
+
+    Yaml --> Loader --> Registry --> TechReg
+    TechReg -->|"fingerprint + slot map"| Converters
+    Converters <-->|"GameStateData / LuaCommand"| Proto
+    Converters -->|"scaled _board_size state"| ProxyRefusal
+    SrcLua --> Bundler -->|"AlphaZeroMain.lua"| Harness
+    Proto <-->|"TCP 4318 / Lua.log"| Harness
+```
+
+---
+
+*Last revised: 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
+component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified
+all six governance validators on sorted `--json` / `--verbose` plus `check-lua-bundle` wiring.
+Previously 2026-11-18 — corrected `log_evaluation_result()` to 15 metrics (matching
 `alpha_zero/monitoring/mlflow_logger.py`), documented live dual-GPU `check_determinism.py`
 verification alongside single-use T0b/A1 pending status, and recorded shared PEP 405/worktree
 pruning and deterministic governance validator contracts. Previously 2026-11-14 — run cards, the
@@ -542,4 +593,4 @@ training loop added to the container and component views. Previously 2026-09-02:
 dead-code removal (44 modules / 21,903 lines; the four per-role Dockerfiles and
 `docker-compose.yml` with them), W&B removed from the context diagram, one-image container
 model made explicit.*
-*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition*
+*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition + GM Rules Kernel & Bridge Parity*
