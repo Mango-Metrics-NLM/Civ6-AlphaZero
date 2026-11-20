@@ -21,6 +21,7 @@ import io
 import json
 import os
 import pathlib
+import tracemalloc
 import zlib
 from collections.abc import Callable
 from pathlib import Path
@@ -619,3 +620,51 @@ class TestTheStateReaderIgnoresTheNewLines:
             }
         )
         assert with_lines[2] == without[2] == {}
+
+
+class TestCountsFromTheLogCostNothing:
+    """A count in a log line is text someone wrote; it must not size an allocation."""
+
+    #: Large enough that walking 1..n would show (hundreds of megabytes), small
+    #: enough that the test only wastes time, not the machine, if it regresses.
+    HUGE = 5_000_000
+
+    def test_a_huge_claimed_total_is_unfinished_and_allocates_nothing(self, gc: ModuleType) -> None:
+        text = (
+            g.single_line(OLDER)
+            + f"AZ_GAMEINFO_CHUNK:1/{self.HUGE}:x\n"
+            + g.end_line(self.HUGE, zlib.adler32(b"x"))
+        )
+        tracemalloc.start()
+        try:
+            result = _scan(gc, text)
+            _current, peak = tracemalloc.get_traced_memory()
+        finally:
+            tracemalloc.stop()
+        assert result == (OLDER, 1, True)
+        assert peak < 2_000_000, f"scanning three short lines peaked at {peak} bytes"
+
+    @pytest.mark.parametrize(
+        "line",
+        [
+            "AZ_GAMEINFO_CHUNK:" + "9" * 5000 + "/3:x",
+            "AZ_GAMEINFO_CHUNK:1/" + "9" * 5000 + ":x",
+            "AZ_GAMEINFO_END:" + "9" * 5000 + ":1",
+            "AZ_GAMEINFO_END:1:" + "9" * 5000,
+        ],
+        ids=["piece-number", "piece-total", "end-total", "end-checksum"],
+    )
+    def test_a_run_of_thousands_of_digits_is_not_a_number(self, gc: ModuleType, line: str) -> None:
+        # Python raises ValueError converting a decimal string longer than 4300 digits.
+        assert _scan(gc, g.single_line(OLDER) + line + "\n")[:2] == (OLDER, 1)
+
+    def test_a_ten_digit_checksum_is_still_read(self, gc: ModuleType) -> None:
+        # Adler-32 goes up to 4294967295: ten digits must fit.
+        document = None
+        for pad in range(400):
+            candidate = {**DOC, "Units": [{"UnitType": "UNIT_" + "Z" * (pad + 1), "Cost": 1}]}
+            if g.adler32(g.compact_text(candidate)) >= 1_000_000_000:
+                document = candidate
+                break
+        assert document is not None, "no ten-digit checksum found among the candidates"
+        assert _scan(gc, "".join(g.chunk_lines(document, 3))) == (document, 1, False)
