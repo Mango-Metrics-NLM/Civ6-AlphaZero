@@ -5,7 +5,15 @@
 # printf implementation could).
 set -uo pipefail
 
-python3 - <<'PY' 2>/dev/null || printf '{}'
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_python.sh
+. "${HOOK_DIR}/_resolve_python.sh"
+
+cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || { printf '{}'; exit 0; }
+PY="$(resolve_python "${CLAUDE_PROJECT_DIR:-.}" || true)"
+[ -n "$PY" ] || { printf '{}'; exit 0; }
+
+"$PY" - <<'PY' 2>/dev/null || printf '{}'
 import json
 import pathlib
 import subprocess

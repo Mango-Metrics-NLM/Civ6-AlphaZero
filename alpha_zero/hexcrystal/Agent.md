@@ -58,12 +58,62 @@ There is **no** axial-coordinate representation, **no** ring-distance positional
 
 ---
 
+---
+
+## Key Files
+
+| File | Responsibility |
+|------|---------------|
+| `hex_conv.py` | `HexAdjacency`, `HexConvolution`, `HexConvBlock`, `HexConvConfig` |
+| `crystalline_layers.py` | `CrystallineLatticeLayer`, `CrystallineLatticeConfig`, `SymmetryType` |
+| `hex_encoder.py` | `HexSpatialEncoder`, `SpatialToTokens`, `HexEncoderConfig`, `create_hex_encoder` |
+| `patch_embed.py` | Conventional ViT `PatchEmbed` encoder |
+| `encoder_registry.py` | `EncoderType`, `register_encoder`, `create_spatial_encoder`, `get_registered_encoders` |
+| `hub_mixin.py` | Optional Hugging Face Hub mixin |
+
+---
+
+## Skills
+
+- **Hex Convolution Design**: Pre-compute even-q offset neighbour gather indices cleanly in PyTorch
+- **Dependency Isolation**: Keep every core file strictly free of `numpy`, `gymnasium`, and sibling `alpha_zero` imports
+- **Checkpoint Compatibility**: Preserve `self.patch_embed` state-dict key naming and token-count alignment
+
+---
+
+## Sub-Agents
+
+| Agent | Role | When to Invoke |
+|-------|------|----------------|
+| **Isolation Checker** | Verify no non-torch imports leak into `hexcrystal` | Adding dependencies or helpers |
+| **Registry Auditor** | Validate encoder registry & Hub config round-trips | Adding new spatial encoder variants |
+
+---
+
+## Tools
+
+| Tool | Purpose |
+|------|---------|
+| `pytest tests/unit/test_hexcrystal_isolation.py -v` | Verify torch + stdlib isolation contract |
+| `pytest tests/unit/test_hexcrystal_state_dict_keys.py -v` | Verify checkpoint key stability |
+| `pytest tests/unit/test_hex_encoder.py -v` | Verify encoder shape and PatchEmbed parity |
+
+---
+
 ## Invariants
 
 1. **Weight-key stability.** The consuming network assigns the encoder to `self.patch_embed` for *both* encoder types, so checkpoint keys are `encoder.patch_embed.*` regardless. Never rename that attribute — every existing checkpoint depends on it. Pinned by `tests/unit/test_hexcrystal_state_dict_keys.py`.
 2. **Token-count coupling.** `create_hex_encoder` derives `num_output_tokens = (spatial_size // patch_size) ** 2` to match `PatchEmbed.num_patches`, because the transformer sizes its position embedding from it. Changing one side breaks the other.
 3. **No hidden dependencies.** See the dependency contract above.
 4. **Unknown kwargs are dropped, not errors.** `HexSpatialEncoder` filters kwargs against its config fields so registry callers can pass a superset.
+
+---
+
+## Dependencies
+
+- **Internal**: None (torch + stdlib only; `alpha_zero.core` maintains backwards-compatibility re-export shims)
+- **External**: `torch` (required), `huggingface_hub` (optional for `hub_mixin.py`)
+- **Consumed by**: `alpha_zero.core.transformer_network`, `alpha_zero.hub`
 
 ---
 
