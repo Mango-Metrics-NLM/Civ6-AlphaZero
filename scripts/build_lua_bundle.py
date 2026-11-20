@@ -57,6 +57,8 @@ _LUA_SUFFIX = ".lua"
 _XML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _FILES_BLOCK = re.compile(r"<Files\s*>(.*?)</Files\s*>", re.DOTALL)
 _FILE_ENTRY = re.compile(r"<File\s*>(.*?)</File\s*>", re.DOTALL)
+_FILE_OPENING = re.compile(r"<File\b")
+_PLAIN_PATH = re.compile(r"[A-Za-z0-9_.\\/ -]+")
 _BOM = "\ufeff"
 
 
@@ -105,7 +107,8 @@ def module_order(mod_dir: Path) -> list[str]:
     bundle itself is listed there too and is left out. Every other ``.lua`` entry
     must be spelled ``Scripts/<name>.lua`` with forward slashes: an entry in any
     other spelling is refused, never skipped, because a skipped module would
-    silently not ship. A name listed twice is an error: it would be bundled twice.
+    silently not ship. An entry with attributes, CDATA or any markup is refused for
+    the same reason. A name listed twice is an error: it would be bundled twice.
     """
     modinfo = find_modinfo(mod_dir)
     blocks = _FILES_BLOCK.findall(_XML_COMMENT.sub("", _read(modinfo)))
@@ -113,10 +116,18 @@ def module_order(mod_dir: Path) -> list[str]:
         raise BundleError(
             f"{modinfo.name} must hold exactly one <Files> block, found {len(blocks)}"
         )
+    entries = _FILE_ENTRY.findall(blocks[0])
+    if len(entries) != len(_FILE_OPENING.findall(blocks[0])):
+        raise BundleError(
+            f"{modinfo.name} has a <File> entry this script cannot read (attributes, or no "
+            "closing tag); write it as <File>Scripts/Name.lua</File>"
+        )
     prefix = f"{SCRIPTS_SUBDIR}/"
     names = []
-    for raw in _FILE_ENTRY.findall(blocks[0]):
+    for raw in entries:
         listed = raw.strip()
+        if not _PLAIN_PATH.fullmatch(listed):
+            raise BundleError(f"{modinfo.name} lists {listed!r}, which is not a plain path")
         if not listed.lower().endswith(_LUA_SUFFIX):
             continue
         if (

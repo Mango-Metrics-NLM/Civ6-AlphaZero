@@ -430,3 +430,173 @@ def test_commented_out_modinfo_entry_is_not_bundled(mod_copy: Path) -> None:
     info.write_text(text, encoding="utf-8")
     code = bb.main(["--check", "--mod-dir", str(mod_copy)])
     assert code == 0, "a commented-out modinfo entry must not change the bundle"
+
+
+# --------------------------------------------------------------------------
+# Modinfo parsing (<Files> block, comments, entry spelling)
+# --------------------------------------------------------------------------
+
+
+def _edit_modinfo(mod: Path, old: str, new: str) -> None:
+    info = _modinfo(mod)
+    text = info.read_text(encoding="utf-8")
+    assert old in text, f"fixture drift: {old!r} not in the modinfo"
+    info.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+
+_LOGGER = "<File>Scripts/Logger.lua</File>"
+
+
+def _refused(mod: Path, capsys: pytest.CaptureFixture[str], needle: str) -> None:
+    before = _cbundle(mod).read_bytes()
+    for argv in (["--check"], []):
+        assert bb.main([*argv, "--mod-dir", str(mod)]) == 2
+        assert needle in capsys.readouterr().err
+    assert _cbundle(mod).read_bytes() == before, "a refused layout must not rewrite the bundle"
+
+
+def test_no_files_block_exits_2(mod_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    info = _modinfo(mod_copy)
+    text = info.read_text(encoding="utf-8")
+    text = re.sub(r"</?Files>", "", text)
+    info.write_text(text, encoding="utf-8")
+    _refused(mod_copy, capsys, "<Files>")
+
+
+def test_two_files_blocks_exit_2(mod_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _edit_modinfo(
+        mod_copy, "</Files>", "</Files>\n<Files>\n<File>Scripts/Extra.lua</File>\n</Files>"
+    )
+    _refused(mod_copy, capsys, "<Files>")
+
+
+def test_self_closing_files_block_exits_2(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    info = _modinfo(mod_copy)
+    text = re.sub(r"<Files>.*</Files>", "<Files/>", info.read_text(encoding="utf-8"), flags=re.S)
+    info.write_text(text, encoding="utf-8")
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 2
+    capsys.readouterr()
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    [
+        "Scripts/Logger.LUA",
+        "scripts/Logger.lua",
+        "SCRIPTS/Logger.lua",
+        "Scripts\\Logger.lua",
+        "./Scripts/Logger.lua",
+        "Logger.lua",
+        "Scripts/../Scripts/Logger.lua",
+        "Scripts/../x.lua",
+        "Scripts/sub/../Logger.lua",
+    ],
+)
+def test_misspelled_lua_entry_exits_2_naming_it(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str], spelling: str
+) -> None:
+    _edit_modinfo(mod_copy, _LOGGER, f"<File>{spelling}</File>")
+    _refused(mod_copy, capsys, repr(spelling))
+
+
+def test_non_lua_entries_are_skipped(mod_copy: Path) -> None:
+    _edit_modinfo(mod_copy, _LOGGER, _LOGGER + "\n<File>Textures/icon.dds</File>")
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 0
+
+
+def test_multiline_comment_hides_several_file_lines(mod_copy: Path) -> None:
+    comment = (
+        "<!-- retired:\n"
+        "     <File>Scripts/Ghost.lua</File>\n"
+        "     <File>Scripts\\Bad.LUA</File>\n"
+        "     <File>Scripts/../x.lua</File>\n"
+        "-->"
+    )
+    _edit_modinfo(mod_copy, "<Files>", "<Files>\n" + comment)
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 0
+
+
+def test_comment_hiding_the_files_block_counts_as_no_block(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit_modinfo(mod_copy, "<Files>", "<!-- <Files>")
+    _edit_modinfo(mod_copy, "</Files>", "</Files> -->")
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 2
+    capsys.readouterr()
+
+
+def test_lua_file_outside_files_block_is_not_bundled(mod_copy: Path) -> None:
+    extra = mod_copy / "Scripts" / "Outside.lua"
+    extra.write_text("-- outside\n", encoding="utf-8")
+    _edit_modinfo(mod_copy, "<InGameActions>", "<InGameActions>\n<File>Scripts/Outside.lua</File>")
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 0
+    assert "Outside.lua" not in _cbundle(mod_copy).read_text(encoding="utf-8")
+
+
+def test_real_modinfo_comment_does_not_claim_a_hand_maintained_bundle() -> None:
+    text = next(MOD_DIR.glob("*.modinfo")).read_text(encoding="utf-8")
+    assert "hand-maintained" not in text.lower()
+    assert "build_lua_bundle.py" in text
+
+
+def test_every_non_lua_modinfo_entry_exists() -> None:
+    modinfo = next(MOD_DIR.glob("*.modinfo")).read_text(encoding="utf-8")
+    entries = re.findall(
+        r"<File>\s*([^<]+?)\s*</File>", re.sub(r"<!--.*?-->", "", modinfo, flags=re.S)
+    )
+    assert "Scripts/AlphaZeroMain.xml" in entries
+    missing = [e for e in entries if not (MOD_DIR / e).is_file()]
+    assert not missing, f"modinfo lists files that do not exist: {missing}"
+
+
+def test_xml_wrapper_loads_the_bundle() -> None:
+    xml = (SCRIPTS / "AlphaZeroMain.xml").read_text(encoding="utf-8")
+    assert 'FileName="AlphaZeroMain"' in xml
+
+
+def test_bom_in_modinfo_or_bundle_is_refused(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _cbundle(mod_copy).write_bytes(b"\xef\xbb\xbf" + _cbundle(mod_copy).read_bytes())
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) in (1, 2)
+    capsys.readouterr()
+
+
+# Probes: attributes and oddities in the modinfo (desired behaviour: loud or correct,
+# never a silently dropped module).
+
+
+def test_file_entry_with_attributes_is_not_silently_dropped(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit_modinfo(mod_copy, _LOGGER, '<File Platform="x">Scripts/Logger.lua</File>')
+    code = bb.main(["--check", "--mod-dir", str(mod_copy)])
+    capsys.readouterr()
+    assert code in (0, 2), "Logger.lua vanished from the generated bundle without an error"
+
+
+def test_files_block_with_attributes_is_not_silently_ignored(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit_modinfo(mod_copy, "<Files>", '<Files Foo="1">')
+    code = bb.main(["--check", "--mod-dir", str(mod_copy)])
+    capsys.readouterr()
+    assert code in (0, 2)
+
+
+def test_comment_with_stray_terminator_does_not_leak_entries(mod_copy: Path) -> None:
+    _edit_modinfo(
+        mod_copy, "<Files>", "<Files>\n<!-- a --> <!-- b <File>Scripts/Ghost.lua</File> -->"
+    )
+    assert bb.main(["--check", "--mod-dir", str(mod_copy)]) == 0
+
+
+def test_cdata_wrapped_entry_is_not_silently_dropped(
+    mod_copy: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _edit_modinfo(mod_copy, _LOGGER, "<File><![CDATA[Scripts/Logger.lua]]></File>")
+    code = bb.main(["--check", "--mod-dir", str(mod_copy)])
+    capsys.readouterr()
+    assert code in (0, 2)
