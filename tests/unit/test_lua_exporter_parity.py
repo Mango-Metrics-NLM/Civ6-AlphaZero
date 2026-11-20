@@ -686,3 +686,50 @@ class TestDiplomacyFailureIsReported:
         success, code, message = h.execute(h.load_mod(setup=_diplomacy("")), DECLARE_WAR)
         assert (success, code) == (True, None)
         assert message == "DECLARE_WAR against player 1"
+
+
+def _heartbeats_at(runtime: Any, *times: int) -> list[int]:
+    """Poll the bridge at each clock value; the heartbeat count after each poll."""
+    counts = []
+    for now in times:
+        runtime.execute(f"Civ6Stub.now = {int(now)}; AlphaZeroBridge.PollCommands()")
+        counts.append(runtime.eval("Civ6Stub.heartbeats"))
+    return counts
+
+
+class TestHeartbeatIntervalComesFromConfig:
+    """A piece the hand-edited bundle had lost (bundle-drift.md), brought back in GM-B2."""
+
+    @pytest.fixture
+    def polling(self) -> Any:
+        """A loaded mod on the AI player's turn, with a clock and a heartbeat counter."""
+        runtime = h.load_mod()
+        runtime.execute(
+            "Civ6Stub.now = 1000\n"
+            "os.time = function() return Civ6Stub.now end\n"
+            "Civ6Stub.heartbeats = 0\n"
+            "AlphaZeroFileIO.WriteHeartbeat = function()"
+            " Civ6Stub.heartbeats = Civ6Stub.heartbeats + 1 end\n"
+            "AlphaZeroBridge.OnTurnStart(0)"
+        )
+        return runtime
+
+    def test_a_longer_interval_spaces_the_heartbeats(self, polling: Any) -> None:
+        polling.execute("AlphaZeroConfig.Set('HEARTBEAT_INTERVAL', 5)")
+        # First poll writes one; 3 s later is inside the interval; 5 s later is not.
+        assert _heartbeats_at(polling, 1000, 1003, 1005, 1009, 1010) == [1, 1, 2, 2, 3]
+
+    def test_the_default_interval_is_one_second(self, polling: Any) -> None:
+        assert polling.eval("AlphaZeroConfig.Get('HEARTBEAT_INTERVAL')") == 1
+        assert _heartbeats_at(polling, 1000, 1000, 1001, 1003) == [1, 1, 2, 3]
+
+    def test_a_missing_interval_falls_back_to_one_second(self, polling: Any) -> None:
+        polling.execute("AlphaZeroConfig.Set('HEARTBEAT_INTERVAL', nil)")
+        assert _heartbeats_at(polling, 1000, 1000, 1001) == [1, 1, 2]
+
+    @pytest.mark.parametrize("value", ["'soon'", "0", "-3", "false"])
+    def test_an_unusable_interval_falls_back_instead_of_breaking_the_poll(
+        self, polling: Any, value: str
+    ) -> None:
+        polling.execute(f"AlphaZeroConfig.Set('HEARTBEAT_INTERVAL', {value})")
+        assert _heartbeats_at(polling, 1000, 1000, 1001) == [1, 1, 2]
