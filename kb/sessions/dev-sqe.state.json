@@ -1,28 +1,29 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-20T02:02:55Z",
-    "current_focus": "Game-mechanics program, Phase 1. Merged: #142. Open: #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), #149 (GM-B1), #150 (GM-B2), and GM-B3 on claude/gm-b3-research-wiring. The agent can choose research on the live bridge, and with a rule set configured the encoder's technology and civic positions are filled.",
+    "last_timestamp": "2026-11-20T03:00:00Z",
+    "current_focus": "Game-mechanics program, Phase 1. Merged: #142, #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), #149 (GM-B1), #150 (GM-B2), #151 (GM-B3). Open: GM-B4 on claude/gm-b4-gameinfo-snapshot. The bridge can capture the game's own rule tables and turn them into a rule set and research slots.",
     "resume_pointers": {
-        "current_task": "None in flight. Next slices: GM-B4 (GameInfo snapshot from a running game: Lua export_gameinfo, gameinfo_capture.py, hygiene test) and GM-B5 (search proxy; --mcts refuses until an action translator exists).",
+        "current_task": "None in flight. Next slice: GM-B5 (an un-mocked test of Civ6MctsPolicy as civ6_local wires it; microciv_proxy.py; --mcts refuses at start-up naming its gap id).",
         "blocked_on": [
-            "maintainer: review and merge #143, #146, #147, #148, #149, #150 and the GM-B3 PR; agents do not merge",
-            "maintainer: the live checklist in docs/LIVE_CIV6.md (nothing was run against a real game)",
-            "maintainer: whether the converters' research_stats go into BridgeAgentLoop.stats() (needs agent_loop.py, a fifth module)",
+            "maintainer: review and merge the GM-B4 PR",
+            "maintainer: the live checklist in docs/LIVE_CIV6.md, six steps now (nothing was run against a real game)",
+            "maintainer: whether the converters' research_stats go into BridgeAgentLoop.stats() (needs agent_loop.py)",
             "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "After each merge, merge the default branch into the PRs still open; the scratch resolver for ledger and CLAUDE.md collisions was a session-local script, so redo it by hand: ledger = union by timestamp, CLAUDE.md = both rows (later date first) and the later footer, summary = both, state = newer",
             "Base every follow-up PR on the default branch, never on another PR's branch",
+            "When several PRs are open and to be merged in order, chain the branches first (each merges its predecessor) so collisions are resolved once: ledger = union by timestamp, CLAUDE.md = both rows (later date first) and the later footer, summary = both, state = newer",
             "For a game API, read the game's own UI Lua (CQUI Community Edition has a copy) before a third-party project",
+            "Lua 5.1 has no \\\\x escape in string literals: use %c, %z or decimal escapes in patterns",
             "After v2.1.0: size the action space's research actions from the rule set; real_civ6_env.py should not treat END_TURN_BLOCKED as an invalid action",
             "Never load the mod's Lua without the harness lockdown: it writes into the working directory"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261120-devsqe-to-prepr-gm-b3-research-wiring.md",
-        "alpha_zero/bridge/tech_registry.py",
+        "kb/handoffs/20261120-devsqe-to-prepr-gm-b4-gameinfo-snapshot.md",
+        "alpha_zero/bridge/gameinfo_capture.py",
+        "mod/AlphaZeroAI/Scripts/GameInfoExporter.lua",
         "docs/LIVE_CIV6.md",
-        "openspec/changes/add-bridge-research-parity/tasks.md",
-        "kb/specs/20261119-game-mechanics-plan.md"
+        "openspec/changes/add-bridge-research-parity/tasks.md"
     ]
 }
