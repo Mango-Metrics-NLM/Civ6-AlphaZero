@@ -1,5 +1,15 @@
 # DEV-SQE Log
 
+## 2026-11-19 - GM-S0a: golden fingerprint of the default MicroCiv env (PR #143)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-S0a of the game-mechanics program (program spec `kb/specs/20261119-game-mechanics-plan.md`, in PR #142 and not yet on this branch). Tests only: 20 seeded games of mask-legal play on the default `MicroCivEnv` (board 8; 30 and 60 turns; 2 and 3 players), hashed over integer game state, held against a committed fixture named after `ENV_VERSION`. A failure says whether `ENV_VERSION`, numpy's Generator stream or neither moved. `--regenerate` is explicit, refuses to overwrite unless the numpy stream canary moved, and publishes the file atomically.
+- **Files Changed:** `tests/regression/test_default_env_golden_regression.py`, `tests/fixtures/golden/default_env_v2.json`, `openspec/changes/add-default-env-golden-fingerprint/proposal.md`, `openspec/changes/add-default-env-golden-fingerprint/tasks.md`, `openspec/changes/add-default-env-golden-fingerprint/specs/training-reproducibility/spec.md`. No file under `alpha_zero/`; the release play-path diff is empty.
+- **Tests:** 34 in the new module pass; with suite wiring and `test_microciv_clone.py`, 60 passed locally; the debt ratchet passes. `ruff check .` clean. CI was green on `52b1efa`; the head `c9d6e55` was pushed after it. `make verify` and `make test-all` were **not** run in full locally: CI is the gate. Coverage is not moved by a tests-only change.
+- **Negative controls:** permanent ones in the suite (warrior cost +1; auto-found 0.10 to 0.15; a perturbed action); a throwaway one recorded in the PR body; for the atomic writer, the old open-then-build writer restored makes `test_a_failed_regeneration_leaves_the_fixture_untouched` fail.
+- **Review of record:** two independent reviews of the first version, in separate contexts, found five defects (winner attribution unobserved, shared trajectories, regenerate overwrite, weak vacuity guards, numpy misattribution); all fixed. Two later fixes had no separate review: the CI fix (`np.__version__` pinned in one test) and the atomic writer (an automated review finding on the PR).
+- **Status:** complete; draft PR #143 awaits the maintainer.
+- **Next:** GM-K1, the rules kernel `alpha_zero/rules/` (OpenSpec `add-game-rules-kernel`, in PR #142). This branch and PR #142 each append one ledger line, so the second to merge needs the default branch merged into it first.
+
 ## 2026-11-15 - v2.1 local close-out (PR #140)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
 - **Task:** The v2.1 work that needs no GPU, after PR #138 and #139 merged: the three follow-ups left open there (OpenSpec `add-gpu-first-run-cards` tasks 4.8-4.10), one hazard found while planning them, and post-merge housekeeping. Scope is the plan the maintainer approved in the session.
