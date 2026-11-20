@@ -202,17 +202,19 @@ end
 
 -- Delete a file
 -- True when the file is gone afterwards (or was never there); false and why
--- when it is still there. os.remove reports a failure by returning nil, which
--- is not an error pcall sees, so the file is looked for again afterwards.
+-- when it is still there. The removal is attempted first and the file looked
+-- for afterwards: os.remove reports a failure by returning nil, which is not
+-- an error pcall sees, and a file that cannot be read can often still be
+-- removed. Limit: a file that can be neither read nor removed looks absent.
 function AlphaZeroFileIO.Delete(path)
-    if not fileExists(path) then return true, nil end
-    if not os or not os.remove then
-        return false, "os.remove not available"
+    local reason = "os.remove not available"
+    if os and os.remove then
+        local ok, removed, err = pcall(os.remove, path)
+        reason = (not ok and removed) or err or "os.remove failed"
     end
-    local ok, removed, err = pcall(os.remove, path)
     if fileExists(path) then
         if Log then Log.Warn("Could not delete file: %s", path) end
-        return false, (not ok and removed) or err or "os.remove failed"
+        return false, tostring(reason)
     end
     return true, nil
 end
@@ -363,10 +365,15 @@ function AlphaZeroFileIO.BeginGameInfo()
         local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
         if not path then return false end
         local ok, err = AlphaZeroFileIO.Write(path, "AZ_GAMEINFO_BEGIN")
-        if not ok and Log then
-            Log.Warn("Could not mark the GameInfo snapshot as begun: %s", tostring(err))
+        if ok then return true end
+        -- A read-only file cannot take the marker but can often be removed.
+        local deleted, deleteErr = AlphaZeroFileIO.Delete(path)
+        if deleted then return true end
+        if Log then
+            Log.Error("The previous GameInfo snapshot could not be marked (%s) or removed (%s)",
+                tostring(err), tostring(deleteErr))
         end
-        return ok and true or false
+        return false
     end
     print("AZ_GAMEINFO_BEGIN")
     return true

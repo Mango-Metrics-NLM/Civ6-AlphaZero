@@ -156,7 +156,7 @@ only, no text. With file access it writes `gameinfo.json` beside its other files
 (the usual case) it prints the snapshot to `Lua.log` as `AZ_GAMEINFO` lines, cut into pieces
 like a state. Each attempt starts with an `AZ_GAMEINFO_BEGIN` line (or, with file access, by
 overwriting the previous `gameinfo.json` with that line, which the capture refuses as a
-snapshot the mod began and did not finish), and the closing line of a snapshot in pieces
+snapshot the mod began and did not finish; a read-only file is removed instead), and the closing line of a snapshot in pieces
 carries a checksum of the whole text. A table with a row or a value the mod cannot export
 (anything but an identifier or a whole number) is left out whole, and the capture then
 refuses the snapshot for lacking it.

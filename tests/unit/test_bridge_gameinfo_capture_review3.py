@@ -431,7 +431,9 @@ class TestPrintedCommandsQuoteTheirPath:
         (filed,) = _filed(base)
         return str(filed.resolve()), capsys.readouterr().out
 
-    @pytest.mark.parametrize("directory", ["my data", "a\tb", "two  spaces"])
+    # Only names every file system accepts: Windows refuses a tab in a file name. The tab
+    # is covered below, on a path that is never created.
+    @pytest.mark.parametrize("directory", ["my data", "two  spaces"])
     def test_a_path_with_whitespace_is_in_double_quotes(
         self,
         directory: str,
@@ -450,11 +452,88 @@ class TestPrintedCommandsQuoteTheirPath:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
+        # The temporary directory's own spelling may hold a space (a Windows user profile),
+        # so this checks the wiring: both lines print the path as the helper spells it.
         path, out = self._capture(tmp_path / "data", monkeypatch, capsys)
+        shown = gc._for_a_shell(Path(path))
         lines = out.splitlines()
-        assert f"  python -m alpha_zero.rules import-gameinfo {path}" in lines
-        assert f"  CIV6AZ_BRIDGE_GAMEINFO={path}" in lines
-        assert '"' not in out.split("next:")[1]
+        assert f"  python -m alpha_zero.rules import-gameinfo {shown}" in lines
+        assert f"  CIV6AZ_BRIDGE_GAMEINFO={shown}" in lines
+
+
+class TestForAShell:
+    """The spelling of a path in a printed command, on paths that are never created."""
+
+    @pytest.mark.parametrize("windows", [False, True])
+    def test_a_plain_path_is_unchanged(self, windows: bool) -> None:
+        for text in ["/data/gameinfo/g-1.json", "C:/data/g.json", "rel/a_b-c.json"]:
+            assert gc._for_a_shell(Path(text), windows=windows) == text
+
+    @pytest.mark.parametrize("windows", [False, True])
+    @pytest.mark.parametrize("text", ["/my data/g.json", "/a\tb/g.json", "/two  spaces/g.json"])
+    def test_whitespace_alone_gets_double_quotes(self, text: str, windows: bool) -> None:
+        assert gc._for_a_shell(Path(text), windows=windows) == f'"{text}"'
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "/tmp/$HOME/game data/g.json",
+            "/a`b`/g.json",
+            '/say "hi"/g.json',
+            "/it's/g.json",
+            "/a;b/g.json",
+        ],
+    )
+    def test_a_posix_shell_gets_the_literal_path_back(self, text: str) -> None:
+        import shlex
+
+        shown = gc._for_a_shell(Path(text), windows=False)
+        # What a POSIX shell would hand the program is the path itself, not an expansion.
+        assert shlex.split(f"cmd {shown}") == ["cmd", text]
+        assert shlex.split(f"CIV6AZ_BRIDGE_GAMEINFO={shown}") == [f"CIV6AZ_BRIDGE_GAMEINFO={text}"]
+        assert not shown.startswith('"'), "double quotes would let the shell expand it"
+
+    def test_on_windows_a_special_character_gets_double_quotes(self) -> None:
+        assert gc._for_a_shell(Path("C:/a&b/g.json"), windows=True) == '"C:/a&b/g.json"'
+
+
+class TestACompleteButInvalidLastLineIsAnError:
+    """A last line that is whole JSON and breaks a rule is refused, not called unfinished."""
+
+    BAD = (
+        '{"Technologies": [], "Technologies": []}',
+        '{"Units": [{"UnitType": "UNIT_A", "Cost": ' + "9" * 5000 + "}]}",
+    )
+
+    @pytest.mark.parametrize("bad", BAD, ids=["duplicate key", "oversized number"])
+    def test_scan_log_raises_even_with_an_earlier_complete_message(self, bad: str) -> None:
+        text = g.single_line(DOC) + "\n" + gc.LINE_PREFIX + bad
+        assert not text.endswith("\n"), "premise: the last line is unterminated"
+        with pytest.raises(gc.GameInfoCaptureError):
+            gc.scan_log(text)
+
+    @pytest.mark.parametrize("bad", BAD, ids=["duplicate key", "oversized number"])
+    def test_allow_earlier_does_not_file_the_older_snapshot(
+        self,
+        bad: str,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        base = tmp_path / "data"
+        base.mkdir()
+        monkeypatch.setenv(DATA_ROOT_ENV, str(base))
+        log = tmp_path / "Lua.log"
+        log.write_text(g.single_line(DOC) + "\n" + gc.LINE_PREFIX + bad, encoding="utf-8")
+        assert gc.main(["--from-log", str(log), "--allow-earlier"]) == 1
+        assert _filed(base) == []
+        assert "Traceback" not in capsys.readouterr().err
+
+    def test_control_half_a_line_is_still_unfinished(self) -> None:
+        text = g.single_line(DOC) + "\n" + gc.LINE_PREFIX + '{"Technologies": [{"Technolo'
+        scan = gc.scan_log(text)
+        assert scan.document == DOC
+        assert scan.later_incomplete is True
 
 
 # ---------------------------------------------------------------------------

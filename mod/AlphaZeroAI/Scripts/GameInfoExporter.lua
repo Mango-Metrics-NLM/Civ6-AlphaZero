@@ -109,14 +109,20 @@ end
 
 -- Export the snapshot and hand it to FileIO. Returns true, or false and why.
 function AlphaZeroGameInfo.ExportAndWrite()
+    -- false: the previous load's snapshot could be neither marked nor removed.
+    local begun = true
     if AlphaZeroFileIO and AlphaZeroFileIO.BeginGameInfo then
-        AlphaZeroFileIO.BeginGameInfo()
+        begun = AlphaZeroFileIO.BeginGameInfo()
     end
     local document, missing = AlphaZeroGameInfo.Export()
     if #missing > 0 and Log then
         Log.Warn("GameInfo tables not exported: %s", table.concat(missing, ", "))
     end
     if next(document) == nil then
+        if begun == false then
+            return false, "no GameInfo table could be read, and the previous snapshot "
+                .. "could not be removed: the file on disk is from an earlier game load"
+        end
         return false, "no GameInfo table could be read"
     end
     if not AlphaZeroFileIO or not AlphaZeroFileIO.WriteGameInfo then

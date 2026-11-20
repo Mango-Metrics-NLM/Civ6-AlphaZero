@@ -191,9 +191,12 @@ class TestBeginGameInfoInFileMode:
         assert str(_content(runtime)).strip() == BEGIN
 
     def test_it_returns_false_when_the_write_fails_and_prints_no_begin_line(self) -> None:
+        # Neither the marker nor a removal is possible (review round 4: with only the
+        # write failing, the old file is removed and the answer is true).
         runtime = _file_mode()
         runtime.execute(
             "local real = io.open\nio.open = function(p, m) if m == 'w' then return nil, 'denied' end return real(p, m) end"
+            "\nos.remove = function() return nil, 'locked' end"
         )
         g.clear_printed(runtime)
         assert runtime.eval("AlphaZeroFileIO.BeginGameInfo()") is False
@@ -446,3 +449,64 @@ class TestTheOverrideFileGoesThroughIt:
         new_dir = "X" + sep + "custom"
         runtime = self._load_with_override_file({"COMM_DIR": new_dir})
         assert all(p.startswith(new_dir + sep) for p in _paths(runtime).values())
+
+
+# ---------------------------------------------------------------------------
+# Review round 4: a file that cannot be read, a marker that cannot be written
+# ---------------------------------------------------------------------------
+UNREADABLE_VICTIM = """
+local realOpen = io.open
+io.open = function(path, mode)
+  if path == 'victim' and (mode or 'r') == 'r' then return nil, 'permission denied' end
+  return realOpen(path, mode)
+end
+"""
+
+#: The snapshot file cannot be opened for writing (a read-only file).
+READ_ONLY_SNAPSHOT = """
+local realOpen = io.open
+io.open = function(path, mode)
+  if (mode or 'r') ~= 'r' and string.find(path, 'gameinfo', 1, true) then
+    return nil, 'read-only'
+  end
+  return realOpen(path, mode)
+end
+"""
+
+
+class TestDeleteDoesNotNeedToReadTheFile:
+    def test_an_unreadable_file_is_still_removed(self) -> None:
+        runtime = _file_mode(UNREADABLE_VICTIM)
+        runtime.execute("FakeFS['victim'] = 'x'")
+        result = _tuple(runtime.eval("AlphaZeroFileIO.Delete('victim')"))
+        assert runtime.eval("FakeFS['victim']") is None, "the file was not removed"
+        assert result[0] is True
+
+
+class TestAMarkerThatCannotBeWritten:
+    def _stale(self, extra: str = "") -> Any:
+        runtime = _file_mode()
+        assert _content(runtime) is not None, "premise: load 1 wrote the snapshot"
+        runtime.execute(READ_ONLY_SNAPSHOT + extra)
+        return runtime
+
+    def test_the_old_snapshot_is_removed_instead(self) -> None:
+        runtime = self._stale()
+        assert runtime.eval("AlphaZeroFileIO.BeginGameInfo()") is True
+        assert _content(runtime) is None, "the previous load's snapshot is still there"
+
+    def test_neither_possible_is_false_and_the_old_snapshot_is_named_in_the_failure(self) -> None:
+        runtime = self._stale("os.remove = function() return nil, 'locked' end")
+        assert runtime.eval("AlphaZeroFileIO.BeginGameInfo()") is False
+        runtime.execute(EMPTY_GAME)
+        result = _tuple(runtime.eval("AlphaZeroGameInfo.ExportAndWrite()"))
+        assert result[0] is False
+        assert "previous snapshot" in str(result[1])
+
+    def test_end_to_end_a_failed_second_load_leaves_nothing_to_capture(
+        self, tmp_path: Path
+    ) -> None:
+        runtime = self._stale()
+        runtime.execute(EMPTY_GAME)
+        assert _tuple(runtime.eval("AlphaZeroGameInfo.ExportAndWrite()"))[0] is False
+        assert _content(runtime) is None

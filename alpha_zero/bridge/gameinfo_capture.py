@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import sys
 import tempfile
 import zlib
@@ -190,10 +191,16 @@ def scan_log(text: str) -> LogScan:
 
 
 def _is_document(text: str) -> bool:
-    """Whether ``text`` reads as a snapshot document (a JSON object)."""
+    """Whether ``text`` is a whole JSON object, whatever rules it breaks.
+
+    Only "was the line cut short" is asked here. A whole object with a key written
+    twice or an oversized number is complete, and ``_parse_document`` refuses it; calling
+    it unfinished would let ``--allow-earlier`` file an older snapshot in its place.
+    Digits are not converted, so a number of any length does not fail the reading.
+    """
     try:
-        return isinstance(rules_gameinfo.loads(text), dict)
-    except rules_gameinfo.GameInfoError:
+        return isinstance(json.loads(text, parse_int=lambda _digits: 0), dict)
+    except (ValueError, RecursionError):
         return False
 
 
@@ -385,10 +392,27 @@ def _publish(temporary: Path, destination: Path) -> None:
             raise
 
 
-def _for_a_shell(path: Path) -> str:
-    """``path`` as it can be pasted into a command: in double quotes when it has a space."""
+#: Characters no shell treats specially (the set ``shlex.quote`` leaves alone).
+_SHELL_PLAIN = re.compile(r"[A-Za-z0-9@%+=:,./\\_-]*")
+
+
+def _for_a_shell(path: Path, *, windows: bool | None = None) -> str:
+    """``path`` as it can be pasted into a command line on this platform.
+
+    Unchanged when it holds nothing a shell treats specially; in double quotes when
+    whitespace is all that is special about it. Anything else (``$``, a quote, ``;``)
+    is quoted for a POSIX shell with ``shlex.quote``, where double quotes would still
+    expand it, and put in double quotes on Windows, where a file name cannot hold one.
+    """
     text = str(path)
-    return f'"{text}"' if any(character.isspace() for character in text) else text
+    if _SHELL_PLAIN.fullmatch(text):
+        return text
+    if windows is None:
+        windows = os.name == "nt"
+    only_whitespace = all(c.isspace() or _SHELL_PLAIN.fullmatch(c) for c in text)
+    if windows or only_whitespace:
+        return f'"{text}"'
+    return shlex.quote(text)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
