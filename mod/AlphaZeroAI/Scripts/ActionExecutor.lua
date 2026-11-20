@@ -45,6 +45,11 @@ local ERROR_CODES = {
     -- The game will not end the turn until a pending choice is made. Not a
     -- malformed command: the agent clears the blocker and asks again.
     END_TURN_BLOCKED = "END_TURN_BLOCKED",
+    -- The game's own check said the unit or city cannot start this now.
+    OPERATION_REFUSED = "OPERATION_REFUSED",
+    -- The move or attack would put the player at war. The mod never does that
+    -- as a side effect; declaring war is the diplomacy command's business.
+    WOULD_START_WAR = "WOULD_START_WAR",
 }
 
 -- ----------------------------------------------------------------------------
@@ -135,7 +140,174 @@ local function executeEndTurn(playerId, command)
         "End turn unavailable: no UI.RequestAction in this Lua context"
 end
 
--- Move a unit to target position using RequestOperation (correct Civ6 API)
+-- ----------------------------------------------------------------------------
+-- Unit actions, requested the way the game's own UI requests them
+-- ----------------------------------------------------------------------------
+-- The game's unit panel does not hard-code operations. It walks
+-- GameInfo.UnitOperations and GameInfo.UnitCommands, uses each row's Hash,
+-- asks the game whether the unit can start it, and only then requests it.
+-- Every unit action here goes the same way, by the row's type name, so a name
+-- this version of the game does not have answers with a refusal that names it
+-- instead of a request the game ignores. Not verified in a real game: the
+-- names for skip and sleep are the least certain.
+
+-- The Hash and kind ("operation" / "command") of the row named `typeName`.
+local function findActionRow(typeName)
+    local sources = {
+        { table = "UnitOperations", column = "OperationType", kind = "operation" },
+        { table = "UnitCommands", column = "CommandType", kind = "command" },
+    }
+    for _, source in ipairs(sources) do
+        local gameTable = GameInfo and GameInfo[source.table]
+        if gameTable then
+            local found = nil
+            pcall(function()
+                for row in gameTable() do
+                    if row[source.column] == typeName then
+                        found = row
+                        break
+                    end
+                end
+            end)
+            if found and found.Hash ~= nil then
+                return found.Hash, source.kind
+            end
+        end
+    end
+    return nil, nil
+end
+
+-- The game's reasons for a refusal, as one line, or nil.
+local function failureReasons(results, key)
+    if type(results) ~= "table" or key == nil then return nil end
+    local reasons = results[key]
+    if type(reasons) ~= "table" or #reasons == 0 then return nil end
+    local parts = {}
+    for _, reason in ipairs(reasons) do
+        table.insert(parts, tostring(reason))
+    end
+    return table.concat(parts, "; ")
+end
+
+-- Ask the game's strict check and, if it agrees, request the action.
+-- `params` is nil for an action without a target. Returns true, or false with
+-- an error code and message. A request is fire-and-forget: true means the
+-- game was asked, not that anything has happened yet.
+local function requestUnitAction(unit, typeName, params, label)
+    if not UnitManager then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. " unavailable: no UnitManager in this Lua context"
+    end
+    local hash, kind = findActionRow(typeName)
+    if hash == nil then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("%s: the game has no operation or command named %s", label, typeName)
+    end
+
+    local canStart, request, reasonsKey
+    if kind == "operation" then
+        canStart, request = UnitManager.CanStartOperation, UnitManager.RequestOperation
+        reasonsKey = UnitOperationResults and UnitOperationResults.FAILURE_REASONS
+    else
+        canStart, request = UnitManager.CanStartCommand, UnitManager.RequestCommand
+        reasonsKey = UnitCommandResults and UnitCommandResults.FAILURE_REASONS
+    end
+    if not canStart or not request then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("%s unavailable: UnitManager cannot check or request a unit %s", label, kind)
+    end
+
+    -- The strict form: with a target, the parameters; without one, `false`
+    -- ("for real", where `true` is the panel's loose "could it ever").
+    local ok, allowed, results
+    if kind == "command" then
+        ok, allowed, results = pcall(canStart, unit, hash, false, true)
+    elseif params then
+        ok, allowed, results = pcall(canStart, unit, hash, nil, params)
+    else
+        ok, allowed, results = pcall(canStart, unit, hash, nil, false,
+            OperationResultsTypes and OperationResultsTypes.NO_TARGETS)
+    end
+    if not ok then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. ": the game's check raised: " .. tostring(allowed)
+    end
+    if allowed ~= true then
+        local reason = failureReasons(results, reasonsKey)
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            label .. " refused by the game" .. (reason and (": " .. reason) or "")
+    end
+
+    local requested, err
+    if params then
+        requested, err = pcall(request, unit, hash, params)
+    else
+        requested, err = pcall(request, unit, hash)
+    end
+    if not requested then
+        return false, ERROR_CODES.EXECUTION_FAILED, label .. ": the request raised: " .. tostring(err)
+    end
+    return true, nil, nil
+end
+
+-- Refuse anything that would put the player at war: nil when it would not,
+-- else an error code and message. When the game cannot be asked, the answer
+-- is a refusal too: the mod does not attack on a guess.
+local function warRefusal(unit, x, y)
+    if not CombatManager or not CombatManager.IsAttackChangeWarState then
+        return ERROR_CODES.EXECUTION_FAILED,
+            "Cannot ask the game whether this would start a war (no CombatManager)"
+    end
+    local ok, results = pcall(function()
+        return CombatManager.IsAttackChangeWarState(unit:GetComponentID(), x, y)
+    end)
+    if not ok then
+        return ERROR_CODES.EXECUTION_FAILED,
+            "Asking the game whether this would start a war raised: " .. tostring(results)
+    end
+    if type(results) == "table" and #results > 0 then
+        return ERROR_CODES.WOULD_START_WAR,
+            string.format("Refused: (%d,%d) would start a war with player %s", x, y, tostring(results[1]))
+    end
+    return nil, nil
+end
+
+local function targetParams(target, modifierName)
+    local params = {}
+    params[UnitOperationTypes.PARAM_X] = target.x
+    params[UnitOperationTypes.PARAM_Y] = target.y
+    if modifierName and UnitOperationTypes.PARAM_MODIFIERS and UnitOperationMoveModifiers then
+        params[UnitOperationTypes.PARAM_MODIFIERS] = UnitOperationMoveModifiers[modifierName]
+    end
+    return params
+end
+
+-- Whether another player's unit or city stands on the plot.
+local function hasForeignOccupant(playerId, plot, x, y)
+    local found = false
+    pcall(function()
+        local units = Units and Units.GetUnitsInPlot and Units.GetUnitsInPlot(plot)
+        if type(units) ~= "table" then return end
+        if units.Members then
+            for _, unit in units:Members() do
+                if unit:GetOwner() ~= playerId then found = true end
+            end
+        else
+            for _, unit in ipairs(units) do
+                if unit:GetOwner() ~= playerId then found = true end
+            end
+        end
+    end)
+    if found then return true end
+    pcall(function()
+        local city = Cities and Cities.GetCityInPlot and Cities.GetCityInPlot(x, y)
+        if city and city:GetOwner() ~= playerId then found = true end
+    end)
+    return found
+end
+
+-- Move a unit. The request carries no attack modifier, so a move onto another
+-- player's unit is refused by the game's check and can never become an attack.
 local function executeUnitMove(playerId, command)
     local unitId = command.unit_id
     local target = command.target
@@ -143,7 +315,6 @@ local function executeUnitMove(playerId, command)
     if not unitId then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
     end
-
     if not target or not target.x or not target.y then
         return false, ERROR_CODES.INVALID_TARGET, "Missing or invalid target"
     end
@@ -155,48 +326,46 @@ local function executeUnitMove(playerId, command)
         return false, errCode, errMsg
     end
 
-    -- Check movement remaining
     local movesRemaining = unit:GetMovementMovesRemaining() or 0
     if movesRemaining <= 0 then
         return false, ERROR_CODES.NOT_ENOUGH_MOVEMENT, "Unit has no movement remaining"
     end
 
-    -- Get target plot
     local plot = Map and Map.GetPlot(target.x, target.y)
     if not plot then
         return false, ERROR_CODES.INVALID_TARGET, "Invalid target position"
     end
-
-    -- Check if target is passable
     if plot:IsImpassable() then
         return false, ERROR_CODES.INVALID_TARGET, "Target position is impassable"
     end
-
-    -- Execute move using UnitManager.RequestOperation (correct Civ6 API)
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        local params = {}
-        params[UnitOperationTypes.PARAM_X] = target.x
-        params[UnitOperationTypes.PARAM_Y] = target.y
-        UnitManager.RequestOperation(unit, UnitOperationTypes.MOVETO, params)
-        return true, nil, string.format("Unit %d moving to (%d,%d)", unitId, target.x, target.y)
+    if not UnitOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Move unavailable: no UnitOperationTypes in this Lua context"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Move execution failed: UnitManager.RequestOperation not available"
+    local warCode, warMessage = warRefusal(unit, target.x, target.y)
+    if warCode then
+        return false, warCode, warMessage
+    end
+
+    local ok, code, message = requestUnitAction(
+        unit, "UNITOPERATION_MOVE_TO", targetParams(target, "NONE"), "Move")
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("Move of unit %d to (%d,%d) requested", unitId, target.x, target.y)
 end
 
--- Shared attack body. Issues the named Civ6 UnitOperation against the
--- target tile. `opName` must be a key on UnitOperationTypes (e.g.
--- "MOVE_TO" for melee engagement, "RANGE_ATTACK" for ranged units).
-local function _executeAttackOperation(playerId, command, opName, logLabel)
+-- Shared by the melee and the ranged attack.
+local function executeAttack(playerId, command, typeName, modifierName, label)
     local unitId = command.unit_id
     local target = command.target
 
-    if not unitId or not target then
+    if not unitId or not target or not target.x or not target.y then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id or target"
     end
 
     if Log then
-        Log.Info("Executing: %s unit=%d at (%d,%d)", logLabel, unitId, target.x, target.y)
+        Log.Info("Executing: %s unit=%d at (%d,%d)", label, unitId, target.x, target.y)
     end
 
     local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
@@ -204,131 +373,81 @@ local function _executeAttackOperation(playerId, command, opName, logLabel)
         return false, errCode, errMsg
     end
 
-    -- Check attacks remaining (applies to both melee and ranged).
     if (unit:GetAttacksRemaining() or 0) <= 0 then
         return false, ERROR_CODES.NOT_ENOUGH_MOVEMENT, "Unit has no attacks remaining"
     end
 
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        local op = UnitOperationTypes[opName]
-        if op == nil then
-            return false, ERROR_CODES.EXECUTION_FAILED,
-                string.format("UnitOperationTypes.%s not available", opName)
-        end
-        local params = {}
-        params[UnitOperationTypes.PARAM_X] = target.x
-        params[UnitOperationTypes.PARAM_Y] = target.y
-        UnitManager.RequestOperation(unit, op, params)
-        return true, nil, string.format("%s executed at (%d,%d)", logLabel, target.x, target.y)
+    local plot = Map and Map.GetPlot(target.x, target.y)
+    if not plot then
+        return false, ERROR_CODES.INVALID_TARGET, "Invalid target position"
+    end
+    if not hasForeignOccupant(playerId, plot, target.x, target.y) then
+        return false, ERROR_CODES.INVALID_TARGET,
+            string.format("Nothing to attack at (%d,%d)", target.x, target.y)
+    end
+    if not UnitOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. " unavailable: no UnitOperationTypes in this Lua context"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Attack execution failed"
+    local warCode, warMessage = warRefusal(unit, target.x, target.y)
+    if warCode then
+        return false, warCode, warMessage
+    end
+
+    local ok, code, message = requestUnitAction(unit, typeName, targetParams(target, modifierName), label)
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("%s at (%d,%d) requested", label, target.x, target.y)
 end
 
--- Melee attack: move onto the target tile to engage. Civ6's MOVE_TO
--- operation against an occupied enemy tile resolves to a melee attack.
--- (Hardening fix for gap-analysis C1 on commit 3572832: previously this
--- routed through RANGE_ATTACK, which silent-no-ops for melee units.)
+-- Melee attack: the move operation with the attack modifier, which is how the
+-- game's own move routine engages a unit on the destination tile.
 local function executeUnitAttack(playerId, command)
-    return _executeAttackOperation(playerId, command, "MOVE_TO", "UNIT_ATTACK")
+    return executeAttack(playerId, command, "UNITOPERATION_MOVE_TO", "ATTACK", "Attack")
 end
 
--- Ranged attack: explicit RANGE_ATTACK operation for archers / catapults /
--- bombards. Distinct from melee per Python ActionType.UNIT_RANGED_ATTACK.
+-- Ranged attack: its own operation (archers, catapults, bombards).
 local function executeUnitRangedAttack(playerId, command)
-    return _executeAttackOperation(playerId, command, "RANGE_ATTACK", "UNIT_RANGED_ATTACK")
+    return executeAttack(playerId, command, "UNITOPERATION_RANGE_ATTACK", nil, "Ranged attack")
 end
 
--- Fortify a unit
+-- A unit action without a target.
+local function executeSimpleUnitAction(playerId, command, typeName, label)
+    local unitId = command.unit_id
+    if not unitId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
+    end
+
+    if Log then Log.Info("Executing: %s unit=%d", label, unitId) end
+
+    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
+    if not unit then
+        return false, errCode, errMsg
+    end
+
+    local ok, code, message = requestUnitAction(unit, typeName, nil, label)
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("%s of unit %d requested", label, unitId)
+end
+
 local function executeUnitFortify(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_FORTIFY unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.FORTIFY)
-        return true, nil, "Unit fortified"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Fortify execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_FORTIFY", "Fortify")
 end
 
--- Skip unit turn
 local function executeUnitSkip(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_SKIP unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.WAIT)
-        return true, nil, "Unit skipped"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Skip execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_SKIP_TURN", "Skip")
 end
 
--- Sleep unit (distinct from skip)
 local function executeUnitSleep(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_SLEEP unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.SLEEP)
-        return true, nil, "Unit sleeping"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Sleep execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_SLEEP", "Sleep")
 end
 
--- Found a city with a settler
 local function executeFoundCity(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_FOUND_CITY unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        UnitManager.RequestOperation(unit, UnitOperationTypes.FOUND_CITY)
-        return true, nil, "City founded"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Found city execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_FOUND_CITY", "Found city")
 end
 
 -- Build improvement
@@ -357,63 +476,111 @@ local function executeUnitBuild(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Build execution failed"
 end
 
--- Item type dispatch tables for production commands.
--- Maps item_type -> CityOperationTypes param key (for CityManager API)
-local PRODUCTION_PARAM_KEYS = {
-    unit = "PARAM_UNIT_TYPE",
-    building = "PARAM_BUILDING_TYPE",
-    wonder = "PARAM_BUILDING_TYPE",  -- Wonders use building param
-    district = "PARAM_DISTRICT_TYPE",
+-- Production. The game's own production panel sends the row's Hash under the
+-- parameter of its kind, with the exclusive insert mode (replace, do not
+-- queue). Districts and wonders also need a plot, which this command does not
+-- carry, so they are refused.
+local PRODUCTION_KINDS = {
+    unit = { table = "Units", column = "UnitType", param = "PARAM_UNIT_TYPE" },
+    building = { table = "Buildings", column = "BuildingType", param = "PARAM_BUILDING_TYPE" },
+    district = { table = "Districts", column = "DistrictType", param = "PARAM_DISTRICT_TYPE", placed = true },
 }
+local PRODUCTION_ORDER = { "unit", "building", "district" }
 
--- Maps item_type -> buildQueue method name (for fallback API)
-local PRODUCTION_QUEUE_METHODS = {
-    unit = "AddUnitType",
-    building = "AddBuildingType",
-    wonder = "AddWonderType",
-    district = "AddDistrictType",
-}
+local function findProductionRow(kind, matches)
+    local gameTable = GameInfo and GameInfo[kind.table]
+    if not gameTable then return nil end
+    local found = nil
+    pcall(function()
+        for row in gameTable() do
+            if matches(row) then
+                found = row
+                break
+            end
+        end
+    end)
+    return found
+end
 
--- Set city production using CityManager.RequestOperation (correct Civ6 API)
+-- The row and kind for an item given by type name (looked up in every kind)
+-- or by row index (in the kind `itemType` names; units when it names none).
+local function resolveProductionItem(item, itemType)
+    if type(item) == "string" then
+        for _, name in ipairs(PRODUCTION_ORDER) do
+            local kind = PRODUCTION_KINDS[name]
+            local row = findProductionRow(kind, function(r) return r[kind.column] == item end)
+            if row then return row, kind end
+        end
+        return nil, nil
+    end
+    local kind = PRODUCTION_KINDS[itemType or "unit"] or PRODUCTION_KINDS.unit
+    local row = findProductionRow(kind, function(r) return r.Index == item end)
+    return row, kind
+end
+
 local function executeCityProduce(playerId, command)
     local cityId = command.city_id
     local itemId = command.item_id
-    local itemType = command.item_type or "unit"  -- default to unit
+    local itemType = command.item_type
 
-    if not cityId or not itemId then
+    if not cityId or itemId == nil then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing city_id or item_id"
     end
 
-    if Log then Log.Info("Executing: CITY_PRODUCE city=%d item=%s type=%s", cityId, tostring(itemId), tostring(itemType)) end
+    if Log then
+        Log.Info("Executing: CITY_PRODUCE city=%d item=%s type=%s", cityId, tostring(itemId), tostring(itemType))
+    end
 
     local city, errCode, errMsg = safeGetCity(playerId, cityId)
     if not city then
         return false, errCode, errMsg
     end
 
-    -- Primary method: CityManager.RequestOperation (correct Civ6 API)
-    if CityManager and CityManager.RequestOperation and CityOperationTypes then
-        local paramKey = PRODUCTION_PARAM_KEYS[itemType] or PRODUCTION_PARAM_KEYS["unit"]
-        local params = {}
-        params[CityOperationTypes[paramKey]] = itemId
-        CityManager.RequestOperation(city, CityOperationTypes.BUILD, params)
-        return true, nil, string.format("City %d producing %s (%s)", cityId, tostring(itemId), tostring(itemType))
+    if itemType == "wonder" then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            "A wonder needs a plot; placement is not supported: " .. tostring(itemId)
     end
 
-    -- Fallback: buildQueue methods (for different Civ6 mod contexts)
-    local buildQueue = city:GetBuildQueue()
-    if buildQueue then
-        local methodName = PRODUCTION_QUEUE_METHODS[itemType] or PRODUCTION_QUEUE_METHODS["unit"]
-        local method = buildQueue[methodName]
-        if method then
-            local ok, result = pcall(function() return method(buildQueue, itemId) end)
-            if ok and result then
-                return true, nil, string.format("City %d producing %s (fallback)", cityId, tostring(itemId))
-            end
+    local row, kind = resolveProductionItem(itemId, itemType)
+    if not row then
+        return false, ERROR_CODES.INVALID_COMMAND, "Unknown production item: " .. tostring(itemId)
+    end
+    local typeName = tostring(row[kind.column])
+    if kind.placed then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            typeName .. " needs a plot; placement is not supported"
+    end
+    if row.Hash == nil then
+        return false, ERROR_CODES.EXECUTION_FAILED, typeName .. " has no hash in this Lua context"
+    end
+
+    if not CityManager or not CityManager.RequestOperation or not CityOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            "Production unavailable: no CityManager in this Lua context"
+    end
+
+    -- The strict form: "can this city start it now". Skipped when the method
+    -- is missing in this Lua context.
+    local allowed = nil
+    pcall(function()
+        local buildQueue = city:GetBuildQueue()
+        if buildQueue and buildQueue.CanProduce then
+            allowed = buildQueue:CanProduce(row.Hash, false, true)
         end
+    end)
+    if allowed == false then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("City %d cannot start %s now", cityId, typeName)
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Production set failed"
+    local params = {}
+    params[CityOperationTypes[kind.param]] = row.Hash
+    params[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_EXCLUSIVE
+    local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
+    if not requested then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+    end
+    return true, nil, string.format("City %d: production of %s requested", cityId, typeName)
 end
 
 -- ----------------------------------------------------------------------------

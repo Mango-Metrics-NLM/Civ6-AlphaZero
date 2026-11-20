@@ -437,7 +437,9 @@ class Position:
 
 
 #: Action types whose ``item_id`` may be a game type name instead of a number.
-_NAMED_ITEM_ACTIONS = frozenset({ActionType.RESEARCH_TECH, ActionType.RESEARCH_CIVIC})
+_NAMED_ITEM_ACTIONS = frozenset(
+    {ActionType.RESEARCH_TECH, ActionType.RESEARCH_CIVIC, ActionType.CITY_PRODUCE}
+)
 _TYPE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
@@ -535,9 +537,7 @@ class LuaCommand:
             and action_type in _NAMED_ITEM_ACTIONS
             and _TYPE_NAME.fullmatch(item_id)
         ):
-            # A research command may name its item by the game's type name
-            # ("TECH_MINING"); the mod resolves it. Kept as it is.
-            pass
+            pass  # a game type name ("TECH_MINING"); the mod resolves it
         elif item_id is not None:
             item_id = _validate_int(item_id, "item_id", context="LuaCommand")
 

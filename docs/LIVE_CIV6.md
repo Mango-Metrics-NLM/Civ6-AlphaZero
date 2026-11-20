@@ -216,6 +216,51 @@ Nothing below can be checked without the game. After `python scripts/install_civ
    should report non-zero row counts for all six tables and "importable". If it reports a
    missing column or table, that is the column name to correct in `GameInfoExporter.lua`.
 
+### Unit and city commands (GM-B7a)
+
+Until GM-B7a the mod's unit and city commands could not be carried out by the game: a move
+named an operation type the game does not have, skip, fortify and sleep were sent as commands
+under names the game's UI does not use, and a production order carried a raw id. They now go
+the way the game's own UI sends them:
+
+- A unit action is looked up by type name in the game's own tables (`GameInfo.UnitOperations`,
+  then `GameInfo.UnitCommands`), requested by that row's hash, and only after the game's strict
+  check says the unit can start it now. A refusal comes back as `OPERATION_REFUSED` with the
+  game's reason; a name this version of the game does not have comes back as a failure that
+  names it. The names used: `UNITOPERATION_MOVE_TO`, `UNITOPERATION_RANGE_ATTACK`,
+  `UNITOPERATION_SKIP_TURN`, `UNITOPERATION_FORTIFY`, `UNITOPERATION_SLEEP`,
+  `UNITOPERATION_FOUND_CITY`. **The names for skip and sleep are the least certain**: they
+  live in the game's database, not in the UI code this was written from.
+- A move carries no attack modifier, so it cannot become an attack. An attack is its own
+  command. Neither is sent when the game says it would start a war (`WOULD_START_WAR`), or
+  when the game cannot be asked.
+- `city_produce` takes a type name (`"UNIT_WARRIOR"`) or a row index, and sends the row's hash
+  with the exclusive insert mode: the item replaces what the city was building. Districts and
+  wonders need a plot and are refused (`NOT_IMPLEMENTED`).
+- A success answer means the game was *asked*. The game carries a request out after the script
+  returns, so the mod exports the next state `STATE_EXPORT_DELAY_TICKS` frames later (default
+  2), not in the same frame, and reads no command in between.
+- The mod keeps listening for `COMMAND_TIMEOUT` seconds after the *last* command, not after the
+  turn's start. After `MAX_COMMANDS_PER_TURN` commands (default 200) in a turn it accepts only
+  `end_turn` and answers anything else with `COMMAND_CAP_REACHED`.
+
+All of this has run only against the hand-written stand-in for the game
+(`tests/fixtures/lua/civ6_stub_commands.lua`), which was written from the same reading of the
+game's UI code. It shows the mod does what that code does, not that the game accepts it.
+
+Live checklist, continuing the one above:
+
+7. Send `unit_move` for a unit to a neighbouring free tile: a later state shows it there. If
+   the answer names an unknown operation, that is the type name to correct.
+8. With "a unit needs orders" blocking the end of turn, send `unit_skip` for that unit: the
+   blocker is gone in a later state. Same for `unit_fortify` and `unit_sleep`.
+9. Send `city_produce` with `item_id` `"UNIT_WARRIOR"` to a city that is building something
+   else: it now builds the warrior and nothing is queued behind it.
+10. Count the states (or frames) between a command and the first state that shows its effect.
+    If two frames is too few, raise `STATE_EXPORT_DELAY_TICKS`.
+11. Send `unit_attack` on a unit of a player you are at peace with: the answer is
+    `WOULD_START_WAR` and no war starts.
+
 ## Steps
 
 1. **Install the mod** into the game's `Mods` directory, then enable it in the

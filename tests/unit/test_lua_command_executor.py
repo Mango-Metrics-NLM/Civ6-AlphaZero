@@ -541,6 +541,15 @@ class TestProduction:
         c.frame(game)
         assert building(game) == "BUILDING_GRANARY"
 
+    @pytest.mark.parametrize("item_type", [None, "unit", "building"])
+    def test_a_name_is_found_whatever_item_type_says(self, item_type: str | None) -> None:
+        # The contract: a name is looked up in every table. (This replaced a case that
+        # expected INVALID_COMMAND for a building named without item_type.)
+        game = c.load()
+        assert run(game, produce("BUILDING_GRANARY", item_type))[:2] == (True, None)
+        c.frame(game)
+        assert building(game) == "BUILDING_GRANARY"
+
     def test_a_city_that_can_start_it_only_later_is_refused(self) -> None:
         game = c.load("Civ6Stub.cities[301].canProduce = { UNIT_WARRIOR = 'later' }")
         success, code, _ = run(game, produce("UNIT_WARRIOR"))
@@ -575,10 +584,9 @@ class TestProduction:
         [
             ("UNIT_NOPE", None, "UNIT_NOPE"),
             (99, None, "99"),
-            ("BUILDING_GRANARY", None, "BUILDING_GRANARY"),
             (99, "building", "99"),
         ],
-        ids=["unknown name", "unknown index", "name in the wrong table", "unknown building"],
+        ids=["unknown name", "unknown index", "unknown building"],
     )
     def test_an_item_with_no_row_is_an_invalid_command_naming_it(
         self, item: Any, item_type: str | None, named: str
