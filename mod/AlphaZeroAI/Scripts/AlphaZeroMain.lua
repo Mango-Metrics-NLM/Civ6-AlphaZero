@@ -1984,7 +1984,9 @@ local function exportCities(playerId)
                                         local districtType = safeCall(district, "GetType")
                                         local districtName = districtType ~= nil
                                             and typeNameByIndex("Districts", "DistrictType", districtType)
-                                        if districtName then
+                                        -- A district is listed once placed; only a finished
+                                        -- one counts. Without IsComplete it is listed.
+                                        if districtName and safeCall(district, "IsComplete") ~= false then
                                             table.insert(cityData.districts, districtName)
                                         end
                                     end
@@ -2075,7 +2077,8 @@ local function exportPlayer(playerId)
                 index = currentCivic,
                 cost = safeCall(playerCulture, "GetCultureCost", currentCivic),
                 progress = safeCall(playerCulture, "GetCulturalProgress", currentCivic),
-                turns_left = safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
+                turns_left = safeCall(playerCulture, "GetTurnsToProgressCivic", currentCivic)
+                    or safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
                 boost_triggered = safeCall(playerCulture, "HasBoostBeenTriggered", currentCivic),
             }
         end
@@ -2155,37 +2158,50 @@ local function appendResearchActions(player, actions)
         end
     end
 
-    -- Civics: no "can progress" call is known to work, so a civic is open when
-    -- the player lacks it and has every prerequisite listed for it.
+    -- Civics: the game answers directly (CanProgress, as its own civics chooser
+    -- asks). Where that method is missing, a civic is open when the player
+    -- lacks it and has every prerequisite listed for it.
     local playerCulture = safeCall(player, "GetCulture")
     local civicTable = GameInfo and GameInfo.Civics
-    local prereqTable = GameInfo and GameInfo.CivicPrereqs
     local okHasCivic, hasCivicMethod = pcall(function() return playerCulture.HasCivic end)
-    if playerCulture and civicTable and prereqTable and okHasCivic and hasCivicMethod then
+    if playerCulture and civicTable and okHasCivic and hasCivicMethod then
+        local okCanProgress, canProgressMethod = pcall(function() return playerCulture.CanProgress end)
+        local askTheGame = okCanProgress and canProgressMethod ~= nil
+        local prereqTable = GameInfo.CivicPrereqs
+
         local indexByType, prereqs = {}, {}
-        for row in civicTable() do
-            indexByType[row.CivicType] = row.Index
-        end
-        for row in prereqTable() do
-            prereqs[row.Civic] = prereqs[row.Civic] or {}
-            table.insert(prereqs[row.Civic], row.PrereqCivic)
+        if not askTheGame and prereqTable then
+            for row in civicTable() do
+                indexByType[row.CivicType] = row.Index
+            end
+            for row in prereqTable() do
+                prereqs[row.Civic] = prereqs[row.Civic] or {}
+                table.insert(prereqs[row.Civic], row.PrereqCivic)
+            end
         end
 
         local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
         local items, names = {}, {}
-        for row in civicTable() do
-            if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
-                local open = true
-                for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
-                    local prereqIndex = indexByType[prereqType]
-                    if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
-                        open = false
-                        break
+        if askTheGame or prereqTable then
+            for row in civicTable() do
+                if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
+                    local open
+                    if askTheGame then
+                        open = safeCall(playerCulture, "CanProgress", row.Index) and true or false
+                    else
+                        open = true
+                        for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
+                            local prereqIndex = indexByType[prereqType]
+                            if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
+                                open = false
+                                break
+                            end
+                        end
                     end
-                end
-                if open then
-                    table.insert(items, row.Index)
-                    table.insert(names, row.CivicType)
+                    if open then
+                        table.insert(items, row.Index)
+                        table.insert(names, row.CivicType)
+                    end
                 end
             end
         end
@@ -2360,16 +2376,51 @@ function AlphaZeroStateExporter.Init()
     end
 end
 
--- The notification that stops the player's turn from ending, if any.
--- Returns the name of its EndTurnBlockingTypes value (for example
--- "ENDTURN_BLOCKING_RESEARCH") and its message, or nil when nothing blocks or
--- when this Lua context has no NotificationManager.
+-- A notification's message as text, or nil.
+local function notificationMessage(entry)
+    local text = safeCall(entry, "GetMessage")
+    if type(text) == "string" and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+-- Whether an EndTurnBlockingTypes value means "something blocks".
+local function isBlocking(blocking)
+    if blocking == nil or blocking == 0 then
+        return false
+    end
+    return not (EndTurnBlockingTypes and blocking == EndTurnBlockingTypes.NO_ENDTURN_BLOCKING)
+end
+
+-- The reason the player's turn cannot end, if any.
+-- Returns the name of the EndTurnBlockingTypes value (for example
+-- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
+-- when nothing blocks or when this Lua context has no NotificationManager.
+-- Asks the game the way its own action panel does (GetFirstEndTurnBlocking);
+-- where that call is missing or fails, scans the notification list instead.
 function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     if not NotificationManager then
         return nil, nil
     end
 
-    local noBlocking = EndTurnBlockingTypes and EndTurnBlockingTypes.NO_ENDTURN_BLOCKING
+    if NotificationManager.GetFirstEndTurnBlocking then
+        local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
+        if okFirst then
+            if not isBlocking(blocking) then
+                return nil, nil
+            end
+            local message = nil
+            if NotificationManager.FindEndTurnBlocking then
+                local okFind, entry = pcall(NotificationManager.FindEndTurnBlocking, blocking, playerId)
+                if okFind and entry then
+                    message = notificationMessage(entry)
+                end
+            end
+            return endTurnBlockingName(blocking), message
+        end
+    end
+
     local ok, blockerName, message = pcall(function()
         local list = NotificationManager.GetList(playerId)
         if not list then
@@ -2379,12 +2430,8 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
             local entry = NotificationManager.Find(playerId, notificationId)
             if entry and not entry:IsDismissed() then
                 local blocking = entry:GetEndTurnBlocking()
-                if blocking and blocking ~= 0 and blocking ~= noBlocking then
-                    local text = safeCall(entry, "GetMessage")
-                    if type(text) ~= "string" or text == "" then
-                        text = nil
-                    end
-                    return endTurnBlockingName(blocking), text
+                if isBlocking(blocking) then
+                    return endTurnBlockingName(blocking), notificationMessage(entry)
                 end
             end
         end
@@ -2924,59 +2971,47 @@ end
 -- Research (technologies and civics)
 -- ----------------------------------------------------------------------------
 
--- Resolve a research item to its GameInfo row index and type name. The item is
--- a row index (what the Python action space sends) or a type name such as
--- "TECH_MINING". Returns nil when the GameInfo table is there and has no such
--- row. Without the table an index is passed through unchecked.
+-- Resolve a research item to its GameInfo row. The item is a row index (what
+-- the Python action space sends) or a type name such as "TECH_MINING".
+-- Returns index, type name and hash; all nil when the GameInfo table is there
+-- and has no such row. Without the table an index is passed through unchecked.
 local function resolveResearchItem(tableName, typeField, item)
     local gameTable = GameInfo and GameInfo[tableName]
     if not gameTable then
         if type(item) == "number" then
-            return item, tostring(item)
+            return item, tostring(item), nil
         end
-        return nil, nil
+        return nil, nil, nil
     end
 
-    local index, typeName = nil, nil
+    local index, typeName, hash = nil, nil, nil
     pcall(function()
         for row in gameTable() do
             if row.Index == item or row[typeField] == item then
-                index, typeName = row.Index, row[typeField]
+                index, typeName, hash = row.Index, row[typeField], row.Hash
                 break
             end
         end
     end)
-    return index, typeName
+    return index, typeName, hash
 end
 
--- Activate and dismiss the notifications that block ending the turn for the
--- given reason. The game does not always clear a "choose research" blocker
--- when the choice is made through RequestPlayerOperation.
-local function dismissEndTurnBlockers(playerId, blockingTypeName)
-    if not NotificationManager or not EndTurnBlockingTypes then
-        return
-    end
-    local wanted = EndTurnBlockingTypes[blockingTypeName]
-    if wanted == nil then
-        return
-    end
-    pcall(function()
-        for _, notificationId in ipairs(NotificationManager.GetList(playerId) or {}) do
-            local entry = NotificationManager.Find(playerId, notificationId)
-            if entry and not entry:IsDismissed() and entry:GetEndTurnBlocking() == wanted then
-                pcall(function() NotificationManager.SendActivated(playerId, notificationId) end)
-                pcall(function() NotificationManager.Dismiss(playerId, notificationId) end)
-            end
-        end
-    end)
+-- Call a method on a game object; nil when it is missing or raises.
+local function callIfPresent(object, methodName, ...)
+    if object == nil then return nil end
+    local okMethod, method = pcall(function() return object[methodName] end)
+    if not okMethod or not method then return nil end
+    local okCall, result = pcall(method, object, ...)
+    if okCall then return result end
+    return nil
 end
 
 -- Shared by technologies and civics. `kind` names the differences:
 --   table/typeField   GameInfo table and its type-name column
 --   getter            player method returning the progress object
+--   has/can           its "already has" and "can choose now" methods (by index)
 --   operation/param   PlayerOperations keys for the UI request
 --   setter            GameCore method on the progress object (fallback)
---   blocker           EndTurnBlockingTypes key cleared by the choice
 local function executeResearch(playerId, command, kind)
     local item = command.item_id
     if item == nil then
@@ -2993,50 +3028,64 @@ local function executeResearch(playerId, command, kind)
         return false, ERROR_CODES.EXECUTION_FAILED, "Player not found"
     end
 
-    local index, typeName = resolveResearchItem(kind.table, kind.typeField, item)
+    local index, typeName, hash = resolveResearchItem(kind.table, kind.typeField, item)
     if index == nil then
         return false, ERROR_CODES.INVALID_TARGET,
             "Unknown " .. kind.label .. ": " .. tostring(item)
     end
 
-    -- Primary path: ask the game through the UI, as the research screen does.
-    -- The request is fire-and-forget: the game applies it after this call
-    -- returns, so success here means "requested", not "confirmed". The next
-    -- exported state shows what the game did.
+    -- Refuse what the game would drop without a word. Each check is skipped
+    -- when its method is missing in this Lua context.
+    local progressObject = callIfPresent(player, kind.getter)
+    if callIfPresent(progressObject, kind.has, index) == true then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " is already researched"
+    end
+    if callIfPresent(progressObject, kind.can, index) == false then
+        return false, ERROR_CODES.INVALID_TARGET,
+            tostring(typeName) .. " cannot be chosen now"
+    end
+
+    -- Primary path: ask the game as its own research and civics choosers do:
+    -- the type parameter is the row's Hash (not its Index), with an exclusive
+    -- insert mode so the choice replaces the queue. The request is
+    -- fire-and-forget: the game applies it after this call returns and drops
+    -- it without an error if it does not like it, so success here means
+    -- "requested", not "done". The next exported state shows what the game
+    -- did. No notification is touched: the game clears its own "choose
+    -- research" blocker when the choice takes effect.
     local requested = false
-    if UI and UI.RequestPlayerOperation and PlayerOperations
+    if hash ~= nil and UI and UI.RequestPlayerOperation and PlayerOperations
        and PlayerOperations[kind.operation] and PlayerOperations[kind.param] then
         local params = {}
-        params[PlayerOperations[kind.param]] = index
+        params[PlayerOperations[kind.param]] = hash
+        if PlayerOperations.PARAM_INSERT_MODE and PlayerOperations.VALUE_EXCLUSIVE then
+            params[PlayerOperations.PARAM_INSERT_MODE] = PlayerOperations.VALUE_EXCLUSIVE
+        end
         requested = pcall(function()
             UI.RequestPlayerOperation(playerId, PlayerOperations[kind.operation], params)
         end)
     end
-
-    local message
     if requested then
-        message = kind.requestedMessage .. tostring(typeName)
-    else
-        -- Fallback: the GameCore setter, which exists only in gameplay contexts.
-        local okObject, progressObject = pcall(function() return player[kind.getter](player) end)
-        if not okObject or not progressObject then
-            return false, ERROR_CODES.EXECUTION_FAILED, "Player " .. kind.label .. " data not available"
-        end
-        local okSetter, setter = pcall(function() return progressObject[kind.setter] end)
-        if not okSetter or not setter then
-            return false, ERROR_CODES.EXECUTION_FAILED,
-                "No way to set the " .. kind.label .. " in this Lua context"
-        end
-        local okSet, setErr = pcall(setter, progressObject, index)
-        if not okSet then
-            return false, ERROR_CODES.EXECUTION_FAILED,
-                kind.setter .. " failed: " .. tostring(setErr)
-        end
-        message = kind.setMessage .. tostring(typeName)
+        return true, nil, kind.requestedMessage .. tostring(typeName)
     end
 
-    dismissEndTurnBlockers(playerId, kind.blocker)
-    return true, nil, message
+    -- Fallback: the GameCore setter, which takes the row index and exists
+    -- only in gameplay contexts.
+    if not progressObject then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Player " .. kind.label .. " data not available"
+    end
+    local okSetter, setter = pcall(function() return progressObject[kind.setter] end)
+    if not okSetter or not setter then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            "No way to set the " .. kind.label .. " in this Lua context"
+    end
+    local okSet, setErr = pcall(setter, progressObject, index)
+    if not okSet then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            kind.setter .. " failed: " .. tostring(setErr)
+    end
+    return true, nil, kind.setMessage .. tostring(typeName)
 end
 
 local RESEARCH_TECH_KIND = {
@@ -3045,10 +3094,11 @@ local RESEARCH_TECH_KIND = {
     table = "Technologies",
     typeField = "TechnologyType",
     getter = "GetTechs",
+    has = "HasTech",
+    can = "CanResearch",
     operation = "RESEARCH",
     param = "PARAM_TECH_TYPE",
     setter = "SetResearchingTech",
-    blocker = "ENDTURN_BLOCKING_RESEARCH",
     requestedMessage = "Research requested: ",
     setMessage = "Researching tech: ",
 }
@@ -3059,10 +3109,11 @@ local RESEARCH_CIVIC_KIND = {
     table = "Civics",
     typeField = "CivicType",
     getter = "GetCulture",
+    has = "HasCivic",
+    can = "CanProgress",
     operation = "PROGRESS_CIVIC",
     param = "PARAM_CIVIC_TYPE",
     setter = "SetProgressingCivic",
-    blocker = "ENDTURN_BLOCKING_CIVIC",
     requestedMessage = "Civic requested: ",
     setMessage = "Progressing civic: ",
 }

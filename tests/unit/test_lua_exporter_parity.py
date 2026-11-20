@@ -62,7 +62,16 @@ def state(runtime: Any) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Exporter: top level
 # ---------------------------------------------------------------------------
+QUERY_OFF = "NotificationManager.GetFirstEndTurnBlocking = nil"
+
+
 class TestSchemaAndBlocker:
+    # Every test here runs twice: on the game's own query (GetFirstEndTurnBlocking) and
+    # on the notification-list scan used when that query is missing.
+    @pytest.fixture(params=["query", "scan"])
+    def runtime(self, request: pytest.FixtureRequest) -> Any:
+        return h.load_mod(setup=None if request.param == "query" else QUERY_OFF)
+
     def test_schema_version_is_two(self, state: dict[str, Any]) -> None:
         assert state["schema_version"] == 2
         assert type(state["schema_version"]) is int
@@ -135,6 +144,54 @@ class TestSchemaAndBlocker:
         assert _notify_ok is True
         assert state["schema_version"] == 2
         assert "end_turn_blocking" not in state
+
+
+class TestBlockerSource:
+    """The game's own query wins; the list scan is only the fallback."""
+
+    @pytest.mark.parametrize("answer", ["EndTurnBlockingTypes.NO_ENDTURN_BLOCKING", "nil", "0"])
+    def test_the_query_saying_nothing_blocks_wins_over_the_list(self, answer: str) -> None:
+        runtime = h.load_mod()
+        _notify(runtime, RESEARCH_BLOCKER)
+        runtime.execute(
+            f"NotificationManager.GetFirstEndTurnBlocking = function() return {answer} end"
+        )
+        state = h.export_state(runtime)
+        assert state["schema_version"] == 2
+        assert "end_turn_blocking" not in state
+        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
+
+    def test_the_query_naming_a_blocker_wins_over_an_empty_list(self) -> None:
+        runtime = h.load_mod()
+        runtime.execute(
+            "NotificationManager.GetFirstEndTurnBlocking ="
+            " function() return EndTurnBlockingTypes.ENDTURN_BLOCKING_UNITS end"
+            "\nCiv6Stub.canEndTurn = false"
+        )
+        state = h.export_state(runtime)
+        assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_UNITS"
+        assert "end_turn_blocking_message" not in state
+        success, code, message = h.execute(runtime, END_TURN)
+        assert (success, code) == (False, "END_TURN_BLOCKED")
+        assert message.startswith("End turn blocked: ENDTURN_BLOCKING_UNITS")
+
+    def test_the_message_comes_from_find_end_turn_blocking(self) -> None:
+        runtime = h.load_mod()
+        _notify(runtime, RESEARCH_BLOCKER)
+        runtime.execute(
+            "NotificationManager.FindEndTurnBlocking = function(b, p)"
+            " return { GetMessage = function() return 'from the query' end } end"
+        )
+        assert h.export_state(runtime)["end_turn_blocking_message"] == "from the query"
+
+    def test_a_raising_query_falls_back_to_the_list_scan(self) -> None:
+        runtime = h.load_mod(
+            setup="NotificationManager.GetFirstEndTurnBlocking = function() error('boom') end"
+        )
+        _notify(runtime, CIVIC_BLOCKER)
+        state = h.export_state(runtime)
+        assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_CIVIC"
+        assert state["end_turn_blocking_message"] == "Choose a civic"
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +299,15 @@ class TestCivicExport:
         player = h.export_state(runtime)["player"]
         assert player["civics_researched"] == ["CIVIC_CODE_OF_LAWS", "CIVIC_FOREIGN_TRADE"]
 
+    def test_turns_left_comes_from_the_per_civic_query(self, runtime: Any) -> None:
+        runtime.execute("Civ6Stub.players[0].civic.turns[1] = 22")  # turnsLeft stays 15
+        assert h.export_state(runtime)["player"]["civic_status"]["turns_left"] == 22
+
+    def test_turns_left_falls_back_to_the_current_civic_query(self) -> None:
+        runtime = h.load_mod(setup=_without_methods("", "GetCulture", "GetTurnsToProgressCivic"))
+        runtime.execute("Civ6Stub.players[0].civic.turns[1] = 22")
+        assert h.export_state(runtime)["player"]["civic_status"]["turns_left"] == 15
+
     def test_no_current_civic_drops_name_and_status(self, runtime: Any) -> None:
         runtime.execute("Civ6Stub.players[0].civic.current = -1")
         player = h.export_state(runtime)["player"]
@@ -251,16 +317,18 @@ class TestCivicExport:
         assert player["civics_researched"] == ["CIVIC_CODE_OF_LAWS"]
 
     @pytest.mark.parametrize(
-        ("method", "field"),
+        ("methods", "field"),
         [
-            ("GetCultureCost", "cost"),
-            ("GetCulturalProgress", "progress"),
-            ("GetTurnsLeftOnCurrentCivic", "turns_left"),
-            ("HasBoostBeenTriggered", "boost_triggered"),
+            (("GetCultureCost",), "cost"),
+            (("GetCulturalProgress",), "progress"),
+            (("GetTurnsToProgressCivic", "GetTurnsLeftOnCurrentCivic"), "turns_left"),
+            (("HasBoostBeenTriggered",), "boost_triggered"),
         ],
     )
-    def test_a_missing_method_drops_only_its_field(self, method: str, field: str) -> None:
-        runtime = h.load_mod(setup=_without_methods("", "GetCulture", method))
+    def test_a_missing_method_drops_only_its_field(
+        self, methods: tuple[str, ...], field: str
+    ) -> None:
+        runtime = h.load_mod(setup=_without_methods("", "GetCulture", *methods))
         player = h.export_state(runtime)["player"]
         status = player["civic_status"]
         assert field not in status
@@ -297,6 +365,34 @@ class TestCityExport:
         assert h.export_state(runtime)["cities"][0]["districts"] == [
             "DISTRICT_CAMPUS",
             "DISTRICT_CITY_CENTER",
+        ]
+
+    def test_an_unfinished_district_is_not_listed(self, runtime: Any) -> None:
+        runtime.execute("Civ6Stub.cities[301].districts = { 0, { type = 1, complete = false } }")
+        assert h.export_state(runtime)["cities"][0]["districts"] == ["DISTRICT_CITY_CENTER"]
+
+    def test_a_finished_district_entry_is_listed(self, runtime: Any) -> None:
+        runtime.execute("Civ6Stub.cities[301].districts = { 0, { type = 1, complete = true } }")
+        assert h.export_state(runtime)["cities"][0]["districts"] == [
+            "DISTRICT_CITY_CENTER",
+            "DISTRICT_CAMPUS",
+        ]
+
+    def test_a_district_without_is_complete_is_listed(self) -> None:
+        setup = (
+            "for _, c in Players[0]:GetCities():Members() do\n"
+            " local get = c.GetDistricts\n"
+            " c.GetDistricts = function(self) local col = get(self) local members = col.Members\n"
+            "  col.Members = function(me) local it = members(me)\n"
+            "   return function() local i, d = it() if i then d.IsComplete = nil end return i, d end\n"
+            "  end return col end\n"
+            "end"
+        )
+        runtime = h.load_mod(setup=setup)
+        runtime.execute("Civ6Stub.cities[301].districts = { 0, { type = 1, complete = false } }")
+        assert h.export_state(runtime)["cities"][0]["districts"] == [
+            "DISTRICT_CITY_CENTER",
+            "DISTRICT_CAMPUS",
         ]
 
     def test_missing_get_buildings_empties_only_buildings(self) -> None:
@@ -352,17 +448,53 @@ class TestResearchActions:
         assert action["items"] == [1, 2]
         assert action["item_names"] == ["CIVIC_CRAFTSMANSHIP", "CIVIC_FOREIGN_TRADE"]
 
-    def test_a_prerequisite_met_unlocks_the_civic(self, runtime: Any) -> None:
+    def test_a_civic_the_game_can_progress_is_offered(self, runtime: Any) -> None:
+        runtime.execute("Civ6Stub.players[0].civic.has = { [0] = true, [2] = true }")
+        runtime.execute("Civ6Stub.players[0].civic.can[3] = true")
+        (action,) = _actions(h.export_state(runtime), "research_civic")
+        # Craftsmanship is current, Foreign Trade is had: only Early Empire is left.
+        assert action["items"] == [3]
+        assert action["item_names"] == ["CIVIC_EARLY_EMPIRE"]
+
+    def test_can_progress_beats_the_prerequisite_table_when_it_offers_more(
+        self, runtime: Any
+    ) -> None:
+        # The table says Early Empire is out of reach (Foreign Trade is not had).
+        runtime.execute("Civ6Stub.players[0].civic.can[3] = true")
+        (action,) = _actions(h.export_state(runtime), "research_civic")
+        assert action["items"] == [2, 3]
+        assert action["item_names"] == ["CIVIC_FOREIGN_TRADE", "CIVIC_EARLY_EMPIRE"]
+
+    def test_can_progress_beats_the_prerequisite_table_when_it_offers_less(
+        self, runtime: Any
+    ) -> None:
+        # The table would allow Foreign Trade; the game says it cannot be progressed.
+        runtime.execute("Civ6Stub.players[0].civic.can = { [1] = true }")
+        state = h.export_state(runtime)
+        assert _actions(state, "research_civic") == []
+        assert _actions(state, "research_tech"), "tech offer vanished; control is vacuous"
+
+    def test_without_can_progress_the_prerequisite_table_decides(self) -> None:
+        runtime = h.load_mod(setup=_without_methods("", "GetCulture", "CanProgress"))
+        runtime.execute("Civ6Stub.players[0].civic.can = {}")  # would empty the offer
+        (action,) = _actions(h.export_state(runtime), "research_civic")
+        assert action["items"] == [2]
         runtime.execute("Civ6Stub.players[0].civic.has = { [0] = true, [2] = true }")
         (action,) = _actions(h.export_state(runtime), "research_civic")
         # Early Empire needs Foreign Trade, now had; Craftsmanship is current.
         assert action["items"] == [3]
         assert action["item_names"] == ["CIVIC_EARLY_EMPIRE"]
 
-    def test_no_civic_action_without_the_prerequisite_table(self) -> None:
-        state = h.export_state(h.load_mod(setup="GameInfo.CivicPrereqs = nil"))
+    def test_no_civic_action_without_can_progress_and_the_prerequisite_table(self) -> None:
+        setup = _without_methods("", "GetCulture", "CanProgress") + "\nGameInfo.CivicPrereqs = nil"
+        state = h.export_state(h.load_mod(setup=setup))
         assert _actions(state, "research_civic") == []
         assert _actions(state, "research_tech"), "tech offer vanished; control is vacuous"
+
+    def test_the_prerequisite_table_is_not_needed_when_can_progress_exists(self) -> None:
+        state = h.export_state(h.load_mod(setup="GameInfo.CivicPrereqs = nil"))
+        (action,) = _actions(state, "research_civic")
+        assert action["items"] == [2]
 
     def test_a_raising_can_research_keeps_the_other_actions(self) -> None:
         setup = _without_methods("", "GetTechs").replace(
@@ -377,7 +509,9 @@ class TestResearchActions:
             assert kept in names, f"{kept} lost when research failed"
 
     def test_a_raising_prerequisite_table_keeps_the_other_actions(self) -> None:
-        setup = "GameInfo.CivicPrereqs = function() error('boom') end"
+        setup = _without_methods("", "GetCulture", "CanProgress") + (
+            "\nGameInfo.CivicPrereqs = function() error('boom') end"
+        )
         assert _actions(h.export_state(h.load_mod()), "research_civic"), "control: healthy offer"
         state = h.export_state(h.load_mod(setup=setup))
         names = [a["action"] for a in state["legal_actions"]]
@@ -394,6 +528,10 @@ END_TURN = {"action_type": "end_turn"}
 
 
 class TestEndTurn:
+    @pytest.fixture(params=["query", "scan"])
+    def runtime(self, request: pytest.FixtureRequest) -> Any:
+        return h.load_mod(setup=None if request.param == "query" else QUERY_OFF)
+
     def test_not_blocked_requests_one_action(self, runtime: Any) -> None:
         result = h.execute(runtime, END_TURN)
         assert result == (True, None, "End turn requested")
@@ -449,8 +587,6 @@ class TestEndTurn:
 # ---------------------------------------------------------------------------
 # Executor: research_tech / research_civic
 # ---------------------------------------------------------------------------
-# kind -> (action_type, operation id, param key, setter, blocker entry, blocking name,
-#          name of an index, index, ok message prefix, fallback prefix, getter)
 KINDS = {
     "tech": {
         "action": "research_tech",
@@ -459,12 +595,21 @@ KINDS = {
         "setter": "SetResearchingTech",
         "blocker": RESEARCH_BLOCKER,
         "other_blocker": CIVIC_BLOCKER,
-        "name": "TECH_MINING",
-        "index": 1,
-        "requested": "Research requested: TECH_MINING",
-        "fallback": "Researching tech: TECH_MINING",
+        "name": "TECH_WRITING",
+        "index": 2,
+        "hash": 7122,
+        "requested": "Research requested: TECH_WRITING",
+        "fallback": "Researching tech: TECH_WRITING",
         "getter": "GetTechs",
+        "can": "CanResearch",
         "bad_name": "TECH_BOGUS",
+        "have_name": "TECH_POTTERY",
+        "have_index": 0,
+        "locked_name": "TECH_BRONZE_WORKING",
+        "locked_index": 3,
+        "state": "tech",
+        "current_key": "current_research",
+        "rows": "Technologies",
     },
     "civic": {
         "action": "research_civic",
@@ -475,18 +620,42 @@ KINDS = {
         "other_blocker": RESEARCH_BLOCKER,
         "name": "CIVIC_FOREIGN_TRADE",
         "index": 2,
+        "hash": 8122,
         "requested": "Civic requested: CIVIC_FOREIGN_TRADE",
         "fallback": "Progressing civic: CIVIC_FOREIGN_TRADE",
         "getter": "GetCulture",
+        "can": "CanProgress",
         "bad_name": "CIVIC_BOGUS",
+        "have_name": "CIVIC_CODE_OF_LAWS",
+        "have_index": 0,
+        "locked_name": "CIVIC_EARLY_EMPIRE",
+        "locked_index": 3,
+        "state": "civic",
+        "current_key": "current_civic",
+        "rows": "Civics",
     },
 }
 ITEM_FORMS = ["index", "name"]
+FALLBACK_SETUPS = [
+    "UI.RequestPlayerOperation = nil",
+    "PlayerOperations = nil",
+    "UI.RequestPlayerOperation = function() error('refused') end",
+]
 
 
 def _item(kind: str, form: str) -> Any:
     spec = KINDS[kind]
     return spec["index"] if form == "index" else spec["name"]
+
+
+def _strip_hash(rows: str) -> str:
+    """Lua setup: the rows of ``GameInfo.<rows>`` lose their ``Hash``."""
+    return (
+        f"local orig = GameInfo.{rows}\n"
+        f"GameInfo.{rows} = function() local it = orig() return function()"
+        " local r = it() if not r then return nil end local c = {}"
+        " for k, v in pairs(r) do c[k] = v end c.Hash = nil return c end end"
+    )
 
 
 @pytest.mark.parametrize("kind", sorted(KINDS))
@@ -497,25 +666,39 @@ class TestResearchChoice:
         result = h.execute(runtime, {"action_type": spec["action"], "item_id": _item(kind, form)})
         assert result == (True, None, spec["requested"])
         assert h.stub_calls(runtime) == ["UI.RequestPlayerOperation"]
-        player, operation, params_value = _call_args(runtime, 1, 3)[0:3]
-        assert player == 0
-        assert operation == spec["operation"]
-        assert runtime.eval(f"Civ6Stub.calls[1].args[3][{spec['param']}]") == spec["index"]
-        assert params_value is not None
+        assert _call_args(runtime, 1, 2) == [0, spec["operation"]]
+        # The game wants the row's hash, not its index, and an exclusive insert.
+        assert runtime.eval(f"Civ6Stub.calls[1].args[3][{spec['param']}]") == spec["hash"]
+        assert runtime.eval("Civ6Stub.calls[1].args[3][503]") == 601
 
     @pytest.mark.parametrize("form", ITEM_FORMS)
-    @pytest.mark.parametrize(
-        "setup",
-        [
-            "UI.RequestPlayerOperation = nil",
-            "PlayerOperations = nil",
-            "UI.RequestPlayerOperation = function() error('refused') end",
-        ],
-    )
-    def test_fallback_uses_the_setter(self, kind: str, form: str, setup: str) -> None:
+    def test_the_game_takes_the_request_and_the_state_follows(
+        self, runtime: Any, kind: str, form: str
+    ) -> None:
+        spec = KINDS[kind]
+        before = h.export_state(runtime)["player"][spec["current_key"]]
+        h.execute(runtime, {"action_type": spec["action"], "item_id": _item(kind, form)})
+        assert runtime.eval("Civ6Stub.applyRequests()") == 1
+        after = h.export_state(runtime)["player"][spec["current_key"]]
+        assert after == spec["name"]
+        assert before != after, "the request changed nothing; control is vacuous"
+
+    @pytest.mark.parametrize("form", ITEM_FORMS)
+    @pytest.mark.parametrize("setup", FALLBACK_SETUPS)
+    def test_fallback_uses_the_setter_with_the_index(
+        self, kind: str, form: str, setup: str
+    ) -> None:
         spec = KINDS[kind]
         runtime = h.load_mod(setup=setup)
         result = h.execute(runtime, {"action_type": spec["action"], "item_id": _item(kind, form)})
+        assert result == (True, None, spec["fallback"])
+        assert h.stub_calls(runtime) == [spec["setter"]]
+        assert _call_args(runtime, 1, 2) == [0, spec["index"]]
+
+    def test_a_row_without_a_hash_falls_back_to_the_setter(self, kind: str) -> None:
+        spec = KINDS[kind]
+        runtime = h.load_mod(setup=_strip_hash(spec["rows"]))
+        result = h.execute(runtime, {"action_type": spec["action"], "item_id": spec["index"]})
         assert result == (True, None, spec["fallback"])
         assert h.stub_calls(runtime) == [spec["setter"]]
         assert _call_args(runtime, 1, 2) == [0, spec["index"]]
@@ -547,39 +730,70 @@ class TestResearchChoice:
         assert (success, code) == (False, "INVALID_COMMAND")
         assert h.stub_calls(runtime) == []
 
-    @pytest.mark.parametrize("path", ["primary", "fallback"])
-    def test_choice_dismisses_only_the_matching_blockers(self, kind: str, path: str) -> None:
+    @pytest.mark.parametrize("form", ITEM_FORMS)
+    @pytest.mark.parametrize("setup", [None, *FALLBACK_SETUPS[:1]])
+    def test_an_item_the_player_has_is_refused(
+        self, kind: str, form: str, setup: str | None
+    ) -> None:
         spec = KINDS[kind]
-        setup = "UI.RequestPlayerOperation = nil" if path == "fallback" else None
         runtime = h.load_mod(setup=setup)
-        already = (
-            spec["blocker"]
-            .replace("id = ", "id = 1")
-            .replace("dismissed = false", "dismissed = true")
+        item = spec["have_index"] if form == "index" else spec["have_name"]
+        success, code, message = h.execute(
+            runtime, {"action_type": spec["action"], "item_id": item}
         )
-        _notify(runtime, spec["blocker"], spec["other_blocker"], PRODUCTION_BLOCKER, already)
+        assert (success, code) == (False, "INVALID_TARGET")
+        assert "already" in message.lower()
+        assert h.stub_calls(runtime) == []
+
+    @pytest.mark.parametrize("form", ITEM_FORMS)
+    @pytest.mark.parametrize("setup", [None, *FALLBACK_SETUPS[:1]])
+    def test_an_item_the_game_says_cannot_be_chosen_is_refused(
+        self, kind: str, form: str, setup: str | None
+    ) -> None:
+        spec = KINDS[kind]
+        runtime = h.load_mod(setup=setup)
+        item = spec["locked_index"] if form == "index" else spec["locked_name"]
+        success, code, message = h.execute(
+            runtime, {"action_type": spec["action"], "item_id": item}
+        )
+        assert (success, code) == (False, "INVALID_TARGET")
+        assert "cannot" in message.lower()
+        assert h.stub_calls(runtime) == []
+
+    def test_without_the_can_method_the_gate_is_skipped(self, kind: str) -> None:
+        spec = KINDS[kind]
+        runtime = h.load_mod(setup=_without_methods("", spec["getter"], spec["can"]))
+        result = h.execute(
+            runtime, {"action_type": spec["action"], "item_id": spec["locked_index"]}
+        )
+        assert result[:2] == (True, None)
+        assert h.stub_calls(runtime) == ["UI.RequestPlayerOperation"]
+
+    def test_only_an_exact_false_refuses(self, kind: str) -> None:
+        spec = KINDS[kind]
+        setup = _without_methods("", spec["getter"]).replace(
+            "return t end", f"t.{spec['can']} = function() return nil end return t end"
+        )
+        runtime = h.load_mod(setup=setup)
+        result = h.execute(
+            runtime, {"action_type": spec["action"], "item_id": spec["locked_index"]}
+        )
+        assert result[:2] == (True, None)
+        assert h.stub_calls(runtime) == ["UI.RequestPlayerOperation"]
+
+    @pytest.mark.parametrize("setup", [None, *FALLBACK_SETUPS[:1]])
+    def test_a_choice_leaves_the_notifications_alone(self, kind: str, setup: str | None) -> None:
+        spec = KINDS[kind]
+        runtime = h.load_mod(setup=setup)
+        _notify(runtime, spec["blocker"], spec["other_blocker"], PRODUCTION_BLOCKER)
         success, code, _ = h.execute(
             runtime, {"action_type": spec["action"], "item_id": spec["index"]}
         )
         assert (success, code) == (True, None)
-        notification_id = 5 if kind == "tech" else 6
-        calls = h.stub_calls(runtime)
-        first = "UI.RequestPlayerOperation" if path == "primary" else spec["setter"]
-        assert calls == [first, "NotificationManager.SendActivated", "NotificationManager.Dismiss"]
-        assert _call_args(runtime, 2, 2) == [0, notification_id]
-        assert _call_args(runtime, 3, 2) == [0, notification_id]
-        # The other kinds stay: only the matching blocker is dismissed.
-        assert runtime.eval("Civ6Stub.notifications[0][1].dismissed") is True
-        assert runtime.eval("Civ6Stub.notifications[0][2].dismissed") is False
-        assert runtime.eval("Civ6Stub.notifications[0][3].dismissed") is False
-
-    def test_a_refused_choice_dismisses_nothing(self, runtime: Any, kind: str) -> None:
-        spec = KINDS[kind]
-        _notify(runtime, spec["blocker"])
-        _, code, _ = h.execute(runtime, {"action_type": spec["action"], "item_id": 99})
-        assert code == "INVALID_TARGET"
-        assert "NotificationManager.Dismiss" not in h.stub_calls(runtime)
-        assert runtime.eval("Civ6Stub.notifications[0][1].dismissed") is False
+        first = "UI.RequestPlayerOperation" if setup is None else spec["setter"]
+        assert h.stub_calls(runtime) == [first]  # no SendActivated, no Dismiss
+        for position in (1, 2, 3):
+            assert runtime.eval(f"Civ6Stub.notifications[0][{position}].dismissed") is False
 
     def test_missing_notification_manager_is_fine(self, kind: str) -> None:
         spec = KINDS[kind]
@@ -587,32 +801,61 @@ class TestResearchChoice:
         result = h.execute(runtime, {"action_type": spec["action"], "item_id": spec["index"]})
         assert result == (True, None, spec["requested"])
         assert h.stub_calls(runtime) == ["UI.RequestPlayerOperation"]
+        assert runtime.eval("Civ6Stub.applyRequests()") == 1
 
 
 # ---------------------------------------------------------------------------
 # End to end
 # ---------------------------------------------------------------------------
+@pytest.mark.parametrize("kind", sorted(KINDS))
 class TestBlockedTurnScenario:
-    def test_choose_research_then_end_turn(self, runtime: Any) -> None:
-        _notify(runtime, RESEARCH_BLOCKER)
+    def test_choose_research_then_the_game_takes_it_then_end_turn(
+        self, runtime: Any, kind: str
+    ) -> None:
+        spec = KINDS[kind]
+        _notify(runtime, spec["blocker"])
 
         before = h.export_state(runtime)
-        assert before["end_turn_blocking"] == "ENDTURN_BLOCKING_RESEARCH"
-        (offer,) = _actions(before, "research_tech")
+        assert before["end_turn_blocking"].startswith("ENDTURN_BLOCKING_")
+        (offer,) = _actions(before, spec["action"])
 
         blocked = h.execute(runtime, END_TURN)
         assert blocked[:2] == (False, "END_TURN_BLOCKED")
         assert h.stub_calls(runtime) == []
 
-        chosen = h.execute(runtime, {"action_type": "research_tech", "item_id": offer["items"][0]})
+        chosen = h.execute(runtime, {"action_type": spec["action"], "item_id": offer["items"][0]})
         assert chosen[:2] == (True, None)
-        assert runtime.eval("Civ6Stub.notifications[0][1].dismissed") is True
+        # Requested, not yet taken: the blocker is still reported, nothing was dismissed.
+        assert h.stub_calls(runtime) == ["UI.RequestPlayerOperation"]
+        assert h.export_state(runtime)["end_turn_blocking"] == before["end_turn_blocking"]
+        assert h.execute(runtime, END_TURN)[:2] == (False, "END_TURN_BLOCKED")
 
+        assert runtime.eval("Civ6Stub.applyRequests()") == 1
         after = h.export_state(runtime)
         assert "end_turn_blocking" not in after
+        assert after["player"][spec["current_key"]] == offer["item_names"][0]
 
         assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
         assert h.stub_calls(runtime)[-1] == "UI.RequestAction"
+
+    def test_a_request_the_game_drops_leaves_the_turn_blocked(
+        self, runtime: Any, kind: str
+    ) -> None:
+        spec = KINDS[kind]
+        _notify(runtime, spec["blocker"])
+        (offer,) = _actions(h.export_state(runtime), spec["action"])
+        chosen = h.execute(runtime, {"action_type": spec["action"], "item_id": offer["items"][0]})
+        assert chosen[:2] == (True, None)
+        # The game refuses it by the next frame: the item can no longer be chosen.
+        runtime.execute(f"Civ6Stub.players[0].{spec['state']}.can = {{}}")
+        assert runtime.eval("Civ6Stub.applyRequests()") == 0
+
+        state = h.export_state(runtime)
+        assert state["end_turn_blocking"].startswith("ENDTURN_BLOCKING_")
+        assert state["player"][spec["current_key"]] != offer["item_names"][0]
+        success, code, _ = h.execute(runtime, END_TURN)
+        assert (success, code) == (False, "END_TURN_BLOCKED")
+        assert "UI.RequestAction" not in h.stub_calls(runtime)
 
 
 class TestSpecScenarioEdges:

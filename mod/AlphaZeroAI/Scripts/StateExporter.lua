@@ -531,7 +531,9 @@ local function exportCities(playerId)
                                         local districtType = safeCall(district, "GetType")
                                         local districtName = districtType ~= nil
                                             and typeNameByIndex("Districts", "DistrictType", districtType)
-                                        if districtName then
+                                        -- A district is listed once placed; only a finished
+                                        -- one counts. Without IsComplete it is listed.
+                                        if districtName and safeCall(district, "IsComplete") ~= false then
                                             table.insert(cityData.districts, districtName)
                                         end
                                     end
@@ -622,7 +624,8 @@ local function exportPlayer(playerId)
                 index = currentCivic,
                 cost = safeCall(playerCulture, "GetCultureCost", currentCivic),
                 progress = safeCall(playerCulture, "GetCulturalProgress", currentCivic),
-                turns_left = safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
+                turns_left = safeCall(playerCulture, "GetTurnsToProgressCivic", currentCivic)
+                    or safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
                 boost_triggered = safeCall(playerCulture, "HasBoostBeenTriggered", currentCivic),
             }
         end
@@ -702,37 +705,50 @@ local function appendResearchActions(player, actions)
         end
     end
 
-    -- Civics: no "can progress" call is known to work, so a civic is open when
-    -- the player lacks it and has every prerequisite listed for it.
+    -- Civics: the game answers directly (CanProgress, as its own civics chooser
+    -- asks). Where that method is missing, a civic is open when the player
+    -- lacks it and has every prerequisite listed for it.
     local playerCulture = safeCall(player, "GetCulture")
     local civicTable = GameInfo and GameInfo.Civics
-    local prereqTable = GameInfo and GameInfo.CivicPrereqs
     local okHasCivic, hasCivicMethod = pcall(function() return playerCulture.HasCivic end)
-    if playerCulture and civicTable and prereqTable and okHasCivic and hasCivicMethod then
+    if playerCulture and civicTable and okHasCivic and hasCivicMethod then
+        local okCanProgress, canProgressMethod = pcall(function() return playerCulture.CanProgress end)
+        local askTheGame = okCanProgress and canProgressMethod ~= nil
+        local prereqTable = GameInfo.CivicPrereqs
+
         local indexByType, prereqs = {}, {}
-        for row in civicTable() do
-            indexByType[row.CivicType] = row.Index
-        end
-        for row in prereqTable() do
-            prereqs[row.Civic] = prereqs[row.Civic] or {}
-            table.insert(prereqs[row.Civic], row.PrereqCivic)
+        if not askTheGame and prereqTable then
+            for row in civicTable() do
+                indexByType[row.CivicType] = row.Index
+            end
+            for row in prereqTable() do
+                prereqs[row.Civic] = prereqs[row.Civic] or {}
+                table.insert(prereqs[row.Civic], row.PrereqCivic)
+            end
         end
 
         local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
         local items, names = {}, {}
-        for row in civicTable() do
-            if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
-                local open = true
-                for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
-                    local prereqIndex = indexByType[prereqType]
-                    if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
-                        open = false
-                        break
+        if askTheGame or prereqTable then
+            for row in civicTable() do
+                if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
+                    local open
+                    if askTheGame then
+                        open = safeCall(playerCulture, "CanProgress", row.Index) and true or false
+                    else
+                        open = true
+                        for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
+                            local prereqIndex = indexByType[prereqType]
+                            if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
+                                open = false
+                                break
+                            end
+                        end
                     end
-                end
-                if open then
-                    table.insert(items, row.Index)
-                    table.insert(names, row.CivicType)
+                    if open then
+                        table.insert(items, row.Index)
+                        table.insert(names, row.CivicType)
+                    end
                 end
             end
         end
@@ -907,16 +923,51 @@ function AlphaZeroStateExporter.Init()
     end
 end
 
--- The notification that stops the player's turn from ending, if any.
--- Returns the name of its EndTurnBlockingTypes value (for example
--- "ENDTURN_BLOCKING_RESEARCH") and its message, or nil when nothing blocks or
--- when this Lua context has no NotificationManager.
+-- A notification's message as text, or nil.
+local function notificationMessage(entry)
+    local text = safeCall(entry, "GetMessage")
+    if type(text) == "string" and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+-- Whether an EndTurnBlockingTypes value means "something blocks".
+local function isBlocking(blocking)
+    if blocking == nil or blocking == 0 then
+        return false
+    end
+    return not (EndTurnBlockingTypes and blocking == EndTurnBlockingTypes.NO_ENDTURN_BLOCKING)
+end
+
+-- The reason the player's turn cannot end, if any.
+-- Returns the name of the EndTurnBlockingTypes value (for example
+-- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
+-- when nothing blocks or when this Lua context has no NotificationManager.
+-- Asks the game the way its own action panel does (GetFirstEndTurnBlocking);
+-- where that call is missing or fails, scans the notification list instead.
 function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     if not NotificationManager then
         return nil, nil
     end
 
-    local noBlocking = EndTurnBlockingTypes and EndTurnBlockingTypes.NO_ENDTURN_BLOCKING
+    if NotificationManager.GetFirstEndTurnBlocking then
+        local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
+        if okFirst then
+            if not isBlocking(blocking) then
+                return nil, nil
+            end
+            local message = nil
+            if NotificationManager.FindEndTurnBlocking then
+                local okFind, entry = pcall(NotificationManager.FindEndTurnBlocking, blocking, playerId)
+                if okFind and entry then
+                    message = notificationMessage(entry)
+                end
+            end
+            return endTurnBlockingName(blocking), message
+        end
+    end
+
     local ok, blockerName, message = pcall(function()
         local list = NotificationManager.GetList(playerId)
         if not list then
@@ -926,12 +977,8 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
             local entry = NotificationManager.Find(playerId, notificationId)
             if entry and not entry:IsDismissed() then
                 local blocking = entry:GetEndTurnBlocking()
-                if blocking and blocking ~= 0 and blocking ~= noBlocking then
-                    local text = safeCall(entry, "GetMessage")
-                    if type(text) ~= "string" or text == "" then
-                        text = nil
-                    end
-                    return endTurnBlockingName(blocking), text
+                if isBlocking(blocking) then
+                    return endTurnBlockingName(blocking), notificationMessage(entry)
                 end
             end
         end
