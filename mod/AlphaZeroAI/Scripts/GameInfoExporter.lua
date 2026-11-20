@@ -99,6 +99,9 @@ end
 
 -- Export the snapshot and hand it to FileIO. Returns true, or false and why.
 function AlphaZeroGameInfo.ExportAndWrite()
+    if AlphaZeroFileIO and AlphaZeroFileIO.BeginGameInfo then
+        AlphaZeroFileIO.BeginGameInfo()
+    end
     local document, missing = AlphaZeroGameInfo.Export()
     if #missing > 0 and Log then
         Log.Warn("GameInfo tables not exported: %s", table.concat(missing, ", "))

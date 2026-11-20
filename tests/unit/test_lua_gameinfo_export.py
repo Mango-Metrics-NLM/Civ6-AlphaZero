@@ -222,6 +222,8 @@ class TestExportAndWrite:
         g.clear_printed(runtime)
         assert _outcome(runtime.eval("AlphaZeroGameInfo.ExportAndWrite()"))[0] is True
         lines = _gameinfo_lines(runtime)
+        assert lines[0] == "AZ_GAMEINFO_BEGIN"
+        lines = lines[1:]
         assert len(lines) == 1 and lines[0].startswith("AZ_GAMEINFO:")
         text = lines[0][len("AZ_GAMEINFO:") :]
         assert len(text) <= g.MAX_PIECE
@@ -243,7 +245,8 @@ class TestExportAndWrite:
         lines = _gameinfo_lines(runtime)
         assert not any(line.startswith("AZ_GAMEINFO:") for line in lines)
         chunks = [line for line in lines if line.startswith("AZ_GAMEINFO_CHUNK:")]
-        assert len(chunks) >= 2 and lines[-1] == f"AZ_GAMEINFO_END:{len(chunks)}"
+        assert len(chunks) >= 2
+        assert re.fullmatch(rf"AZ_GAMEINFO_END:{len(chunks)}:\d+", lines[-1])
         assert all(
             line.startswith(f"AZ_GAMEINFO_CHUNK:{i}/{len(chunks)}:")
             for i, line in enumerate(chunks, 1)
@@ -277,7 +280,8 @@ class TestExportAndWrite:
         success, message = _outcome(runtime.eval("AlphaZeroGameInfo.ExportAndWrite()"))
         assert success is False
         assert isinstance(message, str) and message
-        assert _gameinfo_lines(runtime) == []
+        # Only the announcement of the attempt: no data line.
+        assert _gameinfo_lines(runtime) == ["AZ_GAMEINFO_BEGIN"]
 
 
 class TestInitialisation:
@@ -294,7 +298,7 @@ class TestInitialisation:
 
     def test_a_short_snapshot_is_printed_as_a_single_line_at_load(self) -> None:
         runtime = g.load_printing(g.SMALL_SETUP)
-        lines = _gameinfo_lines(runtime)
+        lines = [line for line in _gameinfo_lines(runtime) if line != "AZ_GAMEINFO_BEGIN"]
         assert len(lines) == 1 and lines[0].startswith("AZ_GAMEINFO:")
         assert json.loads(lines[0][len("AZ_GAMEINFO:") :]) == g.SMALL_DOCUMENT
 
