@@ -345,6 +345,7 @@ When making changes, update the relevant sections below:
 | `python -m alpha_zero.civ6_local --mode civ6 --mcts --eval-harness` | Bridge + MCTS + MLflow eval harness |
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
+| `python scripts/build_lua_bundle.py` | Regenerate `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua`, the one Lua file the game loads, from the module files beside it. **Edit the modules, never the bundle.** `--check` exits 1 when the committed bundle is out of date (gated by `tests/scripts/test_lua_bundle_sync.py`) |
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
 | `python scripts/run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
 | `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides). Prices at 200 games (20 trials x 10 for the shipped `--quick` trial command); an unrecognised trial command is unpriceable and refused |
