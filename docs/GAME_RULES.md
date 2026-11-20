@@ -6,11 +6,13 @@ anyone trains on it. How strength is measured is defined in
 [`EVALUATION.md`](EVALUATION.md); evidence artifacts follow
 [`evidence/SCHEMA.md`](evidence/SCHEMA.md).
 
-> **Status (2026-11-19): planned, not implemented.** Nothing on this page is
-> implemented by the change that adds it. The program is
+> **Status (2026-11-19): the rules kernel exists; no game uses it.** The program is
 > [`kb/specs/20261119-game-mechanics-plan.md`](../kb/specs/20261119-game-mechanics-plan.md).
-> The tooling named below (for example `python -m alpha_zero.rules`) arrives with
-> slices GM-K1 and GM-K2; the preset selector arrives with GM-S0.
+> Slice GM-K1 added `alpha_zero/rules/` (rule sets as validated, hashed data) with
+> `python -m alpha_zero.rules validate`, `hash`, `pace` and `import-gameinfo`, and one calibration draft,
+> `science-v1-draft`. No environment reads it, no preset is selectable and the log
+> below is empty. The preset
+> selector arrives with GM-S0.
 
 ## 1. What a game rule set is
 

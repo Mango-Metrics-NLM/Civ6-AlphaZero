@@ -1,0 +1,30 @@
+{
+  "Technologies": [
+    {"TechnologyType": "TECH_ALPHA", "EraType": "ERA_ANCIENT", "Cost": 20},
+    {"TechnologyType": "TECH_BETA", "EraType": "ERA_ANCIENT", "Cost": 30},
+    {"TechnologyType": "TECH_GAMMA", "EraType": "ERA_CLASSICAL", "Cost": 40},
+    {"TechnologyType": "TECH_DELTA", "Era": 3, "Cost": 60},
+    {"TechnologyType": "TECH_EPSILON", "EraType": "ERA_MEDIEVAL", "Cost": 80},
+    {"TechnologyType": "TECH_UNUSED", "EraType": "ERA_ANCIENT", "Cost": -1}
+  ],
+  "TechnologyPrereqs": [
+    {"Technology": "TECH_GAMMA", "PrereqTech": "TECH_ALPHA"},
+    {"Technology": "TECH_DELTA", "PrereqTech": "TECH_BETA"},
+    {"Technology": "TECH_DELTA", "PrereqTech": "TECH_GAMMA"},
+    {"Technology": "TECH_EPSILON", "PrereqTech": "TECH_DELTA"}
+  ],
+  "Buildings": [
+    {"BuildingType": "BUILDING_HALL", "Cost": 50, "PrereqTech": "TECH_BETA"},
+    {"BuildingType": "BUILDING_WALL", "Cost": 70, "PrereqTech": null}
+  ],
+  "Units": [
+    {"UnitType": "UNIT_SCOUT", "Cost": 30, "Combat": 0, "BaseMoves": 3, "PrereqTech": null},
+    {"UnitType": "UNIT_GUARD", "Cost": 40, "Combat": 15, "BaseMoves": 2, "PrereqTech": "TECH_GAMMA"}
+  ],
+  "Civics": [
+    {"CivicType": "CIVIC_ONE", "Cost": 10}
+  ],
+  "CivicPrereqs": [
+    {"Civic": "CIVIC_ONE", "PrereqCivic": null}
+  ]
+}
