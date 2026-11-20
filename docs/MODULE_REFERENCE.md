@@ -27,7 +27,7 @@ or removed.
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
 | `local` | 6 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, optionally with a pinned torch build, and the running-pinned preflight (`pinned_env.py`); fail-closed GCP isolation (`isolation.py`); the device check that refuses a card whose GPUs the pinned environment cannot provide (`devices.py`); the run-card model and loader (`card.py`); and the run-card driver that prices, pins, probes and runs a `configs/run_cards/` card (`run_card.py`) |
-| `bridge` | 17 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
+| `bridge` | 18 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
 | `distributed` | 8 | Process-based distributed training: actor, learner, coordinator, shared storage |
 | `optimizations` | 7 | Training optimization strategies + Optuna hyperparameter search |
 | `spacetimedb` | 9 | SpacetimeDB integration |

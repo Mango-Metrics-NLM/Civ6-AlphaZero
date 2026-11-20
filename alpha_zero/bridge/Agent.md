@@ -56,6 +56,8 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | `gameinfo_capture.py` | Files the mod's GameInfo snapshot (from `Lua.log` or `gameinfo.json`) under `CIV6AZ_DATA_ROOT` after the rules importer accepts it; CLI `python -m alpha_zero.bridge.gameinfo_capture` |
 | `tech_registry.py` | ResearchRegistry: which encoder slot and research action each technology and civic has, from a game rule set (`alpha_zero.rules`) and an optional GameInfo export; `resolve_registry()` reads `CIV6AZ_BRIDGE_RULESET` / `CIV6AZ_BRIDGE_GAMEINFO` |
 | `health_checker.py` | GameBridgeHealthChecker with circuit breaker, monitoring loop |
+| `mcts_policy.py` | BridgeMCTSEnv (a `MicroCivEnv` seeded from a converted live state) and Civ6MctsPolicy (Gumbel search over it). The search's network and actions are the simulator's; `civ6_local` refuses `--mcts` in `civ6` mode until a translator to live commands exists (GM-B6) |
+| `microciv_proxy.py` | How a live state is stood in for inside MicroCiv: unit categories onto its three unit types (or left out), tiles onto its three terrain types (mountains, water and ice onto the impassable one). Standard library only; adds no simulator rule |
 
 ---
 
