@@ -78,17 +78,34 @@ so a version 1 state still parses.
 | `player` | `techs_researched`, `civics_researched` | Type names the player has (`HasTech`, `HasCivic`). |
 | `player` | `current_research`, `current_civic` | Type name in progress (the tech was a raw row index in version 1). Absent when none. |
 | `player` | `research_status`, `civic_status` | `{type, index, cost, progress, turns_left, boost_triggered}` for the one in progress. |
-| each own city | `buildings`, `districts` | Type names. Other players' cities stay empty. |
-| `legal_actions` | `research_tech`, `research_civic` | `items` are row indexes and `item_names` the type names of what can be chosen now, without the one already in progress. Techs come from `CanResearch`; civics from the prerequisite table, because no "can progress" call is known to work. |
+| each own city | `buildings`, `districts` | Type names; districts only once finished (`IsComplete`). Other players' cities stay empty. |
+| `legal_actions` | `research_tech`, `research_civic` | `items` are row indexes and `item_names` the type names of what can be chosen now, without the one already in progress. Techs come from `CanResearch` and civics from `CanProgress`, as in the game's own choosers; where `CanProgress` is missing, civics come from the prerequisite table. |
 
-Commands: `research_tech` and `research_civic` take `item_id` as a row index or a type name.
-`end_turn` answers `END_TURN_BLOCKED` while a notification blocks the turn, unless
-`UI.CanEndTurn()` says the turn can end.
+Commands:
+
+- `research_tech` and `research_civic` take `item_id` as a row index or a type name. They are
+  refused (`INVALID_TARGET`) for something already researched or something the game says
+  cannot be chosen now. Otherwise the mod sends the request the game's own chooser sends:
+  `UI.RequestPlayerOperation` with the row's **hash** and an exclusive insert mode. The
+  request is fire-and-forget, so the answer is "requested", never "done", and the mod touches
+  no notification: the game is taken to clear its own "choose research" blocker when the
+  choice takes effect. Only when the UI request is unavailable does the mod call the GameCore
+  setter (with the row index).
+- `end_turn` asks the game what blocks the turn the way its action panel does
+  (`NotificationManager.GetFirstEndTurnBlocking`; a scan of the notification list where that
+  call is missing) and answers `END_TURN_BLOCKED` while something does, unless
+  `UI.CanEndTurn()` says the turn can end.
 
 Each game call added for this is guarded, so a call that does not exist in the game's Lua
-context costs one field, not the export. The calls were taken from a project that plays the
-real game over the same debug protocol ([civ6-mcp](https://github.com/lmwilki/civ6-mcp), MIT);
-they have not been run against a game from this repository.
+context costs one field, not the export.
+
+**Where the calls come from.** None was run against a game from this repository. They were
+read from two sources: the game's own UI Lua as redistributed in a public UI mod
+([CQUI Community Edition](https://github.com/Azurency/CQUI_Community-Edition), a 2018
+snapshot, so older than the current game), and [civ6-mcp](https://github.com/lmwilki/civ6-mcp)
+(MIT), which plays the real game over the same debug protocol. Where they disagreed the game's
+own code won: civ6-mcp sends the row index in the research request and then falls back to the
+GameCore setter when the request has no effect, while the game's choosers send the hash.
 
 ### Live checklist for the maintainer (GM-B2)
 
@@ -100,7 +117,10 @@ Nothing below can be checked without the game. After `python scripts/install_civ
    `ENDTURN_BLOCKING_RESEARCH`, and the next state carries `end_turn_blocking`.
 3. Send `research_tech` with an `item_id` from the `research_tech` legal action: the next
    state (or the one after: the request is applied after the command returns) shows it as
-   `current_research`, and the research notification is gone.
+   `current_research`, and `end_turn_blocking` is gone. If the research changed but the
+   blocker stayed, the game does not clear its own notification and the mod has to dismiss
+   it; if the research did not change, the request's parameters are wrong for this game
+   version. Either is worth an issue.
 4. Send `end_turn` again: the turn ends.
 5. Note any field that stays empty in the real game and any call the log reports as failing.
 
@@ -175,9 +195,9 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   game only; GM-B3 planned).** The exporter now writes researched techs and
   civics by type name, the current research and civic with cost, progress and
   boost, each of the player's cities' buildings and districts, and research
-  choices as legal actions; research is executed through
-  `UI.RequestPlayerOperation` with the GameCore setter as the fallback (see
-  "What the mod exports" below). **None of this has run in a real game:** the
+  choices as legal actions; research is requested the way the game's own
+  chooser requests it (`UI.RequestPlayerOperation` with the row's hash), with
+  the GameCore setter as the fallback (see "What the mod exports" below). **None of this has run in a real game:** the
   tests execute the mod's Lua against `tests/fixtures/lua/civ6_stub.lua`, which
   is hand-written. On the Python side the new fields are parsed and nothing
   else: the encoder's tech and civic slots are still zero and the action mask
@@ -197,12 +217,25 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   nothing to the game, and the mod exports the state again with
   `end_turn_blocking` set and keeps listening. Before, it answered "Turn ended"
   whatever the game did and stopped listening. The agent loop counts these
-  (`blocked_end_turns`) instead of treating them as invalid actions. Two
-  limits: the agent does not yet choose research (GM-B3), so a research blocker
-  repeats until the mod's command timeout; and blockers with no action in the
-  action space (a policy slot, a governor, a pantheon) cannot be cleared by the
-  agent at all. Whether a pending choice explains the turn-cycle stall above is
-  still a hypothesis to check in a live session, not a finding.
+  (`blocked_end_turns`) instead of treating them as invalid actions. Limits:
+  the agent does not yet choose research (GM-B3), so a research blocker
+  repeats until the mod's command timeout (30 s from the start of the turn,
+  after which the mod goes quiet, as it did before); blockers with no action
+  in the action space (a policy slot, a governor, a pantheon) cannot be
+  cleared by the agent at all; and `end_turn` is still listed as a legal
+  action while the turn is blocked (`end_turn_blocking` is the signal).
+  `alpha_zero/envs/real_civ6_env.py` treats any failed command as an invalid
+  action, so there a blocked `end_turn` costs the invalid-action penalty; that
+  file is on the release play path and is not changed before v2.1.0. Whether a
+  pending choice explains the turn-cycle stall above is still a hypothesis to
+  check in a live session, not a finding.
+- **Every acknowledged command was followed by a second `end_turn` on the
+  socket transport (fixed 2026-11-20, GM-B2).** `LiveBridge` returns the
+  acknowledgement as a dict and the agent loop read it as an object; the error
+  was caught by the step's catch-all, which sends a fallback `end_turn`. Found
+  by review and shown by a test, not in a live session. It may be part of why
+  only `END_TURN` was ever observed live and of the turn-cycle stall; that is
+  a lead to check, not a finding.
 - **Windows-only paths and a single machine.** The game, the mod and the agent
   must share a filesystem and a loopback interface.
 

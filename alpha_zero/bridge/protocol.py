@@ -1233,9 +1233,8 @@ class LegalAction:
         # stringified raw item id (matching ``items`` before hashing).
         item_types = _validate_dict(data.get("item_types"), "item_types", context="LegalAction")
 
-        # Type names aligned with ``items`` (research actions). The mod's JSON
-        # encoder writes an empty Lua table as an object, so anything but a
-        # list reads as "no names".
+        # Type names aligned with ``items`` (research actions). Anything but
+        # a list reads as "no names".
         raw_item_names = data.get("item_names")
         item_names = (
             [name for name in raw_item_names if isinstance(name, str)]
