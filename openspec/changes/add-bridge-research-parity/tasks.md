@@ -21,8 +21,8 @@
 - [x] 3.6 `docs/MODULE_REFERENCE.md` `bridge` count updated
 
 ## 4. GM-B4: GameInfo snapshot
-- [ ] 4.1 Lua `export_gameinfo` in the kernel's input format; `gameinfo_capture.py` writes only under `CIV6AZ_DATA_ROOT`
-- [ ] 4.2 Hygiene test: no tracked file is a GameInfo snapshot; a path inside the checkout is refused
+- [x] 4.1 Lua `export_gameinfo` in the kernel's input format; `gameinfo_capture.py` writes only under `CIV6AZ_DATA_ROOT`
+- [x] 4.2 Hygiene test: no tracked file is a GameInfo snapshot; a path inside the checkout is refused
 
 ## 5. GM-B5: search proxy and `--mcts`
 - [ ] 5.1 An un-mocked test that drives `Civ6MctsPolicy` as `civ6_local` wires it and records the failure
