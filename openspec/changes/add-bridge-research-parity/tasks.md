@@ -16,8 +16,9 @@
 - [x] 3.3 `protocol.py` additive fields; a legacy payload without them still parses
 - [x] 3.4 `agent_loop` handles a blocked END_TURN without raising, in the same PR as 3.2's END_TURN change
 - [x] 3.4a Bring back the two pieces `bundle-drift.md` records (diplomacy error reporting, config-read heartbeat interval), each in its own commit with a harness test
-- [ ] 3.5 `tech_registry.py` through `alpha_zero.rules.registry`; encoder tech and civic slots non-zero on a fixture; a missing registry warns once and counts
-- [ ] 3.6 `docs/MODULE_REFERENCE.md` `bridge` count updated
+- [x] 3.5 `tech_registry.py` through `alpha_zero.rules.registry`; encoder tech and civic slots non-zero on a fixture; a missing registry warns once and counts
+- [x] 3.5a Research legal actions reach the action mask; a research action is legal only when offered; the command names the technology by type name when a registry is configured
+- [x] 3.6 `docs/MODULE_REFERENCE.md` `bridge` count updated
 
 ## 4. GM-B4: GameInfo snapshot
 - [ ] 4.1 Lua `export_gameinfo` in the kernel's input format; `gameinfo_capture.py` writes only under `CIV6AZ_DATA_ROOT`

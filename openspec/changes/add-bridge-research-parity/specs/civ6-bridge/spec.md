@@ -98,9 +98,14 @@ payload without the new fields, or without `schema_version`, MUST parse.
 
 ### Requirement: Encoder tech and civic slots are filled from a registry
 
-The state converter SHALL fill the 84-channel encoder's tech and civic slots from
-a registry built through `alpha_zero.rules.registry`. When no registry is
-available, the slots MUST stay zero, a WARNING MUST be logged once and a counter incremented.
+The state converter SHALL fill the 84-channel encoder's tech slots from a registry
+built through `alpha_zero.rules.registry`, and its civic slots from the ordered
+civic list given with that registry (the `Civics` table of a GameInfo export),
+because the rules kernel has no civic tree yet. When no registry is available,
+the slots MUST stay zero, a WARNING MUST be logged once and a counter
+incremented. A registry that is configured and cannot be loaded MUST be an error,
+not a silent fall-back to no registry. A researched item with no slot, or with a
+slot the encoder has no position for, MUST be counted.
 
 #### Scenario: Fixture with a registry
 
@@ -111,6 +116,30 @@ available, the slots MUST stay zero, a WARNING MUST be logged once and a counter
 
 - **WHEN** the same state is converted with no registry
 - **THEN** the slots are zero, one WARNING is logged and the counter reads 1
+
+#### Scenario: A configured registry that cannot be loaded
+
+- **WHEN** `CIV6AZ_BRIDGE_RULESET` names a rule set that does not load and a converter is built
+- **THEN** construction fails with an error naming the rule set
+
+### Requirement: Offered research reaches the action mask
+
+The action converter SHALL set a research action in the legal-action mask for
+each research choice the mod offers, and MUST refuse a research action that was
+not offered. With a registry the research action of a technology or civic SHALL
+be its registry slot and the command SHALL name it by the game's type name;
+without a registry it SHALL be the game's own row index. A choice with no slot,
+or beyond the action space's research actions, MUST be counted.
+
+#### Scenario: A choice made through the converters
+
+- **WHEN** the mod offers one technology, the mask is built, that action is converted and the command is executed by the mod
+- **THEN** the mod requests that technology and, once the game applies it, the next state shows it as the current research
+
+#### Scenario: Research that was not offered
+
+- **WHEN** a research action is converted with legal actions that do not offer it
+- **THEN** the conversion is refused
 
 ### Requirement: GameInfo snapshots stay out of the repository
 
