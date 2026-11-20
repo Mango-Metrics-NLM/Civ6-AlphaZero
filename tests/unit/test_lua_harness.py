@@ -1,7 +1,9 @@
 """GM-B1: characterise the AlphaZeroAI mod's Lua by executing it (lupa, Lua 5.1).
 
-This slice pins what the Lua does TODAY, known gaps included. Each gap test carries the
-comment ``today's behaviour; GM-B2 changes this`` so GM-B2 flips it deliberately.
+This slice pinned what the Lua did, known gaps included. GM-B2 (exporter parity) changed
+the research, blocker, building and end-turn gaps; their tests moved to
+``test_lua_exporter_parity.py``. The gaps GM-B2 does not touch stay pinned here with the
+comment ``today's behaviour; not changed by GM-B2``.
 
 The exporter wraps every component in ``pcall`` and falls back to an empty value, so an
 export that is missing a component reads as a pass unless something asserts the
@@ -261,63 +263,20 @@ class TestNonVacuity:
 
 
 class TestKnownGaps:
-    """Pinned as today's behaviour. GM-B2 flips these."""
-
-    def test_techs_researched_is_empty(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
-        # The stub player HAS TECH_POTTERY (HasTech(0)); the export still says nothing.
-        runtime = h.load_mod()
-        assert runtime.eval("Players[0]:GetTechs():HasTech(0)") is True
-        assert state["player"]["techs_researched"] == []
-
-    def test_current_research_is_a_raw_index(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
-        # The stub is researching TECH_MINING (index 1); the export carries the index.
-        assert state["player"]["current_research"] == 1
-        assert not isinstance(state["player"]["current_research"], str)
-
-    def test_current_civic_is_a_name_unlike_research(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this (contrast: civics are named, techs are not)
-        assert state["player"]["current_civic"] == "CIVIC_CRAFTSMANSHIP"
-
-    def test_city_buildings_and_districts_are_empty(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
-        city = state["cities"][0]
-        assert city["buildings"] == []
-        assert city["districts"] == []
-
-    def test_no_legal_action_offers_research(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
-        # The stub says CanResearch(1) and CanResearch(2), so an offer was possible.
-        runtime = h.load_mod()
-        assert runtime.eval("Players[0]:GetTechs():CanResearch(1)") is True
-        assert set(_action_names(state)) == {
-            "end_turn",
-            "move",
-            "skip",
-            "found_city",
-            "fortify",
-            "attack",
-            "produce",
-        }
-        assert not any("research" in json.dumps(a).lower() for a in state["legal_actions"])
-
-    def test_state_has_no_schema_version(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
-        assert "schema_version" not in state
-        assert "schema_version" not in state["player"]
+    """Pinned as today's behaviour; GM-B2 does not change these (the ones it did change
+    now live in ``test_lua_exporter_parity.py``)."""
 
     def test_is_game_over_is_false_and_winner_is_the_sentinel(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
+        # today's behaviour; not changed by GM-B2
         assert state["is_game_over"] is False
         assert state["winner_id"] == -1
 
     def test_player_block_lists_only_the_local_player(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this (player 1 exists in the stub)
+        # today's behaviour; not changed by GM-B2 (player 1 exists in the stub)
         assert [p["id"] for p in state["players"]] == [0]
 
     def test_move_targets_include_occupied_tiles(self, state: dict[str, Any]) -> None:
-        # today's behaviour; GM-B2 changes this
+        # today's behaviour; not changed by GM-B2
         # Warrior 102 may "move" onto (2,0), where enemy 201 stands (that is an attack, not
         # a move), and onto (0,0), where friendly settler 101 stands. Either would be
         # rejected by the game's own movement rules; the exporter offers them anyway.
@@ -385,7 +344,7 @@ class TestLegalActions:
         assert [c["id"] for c in state["cities"]] == [301], "city vanished; control is vacuous"
         (produce,) = _actions_for(state, "produce", city_id=301)
         assert produce["items"] == []
-        # today's behaviour; GM-B2 changes this
+        # today's behaviour; not changed by GM-B2
         # The action is still offered, with nothing to produce.
 
 
@@ -393,17 +352,10 @@ class TestExecute:
     def test_end_turn_requests_one_action(self, runtime: Any) -> None:
         assert h.stub_calls(runtime) == []
         result = h.execute(runtime, {"action_type": "end_turn"})
-        assert result == (True, None, "Turn ended")
+        assert result == (True, None, "End turn requested")
         assert h.stub_calls(runtime) == ["UI.RequestAction"]
         # The request is the game's end-turn action (stub ACTION_ENDTURN = 7).
         assert runtime.eval("Civ6Stub.calls[1].args[1]") == 7
-
-    def test_end_turn_says_turn_ended_whatever_the_game_did(self, runtime: Any) -> None:
-        # today's behaviour; GM-B2 changes this
-        # The stub's UI.RequestAction does nothing and cannot say whether the turn really
-        # ended (a real game may refuse while a research or production choice is
-        # pending); the mod answers "Turn ended" unconditionally.
-        assert h.execute(runtime, {"action_type": "end_turn"})[2] == "Turn ended"
 
     def test_a_raising_ui_call_becomes_execution_failed(self, runtime: Any) -> None:
         runtime.execute("UI.RequestAction = function() error('blocked') end")
@@ -421,10 +373,12 @@ class TestExecute:
         assert (success, error_code) == (False, "INVALID_COMMAND")
         assert h.stub_calls(runtime) == []
 
-    def test_end_turn_without_ui(self) -> None:
+    def test_end_turn_without_ui_is_a_failure(self) -> None:
+        # GM-B2: nothing was requested, so it no longer answers success.
         runtime = h.load_mod(setup="UI = nil")
-        result = h.execute(runtime, {"action_type": "end_turn"})
-        assert result == (True, None, "End turn requested")
+        success, error_code, message = h.execute(runtime, {"action_type": "end_turn"})
+        assert (success, error_code) == (False, "EXECUTION_FAILED")
+        assert message.startswith("End turn unavailable")
 
 
 class TestWireCompatibility:
