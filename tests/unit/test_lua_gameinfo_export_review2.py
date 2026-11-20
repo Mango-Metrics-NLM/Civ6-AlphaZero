@@ -283,6 +283,15 @@ class TestBeginWithFileAccess:
     def _has_file(self, runtime: Any, path: str) -> bool:
         return bool(runtime.eval("FakeFS[AlphaZeroConfig.Get('GAMEINFO_PATH')] ~= nil"))
 
+    def _is_begun_only(self, runtime: Any) -> bool:
+        """The file holds the begin marker and nothing else (review round 3, L2).
+
+        A failed attempt used to delete the file; a delete can fail silently, so the
+        file is overwritten with a marker the capture refuses.
+        """
+        content = runtime.eval("FakeFS[AlphaZeroConfig.Get('GAMEINFO_PATH')]")
+        return str(content).strip() == "AZ_GAMEINFO_BEGIN"
+
     def test_control_file_mode_writes_the_file_and_prints_no_gameinfo(self) -> None:
         runtime = self._load()
         path = self._path(runtime)
@@ -294,14 +303,14 @@ class TestBeginWithFileAccess:
         assert not any(line.startswith("AZ_GAMEINFO:") for line in _gameinfo_lines(runtime))
         assert not any(line.startswith("AZ_GAMEINFO_CHUNK:") for line in _gameinfo_lines(runtime))
 
-    def test_a_failed_attempt_deletes_the_previous_loads_file(self) -> None:
+    def test_a_failed_attempt_replaces_the_previous_loads_file_with_the_marker(self) -> None:
         runtime = self._load()
         path = self._path(runtime)
         assert self._has_file(runtime, path), "premise"
         runtime.execute(EMPTY_GAME)
         success, message, _ = _attempt(runtime)
         assert (success, message) == (False, FAILED)
-        assert not self._has_file(runtime, path)
+        assert self._is_begun_only(runtime)
         assert runtime.eval("ExposedMembers.AlphaZeroGameInfo") is None
 
     def test_a_good_attempt_replaces_the_file_with_the_new_document(self) -> None:
@@ -314,14 +323,13 @@ class TestBeginWithFileAccess:
             == g.SMALL_DOCUMENT
         )
 
-    def test_a_failed_load_in_a_fresh_game_leaves_no_file_behind(self) -> None:
+    def test_a_failed_load_in_a_fresh_game_leaves_only_the_marker(self) -> None:
         runtime = self._load()
-        path = self._path(runtime)
         runtime.execute("FakeFS[AlphaZeroConfig.Get('GAMEINFO_PATH')] = '{}'")
         runtime.execute(EMPTY_GAME)
         runtime.execute("AlphaZeroBridge.Reset()")
         assert runtime.eval("AlphaZeroBridge.Initialize()") is True
-        assert not self._has_file(runtime, path)
+        assert self._is_begun_only(runtime)
 
     def test_the_fake_file_system_is_what_the_mod_really_uses(self) -> None:
         # Guards the stand-in itself: other files the mod writes land in it as well.
