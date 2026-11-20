@@ -224,6 +224,13 @@ local function collection(list)
         end
     end
     function c:GetCount() return #list end
+    -- The game's collections find a member by id (units, cities).
+    function c:FindID(id)
+        for _, member in ipairs(list) do
+            if member.GetID and member:GetID() == id then return member end
+        end
+        return nil
+    end
     return c
 end
 
