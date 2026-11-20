@@ -5,7 +5,7 @@
 -- tests can execute it instead of reading it as text.
 --
 -- Everything here is INVENTED: a 4x3 map, two players, three units, one city and
--- a handful of type rows. No game data. Names follow the game's naming style
+-- a handful of type rows, costs and constants. No game data. Names follow the game's naming style
 -- (UNIT_WARRIOR, TECH_POTTERY) only so the mod's string checks behave as they do
 -- in the game.
 --
@@ -14,14 +14,32 @@
 -- pcall and falls back to an empty value. Tests must therefore assert that the
 -- exported components are non-empty, or a hole here reads as a pass.
 --
--- Civ6Stub.calls records every call that would change the game (UI requests),
--- so a test can assert what the mod asked the game to do.
+-- Civ6Stub.calls records every call that would change the game (UI requests,
+-- setters, notification changes), so a test can assert what the mod asked the
+-- game to do.
+--
+-- The invented game's changeable state lives in tables on Civ6Stub and is read
+-- when a method is CALLED, so a test can change it after the mod has loaded:
+--   Civ6Stub.players[id].tech / .civic   research state per player
+--   Civ6Stub.cities[cityId]              buildings and districts of a city
+--   Civ6Stub.notifications[id]           notifications; none by default
+--   Civ6Stub.canEndTurn                  nil: derived from the notifications;
+--                                        true / false: forced answer
+-- UI.RequestPlayerOperation only records: like the game's, it changes nothing
+-- by the time it returns. The GameCore setters (SetResearchingTech,
+-- SetProgressingCivic) record and do change the state.
 -- ============================================================================
 
 Civ6Stub = { calls = {} }
 
 local function record(name, ...)
     table.insert(Civ6Stub.calls, { name = name, args = { ... } })
+end
+
+local function shallowCopy(source)
+    local copy = {}
+    for key, value in pairs(source or {}) do copy[key] = value end
+    return copy
 end
 
 -- GameInfo tables are called and iterated: `for row in GameInfo.Units() do`.
@@ -66,11 +84,21 @@ GameInfo = {
     Civics = rows({
         { Index = 0, CivicType = "CIVIC_CODE_OF_LAWS" },
         { Index = 1, CivicType = "CIVIC_CRAFTSMANSHIP" },
+        { Index = 2, CivicType = "CIVIC_FOREIGN_TRADE" },
+        { Index = 3, CivicType = "CIVIC_EARLY_EMPIRE" },
+    }),
+    -- Craftsmanship and Foreign Trade need Code of Laws; Early Empire needs
+    -- Foreign Trade.
+    CivicPrereqs = rows({
+        { Civic = "CIVIC_CRAFTSMANSHIP", PrereqCivic = "CIVIC_CODE_OF_LAWS" },
+        { Civic = "CIVIC_FOREIGN_TRADE", PrereqCivic = "CIVIC_CODE_OF_LAWS" },
+        { Civic = "CIVIC_EARLY_EMPIRE", PrereqCivic = "CIVIC_FOREIGN_TRADE" },
     }),
     Technologies = rows({
         { Index = 0, TechnologyType = "TECH_POTTERY" },
         { Index = 1, TechnologyType = "TECH_MINING" },
         { Index = 2, TechnologyType = "TECH_WRITING" },
+        { Index = 3, TechnologyType = "TECH_BRONZE_WORKING" },
     }),
 }
 
@@ -80,6 +108,20 @@ YieldTypes = {
 }
 
 ActionTypes = { ACTION_ENDTURN = 7 }
+
+-- Invented numbers; only their identity matters.
+PlayerOperations = {
+    RESEARCH = 11, PROGRESS_CIVIC = 12,
+    PARAM_TECH_TYPE = 501, PARAM_CIVIC_TYPE = 502,
+}
+
+EndTurnBlockingTypes = {
+    NO_ENDTURN_BLOCKING = 0,
+    ENDTURN_BLOCKING_UNITS = 1,
+    ENDTURN_BLOCKING_PRODUCTION = 2,
+    ENDTURN_BLOCKING_RESEARCH = 3,
+    ENDTURN_BLOCKING_CIVIC = 4,
+}
 
 -- ----------------------------------------------------------------------------
 -- Map: 4 wide, 3 high. (3, 2) is a mountain; (1, 1) is a forested hill owned by
@@ -184,9 +226,39 @@ function Units.GetUnitsInPlot(plot)
     return collection(list)
 end
 
+-- Stubville has a monument (building 0) and two districts: the city centre
+-- (district 0) and a campus (district 1).
+Civ6Stub.cities = {
+    [301] = { buildings = { [0] = true }, districts = { 0, 1 } },
+}
+
+local function makeDistrict(districtType, x, y)
+    local district = {}
+    function district:GetType() return districtType end
+    function district:GetX() return x end
+    function district:GetY() return y end
+    function district:IsComplete() return true end
+    function district:IsPillaged() return false end
+    return district
+end
+
 local function makeCity(spec)
     local city = {}
     local queue = {}
+    local function state() return Civ6Stub.cities[spec.id] or {} end
+    function city:GetBuildings()
+        local buildings = {}
+        function buildings:HasBuilding(index) return (state().buildings or {})[index] == true end
+        function buildings:IsPillaged(_) return false end
+        return buildings
+    end
+    function city:GetDistricts()
+        local list = {}
+        for _, districtType in ipairs(state().districts or {}) do
+            table.insert(list, makeDistrict(districtType, spec.x, spec.y))
+        end
+        return collection(list)
+    end
     function queue:CurrentlyBuilding() return spec.building end
     function queue:GetTurnsLeft() return 3 end
     -- Only units can be produced in this invented city.
@@ -204,8 +276,34 @@ end
 
 -- ----------------------------------------------------------------------------
 -- Players. Player 0 has researched TECH_POTTERY (index 0) and CIVIC_CODE_OF_LAWS
--- (index 0), is researching TECH_MINING (index 1) and has one city.
+-- (index 0), is researching TECH_MINING (index 1; 20 of 50 done, 8 turns left,
+-- boost triggered), is working on CIVIC_CRAFTSMANSHIP (index 1; 10 of 40 done,
+-- 15 turns left, no boost) and has one city. It can research TECH_MINING and
+-- TECH_WRITING now; TECH_BRONZE_WORKING is out of reach.
 -- ----------------------------------------------------------------------------
+local function researchState()
+    return {
+        tech = {
+            current = 1,
+            has = { [0] = true },
+            can = { [1] = true, [2] = true },
+            cost = { [0] = 25, [1] = 50, [2] = 60, [3] = 120 },
+            progress = { [0] = 25, [1] = 20 },
+            turns = { [1] = 8, [2] = 15, [3] = 30 },
+            boosted = { [1] = true },
+        },
+        civic = {
+            current = 1,
+            has = { [0] = true },
+            cost = { [0] = 20, [1] = 40, [2] = 40, [3] = 70 },
+            progress = { [0] = 20, [1] = 10 },
+            turnsLeft = 15,
+            boosted = {},
+        },
+    }
+end
+
+Civ6Stub.players = { [0] = researchState(), [1] = researchState() }
 local function makePlayer(id, cities)
     local player = {}
     function player:GetID() return id end
@@ -222,18 +320,42 @@ local function makePlayer(id, cities)
     end
     function player:GetCulture()
         local c = {}
+        local function state() return Civ6Stub.players[id].civic end
         function c:GetCultureYield() return 2 end
-        function c:GetProgressingCivic() return 1 end
-        function c:GetResearchedCivics() return { 0 } end
-        function c:HasCivic(index) return index == 0 end
+        function c:GetProgressingCivic() return state().current end
+        function c:GetResearchedCivics()
+            local list = {}
+            for index = 0, 3 do
+                if state().has[index] then table.insert(list, index) end
+            end
+            return list
+        end
+        function c:HasCivic(index) return state().has[index] == true end
+        function c:GetCultureCost(index) return state().cost[index] or 0 end
+        function c:GetCulturalProgress(index) return state().progress[index] or 0 end
+        function c:GetTurnsLeftOnCurrentCivic() return state().turnsLeft end
+        function c:HasBoostBeenTriggered(index) return state().boosted[index] == true end
+        function c:SetProgressingCivic(index)
+            record("SetProgressingCivic", id, index)
+            state().current = index
+        end
         return c
     end
     function player:GetTechs()
         local t = {}
+        local function state() return Civ6Stub.players[id].tech end
         function t:GetScienceYield() return 4 end
-        function t:GetResearchingTech() return 1 end
-        function t:HasTech(index) return index == 0 end
-        function t:CanResearch(index) return index == 1 or index == 2 end
+        function t:GetResearchingTech() return state().current end
+        function t:HasTech(index) return state().has[index] == true end
+        function t:CanResearch(index) return state().can[index] == true end
+        function t:GetResearchCost(index) return state().cost[index] or 0 end
+        function t:GetResearchProgress(index) return state().progress[index] or 0 end
+        function t:GetTurnsToResearch(index) return state().turns[index] or -1 end
+        function t:HasBoostBeenTriggered(index) return state().boosted[index] == true end
+        function t:SetResearchingTech(index)
+            record("SetResearchingTech", id, index)
+            state().current = index
+        end
         return t
     end
     function player:GetReligion()
@@ -271,9 +393,57 @@ end
 -- ----------------------------------------------------------------------------
 -- UI and events: record, do nothing.
 -- ----------------------------------------------------------------------------
+-- Notifications. Each is { id, blocking (an EndTurnBlockingTypes value),
+-- message, typeName, dismissed }. None by default, so the turn can end.
+Civ6Stub.notifications = { [0] = {}, [1] = {} }
+Civ6Stub.canEndTurn = nil
+
+local function findNotification(player, notificationId)
+    for _, notification in ipairs(Civ6Stub.notifications[player] or {}) do
+        if notification.id == notificationId then return notification end
+    end
+    return nil
+end
+
+NotificationManager = {}
+function NotificationManager.GetList(player)
+    local ids = {}
+    for _, notification in ipairs(Civ6Stub.notifications[player] or {}) do
+        table.insert(ids, notification.id)
+    end
+    return ids
+end
+function NotificationManager.Find(player, notificationId)
+    local notification = findNotification(player, notificationId)
+    if not notification then return nil end
+    local entry = {}
+    function entry:IsDismissed() return notification.dismissed == true end
+    function entry:GetEndTurnBlocking() return notification.blocking or 0 end
+    function entry:GetMessage() return notification.message end
+    function entry:GetTypeName() return notification.typeName end
+    return entry
+end
+function NotificationManager.SendActivated(player, notificationId)
+    record("NotificationManager.SendActivated", player, notificationId)
+end
+function NotificationManager.Dismiss(player, notificationId)
+    record("NotificationManager.Dismiss", player, notificationId)
+    local notification = findNotification(player, notificationId)
+    if notification then notification.dismissed = true end
+end
+
 UI = {}
 function UI.RequestAction(action) record("UI.RequestAction", action) end
-function UI.RequestPlayerOperation(player, operation, params) record("UI.RequestPlayerOperation", player, operation) end
+function UI.RequestPlayerOperation(player, operation, params)
+    record("UI.RequestPlayerOperation", player, operation, shallowCopy(params))
+end
+function UI.CanEndTurn()
+    if Civ6Stub.canEndTurn ~= nil then return Civ6Stub.canEndTurn end
+    for _, notification in ipairs(Civ6Stub.notifications[Game.GetLocalPlayer()] or {}) do
+        if not notification.dismissed and (notification.blocking or 0) ~= 0 then return false end
+    end
+    return true
+end
 
 local function event()
     local handlers = {}
