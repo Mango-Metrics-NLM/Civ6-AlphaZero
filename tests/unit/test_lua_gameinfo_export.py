@@ -132,6 +132,13 @@ class TestSanitising:
         units: list[dict[str, Any]] = document["Units"]
         return units
 
+    def _units_table_fails(self, row: str) -> None:
+        """A value that cannot be exported fails its table whole (review round 3, L1)."""
+        setup = g.replace_table("Units", "{ " + row + " }")
+        document, failed, _ = g.lua_export(h.load_mod(setup=setup))
+        assert failed == ["Units"]
+        assert "Units" not in document
+
     def test_identifiers_and_whole_numbers_survive(self) -> None:
         (unit,) = self._units(self.GOOD)
         assert unit == {
@@ -157,21 +164,20 @@ class TestSanitising:
             "'12'",
         ],
     )
-    def test_a_string_that_is_not_an_identifier_is_left_out(self, bad: str) -> None:
-        (unit,) = self._units(f"{{ UnitType = 'UNIT_OK', Cost = 1, PrereqTech = {bad} }}")
-        assert unit == {"UnitType": "UNIT_OK", "Cost": 1}
+    def test_a_string_that_is_not_an_identifier_fails_the_table(self, bad: str) -> None:
+        # Was "is left out": dropping it handed the importer a prerequisite that was not there.
+        self._units_table_fails(f"{{ UnitType = 'UNIT_OK', Cost = 1, PrereqTech = {bad} }}")
 
     @pytest.mark.parametrize("bad", ["2.5", "0.5", "true", "false", "{ 1 }", "{}"])
-    def test_a_number_that_is_not_whole_or_not_a_number_is_left_out(self, bad: str) -> None:
-        (unit,) = self._units(f"{{ UnitType = 'UNIT_OK', Cost = 1, Combat = {bad} }}")
-        assert unit == {"UnitType": "UNIT_OK", "Cost": 1}
+    def test_a_number_that_is_not_whole_or_not_a_number_fails_the_table(self, bad: str) -> None:
+        self._units_table_fails(f"{{ UnitType = 'UNIT_OK', Cost = 1, Combat = {bad} }}")
 
     @pytest.mark.parametrize("value", ["2^60", "1e20", "-(2^60)", "math.huge", "-math.huge", "0/0"])
-    def test_encoded_numbers_are_json_integers_or_absent(self, value: str) -> None:
+    def test_a_number_the_encoder_cannot_write_as_an_integer_fails_the_table(
+        self, value: str
+    ) -> None:
         # Above 2^53 the mod's encoder writes a float, which the importer refuses.
-        (unit,) = self._units(f"{{ UnitType = 'UNIT_OK', Cost = 1, Combat = {value} }}")
-        assert unit["UnitType"] == "UNIT_OK"
-        assert "Combat" not in unit or type(unit["Combat"]) is int
+        self._units_table_fails(f"{{ UnitType = 'UNIT_OK', Cost = 1, Combat = {value} }}")
 
     def test_the_sanitised_stub_document_is_accepted_by_the_importer(self) -> None:
         document, _, _ = g.lua_export(h.load_mod())
