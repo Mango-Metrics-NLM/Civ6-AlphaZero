@@ -48,7 +48,7 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - `scripts/calibrate_throughput.py` (self-play throughput harness) and `docs/evidence/windows_baseline_20261111/` (machine snapshot; no ETA claim).
 
 ### Added — Lua test harness
-- The Civ6 mod's Lua is executed by tests for the first time (slice GM-B1 of `kb/specs/20261119-game-mechanics-plan.md`): `tests/fixtures/lua_harness.py` loads the mod's bundle into a locked-down Lua 5.1 runtime (`lupa`, new test-only extra `lua`) over a hand-written stand-in for the game's globals, and `tests/unit/test_lua_harness.py` pins what the exporter writes and how commands answer today, known gaps included. CI's test job installs the extra and fails on a missing `lupa` instead of skipping. No mod or package code changed.
+- The Civ6 mod's Lua is executed by tests for the first time (slice GM-B1 of `kb/specs/20261119-game-mechanics-plan.md`): `tests/fixtures/lua_harness.py` loads the mod's bundle into a locked-down Lua 5.1 runtime (`lupa`, new test-only extra `lua`) over a hand-written stand-in for the game's globals, and `tests/unit/test_lua_harness.py` pins what the exporter writes and how commands answer today, known gaps included. CI's test job installs the extra and fails on a missing `lupa` instead of skipping, and so does `make verify` (`make install-lua`). The runtime is locked down before the mod loads, including Lua 5.1's `module()`, which could otherwise hand a removed library back. No mod or package code changed.
 
 ### Added — branching and release
 - **Branch Direction** (`scripts/check_branch_direction.py`, `.github/workflows/branch-policy.yml`): judges every PR into `dev`, `qa` or `main` by git ancestry. An accident net, not a control.

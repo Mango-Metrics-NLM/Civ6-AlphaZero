@@ -342,7 +342,7 @@ When making changes, update the relevant sections below:
 | `python scripts/install_civ6_mod.py` | Install AlphaZeroAI mod to default Steam Mods dir |
 | `python scripts/install_civ6_mod.py --mod-dir PATH` | Install mod to custom Civ6 Mods directory |
 | `pip install -e '.[tuning]'` | Install Optuna for hyperparameter sweeps |
-| `pip install -e '.[lua]'` then `pytest tests/unit/test_lua_harness.py -v` | Run the Civ6 mod's Lua outside the game, on Lua 5.1 (`lupa`) against a hand-written stand-in for the game's globals (`tests/fixtures/lua/civ6_stub.lua`). Skips without `lupa`; **a skip is not a pass**, and CI's test job sets `CIV6AZ_REQUIRE_LUA=1`, under which a missing `lupa` fails |
+| `pip install -e '.[lua]'` then `pytest tests/unit/test_lua_harness.py -v` | Run the Civ6 mod's Lua outside the game, on Lua 5.1 (`lupa`) against a hand-written stand-in for the game's globals (`tests/fixtures/lua/civ6_stub.lua`). Skips without `lupa`; **a skip is not a pass**, and CI's test job sets `CIV6AZ_REQUIRE_LUA=1`, under which a missing `lupa` fails. `make verify` sets it too (`make install-lua` installs the extra); plain `make test` and plain pytest leave it optional |
 | `python scripts/run_sweep.py --dry-run` | Validate sweep config (configs/sweep_muzero.yaml) |
 | `python scripts/run_sweep.py --n-trials 20` | Run Optuna sweep (MLflow-logged; CIV6AZ_SWEEP_* env overrides). Prices at 200 games (20 trials x 10 for the shipped `--quick` trial command); an unrecognised trial command is unpriceable and refused |
 | `pip install -e '.[hub]'` | Install Hugging Face Hub support for the encoder |

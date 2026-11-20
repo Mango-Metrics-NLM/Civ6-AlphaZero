@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -84,6 +85,10 @@ def check_units(state: dict[str, Any]) -> None:
     assert by_id[101]["is_civilian"] is True
     assert (by_id[102]["type_name"], by_id[102]["x"], by_id[102]["y"]) == ("UNIT_WARRIOR", 1, 0)
     assert by_id[102]["is_civilian"] is False
+    # Values the exporter's per-unit fallback would replace with 0 / false.
+    assert (by_id[101]["movement"], by_id[102]["movement"]) == (2, 2)
+    assert by_id[102]["combat_strength"] == 20
+    assert by_id[102]["can_attack"] is True
 
 
 def check_city(state: dict[str, Any]) -> None:
@@ -94,12 +99,23 @@ def check_city(state: dict[str, Any]) -> None:
     assert (city["x"], city["y"]) == (1, 1)
 
 
+def check_player_gold(state: dict[str, Any]) -> None:
+    assert state["player"].get("gold") == 50
+
+
+def check_player_science(state: dict[str, Any]) -> None:
+    assert state["player"].get("science_per_turn") == 4
+
+
+def check_player_civic(state: dict[str, Any]) -> None:
+    assert state["player"].get("current_civic") == "CIVIC_CRAFTSMANSHIP"
+
+
 def check_player(state: dict[str, Any]) -> None:
-    player = state["player"]
-    assert player.get("gold") == 50
-    assert player.get("science_per_turn") == 4
-    assert player.get("civilization") == "CIVILIZATION_STUB_A"
-    assert player.get("current_civic") == "CIVIC_CRAFTSMANSHIP"
+    check_player_gold(state)
+    check_player_science(state)
+    check_player_civic(state)
+    assert state["player"].get("civilization") == "CIVILIZATION_STUB_A"
 
 
 def check_turn(state: dict[str, Any]) -> None:
@@ -116,11 +132,51 @@ def check_legal_actions(state: dict[str, Any]) -> None:
     assert _actions_for(state, "produce", city_id=301)
 
 
+#: Lua 5.1: ``module(name)`` makes the loaded library ``name`` the function's
+#: environment, so a removed library's functions come back as globals.
+_MODULE_ESCAPE = "local function f() module('{library}'); return {function} end; return f() ~= nil"
+
+
 class TestSandbox:
     def test_forbidden_globals_are_nil(self) -> None:
         runtime = h.new_runtime()
-        for name in ("io", "dofile", "loadfile", "require", "package", "debug"):
+        for name in ("io", "dofile", "loadfile", "require", "package", "debug", "module"):
             assert runtime.eval(f"{name} == nil") is True, f"{name} is reachable from Lua"
+
+    @pytest.mark.parametrize(
+        ("library", "function"), [("os", "execute"), ("os", "remove"), ("io", "open")]
+    )
+    def test_module_cannot_bring_a_removed_library_back(self, library: str, function: str) -> None:
+        runtime = h.new_runtime()
+        with pytest.raises(Exception, match="module"):
+            runtime.execute(_MODULE_ESCAPE.format(library=library, function=function))
+
+    @pytest.mark.parametrize(("library", "function"), [("os", "execute"), ("io", "open")])
+    def test_negative_control_module_does_bring_it_back_when_left_in(
+        self, library: str, function: str
+    ) -> None:
+        # Removing the globals alone (the lockdown as it first shipped) is not
+        # enough: with ``module`` left in, the library is one call away.
+        lua51 = h.import_lua51()
+        runtime = lua51.LuaRuntime(
+            unpack_returned_tuples=True, register_eval=False, register_builtins=False
+        )
+        runtime.execute("io = nil package = nil os = { time = os.time }")
+        assert runtime.execute(_MODULE_ESCAPE.format(library=library, function=function)) is True
+
+    def test_the_loaded_library_registry_is_cleared(self) -> None:
+        # Belt and braces: even with ``module`` restored by hand it finds nothing.
+        lua51 = h.import_lua51()
+        runtime = lua51.LuaRuntime(
+            unpack_returned_tuples=True, register_eval=False, register_builtins=False
+        )
+        runtime.execute("saved_module = module")
+        runtime.execute(h._LOCKDOWN)
+        runtime.execute("module = saved_module")
+        for library, function in (("os", "execute"), ("io", "open")):
+            assert (
+                runtime.execute(_MODULE_ESCAPE.format(library=library, function=function)) is False
+            )
 
     def test_os_has_only_time_clock_date(self) -> None:
         runtime = h.new_runtime()
@@ -159,6 +215,9 @@ class TestSandbox:
         # the ``.\AlphaZeroAI`` directory (a literal name on Linux) and its log files.
         lua51 = h.import_lua51()
         monkeypatch.chdir(tmp_path)
+        # Unlocked, the mod reads this variable and then clears and rewrites the
+        # bridge files in the directory it names. Never let it see a real one.
+        monkeypatch.delenv("ALPHAZERO_CIV6_IPC_DIR", raising=False)
         unlocked = lua51.LuaRuntime(unpack_returned_tuples=True)
         unlocked.execute(h.STUB.read_text(encoding="utf-8"))
         unlocked.execute(h.BUNDLE.read_text(encoding="utf-8"))
@@ -221,6 +280,20 @@ class TestExport:
         assert "resource" not in tile and "improvement" not in tile
 
 
+def _nil_getter(name: str) -> str:
+    """Lua setup: player 0's ``name`` getter returns nil (the method still exists)."""
+    return f"Players[0].{name} = function() return nil end"
+
+
+#: Lua setup: player 0's units lose ``GetDamage``. The exporter reads a unit's
+#: stats under one ``pcall``, so they all fall back together.
+_UNITS_WITHOUT_GET_DAMAGE = (
+    "local units = Players[0].GetUnits\n"
+    "Players[0].GetUnits = function(self) local c = units(self)"
+    " for _, u in c:Members() do u.GetDamage = nil end return c end"
+)
+
+
 class TestNonVacuity:
     """Negative controls: break one stub method, and the matching check must fail."""
 
@@ -235,10 +308,13 @@ class TestNonVacuity:
             ("tile owner", check_map, "Map.GetPlot(1, 1).GetOwner = function() return -1 end"),
             ("units", check_units, "Players[0].GetUnits = nil"),
             ("unit type names", check_units, "GameInfo.Units = nil"),
+            ("unit stats", check_units, _UNITS_WITHOUT_GET_DAMAGE),
             ("cities", check_city, "Players[0].GetCities = nil"),
-            ("player treasury", check_player, "Players[0].GetTreasury = nil"),
-            ("player techs", check_player, "Players[0].GetTechs = nil"),
-            ("player culture", check_player, "Players[0].GetCulture = nil"),
+            # A getter that returns nil costs only its own fields, so each of
+            # these fails on the check for that field and nothing else.
+            ("player treasury", check_player_gold, _nil_getter("GetTreasury")),
+            ("player techs", check_player_science, _nil_getter("GetTechs")),
+            ("player culture", check_player_civic, _nil_getter("GetCulture")),
             ("player civilization", check_player, "PlayerConfigurations = nil"),
             ("turn", check_turn, "Game.GetCurrentGameTurn = function() return 0 end"),
             ("era", check_era, "Game.GetEras = nil"),
@@ -254,6 +330,41 @@ class TestNonVacuity:
         broken = h.export_state(h.load_mod(setup=setup))
         with pytest.raises(AssertionError):
             check(broken)
+
+    @pytest.mark.parametrize(
+        ("getter", "lost", "kept"),
+        [
+            ("GetTreasury", check_player_gold, (check_player_science, check_player_civic)),
+            ("GetTechs", check_player_science, (check_player_gold, check_player_civic)),
+            ("GetCulture", check_player_civic, (check_player_gold, check_player_science)),
+        ],
+    )
+    def test_a_nil_getter_costs_only_its_own_fields(
+        self, getter: str, lost: Any, kept: tuple[Any, ...]
+    ) -> None:
+        state = h.export_state(h.load_mod(setup=_nil_getter(getter)))
+        with pytest.raises(AssertionError):
+            lost(state)
+        for check in kept:
+            check(state)
+
+    @pytest.mark.parametrize("getter", ["GetTreasury", "GetTechs", "GetCulture"])
+    def test_a_missing_getter_empties_the_whole_player_block(self, getter: str) -> None:
+        # today's behaviour: the player block is exported under one pcall, so a
+        # method that does not exist costs every field, not only its own.
+        state = h.export_state(h.load_mod(setup=f"Players[0].{getter} = nil"))
+        assert state["player"] == {"id": 0}
+
+    def test_a_missing_unit_getter_zeroes_the_units_stats_silently(self) -> None:
+        # today's behaviour: identity and position survive, the stats fall back.
+        state = h.export_state(h.load_mod(setup=_UNITS_WITHOUT_GET_DAMAGE))
+        warrior = next(u for u in state["units"] if u["id"] == 102)
+        assert (warrior["type_name"], warrior["x"], warrior["y"]) == ("UNIT_WARRIOR", 1, 0)
+        assert (warrior["movement"], warrior["combat_strength"], warrior["can_attack"]) == (
+            0,
+            0,
+            False,
+        )
 
     def test_a_missing_city_production_hook_empties_the_produce_action(self) -> None:
         broken = h.export_state(h.load_mod(setup="Players[0].GetCities = nil"))
@@ -492,17 +603,42 @@ class TestSkipFailSwitch:
         assert h.lua_required() is True
 
 
+def _installed_extras(job: dict[str, Any]) -> set[str]:
+    """Extras named by the job's ``pip install -e ".[...]"`` command lines.
+
+    Shell comments are dropped first: a comment that mentions the extra is not
+    an install.
+    """
+    extras: set[str] = set()
+    for step in job["steps"]:
+        for line in str(step.get("run", "")).splitlines():
+            command = line.split("#", 1)[0]
+            if "pip install -e" not in command:
+                continue
+            for group in re.findall(r"\[([^\]]*)\]", command):
+                extras.update(name.strip() for name in group.split(",") if name.strip())
+    return extras
+
+
 class TestWiring:
+    @pytest.mark.parametrize(
+        ("run", "expected"),
+        [
+            ('pip install -e ".[dev,lua]"', {"dev", "lua"}),
+            ("pip install -e '.[dev]'  # lua is installed elsewhere", {"dev"}),
+            ('# pip install -e ".[lua]"\npip install -e ".[dev]"', {"dev"}),
+            ("pip install lupa", set()),
+        ],
+    )
+    def test_extras_are_read_from_commands_not_comments(self, run: str, expected: set[str]) -> None:
+        assert _installed_extras({"steps": [{"run": run}]}) == expected
+
     def test_ci_test_job_requires_lua_and_installs_the_extra(self) -> None:
         workflow = yaml.safe_load((REPO_ROOT / ".github/workflows/ci.yml").read_text("utf-8"))
         job = workflow["jobs"]["test"]
         assert job["env"]["CIV6AZ_REQUIRE_LUA"] == "1"
-        installs = [
-            s["run"]
-            for s in job["steps"]
-            if "run" in s and "pip install -e" in s["run"] and "lua" in s["run"]
-        ]
-        assert installs, "the test job does not install the lua extra"
+        assert _installed_extras(job), "the test job has no editable install"
+        assert "lua" in _installed_extras(job), "the test job does not install the lua extra"
         assert any("tests/unit/" in s.get("run", "") for s in job["steps"])
 
     def test_pyproject_defines_lua_and_dev_does_not_contain_lupa(self) -> None:
