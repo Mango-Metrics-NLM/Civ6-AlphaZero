@@ -63,13 +63,16 @@ end
 
 GameInfo = {
     Units = rows({
-        { Index = 0, UnitType = "UNIT_SETTLER", Combat = 0, FormationClass = "FORMATION_CLASS_CIVILIAN" },
-        { Index = 1, UnitType = "UNIT_WARRIOR", Combat = 20, FormationClass = "FORMATION_CLASS_LAND_COMBAT" },
-        { Index = 2, UnitType = "UNIT_ARCHER", Combat = 15, FormationClass = "FORMATION_CLASS_LAND_COMBAT" },
+        { Index = 0, UnitType = "UNIT_SETTLER", Combat = 0, FormationClass = "FORMATION_CLASS_CIVILIAN",
+          Cost = 80, BaseMoves = 2 },
+        { Index = 1, UnitType = "UNIT_WARRIOR", Combat = 20, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
+          Cost = 40, BaseMoves = 2 },
+        { Index = 2, UnitType = "UNIT_ARCHER", Combat = 15, FormationClass = "FORMATION_CLASS_LAND_COMBAT",
+          Cost = 60, BaseMoves = 2, PrereqTech = "TECH_BRONZE_WORKING" },
     }),
     Buildings = rows({
-        { Index = 0, BuildingType = "BUILDING_MONUMENT" },
-        { Index = 1, BuildingType = "BUILDING_GRANARY" },
+        { Index = 0, BuildingType = "BUILDING_MONUMENT", Cost = 60 },
+        { Index = 1, BuildingType = "BUILDING_GRANARY", Cost = 65, PrereqTech = "TECH_POTTERY" },
     }),
     Districts = rows({
         { Index = 0, DistrictType = "DISTRICT_CITY_CENTER" },
@@ -92,10 +95,10 @@ GameInfo = {
     -- Hash values are invented and deliberately far from the indexes, so a
     -- request that sends an index where a hash is due matches nothing.
     Civics = rows({
-        { Index = 0, Hash = 8100, CivicType = "CIVIC_CODE_OF_LAWS" },
-        { Index = 1, Hash = 8111, CivicType = "CIVIC_CRAFTSMANSHIP" },
-        { Index = 2, Hash = 8122, CivicType = "CIVIC_FOREIGN_TRADE" },
-        { Index = 3, Hash = 8133, CivicType = "CIVIC_EARLY_EMPIRE" },
+        { Index = 0, Hash = 8100, CivicType = "CIVIC_CODE_OF_LAWS", Cost = 20, EraType = "ERA_ANCIENT" },
+        { Index = 1, Hash = 8111, CivicType = "CIVIC_CRAFTSMANSHIP", Cost = 40, EraType = "ERA_ANCIENT" },
+        { Index = 2, Hash = 8122, CivicType = "CIVIC_FOREIGN_TRADE", Cost = 40, EraType = "ERA_ANCIENT" },
+        { Index = 3, Hash = 8133, CivicType = "CIVIC_EARLY_EMPIRE", Cost = 70, EraType = "ERA_ANCIENT" },
     }),
     -- Craftsmanship and Foreign Trade need Code of Laws; Early Empire needs
     -- Foreign Trade.
@@ -105,10 +108,14 @@ GameInfo = {
         { Civic = "CIVIC_EARLY_EMPIRE", PrereqCivic = "CIVIC_FOREIGN_TRADE" },
     }),
     Technologies = rows({
-        { Index = 0, Hash = 7100, TechnologyType = "TECH_POTTERY" },
-        { Index = 1, Hash = 7111, TechnologyType = "TECH_MINING" },
-        { Index = 2, Hash = 7122, TechnologyType = "TECH_WRITING" },
-        { Index = 3, Hash = 7133, TechnologyType = "TECH_BRONZE_WORKING" },
+        { Index = 0, Hash = 7100, TechnologyType = "TECH_POTTERY", Cost = 25, EraType = "ERA_ANCIENT" },
+        { Index = 1, Hash = 7111, TechnologyType = "TECH_MINING", Cost = 50, EraType = "ERA_ANCIENT" },
+        { Index = 2, Hash = 7122, TechnologyType = "TECH_WRITING", Cost = 60, EraType = "ERA_ANCIENT" },
+        { Index = 3, Hash = 7133, TechnologyType = "TECH_BRONZE_WORKING", Cost = 120, EraType = "ERA_CLASSICAL" },
+    }),
+    -- Bronze Working needs Mining.
+    TechnologyPrereqs = rows({
+        { Technology = "TECH_BRONZE_WORKING", PrereqTech = "TECH_MINING" },
     }),
 }
 
