@@ -62,7 +62,7 @@ them, each between a `BEGIN` and an `END` marker.
 Before 2026-11-19 the bundle was edited by hand and the module files had drifted from it,
 so an edit to a module file changed nothing in the game. The module files were made equal
 to the bundle (the bundle is what ran); what they lost is recorded in
-`openspec/changes/add-bridge-research-parity/bundle-drift.md`, and both lost pieces were
+`openspec/changes/archive/2026-11-20-add-bridge-research-parity/bundle-drift.md`, and both lost pieces were
 brought back on 2026-11-20 (GM-B2).
 
 ## What the mod exports (state schema 2)
