@@ -506,7 +506,6 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         from alpha_zero.bridge.agent_loop import (
             AgentLoopConfig,
             BridgeAgentLoop,
-            GreedyNetworkPolicy,
             PolicyEngine,
         )
         from alpha_zero.bridge.config import BridgeConfig
@@ -564,20 +563,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     network = _build_network_for_bridge(
         config, action_space_size=action_converter.action_space_size
     )
-    policy: PolicyEngine
-    if config.use_mcts:
-        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
-        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
-
-        gumbel_cfg = GumbelMCTSConfig(
-            num_simulations=config.num_simulations,
-            num_sampled_actions=min(config.num_simulations, 16),
-        )
-        policy = Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
-        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
-    else:
-        policy = GreedyNetworkPolicy(network=network, device=config.device)
-        logger.info("Bridge using GreedyNetworkPolicy")
+    policy: PolicyEngine = _build_bridge_policy(config, network)
 
     agent_cfg = AgentLoopConfig.from_env()
 
@@ -631,6 +617,33 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     except KeyboardInterrupt:
         logger.info("Bridge stopped by user.")
         return 130
+
+
+def _build_bridge_policy(config: Civ6LocalConfig, network: Any) -> Any:
+    """The policy the bridge agent loop runs: the search, or the greedy network.
+
+    Args:
+        config: Local gameplay config; ``use_mcts`` selects the search.
+        network: The network :func:`_build_network_for_bridge` built.
+
+    Returns:
+        A ``PolicyEngine`` for ``BridgeAgentLoop``.
+    """
+    if config.use_mcts:
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+
+        gumbel_cfg = GumbelMCTSConfig(
+            num_simulations=config.num_simulations,
+            num_sampled_actions=min(config.num_simulations, 16),
+        )
+        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
+        return Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
+
+    from alpha_zero.bridge.agent_loop import GreedyNetworkPolicy
+
+    logger.info("Bridge using GreedyNetworkPolicy")
+    return GreedyNetworkPolicy(network=network, device=config.device)
 
 
 def _build_network_for_bridge(
