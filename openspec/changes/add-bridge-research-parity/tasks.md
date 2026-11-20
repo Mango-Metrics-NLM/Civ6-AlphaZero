@@ -1,9 +1,9 @@
 # Tasks
 
 ## 1. GM-B0: generated Lua bundle
-- [ ] 1.1 Pin line endings for `mod/**/*.lua` (`.gitattributes`) or normalise in the generator
-- [ ] 1.2 Reconcile module sources so that `scripts/build_lua_bundle.py` reproduces the committed `AlphaZeroMain.lua` byte for byte; list the 27 differing source lines in the PR as GM-B2 candidates
-- [ ] 1.3 `tests/scripts/test_lua_bundle_sync.py` runs `--check`; negative control: an edit to one module file without regeneration fails it
+- [x] 1.1 Pin line endings for `mod/**/*.lua` (`.gitattributes`) or normalise in the generator
+- [x] 1.2 Reconcile module sources so that `scripts/build_lua_bundle.py` reproduces the committed `AlphaZeroMain.lua` byte for byte; list the 27 differing source lines in the PR as GM-B2 candidates
+- [x] 1.3 `tests/scripts/test_lua_bundle_sync.py` runs `--check`; negative control: an edit to one module file without regeneration fails it
 
 ## 2. GM-B1: Lua harness
 - [x] 2.1 `lupa` in its own test extra; tests use the Lua 5.1 runtime (`lupa.lua51` or LuaJIT) and `importorskip`

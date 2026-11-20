@@ -1,0 +1,217 @@
+{
+  "cases": {
+    "b8_t30_p2_s1": {
+      "digest": "6d7de6b0850f39df10c4e22d65712a55fde7498020577f12a77eae4681589a29",
+      "final_cities": [
+        1,
+        0
+      ],
+      "final_turn": 30,
+      "steps": 175,
+      "winner": 0
+    },
+    "b8_t30_p2_s17": {
+      "digest": "7565bef26bd1aaf4abd74fb53465c47999f1f59b87950ea1c561d4f45c305ff9",
+      "final_cities": [
+        0,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 222,
+      "winner": 1
+    },
+    "b8_t30_p2_s2": {
+      "digest": "adef2bea21290e2a5d21aff7fdd8533f20e083d72864e6c7f9c3ac04530ebcfa",
+      "final_cities": [
+        1,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 216,
+      "winner": null
+    },
+    "b8_t30_p2_s3": {
+      "digest": "7222db9c7a5a324868c777ca1ebc55ee0b8a18b26c7a6f40a268d51708addfb4",
+      "final_cities": [
+        1,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 217,
+      "winner": null
+    },
+    "b8_t30_p2_s36": {
+      "digest": "11d320eb957cb76a930efe1a780abd5a6f5e633d8e1b172107e90490f31f2334",
+      "final_cities": [
+        0,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 229,
+      "winner": 1
+    },
+    "b8_t30_p3_s11": {
+      "digest": "e524bbc68280d5f1bd08108be067e9f5d07586ce3773da14baf623949746acd3",
+      "final_cities": [
+        1,
+        1,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 270,
+      "winner": null
+    },
+    "b8_t30_p3_s26": {
+      "digest": "692272a38c74f96cd02cb00296437703b435c0aac25afa95f3199af2487f7d7e",
+      "final_cities": [
+        1,
+        0,
+        2
+      ],
+      "final_turn": 30,
+      "steps": 277,
+      "winner": 2
+    },
+    "b8_t30_p3_s5": {
+      "digest": "c3d94cb22b0a45d0227c029346c1bdde7330dee2025b4ba9f4e2e4692ae81e4c",
+      "final_cities": [
+        0,
+        0,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 333,
+      "winner": 2
+    },
+    "b8_t30_p3_s7": {
+      "digest": "121f2730cdc2d8a395295282865332ae2c982e8986c4a0c7eb93caa62a48c13f",
+      "final_cities": [
+        1,
+        0,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 286,
+      "winner": null
+    },
+    "b8_t30_p3_s8": {
+      "digest": "05a6778f9902d9ec887f6a7ca3ade64662831aebb148d34ce281d319f2e81ed3",
+      "final_cities": [
+        0,
+        0,
+        1
+      ],
+      "final_turn": 30,
+      "steps": 335,
+      "winner": 2
+    },
+    "b8_t60_p2_s13": {
+      "digest": "c62f4ec7e5e68adb0be02bbec779b3f3dd1f15a9b9c3ef4019a675a6053bc912",
+      "final_cities": [
+        1,
+        0
+      ],
+      "final_turn": 29,
+      "steps": 150,
+      "winner": 0
+    },
+    "b8_t60_p2_s20": {
+      "digest": "896944613d498eb4939763c79327b694c33c81cd3d5c85326fed34c6f5b89eb0",
+      "final_cities": [
+        1,
+        2
+      ],
+      "final_turn": 60,
+      "steps": 538,
+      "winner": 1
+    },
+    "b8_t60_p2_s4": {
+      "digest": "0df38f00a83a231e174d08793fead952c83b622010f3aabe3eec38ca7e87f187",
+      "final_cities": [
+        2,
+        1
+      ],
+      "final_turn": 60,
+      "steps": 506,
+      "winner": 0
+    },
+    "b8_t60_p2_s6": {
+      "digest": "a0d48c614a544c19546827636a1903c1b1b8a53cfda0a1031bb6d0770f05b986",
+      "final_cities": [
+        1,
+        1
+      ],
+      "final_turn": 60,
+      "steps": 544,
+      "winner": null
+    },
+    "b8_t60_p2_s9": {
+      "digest": "39a565c275f0b5fb10335479bfa1af372950114a24a5cad5b152e876ff1ec1e2",
+      "final_cities": [
+        1,
+        2
+      ],
+      "final_turn": 60,
+      "steps": 444,
+      "winner": 1
+    },
+    "b8_t60_p3_s10": {
+      "digest": "b79eccb1c7532da86e665b7f17654957b1602d3cf14f554a5e478693dd764b91",
+      "final_cities": [
+        1,
+        0,
+        1
+      ],
+      "final_turn": 60,
+      "steps": 661,
+      "winner": null
+    },
+    "b8_t60_p3_s12": {
+      "digest": "8ada36a80a12928dce8a5ed97592b94d5590846791e02e16bcb282bdd93ab175",
+      "final_cities": [
+        2,
+        0,
+        2
+      ],
+      "final_turn": 60,
+      "steps": 596,
+      "winner": null
+    },
+    "b8_t60_p3_s21": {
+      "digest": "9ebc8a30c7f933dabefed0f3dcf256dc90be60a034f42d45d65aa26391292a85",
+      "final_cities": [
+        0,
+        0,
+        1
+      ],
+      "final_turn": 52,
+      "steps": 571,
+      "winner": 2
+    },
+    "b8_t60_p3_s31": {
+      "digest": "19f1020a40ee39cfb66d985f4d3d3b9906c31fd30a3340f568befc68b00536a2",
+      "final_cities": [
+        1,
+        2,
+        0
+      ],
+      "final_turn": 60,
+      "steps": 712,
+      "winner": 1
+    },
+    "b8_t60_p3_s34": {
+      "digest": "9f535e44a1bcc13454e1ccc1d631afab51f75faaf414d8a0c6c04ac785cbf0c4",
+      "final_cities": [
+        1,
+        0,
+        0
+      ],
+      "final_turn": 50,
+      "steps": 503,
+      "winner": 0
+    }
+  },
+  "env_version": 2,
+  "numpy_stream_canary": "d662b267280958427630cc3d8a7a70a54884b71a89cfdde2521ccafaaa3cfba9",
+  "numpy_version": "2.5.3"
+}

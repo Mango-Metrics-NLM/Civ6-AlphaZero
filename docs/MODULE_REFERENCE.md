@@ -6,7 +6,7 @@ or removed.
 
 - **As of:** v2.0.0, 2026-11-10 (`core/mcts/backup.py` and `utils/seeding.py` added;
   module set unchanged since the 2026-09-02 Tier A dead-code removal)
-- **Submodule count:** 30
+- **Submodule count:** 31
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
 
@@ -34,6 +34,7 @@ or removed.
 | `storage` | 9 | Storage backends (local/GCS), streaming replay buffer, factory |
 | `tournament` | 9 | ELO rating, matchmaking, analysis, tournament telemetry |
 | `web` | 12 | FastAPI + WebSocket game UI: routes, static assets |
+| `rules` | 10 | Game rule sets as data: frozen integer-only specs, a strict YAML loader, a structural validator, queries, index registry and hash-pinned built-ins; a zero-game pacing model (`pacing.py`) and an importer that turns a GameInfo table export into a rule set outside the repository (`gameinfo.py`). CLI: `python -m alpha_zero.rules validate\|hash\|pace\|import-gameinfo`. A leaf package; no environment uses it yet (`docs/GAME_RULES.md`) |
 | `gameplay` | 8 | Gameplay systems: combat, economy, fog of war, terrain, city growth, victory (no tech tree yet; one is planned as GM-S2) |
 | `human_interface` | 4 | Human gameplay interface |
 | `monitoring` | 6 | MLflow experiment tracking: `MLflowConfig`, `MLflowLogger`, metric helpers, dashboards |

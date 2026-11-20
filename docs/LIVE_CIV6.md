@@ -23,6 +23,7 @@ the wire-protocol notes, the per-module design) lives in
 | Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (greedy network or Gumbel MCTS over a snapshot-seeded `MicroCivEnv`), sends one command per turn. |
 | Entry point | `python -m alpha_zero.civ6_local --mode civ6` | Wires the above together; `--dry-run` validates the configuration without a game. |
 | Mod installer | `scripts/install_civ6_mod.py` | Copies the mod into the game's `Mods` directory (OneDrive-safe). |
+| Bundle generator | `scripts/build_lua_bundle.py` | Builds `Scripts/AlphaZeroMain.lua`, the one Lua file the game loads, from the module files beside it. |
 
 ## Prerequisites
 
@@ -39,6 +40,29 @@ the wire-protocol notes, the per-module design) lives in
 - **No trained checkpoint is required** — and none at Civ6 scale exists. Without
   `--checkpoint`, the bridge builds a randomly initialised network sized to the
   demo action space. That is what every live verification so far used.
+
+## Changing the mod's Lua
+
+The game loads one file, `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua`. It is generated:
+the module files beside it (`Config.lua`, `Logger.lua`, `JsonEncoder.lua`, `FileIO.lua`,
+`StateExporter.lua`, `ActionExecutor.lua`, `Main.lua`), in the order the `.modinfo` lists
+them, each between a `BEGIN` and an `END` marker.
+
+- Edit the module files, never the bundle.
+- Regenerate and commit both:
+
+  ```bash
+  python scripts/build_lua_bundle.py
+  ```
+
+- A test fails when the committed bundle is out of date (`python scripts/build_lua_bundle.py --check`
+  exits 1 and names the first differing line).
+- Reinstall the mod afterwards (`scripts/install_civ6_mod.py`); the game reads its own copy.
+
+Before 2026-11-19 the bundle was edited by hand and the module files had drifted from it,
+so an edit to a module file changed nothing in the game. The module files were made equal
+to the bundle (the bundle is what ran); what they lost is recorded in
+`openspec/changes/add-bridge-research-parity/bundle-drift.md`.
 
 ## Steps
 
