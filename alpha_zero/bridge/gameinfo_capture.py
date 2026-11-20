@@ -23,6 +23,7 @@ import os
 import re
 import sys
 import tempfile
+import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -38,6 +39,8 @@ DATA_ROOT_ENV = rules_gameinfo.DATA_ROOT_ENV
 LINE_PREFIX = "AZ_GAMEINFO:"
 CHUNK_PREFIX = "AZ_GAMEINFO_CHUNK:"
 END_PREFIX = "AZ_GAMEINFO_END:"
+#: Printed at the start of every export attempt, before any table is read.
+BEGIN_MARKER = "AZ_GAMEINFO_BEGIN"
 SUBDIR = "gameinfo"
 
 #: The tables a capture must hold. The mod leaves one out when it could not
@@ -52,6 +55,8 @@ REQUIRED_TABLES: tuple[str, ...] = (
 )
 
 _CHUNK = re.compile(r"(\d+)/(\d+):(.*)", re.DOTALL)
+#: ``n:checksum``, ASCII digits only; blanks around the checksum are noise.
+_END = re.compile(r"([0-9]+):\s*([0-9]+)")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _MAX_NAME_LENGTH = 100
 #: Names Windows gives to devices, whatever follows a dot.
@@ -102,9 +107,17 @@ def scan_log(text: str) -> LogScan:
     """Find the GameInfo messages in the text of a ``Lua.log``.
 
     A message is one ``AZ_GAMEINFO:`` line, or ``AZ_GAMEINFO_CHUNK:i/n:`` lines
-    closed by ``AZ_GAMEINFO_END:n`` with every piece present and every line
-    agreeing on ``n``. A log covers a whole launch, so it can hold one message
-    per game loaded, and their tables can differ (other mods, other rules).
+    closed by ``AZ_GAMEINFO_END:n:checksum`` with every piece present, every
+    line agreeing on ``n``, and the Adler-32 of the joined text equal to the
+    checksum. The checksum is what keeps pieces of two exports from being
+    joined into one snapshot when lines are lost between them. A log covers a
+    whole launch, so it can hold one message per game loaded, and their tables
+    can differ (other mods, other rules).
+
+    The mod prints ``AZ_GAMEINFO_BEGIN`` when an export starts, before it reads
+    a table. An attempt that then exports nothing (no table could be read)
+    leaves only that line, and it is what says the last complete message is
+    not the newest load's.
 
     Raises:
         GameInfoCaptureError: If the last complete message is not a JSON object.
@@ -131,9 +144,9 @@ def scan_log(text: str) -> LogScan:
             continue
         end = _after(line, END_PREFIX)
         if end is not None:
-            total = int(end.strip()) if end.strip().isdigit() else -1
-            if total > 0 and totals == {total} and sorted(pieces) == list(range(1, total + 1)):
-                last = "".join(pieces[i] for i in range(1, total + 1))
+            joined = _checked_join(end, pieces, totals)
+            if joined is not None:
+                last = joined
                 complete += 1
                 later_incomplete = False
             else:
@@ -146,9 +159,35 @@ def scan_log(text: str) -> LogScan:
             complete += 1
             later_incomplete = False
             pieces, totals = {}, set()
+            continue
+        # Tried last and only at the end of a line, so that snapshot data that
+        # happened to contain the marker's letters is never read as one.
+        if line.rstrip().endswith(BEGIN_MARKER):
+            # A newer export started: whatever was being collected is not its.
+            pieces, totals = {}, set()
+            later_incomplete = last is not None
 
     document = None if last is None else _parse_document(last, "the GameInfo message in the log")
     return LogScan(document=document, complete=complete, later_incomplete=later_incomplete)
+
+
+def _checked_join(end: str, pieces: dict[int, str], totals: set[int]) -> str | None:
+    """The chunk set's text when the END line ``n:checksum`` closes it, else None.
+
+    Complete means: every piece 1..n is there, every chunk line named the same
+    n, and the joined text has the checksum the mod computed over the whole
+    text before cutting it. An END line without a checksum closes nothing.
+    """
+    match = _END.fullmatch(end.strip())
+    if match is None:
+        return None
+    total, checksum = int(match.group(1)), int(match.group(2))
+    if total <= 0 or totals != {total} or sorted(pieces) != list(range(1, total + 1)):
+        return None
+    joined = "".join(pieces[i] for i in range(1, total + 1))
+    if zlib.adler32(joined.encode("utf-8")) != checksum:
+        return None
+    return joined
 
 
 def snapshot_from_log(text: str) -> dict[str, Any]:
@@ -165,7 +204,9 @@ def snapshot_from_log(text: str) -> dict[str, Any]:
     if document is None:
         raise GameInfoCaptureError(
             "no complete GameInfo message in the log: the mod writes one when a game "
-            "loads (ENABLE_GAMEINFO_EXPORT), so load a game with the mod enabled first"
+            "loads (ENABLE_GAMEINFO_EXPORT), so load a game with the mod enabled first. "
+            "A message without a checksum on its END line is from an older copy of the "
+            "mod: reinstall it (python scripts/install_civ6_mod.py)"
         )
     return document
 
@@ -274,8 +315,10 @@ def _publish(temporary: Path, destination: Path) -> None:
     """Give the finished file its name, without ever replacing an existing one.
 
     A hard link fails if the name is taken, which closes the gap between the
-    check above and the write. Where the file system has no hard links, fall
-    back to a rename after checking again.
+    check above and the write. Where the file system has no hard links, the
+    name is claimed with an exclusive create, which fails the same way, and
+    the finished file is then renamed over that empty claim. A check followed
+    by a rename would replace a file that appeared in between.
     """
     taken = GameInfoCaptureError(f"{destination} already exists; snapshots are never overwritten")
     try:
@@ -283,9 +326,17 @@ def _publish(temporary: Path, destination: Path) -> None:
     except FileExistsError:
         raise taken from None
     except OSError:
-        if destination.exists():
+        try:
+            claim = os.open(destination, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
             raise taken from None
-        os.replace(temporary, destination)
+        os.close(claim)
+        try:
+            os.replace(temporary, destination)
+        except OSError:
+            # The claim is ours and empty: do not leave it looking like a snapshot.
+            destination.unlink(missing_ok=True)
+            raise
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -321,10 +372,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             if scan.later_incomplete:
                 if not args.allow_earlier:
                     raise GameInfoCaptureError(
-                        "the newest GameInfo message in the log is incomplete (the game was "
-                        "still writing it, or stopped); an earlier complete one exists, but it "
-                        "may be another game load's tables. Load the game again, or pass "
-                        "--allow-earlier to file the earlier one"
+                        "the newest GameInfo export in the log is incomplete (the game was "
+                        "still writing it, it stopped, it could read no table, or lines of it "
+                        "are missing); an earlier complete one exists, but it may be another "
+                        "game load's tables. Load the game again, or pass --allow-earlier to "
+                        "file the earlier one"
                     )
                 print(
                     "gameinfo_capture: the newest GameInfo message is incomplete; "

@@ -73,7 +73,7 @@ def _chunked(document: dict[str, Any], size: int = 40, prefix: str = "") -> list
     text = json.dumps(document, separators=(",", ":"))
     pieces = [text[i : i + size] for i in range(0, len(text), size)]
     lines = [f"{prefix}AZ_GAMEINFO_CHUNK:{i}/{len(pieces)}:{p}\n" for i, p in enumerate(pieces, 1)]
-    return [*lines, f"{prefix}AZ_GAMEINFO_END:{len(pieces)}\n"]
+    return [*lines, g.end_line(len(pieces), g.adler32(text), prefix)]
 
 
 def _run(gc: ModuleType, *argv: str) -> int:
@@ -127,7 +127,7 @@ class TestSnapshotFromLog:
         elif damage == "missing-piece":
             del lines[1]
         else:
-            lines[-1] = f"AZ_GAMEINFO_END:{len(lines)}\n"
+            lines[-1] = g.end_line(len(lines), g.adler32(g.compact_text(DOCUMENT)))
         for earlier in (_single(older), "".join(_chunked(older))):
             assert gc.snapshot_from_log(earlier + "".join(lines)) == older
 

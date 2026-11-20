@@ -331,6 +331,35 @@ function AlphaZeroFileIO.WriteState(state)
     end
 end
 
+-- Adler-32 of a string, as zlib computes it. The snapshot's END line carries
+-- it, so the reader can tell a whole snapshot from pieces of two.
+local function adler32(text)
+    local a, b = 1, 0
+    for i = 1, #text do
+        a = (a + string.byte(text, i)) % 65521
+        b = (b + a) % 65521
+    end
+    return b * 65536 + a
+end
+
+-- Announce a snapshot attempt (GM-B4), before any table is read: an attempt
+-- that then exports nothing must not leave the previous game load's snapshot
+-- looking current. Removes the previous file, or prints a line the reader
+-- takes as "a newer export started".
+function AlphaZeroFileIO.BeginGameInfo()
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = nil
+    end
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if path then
+            AlphaZeroFileIO.Delete(path)
+        end
+        return
+    end
+    print("AZ_GAMEINFO_BEGIN")
+end
+
 -- Write the rule-table snapshot (GM-B4): a file when file access exists,
 -- otherwise printed like a state, under its own prefixes so the state reader
 -- does not take it for one.
@@ -351,7 +380,9 @@ function AlphaZeroFileIO.WriteGameInfo(document)
     end
 
     -- Lua.log truncates long lines, so a long snapshot is cut into pieces:
-    -- AZ_GAMEINFO_CHUNK:seq/total:data ... AZ_GAMEINFO_END:total
+    -- AZ_GAMEINFO_CHUNK:seq/total:data ... AZ_GAMEINFO_END:total:checksum
+    -- The checksum is printed with %.0f: it can exceed 2^31, which %d does
+    -- not print on every build of Lua 5.1.
     local MAX_CHUNK = 1800
     local jsonLen = #json
     if jsonLen <= MAX_CHUNK then
@@ -363,7 +394,7 @@ function AlphaZeroFileIO.WriteGameInfo(document)
             local endPos = math.min(i * MAX_CHUNK, jsonLen)
             print("AZ_GAMEINFO_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. json:sub(startPos, endPos))
         end
-        print("AZ_GAMEINFO_END:" .. totalChunks)
+        print("AZ_GAMEINFO_END:" .. totalChunks .. ":" .. string.format("%.0f", adler32(json)))
     end
     if ExposedMembers then
         ExposedMembers.AlphaZeroGameInfo = json

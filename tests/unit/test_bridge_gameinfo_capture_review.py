@@ -247,7 +247,7 @@ def _broken_tail(kind: str) -> str:
     elif kind == "missing-piece":
         del lines[1]
     else:
-        lines[-1] = f"AZ_GAMEINFO_END:{len(lines)}\n"
+        lines[-1] = g.end_line(len(lines), g.adler32(g.compact_text(DOC)))
     return "".join(lines)
 
 
@@ -354,7 +354,7 @@ class TestChunkBookkeeping:
         self, gc: ModuleType
     ) -> None:
         lines = g.chunk_lines(DOC, 3)
-        lines[-1] = "AZ_GAMEINFO_END:2\n"
+        lines[-1] = g.end_line(2, g.adler32(g.compact_text(DOC)))
         scan = gc.scan_log(g.single_line(OLDER) + "".join(lines))
         assert (scan.document, scan.complete, scan.later_incomplete) == (OLDER, 1, True)
 

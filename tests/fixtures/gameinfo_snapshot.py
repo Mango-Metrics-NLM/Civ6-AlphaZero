@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import re
+import zlib
 from typing import Any
 
 from tests.fixtures import lua_harness as h
@@ -179,10 +180,21 @@ def messages(lines: list[str], marker: str = MARKER) -> list[tuple[str, list[int
             assert match, f"malformed chunk line {line[:80]!r}"
             pieces.append((int(match[1]), int(match[2]), match[3]))
         elif line.startswith(f"{marker}_END:"):
-            count = int(line[len(f"{marker}_END:") :])
+            # GameInfo: ``<marker>_END:<n>:<adler32>`` (a plain decimal count and checksum).
+            # Other markers (states) keep ``<marker>_END:<n>``.
+            checked = marker == MARKER
+            pattern = rf"{marker}_END:(\d+):(\d+)" if checked else rf"{marker}_END:(\d+)"
+            end = re.fullmatch(pattern, line)
+            assert end, f"malformed END line {line[:80]!r}"
+            count = int(end[1])
             assert [p[0] for p in pieces] == list(range(1, count + 1)), "chunks out of order"
             assert {p[1] for p in pieces} == {count}, "chunk totals disagree with END"
-            found.append(("".join(p[2] for p in pieces), [len(p[2]) for p in pieces]))
+            joined = "".join(p[2] for p in pieces)
+            if checked:
+                assert int(end[2]) == adler32(joined), (
+                    "END checksum is not the Adler-32 of the text"
+                )
+            found.append((joined, [len(p[2]) for p in pieces]))
             pieces = []
     return found
 
@@ -210,17 +222,44 @@ def single_line(document: dict[str, Any], prefix: str = "") -> str:
     return f"{prefix}AZ_GAMEINFO:{json.dumps(document, separators=(',', ':'))}\n"
 
 
+def adler32(text: str) -> int:
+    """The END line's checksum: Adler-32 of the JSON text's UTF-8 bytes."""
+    return zlib.adler32(text.encode("utf-8"))
+
+
+def compact_text(document: dict[str, Any]) -> str:
+    """The JSON text ``chunk_lines`` / ``single_line`` cut and print."""
+    return json.dumps(document, separators=(",", ":"))
+
+
+def end_line(total: int, checksum: int | str | None, prefix: str = "") -> str:
+    """``AZ_GAMEINFO_END:<n>:<checksum>``; ``checksum=None`` leaves the checksum off."""
+    tail = "" if checksum is None else f":{checksum}"
+    return f"{prefix}AZ_GAMEINFO_END:{total}{tail}\n"
+
+
+def begin_line(prefix: str = "") -> str:
+    """The line the mod prints when an export attempt starts."""
+    return f"{prefix}AZ_GAMEINFO_BEGIN\n"
+
+
 def chunk_lines(
     document: dict[str, Any],
     pieces: int = 3,
     *,
     header_total: int | None = None,
     end_total: int | None = None,
+    checksum: int | str | None = "auto",
 ) -> list[str]:
-    """A chunk set of ``pieces`` pieces; the totals in the headers / END line can be wrong."""
-    text = json.dumps(document, separators=(",", ":"))
+    """A chunk set of ``pieces`` pieces; the totals in the headers / END line can be wrong.
+
+    The END line carries the Adler-32 of the whole text unless ``checksum`` says otherwise
+    (``None`` omits it, anything else is printed as given).
+    """
+    text = compact_text(document)
     size = -(-len(text) // pieces)
     parts = [text[i : i + size] for i in range(0, len(text), size)]
     shown = header_total if header_total is not None else len(parts)
     lines = [f"AZ_GAMEINFO_CHUNK:{i}/{shown}:{p}\n" for i, p in enumerate(parts, 1)]
-    return [*lines, f"AZ_GAMEINFO_END:{end_total if end_total is not None else len(parts)}\n"]
+    total = end_total if end_total is not None else len(parts)
+    return [*lines, end_line(total, adler32(text) if checksum == "auto" else checksum)]
