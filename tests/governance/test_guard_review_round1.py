@@ -16,6 +16,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.governance._bash import resolve_bash
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _HOOKS = REPO_ROOT / ".claude" / "hooks"
 READONLY_GUARD = Path(
@@ -24,7 +26,7 @@ READONLY_GUARD = Path(
 WRITE_GUARD = Path(
     os.environ.get("CIV6AZ_TEST_WRITE_GUARD", str(_HOOKS / "tests_only_write_guard.sh"))
 )
-BASH = shutil.which("bash") or "bash"
+BASH = resolve_bash()
 
 pytestmark = pytest.mark.skipif(
     not any(shutil.which(t) for t in ("jq", "python3", "python")),

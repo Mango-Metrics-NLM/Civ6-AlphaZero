@@ -14,7 +14,13 @@
 # surfaces as dozens of phantom import-untyped errors.
 set -uo pipefail
 
-if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_python.sh
+. "${HOOK_DIR}/_resolve_python.sh"
+
+PY="$(resolve_python "${CLAUDE_PROJECT_DIR:-.}" || true)"
+
+if [ -z "$PY" ]; then
   printf '{"systemMessage": "WARNING: Python >= 3.11 is required for this project."}'
   exit 0
 fi
@@ -22,11 +28,11 @@ fi
 install_log="$(mktemp)"
 trap 'rm -f "$install_log"' EXIT
 install_status="ok"
-if ! pip install -e '.[dev]' -q >"$install_log" 2>&1; then
+if ! "$PY" -m pip install -e '.[dev]' -q >"$install_log" 2>&1; then
   install_status="failed"
 fi
 
-INSTALL_STATUS="$install_status" INSTALL_LOG="$install_log" python3 <<'PY'
+INSTALL_STATUS="$install_status" INSTALL_LOG="$install_log" "$PY" <<'PY'
 import importlib.util
 import json
 import os

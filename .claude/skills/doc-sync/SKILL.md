@@ -35,6 +35,9 @@ The error code tells you what to fix:
 - **D5** — use a real `pyproject` extra in any `pip install -e '.[X]'`.
 - **D6** — fix or remove the broken relative link.
 - **D7** — make the first released changelog heading match the packaged version.
+- **D8** — list every tracked `docs/**/*.md` outside `docs/archive/` in `docs/README.md` exactly once.
+- **D9** — ensure every bullet under `ROADMAP.md` `### Now` names an issue (`#NN`) or OpenSpec change (`openspec/changes/<id>`).
+- **D4b** — keep `README.md` and `ROADMAP.md` free of forbidden unmeasured claim patterns (`check_doc_sync.py`).
 
 ### 3. Re-run until clean
 

@@ -66,13 +66,14 @@ regardless of whether this repo still calls the service.
 
 ## Adding an allowlist entry
 
-`.gitleaks.toml` allowlists by **path** for build artifacts and by **value** for
-deliberate fixtures. Prefer value-scoped entries: a path allowlist hides a real
-secret added to that same file later.
+`.gitleaks.toml` allowlists by **path** for build artifacts, local virtual environments
+(`.venv*`, `venv*`), worktrees (`.claude/worktrees/`, `.worktrees/`, `worktrees/`), and
+downloaded tooling (`.tools/`), and by **value** for deliberate fixtures. Prefer value-scoped
+entries: a path allowlist hides a real secret added to that same file later.
 
-Never add a catch-all (`.*`) — `tests/regression/test_repo_hygiene_regression.py`
+Never add a catch-all (`.*`) or exempt `.env*` files — `tests/regression/test_repo_hygiene_regression.py`
 fails if one appears, because it would make the gate report success while detecting
-nothing.
+nothing or expose dotenv secrets.
 
 ## Gotcha: testing the config
 

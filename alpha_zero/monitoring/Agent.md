@@ -42,7 +42,7 @@ Install with `pip install -e '.[monitoring]'`.
 | `config.py` | `MLflowConfig` dataclass + `CIV6AZ_MLFLOW_*` env parsing (standard `MLFLOW_*` honored as fallback) |
 | `metrics.py` | Stateless metric helpers; importable with no backend installed |
 | `mlflow_logger.py` | `MLflowLogger`, `WandbCompatAdapter` — optional import, nested runs, metric cleaning |
-| `mlflow_evaluator.py` | `AlphaZeroMLflowEvaluator` + `log_evaluation_result` (14 metrics per eval run) |
+| `mlflow_evaluator.py` | `AlphaZeroMLflowEvaluator` + `log_evaluation_result` (15 metrics per eval run, including `score_rate`) |
 | `tournament_dashboards.py` | `TournamentMlflowLogger` — match / round / leaderboard / head-to-head |
 
 ---

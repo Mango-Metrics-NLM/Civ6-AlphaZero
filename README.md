@@ -173,7 +173,9 @@ On a GPU, seeding is not enough: CUDA kernels are non-deterministic by default. 
 run on a CUDA device therefore enforces deterministic algorithms, and an operation with no
 deterministic implementation raises. That buys repeatability on one machine, one torch build
 and one GPU, not across GPU models. CI has no GPU, so this is checked on the machine that
-runs the registered cards (`scripts/check_determinism.py`, run by the T0b card), and it has
+runs the registered cards (`scripts/check_determinism.py`, run by the T0b card); live dual-GPU
+execution (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128`) reported
+`REPRODUCED`, while formal single-use T0b/A1 run-card execution via `scripts/run_card.py` has
 **not been run yet**.
 
 ## Cloud training

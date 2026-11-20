@@ -18,7 +18,9 @@ dist
 
 # Virtual environments
 venv
+venv*/
 .venv
+.venv*/
 env
 
 # IDE
@@ -135,6 +137,8 @@ dataset-export/
 # Repository governance and agent harness — never needed at runtime, and they
 # invalidate the Docker layer cache on every doc or KB edit.
 .claude/
+.worktrees/
+worktrees/
 .agents/
 kb/
 openspec/

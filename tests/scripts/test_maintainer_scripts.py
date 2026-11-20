@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import subprocess
 import sys
 import textwrap
@@ -26,12 +25,13 @@ from typing import Any
 import pytest
 
 from scripts.maintainer import rulesets
+from tests.governance._bash import find_bash
 from tests.scripts.git_fixture import GitRepo, git_env
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CUTOVER = REPO_ROOT / "scripts" / "maintainer" / "branch_cutover.sh"
 BACKMERGE = REPO_ROOT / "scripts" / "maintainer" / "merge_backmerge.sh"
-BASH = shutil.which("bash")
+BASH = find_bash()
 REPO = "acme/widget"
 OLD = "claude/civ6-alphazero-implementation-vMnun"
 
@@ -198,6 +198,14 @@ class FakeGh:
             }
         )
         env.pop("CLAUDECODE", None)
+        if sys.platform == "win32" and BASH is not None:
+            bash_path = Path(BASH).resolve()
+            extra_paths = [str(bash_path.parent)]
+            if len(bash_path.parents) > 1:
+                usr_bin = bash_path.parents[1] / "usr" / "bin"
+                if usr_bin.is_dir():
+                    extra_paths.append(str(usr_bin))
+            env["PATH"] = os.pathsep.join([*extra_paths, env.get("PATH", "")])
         env.update(extra)
         return env
 
