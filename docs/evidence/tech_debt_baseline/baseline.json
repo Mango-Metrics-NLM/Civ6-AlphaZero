@@ -12,7 +12,7 @@
   "noqa_comments": 70,
   "package_files": 345,
   "package_lines": 155801,
-  "pytest_skip_sites": 149,
+  "pytest_skip_sites": 150,
   "ruff_per_file_ignores": 26,
   "runtime_asserts": 60,
   "test_files_over_1000_lines": 27,

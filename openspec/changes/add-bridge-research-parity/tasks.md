@@ -6,9 +6,9 @@
 - [x] 1.3 `tests/scripts/test_lua_bundle_sync.py` runs `--check`; negative control: an edit to one module file without regeneration fails it
 
 ## 2. GM-B1: Lua harness
-- [ ] 2.1 `lupa` in its own test extra; tests use the Lua 5.1 runtime (`lupa.lua51` or LuaJIT) and `importorskip`
-- [ ] 2.2 The CI job that installs the extra sets a flag that turns a missing `lupa` into a failure; the suite-wiring gate names the job
-- [ ] 2.3 `tests/fixtures/lua/civ6_stub.lua` stubs `Players` and `GameInfo`; the current exporter runs against it
+- [x] 2.1 `lupa` in its own test extra; tests use the Lua 5.1 runtime (`lupa.lua51` or LuaJIT) and `importorskip`
+- [x] 2.2 The CI job that installs the extra sets a flag that turns a missing `lupa` into a failure; the suite-wiring gate names the job
+- [x] 2.3 `tests/fixtures/lua/civ6_stub.lua` stubs `Players` and `GameInfo`; the current exporter runs against it
 
 ## 3. GM-B2 and GM-B3: exporter parity and Python wiring
 - [ ] 3.1 Tests first, against the stub: researched techs and civics, current research, buildings, districts, `schema_version`, research legal actions, a blocked END_TURN

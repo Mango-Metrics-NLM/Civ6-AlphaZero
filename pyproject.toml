@@ -113,6 +113,11 @@ jax = [
 chess = [
     "chess>=1.11.0",
 ]
+# Test-only: runs the Civ6 mod's Lua (mod/AlphaZeroAI) outside the game, on the
+# Lua 5.1 runtime lupa bundles. Not part of `dev`; CI's test job installs it.
+lua = [
+    "lupa>=2.0",
+]
 # Hugging Face Hub integration. Opt-in; the hexcrystal encoder and other models
 # use PyTorchModelHubMixin for save_pretrained / from_pretrained support.
 hub = [

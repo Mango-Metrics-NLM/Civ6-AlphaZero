@@ -1,26 +1,26 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-20T00:20:00Z",
-    "current_focus": "Game-mechanics program, Phase 1. PR #142 merged. Open: #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2, contains #146), and GM-B0 on claude/gm-b0-lua-bundle. Kernel track complete in code; bridge track started.",
+    "last_timestamp": "2026-11-20T00:55:00Z",
+    "current_focus": "Game-mechanics program, Phase 1. Merged: #142. Open: #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), and GM-B1 on claude/gm-b1-lua-harness. Kernel track complete in code; bridge track has its generator and its Lua harness.",
     "resume_pointers": {
-        "current_task": "None in flight. Next slice: GM-B1 (lupa Lua harness as a test-only extra; stub Players and GameInfo; run the exporter against it).",
+        "current_task": "None in flight. Next slice: GM-B2 (exporter parity, research legal actions, END_TURN reporting a blocked turn), test-first on tests/fixtures/lua_harness.py.",
         "blocked_on": [
-            "maintainer: review and merge #143, #146, #147 and the GM-B0 PR; agents do not merge",
-            "maintainer: confirm END_TURN blocked reporting (GM-B2) and GM-B3's four-module span at their PRs",
+            "maintainer: review and merge #143, #146, #147, #148 and the GM-B1 PR; agents do not merge",
+            "maintainer: confirm the END_TURN change (GM-B2) and decide on the two pieces in bundle-drift.md; confirm GM-B3's four-module span at its PR",
             "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "After each merge, merge the default branch into the PRs still open (each appends a ledger line and a summary entry)",
+            "After each merge, merge the default branch into the PRs still open (ledger, summary, and pytest_skip_sites in the debt baseline all collide)",
             "Base every follow-up PR on the default branch, never on another PR's branch",
-            "Edit the mod's module files, never AlphaZeroMain.lua; run python scripts/build_lua_bundle.py and commit both",
-            "GM-B1, then GM-B2 (restore the bundle-drift candidates deliberately), GM-B3..B5"
+            "GM-B2 needs both GM-B0 (generated bundle) and GM-B1 (harness) merged first",
+            "Never load the mod's Lua without the harness lockdown: it writes into the working directory"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261120-devsqe-to-prepr-gm-b0-lua-bundle.md",
-        "openspec/changes/add-bridge-research-parity/bundle-drift.md",
+        "kb/handoffs/20261120-devsqe-to-prepr-gm-b1-lua-harness.md",
+        "tests/fixtures/lua_harness.py",
+        "tests/fixtures/lua/civ6_stub.lua",
         "openspec/changes/add-bridge-research-parity/tasks.md",
-        "docs/LIVE_CIV6.md",
         "kb/specs/20261119-game-mechanics-plan.md"
     ]
 }
