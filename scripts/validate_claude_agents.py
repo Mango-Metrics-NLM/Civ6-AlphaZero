@@ -40,6 +40,7 @@ Stdlib only: the CI governance job installs nothing else.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import re
 import sys
@@ -744,6 +745,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Validate .claude/agents SDLC role subagents.")
     parser.add_argument("--path", help="validate a single .claude/agents/*.md file")
     parser.add_argument("--quiet", action="store_true", help="suppress the OK line")
+    parser.add_argument("--json", action="store_true", dest="as_json", help="emit JSON")
     parser.add_argument("--verbose", action="store_true", help="trace what was scanned (stderr)")
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -773,7 +775,53 @@ def main(argv: list[str] | None = None) -> int:
         print(f"claude-agents: internal error: {exc}", file=sys.stderr)
         return 2
 
+    issues.sort(
+        key=lambda i: (
+            (
+                i.file.relative_to(REPO_ROOT).as_posix()
+                if i.file.is_absolute() and REPO_ROOT in i.file.parents
+                else i.file.as_posix()
+            ),
+            i.line or 0,
+            i.code,
+            i.message,
+        )
+    )
     errors = [i for i in issues if not i.warning]
+    warnings = [i for i in issues if i.warning]
+    logger.debug(
+        "finished: %d issue(s) -- %d error(s), %d warning(s)",
+        len(issues),
+        len(errors),
+        len(warnings),
+    )
+    if args.as_json:
+        print(
+            json.dumps(
+                {
+                    "ok": not errors,
+                    "warning_count": len(warnings),
+                    "issues": [
+                        {
+                            "code": i.code,
+                            "message": i.message,
+                            "file": (
+                                i.file.relative_to(REPO_ROOT).as_posix()
+                                if i.file.is_absolute() and REPO_ROOT in i.file.parents
+                                else i.file.as_posix()
+                            ),
+                            "line": i.line,
+                            "warning": i.warning,
+                        }
+                        for i in issues
+                    ],
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 1 if errors else 0
+
     for issue in issues:
         print(issue.render(), file=sys.stderr)
     if errors:

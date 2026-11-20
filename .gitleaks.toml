@@ -56,6 +56,13 @@ paths = [
     '''^node_modules/''',
     '''^\.git/''',
     '''\.egg-info/''',
+    '''^\.venv/''',
+    '''^\.venv.*/''',
+    '''^venv/''',
+    '''^\.tools/''',
+    '''^\.claude/worktrees/''',
+    '''^\.worktrees/''',
+    '''^worktrees/''',
 ]
 
 # Deliberately fake credentials used to prove redaction and rejection logic.

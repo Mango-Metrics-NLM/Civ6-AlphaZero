@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.governance._bash import resolve_bash
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 _HOOKS = REPO_ROOT / ".claude" / "hooks"
 READONLY_GUARD = Path(
@@ -30,8 +32,8 @@ READONLY_GUARD = Path(
 WRITE_GUARD = Path(
     os.environ.get("CIV6AZ_TEST_WRITE_GUARD", str(_HOOKS / "tests_only_write_guard.sh"))
 )
-# Through PATH, not the OS: on Windows CreateProcess finds WSL's bash.exe first.
-BASH = shutil.which("bash") or "bash"
+# Resolved explicitly so Windows does not select the System32 WSL stub before Git Bash.
+BASH = resolve_bash()
 _HAS_PARSER = any(shutil.which(tool) for tool in ("jq", "python3", "python"))
 
 pytestmark = pytest.mark.skipif(not _HAS_PARSER, reason="guards need jq or python on PATH")

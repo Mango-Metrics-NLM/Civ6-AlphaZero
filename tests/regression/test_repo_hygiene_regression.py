@@ -227,3 +227,21 @@ class TestSecretScanningConfig:
             "GITLEAKS_VERSION must be an overridable Makefile variable so local "
             "runs and CI resolve the same tool version"
         )
+
+    def test_allowlist_covers_venvs_and_worktrees_but_never_dotenv(self) -> None:
+        """Generated venvs/worktrees are skipped without exempting ``.env`` files."""
+        compiled = [re.compile(raw) for raw in _gitleaks_allowlist_paths()]
+        for generated in (
+            ".venv/lib/python3.11/site-packages/pkg.py",
+            ".venv-scan/pyvenv.cfg",
+            ".venv2/Scripts/activate",
+            ".claude/worktrees/topic/alpha_zero/core/civ6_network.py",
+            ".tools/gitleaks-8.30.0",
+        ):
+            assert any(rx.search(generated) for rx in compiled), (
+                f"{generated} should be excluded by .gitleaks.toml allowlist"
+            )
+        for sensitive in (".env", ".env.local", ".env.production"):
+            assert not any(rx.search(sensitive) for rx in compiled), (
+                f"{sensitive} must NEVER be allowlisted in .gitleaks.toml"
+            )
