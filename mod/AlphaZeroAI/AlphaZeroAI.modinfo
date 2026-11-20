@@ -20,6 +20,7 @@
         <File>Scripts/JsonEncoder.lua</File>
         <File>Scripts/FileIO.lua</File>
         <File>Scripts/StateExporter.lua</File>
+        <File>Scripts/GameInfoExporter.lua</File>
         <File>Scripts/ActionExecutor.lua</File>
         <File>Scripts/Main.lua</File>
     </Files>

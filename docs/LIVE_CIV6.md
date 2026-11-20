@@ -45,7 +45,7 @@ the wire-protocol notes, the per-module design) lives in
 
 The game loads one file, `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua`. It is generated:
 the module files beside it (`Config.lua`, `Logger.lua`, `JsonEncoder.lua`, `FileIO.lua`,
-`StateExporter.lua`, `ActionExecutor.lua`, `Main.lua`), in the order the `.modinfo` lists
+`StateExporter.lua`, `GameInfoExporter.lua`, `ActionExecutor.lua`, `Main.lua`), in the order the `.modinfo` lists
 them, each between a `BEGIN` and an `END` marker.
 
 - Edit the module files, never the bundle.
@@ -127,8 +127,8 @@ choice cannot be cleared, where the default mode would have offered every civic 
 index. Use a registry when a network trained with that rule set is loaded; for a
 random-weights session the default is the better choice. The rule set that covers the real
 tree is the one `python -m alpha_zero.rules import-gameinfo` writes from a GameInfo export;
-capturing that export from a running game is GM-B4. No network has been trained with any of
-these slots.
+"The game's own rule tables" below says how to capture that export from a running game. No
+network has been trained with any of these slots.
 
 What to look for in the log:
 
@@ -147,6 +147,51 @@ The current game has more technologies and civics than the action space has rese
 actions; those cannot be chosen until the action space is sized from the rule set, which is
 a change on the release play path and waits for v2.1.0.
 
+### The game's own rule tables (GM-B4)
+
+The real technology and civic trees are the game's data, not this repository's. The mod
+copies a few of the game's `GameInfo` tables once per game load: technologies, civics,
+buildings and units with their costs, eras and prerequisites. Identifiers and whole numbers
+only, no text. With file access it writes `gameinfo.json` beside its other files; without
+(the usual case) it prints the snapshot to `Lua.log` as `AZ_GAMEINFO` lines, cut into pieces
+like a state. Each attempt starts with an `AZ_GAMEINFO_BEGIN` line (or, with file access, by
+deleting the previous `gameinfo.json`), and the closing line of a snapshot in pieces carries a
+checksum of the whole text. `ENABLE_GAMEINFO_EXPORT = false` in the mod's config turns it off.
+
+To use it:
+
+```bash
+python -m alpha_zero.bridge.gameinfo_capture --from-log "PATH/TO/Lua.log"
+```
+
+```bash
+python -m alpha_zero.rules import-gameinfo SNAPSHOT.json
+```
+
+The first command checks that the rules importer accepts the snapshot and files it as
+`<CIV6AZ_DATA_ROOT>/gameinfo/gameinfo-<time>.json`, and it prints the second command. It
+refuses, with a one-line reason:
+
+- to write inside the repository (symbolic links are followed first), with no data root
+  set, or over an existing file;
+- a snapshot that lacks one of the six tables: the mod leaves a table out when it could
+  not read it, and a rule set built from the rest would silently have no units, say;
+- when the newest snapshot in the log is unfinished: still being written, cut short, with
+  a line missing (the checksum then does not match, so pieces of two snapshots are never
+  joined), or an attempt that could read no table. A `Lua.log` covers a whole launch and
+  holds one snapshot per game loaded, whose tables can differ; `--allow-earlier` files the
+  last complete one anyway and says so. A game load with the export turned off leaves no
+  line at all, so the capture cannot know about it. The second writes a rule-set file, also under the data root. Then
+`CIV6AZ_BRIDGE_RULESET=<rule-set file>` and `CIV6AZ_BRIDGE_GAMEINFO=<snapshot>` give the
+bridge slots for the real trees ("Research slots" above).
+
+The snapshot is the user's own game data: it is never committed, and a test fails if a
+file shaped like one is tracked. Like the rest of this page, the export has run only
+against the hand-written stand-in for the game. In particular, whether the game's tables
+have exactly these column names in the current version is unverified; a column the game
+does not have is left out of the rows, and the capture command then says what the
+importer misses.
+
 ### Live checklist for the maintainer (GM-B2)
 
 Nothing below can be checked without the game. After `python scripts/install_civ6_mod.py`:
@@ -163,6 +208,9 @@ Nothing below can be checked without the game. After `python scripts/install_civ
    version. Either is worth an issue.
 4. Send `end_turn` again: the turn ends.
 5. Note any field that stays empty in the real game and any call the log reports as failing.
+6. GM-B4: after loading a game, run the capture command above on the game's `Lua.log`. It
+   should report non-zero row counts for all six tables and "importable". If it reports a
+   missing column or table, that is the column name to correct in `GameInfoExporter.lua`.
 
 ## Steps
 

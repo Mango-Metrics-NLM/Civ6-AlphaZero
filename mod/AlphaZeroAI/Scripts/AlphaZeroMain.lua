@@ -38,6 +38,7 @@ local DEFAULT_CONFIG = {
     ACK_FILE = "ack.json",
     HEARTBEAT_FILE = "heartbeat.txt",
     ERROR_FILE = "errors.json",
+    GAMEINFO_FILE = "gameinfo.json",
 
     -- Polling intervals (in seconds)
     COMMAND_POLL_INTERVAL = 0.01,  -- 10ms
@@ -55,6 +56,7 @@ local DEFAULT_CONFIG = {
     ENABLE_DETAILED_UNITS = true,
     ENABLE_DETAILED_CITIES = true,
     ENABLE_LEGAL_ACTIONS = true,
+    ENABLE_GAMEINFO_EXPORT = true,  -- Write the rule-table snapshot once per game load
 
     -- Player configuration
     AI_PLAYER_ID = nil,            -- Auto-detect first human player
@@ -166,6 +168,7 @@ function AlphaZeroConfig.Init()
     currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
     currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
     currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
+    currentConfig.GAMEINFO_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.GAMEINFO_FILE
 
     -- Try to load override configuration
     AlphaZeroConfig.LoadOverrides()
@@ -206,6 +209,7 @@ function AlphaZeroConfig.LoadOverrides()
                 currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
                 currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
                 currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
+                currentConfig.GAMEINFO_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.GAMEINFO_FILE
             end
         elseif err then
             print("[AlphaZero] Config override parse error: " .. tostring(err))
@@ -541,11 +545,19 @@ local escapeChars = {
     ["\f"] = "\\f",
 }
 
+-- One pass over the characters JSON does not allow raw in a string: the quote,
+-- the backslash and the control characters (%c). The short forms come from
+-- escapeChars; any other control character is written as \u00XX.
+--
+-- This used to be two passes, the second with the pattern '[\x00-\x1f]'. Lua
+-- 5.1 has no \x escape, so that was the class "x, 0 to x, 1, f": it rewrote
+-- most letters, every digit and the underscore as \u00XX (six times the
+-- length), and re-escaped the backslashes the first pass had just written, so
+-- a newline came back as the two characters "\n" and a quote ended the string
+-- early.
 local function escapeString(str)
-    str = string.gsub(str, '[\\"\n\r\t\b\f]', escapeChars)
-    -- Escape control characters
-    str = string.gsub(str, '[\x00-\x1f]', function(c)
-        return string.format("\\u%04x", string.byte(c))
+    str = string.gsub(str, '[%c"\\]', function(c)
+        return escapeChars[c] or string.format("\\u%04x", string.byte(c))
     end)
     return str
 end
@@ -1300,6 +1312,77 @@ function AlphaZeroFileIO.WriteState(state)
         end
         return true, nil
     end
+end
+
+-- Adler-32 of a string, as zlib computes it. The snapshot's END line carries
+-- it, so the reader can tell a whole snapshot from pieces of two.
+local function adler32(text)
+    local a, b = 1, 0
+    for i = 1, #text do
+        a = (a + string.byte(text, i)) % 65521
+        b = (b + a) % 65521
+    end
+    return b * 65536 + a
+end
+
+-- Announce a snapshot attempt (GM-B4), before any table is read: an attempt
+-- that then exports nothing must not leave the previous game load's snapshot
+-- looking current. Removes the previous file, or prints a line the reader
+-- takes as "a newer export started".
+function AlphaZeroFileIO.BeginGameInfo()
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = nil
+    end
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if path then
+            AlphaZeroFileIO.Delete(path)
+        end
+        return
+    end
+    print("AZ_GAMEINFO_BEGIN")
+end
+
+-- Write the rule-table snapshot (GM-B4): a file when file access exists,
+-- otherwise printed like a state, under its own prefixes so the state reader
+-- does not take it for one.
+function AlphaZeroFileIO.WriteGameInfo(document)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
+    local json, err = AlphaZeroJson.Encode(document, false)
+    if not json then
+        return false, err
+    end
+
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if not path then return false, "GAMEINFO_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    end
+
+    -- Lua.log truncates long lines, so a long snapshot is cut into pieces:
+    -- AZ_GAMEINFO_CHUNK:seq/total:data ... AZ_GAMEINFO_END:total:checksum
+    -- The checksum is printed with %.0f: it can exceed 2^31, which %d does
+    -- not print on every build of Lua 5.1.
+    local MAX_CHUNK = 1800
+    local jsonLen = #json
+    if jsonLen <= MAX_CHUNK then
+        print("AZ_GAMEINFO:" .. json)
+    else
+        local totalChunks = math.ceil(jsonLen / MAX_CHUNK)
+        for i = 1, totalChunks do
+            local startPos = (i - 1) * MAX_CHUNK + 1
+            local endPos = math.min(i * MAX_CHUNK, jsonLen)
+            print("AZ_GAMEINFO_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. json:sub(startPos, endPos))
+        end
+        print("AZ_GAMEINFO_END:" .. totalChunks .. ":" .. string.format("%.0f", adler32(json)))
+    end
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = json
+    end
+    return true, nil
 end
 
 -- Read commands from either file or ExposedMembers
@@ -2548,6 +2631,137 @@ print("[AlphaZero] StateExporter module loaded")
 
 -- ========== END StateExporter.lua ==========
 
+-- ========== BEGIN GameInfoExporter.lua ==========
+-- ============================================================================
+-- GameInfoExporter.lua - a snapshot of the game's rule tables (GM-B4)
+-- ============================================================================
+-- Copies a few of the game's own GameInfo tables (technologies, civics,
+-- buildings, units and their prerequisites) so the Python side can turn them
+-- into a rule set: the real technology tree instead of a hand-written one.
+-- The snapshot holds identifiers and whole numbers only, no text, and its
+-- shape is exactly what `python -m alpha_zero.rules import-gameinfo` reads.
+-- It is written once per game load (ENABLE_GAMEINFO_EXPORT), through FileIO.
+-- ============================================================================
+
+AlphaZeroGameInfo = AlphaZeroGameInfo or {}
+
+local Log = nil  -- Will be set after Logger loads
+
+-- The tables and columns of a snapshot. Adding a table or a column here means
+-- teaching the Python importer about it first: it refuses a table it does not
+-- know.
+local SNAPSHOT_TABLES = {
+    { name = "Technologies", columns = { "TechnologyType", "Cost", "EraType" } },
+    { name = "TechnologyPrereqs", columns = { "Technology", "PrereqTech" } },
+    { name = "Civics", columns = { "CivicType", "Cost", "EraType" } },
+    { name = "CivicPrereqs", columns = { "Civic", "PrereqCivic" } },
+    { name = "Buildings", columns = { "BuildingType", "Cost", "PrereqTech" } },
+    { name = "Units", columns = { "UnitType", "Cost", "Combat", "BaseMoves", "PrereqTech" } },
+}
+
+-- Whole numbers a JSON reader gets back exactly.
+local MAX_WHOLE_NUMBER = 2 ^ 53
+
+-- A value the importer accepts (an identifier or a whole number), or nil.
+local function sanitise(value)
+    if type(value) == "number" then
+        if value == math.floor(value) and value > -MAX_WHOLE_NUMBER and value < MAX_WHOLE_NUMBER then
+            return value
+        end
+        return nil
+    end
+    if type(value) == "string" and string.match(value, "^[A-Za-z][A-Za-z0-9_]*$") then
+        return value
+    end
+    return nil
+end
+
+-- The rows of one game table, or nil when the game has no such table or
+-- reading it fails. A row left with no column at all is dropped.
+local function exportTable(spec)
+    local gameTable = GameInfo and GameInfo[spec.name]
+    if not gameTable then
+        return nil
+    end
+
+    local rows = {}
+    local ok = pcall(function()
+        for row in gameTable() do
+            local copy, kept = {}, 0
+            for _, column in ipairs(spec.columns) do
+                local value = sanitise(row[column])
+                if value ~= nil then
+                    copy[column] = value
+                    kept = kept + 1
+                end
+            end
+            if kept > 0 then
+                table.insert(rows, copy)
+            end
+        end
+    end)
+    if not ok then
+        return nil
+    end
+    return rows
+end
+
+-- ----------------------------------------------------------------------------
+-- Public API
+-- ----------------------------------------------------------------------------
+
+function AlphaZeroGameInfo.Init()
+    if AlphaZeroLogger then
+        Log = AlphaZeroLogger.CreateLogger("GameInfoExporter")
+    end
+end
+
+-- The snapshot document (table name -> rows), and the names of the tables
+-- that could not be read.
+function AlphaZeroGameInfo.Export()
+    local document, missing = {}, {}
+    for _, spec in ipairs(SNAPSHOT_TABLES) do
+        local rows = exportTable(spec)
+        if rows then
+            document[spec.name] = rows
+        else
+            table.insert(missing, spec.name)
+        end
+    end
+    return document, missing
+end
+
+-- Export the snapshot and hand it to FileIO. Returns true, or false and why.
+function AlphaZeroGameInfo.ExportAndWrite()
+    if AlphaZeroFileIO and AlphaZeroFileIO.BeginGameInfo then
+        AlphaZeroFileIO.BeginGameInfo()
+    end
+    local document, missing = AlphaZeroGameInfo.Export()
+    if #missing > 0 and Log then
+        Log.Warn("GameInfo tables not exported: %s", table.concat(missing, ", "))
+    end
+    if next(document) == nil then
+        return false, "no GameInfo table could be read"
+    end
+    if not AlphaZeroFileIO or not AlphaZeroFileIO.WriteGameInfo then
+        return false, "FileIO not available"
+    end
+
+    local ok, err = AlphaZeroFileIO.WriteGameInfo(document)
+    if ok and Log then
+        Log.Info("GameInfo snapshot exported (%d of %d tables)",
+            #SNAPSHOT_TABLES - #missing, #SNAPSHOT_TABLES)
+    end
+    return ok, err
+end
+
+-- Initialize on load
+AlphaZeroGameInfo.Init()
+
+print("[AlphaZero] GameInfoExporter module loaded")
+
+-- ========== END GameInfoExporter.lua ==========
+
 -- ========== BEGIN ActionExecutor.lua ==========
 -- ============================================================================
 -- ActionExecutor.lua - Command execution for AlphaZero AI Bridge
@@ -3785,6 +3999,18 @@ function AlphaZeroBridge.Initialize()
     if AlphaZeroFileIO then
         AlphaZeroFileIO.ClearAll()
         AlphaZeroFileIO.WriteHeartbeat()
+    end
+
+    -- Write the game's rule tables once per load, for the Python side to
+    -- capture (GM-B4). The tables do not change during a game. Never fatal:
+    -- the bridge works without the snapshot.
+    if AlphaZeroGameInfo and AlphaZeroConfig and AlphaZeroConfig.IsEnabled("GAMEINFO_EXPORT") then
+        local ok, written, err = pcall(AlphaZeroGameInfo.ExportAndWrite)
+        if not ok or not written then
+            if Log then
+                Log.Warn("GameInfo snapshot not written: %s", tostring(ok and err or written))
+            end
+        end
     end
 
     bridgeState.initialized = true
