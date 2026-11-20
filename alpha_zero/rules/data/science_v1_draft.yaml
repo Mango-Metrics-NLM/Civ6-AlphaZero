@@ -1,0 +1,106 @@
+# science-v1-draft: the FIRST-PASS science tree of the game-mechanics plan
+# (kb/specs/20261119-game-mechanics-plan.md, section 3.3). A calibration draft:
+# no environment uses it, it is not a registered game rule set, and it is not
+# in the log in docs/GAME_RULES.md. The id `science-v1` is reserved for the
+# calibrated tree. Names are generic and the structure is original.
+#
+# Costs: techs in science (era I 20, II 45, III 90, capstone 180); units and
+# buildings in production. Unit and building numbers are first-pass too.
+# Editing this file without re-pinning its hash in builtin.py makes loading raise.
+schema_version: 1
+id: science-v1-draft
+
+techs:
+  # Era I
+  - id: agriculture
+    era: 1
+    cost: 20
+    unlocks_buildings: [granary]
+  - id: mining
+    era: 1
+    cost: 20
+    unlocks_buildings: [workshop]
+  - id: writing
+    era: 1
+    cost: 20
+    unlocks_buildings: [library]
+  # Era II
+  - id: irrigation
+    era: 2
+    cost: 45
+    prerequisites: [agriculture]
+    modifiers:
+      - {yield: food, amount: 1, per: worked_terrain, ref: plains}
+  - id: bronze_working
+    era: 2
+    cost: 45
+    prerequisites: [mining]
+    unlocks_units: [swordsman]
+  - id: mathematics
+    era: 2
+    cost: 45
+    prerequisites: [writing]
+    modifiers:
+      - {yield: science, amount: 1, per: building, ref: library}
+  - id: construction
+    era: 2
+    cost: 45
+    prerequisites: [mining]
+    modifiers:
+      - {yield: production, amount: 1, per: worked_terrain, ref: hills}
+  # Era III
+  - id: education
+    era: 3
+    cost: 90
+    prerequisites: [mathematics]
+    unlocks_buildings: [university]
+  - id: engineering
+    era: 3
+    cost: 90
+    prerequisites: [mathematics, construction]
+    modifiers:
+      - {yield: population_cap, amount: 2}
+  - id: steel
+    era: 3
+    cost: 90
+    prerequisites: [bronze_working, engineering]
+    unlocks_units: [knight]
+  - id: astronomy
+    era: 3
+    cost: 90
+    prerequisites: [education]
+    unlocks_buildings: [observatory]
+  # Capstone
+  - id: scientific_theory
+    era: 4
+    cost: 180
+    prerequisites: [astronomy, engineering]
+
+units:
+  - {id: swordsman, cost: 50, strength: 30, moves: 2}
+  - {id: knight, cost: 80, strength: 40, moves: 3}
+
+buildings:
+  - id: granary
+    cost: 40
+    modifiers:
+      - {yield: food, amount: 2}
+  - id: workshop
+    cost: 40
+    modifiers:
+      - {yield: production, amount: 2}
+  - id: library
+    cost: 40
+    modifiers:
+      - {yield: science, amount: 2}
+  - id: university
+    cost: 80
+    modifiers:
+      - {yield: science, amount: 4}
+  - id: observatory
+    cost: 80
+    modifiers:
+      - {yield: science, amount: 3}
+
+victory:
+  capstone_tech: scientific_theory

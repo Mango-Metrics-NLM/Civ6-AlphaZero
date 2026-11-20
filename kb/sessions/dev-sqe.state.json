@@ -1,25 +1,26 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-19T22:45:00Z",
-    "current_focus": "Game-mechanics program, Phase 1 (empty play-path diff). GM-S0a (golden fingerprint of the default env) is done as draft PR #143; GM-K1 (rules kernel) is next.",
+    "last_timestamp": "2026-11-19T23:20:00Z",
+    "current_focus": "Game-mechanics program, Phase 1 (empty play-path diff). GM-S0a is draft PR #143 and GM-K1 (rules kernel) is draft PR #144, stacked on #142. Holding until the maintainer merges one of them; GM-K2 is next.",
     "resume_pointers": {
-        "current_task": "GM-K1: new leaf package alpha_zero/rules/ under OpenSpec add-game-rules-kernel (proposal in PR #142)",
+        "current_task": "None in flight. Next is GM-K2 (pace, import-gameinfo) under OpenSpec add-game-rules-kernel, started only after one of PRs #142, #143, #144 merges.",
         "blocked_on": [
-            "maintainer: review draft PRs #142 (GM-D1 plan and docs) and #143 (GM-S0a); agents do not merge",
-            "maintainer: the v2.1 items carried from the previous state (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation) are unchanged"
+            "maintainer: review and merge draft PRs #142 (plan and docs), #143 (golden fingerprint), #144 (rules kernel); agents do not merge",
+            "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "GM-K1 on its own branch and draft PR: spec/loader/validate/queries/registry/builtin/__main__ plus data/science_v1.yaml, Agent.md, package-data, MODULE_REFERENCE row, GAME_RULES.md log row with the pinned hash",
-            "When #142 or #143 merges, merge the default branch into the other (both append a ledger line)",
-            "Then GM-K2 and the bridge slices GM-B0..B5; END_TURN blocked reporting (GM-B2) and GM-B3 spanning four bridge modules need confirmation at their PRs",
-            "The v2.1 next steps of the 2026-11-15 state still stand (see kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md)"
+            "When #142 merges: retarget #144 to the default branch; merge the default branch into the PRs still open (each appends a ledger line and a summary entry)",
+            "GM-K2: alpha_zero/rules/pacing.py and gameinfo.py, CLI pace and import-gameinfo (science-v1-draft reports 580 and 780; the importer refuses a path inside the checkout), then task 3.1 (CLAUDE.md rows, make verify)",
+            "Type-check a new module locally with: python -m mypy <file> --python-version 3.13 --follow-imports=silent",
+            "Then bridge slices GM-B0..B5; END_TURN blocked reporting (GM-B2) and GM-B3's four-module span need confirmation at their PRs"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261119-devsqe-to-prepr-gm-s0a-golden-fingerprint.md",
-        "openspec/changes/add-default-env-golden-fingerprint/proposal.md",
-        "tests/regression/test_default_env_golden_regression.py",
-        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md",
-        "docs/EVALUATION.md"
+        "kb/handoffs/20261119-devsqe-to-prepr-gm-k1-rules-kernel.md",
+        "openspec/changes/add-game-rules-kernel/tasks.md",
+        "docs/GAME_RULES.md",
+        "alpha_zero/rules/Agent.md",
+        "kb/specs/20261119-game-mechanics-plan.md",
+        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md"
     ]
 }

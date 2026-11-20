@@ -252,7 +252,11 @@ def test_seeded_calibration_enforces_determinism_on_its_device(
     module = _calibrate_module()
     recorder = _Recorder()
     monkeypatch.setattr(module, "enforce_deterministic_backend", recorder)
-    module.calibrate(4, 5, "gumbel", 4, 4, "cpu", games=1, seed=seed)
+    # Board 6, not 4: the ``seed=None`` case draws an unseeded map, and a 4x4 board
+    # has only four interior tiles. All four are mountains about once in 10,000 maps
+    # (measured 6 in 60,000), and the environment then refuses to spawn. At 6x6 the
+    # interior has sixteen tiles.
+    module.calibrate(6, 5, "gumbel", 4, 4, "cpu", games=1, seed=seed)
     assert recorder.devices == expected
 
 

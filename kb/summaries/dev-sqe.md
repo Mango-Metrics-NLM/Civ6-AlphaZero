@@ -1,5 +1,16 @@
 # DEV-SQE Log
 
+## 2026-11-19 - GM-K1: game rules kernel `alpha_zero/rules/` (PR #144)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-K1 of `kb/specs/20261119-game-mechanics-plan.md`: a leaf package holding game rule sets as data (frozen integer-only specs, strict YAML loader, six named validation rules, queries, declared-order registry, hash-pinned built-ins, CLI `validate` and `hash`). No environment imports it; no game rule changed; the release play-path diff is empty. Stacked on PR #142's branch.
+- **Design change (sdlc-architect):** the built-in ships as the calibration draft `science-v1-draft`, built-ins carry a `draft`/`frozen` status, only frozen ones are logged, and the log in `docs/GAME_RULES.md` stays empty. Pinning `science-v1` now would have put first-pass costs under the registered name in an append-only log. The rule-set `id` is outside the hashed content and default-valued fields are left out of the canonical form.
+- **Files Changed:** `alpha_zero/rules/` (8 modules, `data/science_v1_draft.yaml`, `Agent.md`), `pyproject.toml` (package data), `docs/GAME_RULES.md`, `docs/MODULE_REFERENCE.md` (31 submodules), `CHANGELOG.md`, OpenSpec `add-game-rules-kernel` (tasks 1.1 to 1.9 ticked).
+- **Tests:** 166 pass in `tests/unit/test_rules` and `tests/regression/test_game_rules_log_regression.py`; coverage of `alpha_zero/rules` 100% (branch on). Debt ratchet, suite wiring, play-path closure and `tests/governance` pass; `dead_modules` and `noqa_comments` flat. `ruff check .` clean. `make verify` was not run in full locally. CI: the first push failed Lint and Type Check on two mypy errors in `loader.py` (reproduced locally, fixed in `a897315`); on that head every job that had finished was green.
+- **Review of record:** tests written by `sdlc-qa-sdet` in a context that did not write the code. It found four defects, all fixed: a non-scalar mapping key crashed the loader; a non-UTF-8 or unreadable file and a bad table entry escaped the CLI as tracebacks; the cycle rule named techs lying between two cycles. Negative controls: each validator rule disabled makes its fixture pass; the leaf-import checker flags planted imports; the log comparison fails on injected missing, extra, mismatched and draft rows.
+- **Lesson:** I reported "mypy not run locally" while a single-file run (`python -m mypy alpha_zero/rules/loader.py --python-version 3.13 --follow-imports=silent`) does work in this sandbox and would have caught the CI failure. Use it for any new module.
+- **Status:** complete; draft PR #144 awaits the maintainer. Open: unit and building costs in the draft file are first-pass values chosen here; `hash` on a file does not validate it; loading from an installed wheel was not exercised.
+- **Next:** hold until one of PRs #142, #143, #144 merges; then GM-K2 (`pace`, `import-gameinfo`; OpenSpec tasks 2.1 to 2.4, then 3.1). PRs #142, #143 and #144 each append to the ledger and this summary, so later merges need the default branch merged in first.
+
 ## 2026-11-19 - GM-S0a: golden fingerprint of the default MicroCiv env (PR #143)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-S0a of the game-mechanics program (program spec `kb/specs/20261119-game-mechanics-plan.md`, in PR #142 and not yet on this branch). Tests only: 20 seeded games of mask-legal play on the default `MicroCivEnv` (board 8; 30 and 60 turns; 2 and 3 players), hashed over integer game state, held against a committed fixture named after `ENV_VERSION`. A failure says whether `ENV_VERSION`, numpy's Generator stream or neither moved. `--regenerate` is explicit, refuses to overwrite unless the numpy stream canary moved, and publishes the file atomically.
@@ -109,6 +120,7 @@
 - **Tests:** 12,381 passed / 0 failed; coverage **89.30%** (gate 85); ruff clean over 937 files; mypy clean over 367; five validators exit 0; gitleaks 0 findings
 - **Status:** complete — PR #115 draft, 7/8 CI green at `5b41ca4`, one Copilot finding fixed and resolved, three replied to as pre-existing
 - **Next:** the three oversized `main` functions on the `PLR0915` burndown; the cloud trio once the `mock.patch` remapping strategy exists
+
 ## 2026-08-28 - Smoke test made to complete; first recorded training run (PR #114)
 - **Session:** session_01D2xbKx2mGWNXXHnE5Eoohv
 - **Task:** Post-#113 follow-ups per the peer-reviewed plan (hang guard, promotion runbook, OpenSpec archive, honest `make verify`), then PR C: Validation Iteration Zero.
