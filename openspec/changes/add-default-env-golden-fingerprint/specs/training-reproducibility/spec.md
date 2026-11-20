@@ -17,16 +17,20 @@ cannot change without an `ENV_VERSION` bump. The failure message SHALL say which
 - **THEN** every configuration's digest equals the fixture's and the test passes
 
 #### Scenario: The game changes without an ENV_VERSION bump
-- **WHEN** a change to the env alters any configuration's digest while `ENV_VERSION` and the numpy version equal the fixture's
-- **THEN** the test fails, names the configuration, and says that neither `ENV_VERSION` nor the numpy version moved
+- **WHEN** a change to the env alters any configuration's digest while `ENV_VERSION` and numpy's Generator stream (the recorded stream canary) equal the fixture's
+- **THEN** the test fails, names the configuration, and says that neither `ENV_VERSION` nor numpy's stream moved
 
 #### Scenario: ENV_VERSION is bumped without regenerating the fixture
 - **WHEN** `ENV_VERSION` differs from the value recorded in the fixture
 - **THEN** the test fails and says that `ENV_VERSION` moved and the fixture must be regenerated in the same change
 
-#### Scenario: numpy is upgraded
-- **WHEN** a digest differs and the installed numpy version differs from the one recorded in the fixture while `ENV_VERSION` is unchanged
-- **THEN** the test fails and says that the numpy version moved, so the difference is not reported as an env change
+#### Scenario: numpy's Generator stream moved
+- **WHEN** a digest differs and the recomputed stream canary differs from the one recorded in the fixture while `ENV_VERSION` is unchanged
+- **THEN** the test fails and says that numpy's stream moved, so the difference is not reported as an env change
+
+#### Scenario: numpy is upgraded and its stream is unchanged
+- **WHEN** a digest differs, the installed numpy version differs from the one recorded in the fixture, and the stream canary equals the fixture's
+- **THEN** the test fails and reports an env change: a version string alone does not explain a different game
 
 #### Scenario: The negative control
 - **WHEN** the action sequence of one seeded game is perturbed, or a game rule is changed in a scratch copy of the env
