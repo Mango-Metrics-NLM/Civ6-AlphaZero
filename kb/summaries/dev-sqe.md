@@ -1,5 +1,15 @@
 # DEV-SQE Log
 
+## 2026-11-20 - GM-B0: the mod's Lua bundle is generated (draft PR on `claude/gm-b0-lua-bundle`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-B0 of `kb/specs/20261119-game-mechanics-plan.md` (OpenSpec `add-bridge-research-parity`, tasks 1.1 to 1.3). `scripts/build_lua_bundle.py` builds `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua`, the one Lua file the game loads, from the module files in the modinfo's order; `--check` exits 1 when the committed bundle is out of date. The bundle had been edited by hand and three module files had drifted from it (24 non-blank lines), so editing a module changed nothing in the game. The module files were made equal to the bundle, because the bundle is what ran.
+- **No live behaviour moved:** the bundle's sha256 is `e33177f9c33c11e1fcf6e2986bec3d97097868ef51fafce39f0caa7ba80622f6` before and after. What the module files lost (diplomacy error reporting in `ActionExecutor.lua`, a configurable heartbeat in `Main.lua`) is kept in `openspec/changes/add-bridge-research-parity/bundle-drift.md` as candidates for GM-B2.
+- **Files Changed:** `scripts/build_lua_bundle.py`, `mod/AlphaZeroAI/Scripts/Config.lua`, `mod/AlphaZeroAI/Scripts/ActionExecutor.lua`, `mod/AlphaZeroAI/Scripts/Main.lua`, `mod/AlphaZeroAI/AlphaZeroAI.modinfo`, `openspec/changes/add-bridge-research-parity/bundle-drift.md`, `openspec/changes/add-bridge-research-parity/tasks.md`, `docs/LIVE_CIV6.md`, `CLAUDE.md`, `CHANGELOG.md`. Nothing under `alpha_zero/`; the play-path diff is empty.
+- **Tests:** 61 pass in `tests/scripts/test_lua_bundle_sync.py`; suite wiring, debt ratchet, public-readiness, `tests/governance` and the existing Lua-reading tests pass. `ruff check .` clean; the script passes a single-file mypy run. `tests/scripts` as a whole: 7 failures that need a `.env` file or Google credentials (`test_deployment_infra.py`, `test_gcp_diagnose.py`), unrelated and present without this change. `make verify` not run (it stops at typecheck in this sandbox).
+- **Review of record:** tests by `sdlc-qa-sdet` in a separate context, three rounds. Six defects found and fixed in the generator: a traceback on non-UTF-8 input; a byte-order mark copied into the middle of the bundle; modinfo entries in another spelling silently dropped; commented-out entries bundled; entries with attributes or CDATA silently dropped. Negative controls kept in the suite, all on a copy of the mod in a temporary directory: an edited module makes `--check` exit 1 naming the line; a removed or twice-listed module, and a missing or duplicate modinfo, exit 2.
+- **Status:** complete; awaits the maintainer.
+- **Next:** GM-B1 (the `lupa` Lua harness, a test-only extra). Then GM-B2, whose END_TURN change needs confirmation at its PR.
+
 ## 2026-11-15 - v2.1 local close-out (PR #140)
 - **Session:** session_01CXusP6jtsBXpQcjpC9W3b8
 - **Task:** The v2.1 work that needs no GPU, after PR #138 and #139 merged: the three follow-ups left open there (OpenSpec `add-gpu-first-run-cards` tasks 4.8-4.10), one hazard found while planning them, and post-merge housekeeping. Scope is the plan the maintainer approved in the session.
