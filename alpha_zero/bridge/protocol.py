@@ -444,7 +444,8 @@ class LuaCommand:
         unit_id: Unit ID for unit actions.
         city_id: City ID for city actions.
         target: Target position for movement/attack.
-        item_id: Item ID for production/research.
+        item_id: Item ID for production/research. An int, or for research the
+            game's type name (``"TECH_MINING"``), which the mod resolves itself.
         item_type: Type of item (unit, building, wonder, district).
         metadata: Additional action-specific data.
     """
@@ -453,7 +454,7 @@ class LuaCommand:
     unit_id: int | None = None
     city_id: int | None = None
     target: Position | None = None
-    item_id: int | None = None
+    item_id: int | str | None = None
     item_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -523,7 +524,10 @@ class LuaCommand:
             city_id = _validate_int(city_id, "city_id", context="LuaCommand")
 
         item_id = data.get("item_id")
-        if item_id is not None:
+        if isinstance(item_id, str) and item_id and not item_id.lstrip("-").isdigit():
+            # A type name such as "TECH_MINING": kept as it is.
+            pass
+        elif item_id is not None:
             item_id = _validate_int(item_id, "item_id", context="LuaCommand")
 
         metadata = _validate_dict(data.get("metadata"), "metadata", context="LuaCommand")

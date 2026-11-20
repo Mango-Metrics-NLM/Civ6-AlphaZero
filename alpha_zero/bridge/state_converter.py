@@ -34,11 +34,16 @@ from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_confi
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
+from alpha_zero.bridge.tech_registry import ResearchRegistry, resolve_registry
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
 __all__ = ["StateConverter", "TerrainMapping", "UnitMapping"]
 
 logger = logging.getLogger(__name__)
+
+#: The encoder has this many positions for technologies and as many for civics;
+#: it ignores an id at or above it (``alpha_zero/envs/civ6_encoder.py``).
+ENCODER_RESEARCH_SLOTS = 100
 
 
 @dataclass
@@ -241,6 +246,7 @@ class StateConverter:
         terrain_mapping: TerrainMapping | None = None,
         unit_mapping: UnitMapping | None = None,
         create_encoder: bool = True,
+        research_registry: ResearchRegistry | None = None,
     ) -> None:
         """Initialize the state converter.
 
@@ -250,9 +256,26 @@ class StateConverter:
             terrain_mapping: Custom terrain mappings (uses defaults if None).
             unit_mapping: Custom unit mappings (uses defaults if None).
             create_encoder: Whether to create an internal encoder.
+            research_registry: Which encoder slot each technology and civic has.
+                None asks the environment (``CIV6AZ_BRIDGE_RULESET``); with no
+                registry the encoder's research positions stay zero.
+
+        Raises:
+            ResearchRegistryError: If the environment names a registry that
+                cannot be loaded.
         """
         self.board_size = board_size
         self.num_players = num_players
+        self.research_registry = (
+            research_registry if research_registry is not None else resolve_registry()
+        )
+        self._research_stats = {
+            "conversions_without_registry": 0,
+            "unmapped_techs": 0,
+            "unmapped_civics": 0,
+            "slots_out_of_range": 0,
+        }
+        self._warned_no_registry = False
         self.terrain_mapping = terrain_mapping or TerrainMapping()
         self.unit_mapping = unit_mapping or UnitMapping()
 
@@ -304,6 +327,8 @@ class StateConverter:
         current_player = self._get_current_player_id(state)
         player_data = self._extract_player_data(state, current_player)
 
+        technologies, civics = self._encode_research(state)
+
         return {
             "turn": state.turn_id,
             "current_player": current_player,
@@ -324,8 +349,10 @@ class StateConverter:
             # Era and progress
             "era": state.era,
             "resources": self._extract_resources(state),
-            "technologies": self._extract_technologies(state),
-            "civics": self._extract_civics(state),
+            # Research the encoder can read: slot numbers when a registry is
+            # configured, the normalised names (which it skips) when not.
+            "technologies": technologies,
+            "civics": civics,
             "victory_progress": self._extract_victory_progress(state),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
@@ -766,6 +793,68 @@ class StateConverter:
             if name.startswith(prefix):
                 name = name[len(prefix) :]
         return name
+
+    @property
+    def research_stats(self) -> dict[str, int]:
+        """Counters of research the encoder did not get, since construction.
+
+        ``conversions_without_registry``: conversions that had research to
+        encode and no registry. ``unmapped_techs`` / ``unmapped_civics``:
+        researched items the registry has no slot for. ``slots_out_of_range``:
+        items whose slot the encoder has no position for.
+        """
+        return dict(self._research_stats)
+
+    def _encode_research(self, state: GameStateData) -> tuple[list[Any], list[Any]]:
+        """The local player's researched technologies and civics, for the encoder.
+
+        With a registry: lists of slot numbers. Without one: the normalised
+        names, as before, which the encoder skips; that is counted, and warned
+        about once per converter.
+        """
+        tech_types: list[str] = []
+        civic_types: list[str] = []
+        for player in state.players:
+            if player.id == state.player_id:
+                tech_types = list(player.techs_researched)
+                civic_types = list(player.civics_researched)
+                break
+
+        registry = self.research_registry
+        if registry is None:
+            if tech_types or civic_types:
+                self._research_stats["conversions_without_registry"] += 1
+                if not self._warned_no_registry:
+                    self._warned_no_registry = True
+                    logger.warning(
+                        "No research registry is configured (CIV6AZ_BRIDGE_RULESET): the "
+                        "encoder's technology and civic positions stay zero. Warned once; "
+                        "see StateConverter.research_stats for the count."
+                    )
+            return (
+                [self._normalize_tech_name(tech) for tech in tech_types],
+                [self._normalize_civic_name(civic) for civic in civic_types],
+            )
+
+        return (
+            self._research_slots(tech_types, registry.tech_slot, "unmapped_techs"),
+            self._research_slots(civic_types, registry.civic_slot, "unmapped_civics"),
+        )
+
+    def _research_slots(
+        self, type_names: list[str], slot_of: Any, unmapped_counter: str
+    ) -> list[int]:
+        """Slots of ``type_names``, counting what has none or does not fit the encoder."""
+        slots: list[int] = []
+        for type_name in type_names:
+            slot = slot_of(type_name)
+            if slot is None:
+                self._research_stats[unmapped_counter] += 1
+            elif slot >= ENCODER_RESEARCH_SLOTS:
+                self._research_stats["slots_out_of_range"] += 1
+            else:
+                slots.append(slot)
+        return slots
 
     def _extract_technologies(self, state: GameStateData) -> list[str]:
         """Extract researched technologies for the current player.

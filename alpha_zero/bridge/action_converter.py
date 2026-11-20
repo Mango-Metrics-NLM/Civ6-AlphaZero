@@ -38,6 +38,7 @@ from alpha_zero.bridge.protocol import (
     LuaCommand,
     Position,
 )
+from alpha_zero.bridge.tech_registry import ResearchRegistry, resolve_registry
 from alpha_zero.core.civ6_actions import (
     BRIDGE_IMPLEMENTED_DIPLOMACY,
     ActionCategory,
@@ -231,14 +232,27 @@ class ActionConverter:
         self,
         board_size: int = 16,
         action_space_config: ActionSpaceConfig | None = None,
+        research_registry: ResearchRegistry | None = None,
     ) -> None:
         """Initialize the action converter.
 
         Args:
             board_size: Board size for coordinate mapping.
             action_space_config: Custom action space config (uses defaults if None).
+            research_registry: Which research action each technology and civic
+                is. None asks the environment (``CIV6AZ_BRIDGE_RULESET``); with
+                no registry a research action's selector is the game's own row
+                index.
+
+        Raises:
+            ResearchRegistryError: If the environment names a registry that
+                cannot be loaded.
         """
         self.board_size = board_size
+        self.research_registry = (
+            research_registry if research_registry is not None else resolve_registry()
+        )
+        self._research_stats = {"unmapped_research_items": 0, "research_out_of_range": 0}
 
         if action_space_config is None:
             action_space_config = ActionSpaceConfig(
@@ -253,6 +267,56 @@ class ActionConverter:
     def action_space_size(self) -> int:
         """Get total action space size."""
         return self.action_space.total_size
+
+    @property
+    def research_stats(self) -> dict[str, int]:
+        """Counters of research choices the mask could not offer, since construction.
+
+        ``unmapped_research_items``: choices the registry has no slot for.
+        ``research_out_of_range``: choices whose selector the action space has
+        no research action for.
+        """
+        return dict(self._research_stats)
+
+    def _research_selectors(self, action: LegalAction, *, count: bool) -> list[int]:
+        """The research selectors one ``research_tech`` / ``research_civic`` legal action allows.
+
+        With a registry the selector is the slot of each offered type name;
+        without one it is the game's own row index. ``count`` records what
+        could not be offered in :attr:`research_stats` (the mask counts, the
+        legality check does not, so one state is not counted twice).
+        """
+        is_tech = action.action_type == LegalActionTypes.RESEARCH_TECH
+        config = self.action_space.config
+        limit = config.num_techs if is_tech else config.num_civics
+        registry = self.research_registry
+        selectors: list[int] = []
+        unmapped = out_of_range = 0
+
+        if registry is None:
+            for item in action.items:
+                if isinstance(item, int) and not isinstance(item, bool) and 0 <= item < limit:
+                    selectors.append(item)
+                else:
+                    out_of_range += 1
+        elif not action.item_names:
+            # No names to look up (a mod older than state schema 2).
+            unmapped += len(action.items)
+        else:
+            slot_of = registry.tech_slot if is_tech else registry.civic_slot
+            for name in action.item_names:
+                slot = slot_of(name)
+                if slot is None:
+                    unmapped += 1
+                elif slot >= limit:
+                    out_of_range += 1
+                else:
+                    selectors.append(slot)
+
+        if count:
+            self._research_stats["unmapped_research_items"] += unmapped
+            self._research_stats["research_out_of_range"] += out_of_range
+        return selectors
 
     def convert(
         self,
@@ -705,11 +769,31 @@ class ActionConverter:
         Returns:
             LuaCommand for tech research.
         """
-        tech_id = decoded.selector
-        return LuaCommand(
-            action_type=ActionType.RESEARCH_TECH,
-            item_id=tech_id,
-        )
+        return self._research_command(ActionType.RESEARCH_TECH, decoded.selector, is_tech=True)
+
+    def _research_command(
+        self, action_type: ActionType, selector: int, *, is_tech: bool
+    ) -> LuaCommand:
+        """The research command for a selector.
+
+        Without a registry the selector is the game's row index and is sent as
+        it is. With one it is a slot, and the command names the technology or
+        civic by the game's type name, which the mod resolves to its own row.
+
+        Raises:
+            InvalidActionError: If the registry has nothing at that slot.
+        """
+        registry = self.research_registry
+        if registry is None:
+            return LuaCommand(action_type=action_type, item_id=selector)
+
+        type_name = registry.tech_type(selector) if is_tech else registry.civic_type(selector)
+        if type_name is None:
+            kind = "technology" if is_tech else "civic"
+            raise InvalidActionError(
+                f"No {kind} has research slot {selector} in rule set {registry.ruleset_id!r}"
+            )
+        return LuaCommand(action_type=action_type, item_id=type_name)
 
     def _convert_civic_action(
         self,
@@ -725,11 +809,7 @@ class ActionConverter:
         Returns:
             LuaCommand for civic research.
         """
-        civic_id = decoded.selector
-        return LuaCommand(
-            action_type=ActionType.RESEARCH_CIVIC,
-            item_id=civic_id,
-        )
+        return self._research_command(ActionType.RESEARCH_CIVIC, decoded.selector, is_tech=False)
 
     def _scale_to_original(
         self,
@@ -890,6 +970,19 @@ class ActionConverter:
                         return True
             return False
 
+        # Research: legal when one of the offered choices has this selector.
+        if decoded.category in (ActionCategory.RESEARCH_TECH, ActionCategory.RESEARCH_CIVIC):
+            wanted = (
+                LegalActionTypes.RESEARCH_TECH
+                if decoded.category == ActionCategory.RESEARCH_TECH
+                else LegalActionTypes.RESEARCH_CIVIC
+            )
+            return any(
+                decoded.selector in self._research_selectors(action, count=False)
+                for action in parsed_actions
+                if action.action_type == wanted
+            )
+
         # Default: assume valid for other categories
         return True
 
@@ -997,6 +1090,21 @@ class ActionConverter:
                             self._try_encode_city_action(
                                 mask, city_idx, CityActionType.PRODUCE_BUILDING, item_id
                             )
+
+        # Research choices
+        for action in parsed_actions:
+            if action.action_type in (
+                LegalActionTypes.RESEARCH_TECH,
+                LegalActionTypes.RESEARCH_CIVIC,
+            ):
+                category = (
+                    ActionCategory.RESEARCH_TECH
+                    if action.action_type == LegalActionTypes.RESEARCH_TECH
+                    else ActionCategory.RESEARCH_CIVIC
+                )
+                offset = self.action_space.category_offsets[category]
+                for selector in self._research_selectors(action, count=True):
+                    mask[offset + selector] = 1.0
 
         # Ensure at least END_TURN is valid
         if mask.sum() == 0:
