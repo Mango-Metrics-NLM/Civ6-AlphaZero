@@ -2,6 +2,13 @@
 
 Implements Civ6MctsPolicy which runs GumbelMCTS over a snapshot-seeded
 MicroCivEnv adapter (BridgeMCTSEnv).
+
+The search plays in the MicroCiv simulator, not in the real game: its network
+must take the simulator's observation, and the action it returns is an index
+in the simulator's action space. Nothing translates that index into a live
+command yet (GM-B6), so ``civ6_local`` refuses to start this mode on a live
+game (GM-B5). How a live state is stood in for inside the simulator is in
+:mod:`alpha_zero.bridge.microciv_proxy`.
 """
 
 from __future__ import annotations
@@ -12,6 +19,12 @@ from typing import Any
 
 import numpy as np
 
+from alpha_zero.bridge.microciv_proxy import (
+    SIM_MOUNTAIN,
+    raw_unit_types,
+    simulator_terrain,
+    simulator_unit_class,
+)
 from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
 from alpha_zero.core.protocols import EnvironmentProtocol
 from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
@@ -62,6 +75,15 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     Implements EnvironmentProtocol but forbids reset() since it represents
     a specific point in an ongoing game.
 
+    Units and tiles go in through :mod:`alpha_zero.bridge.microciv_proxy`: a
+    unit becomes one of MicroCiv's unit types or is left out, a tile becomes
+    one of its terrain types. ``proxy_stats`` counts what that did.
+
+    Attributes:
+        proxy_stats: ``units`` put in the simulator, ``units_not_represented``
+            left out because MicroCiv has nothing that stands for them, and
+            ``impassable_tiles`` seeded as the simulator's mountain.
+
     Args:
         converted_state: Output of ``StateConverter.convert()`` for the
             current game frame.
@@ -94,11 +116,17 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         self.env.turn = converted_state.get("turn", 0)
         self.env.current_player = converted_state.get("current_player", 0)
 
-        # Terrain
+        # Terrain. The simulator's rules test for its own terrain words, so a
+        # tile goes in as one of them (a mountain, water or ice as the type it
+        # refuses to enter); features and yields are carried as they came.
         self.env.terrain = {}
+        impassable_tiles = 0
         for pos, t_dict in converted_state.get("terrain", {}).items():
+            terrain_type = simulator_terrain(t_dict)
+            if terrain_type == SIM_MOUNTAIN:
+                impassable_tiles += 1
             self.env.terrain[pos] = Tile(
-                terrain_type=t_dict.get("type", _DEFAULT_TERRAIN_TYPE),
+                terrain_type=terrain_type,
                 features=list(t_dict.get("features", [])),
                 yields=dict(t_dict.get("yields", _DEFAULT_TILE_YIELDS)),
             )
@@ -111,14 +139,26 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         # in the 2-player demo where players are already 0/1).
         max_player_index = num_players - 1
 
-        # Units
+        # Units. Each becomes one of the simulator's unit types, or is left
+        # out when it has none (a builder, a ship): a unit of a type the
+        # simulator's rules do not know could neither found a city nor be
+        # told from a warrior.
+        raw_types = raw_unit_types(converted_state)
+        units_not_represented = 0
         self.env.units = []
         for u_dict in converted_state.get("units", []):
+            unit_class = simulator_unit_class(
+                u_dict.get("type", _DEFAULT_UNIT_TYPE),
+                raw_types.get((u_dict.get("_owner_id"), u_dict.get("_id"))),
+            )
+            if unit_class is None:
+                units_not_represented += 1
+                continue
             self.env.units.append(
                 Unit(
                     id=u_dict.get("_id", 0),
                     player=self._clamp_player(u_dict.get("player", 0), max_player_index),
-                    unit_type=u_dict.get("type", _DEFAULT_UNIT_TYPE),
+                    unit_type=unit_class,
                     position=u_dict.get("position", (0, 0)),
                     health=u_dict.get("health", _DEFAULT_UNIT_HEALTH),
                     strength=u_dict.get("strength", _DEFAULT_UNIT_STRENGTH),
@@ -149,6 +189,18 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             self.env._next_city_id = max(c.id for c in self.env.cities) + 1
 
         self.env.done = False
+
+        self.proxy_stats: dict[str, int] = {
+            "units": len(self.env.units),
+            "units_not_represented": units_not_represented,
+            "impassable_tiles": impassable_tiles,
+        }
+        if units_not_represented:
+            logger.debug(
+                "Search simulator: %d of %d units have no MicroCiv stand-in and are left out",
+                units_not_represented,
+                units_not_represented + len(self.env.units),
+            )
 
     @staticmethod
     def _clamp_player(player: int, max_player_index: int) -> int:
@@ -204,11 +256,14 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     def clone(self) -> BridgeMCTSEnv:
         """Deep-copy this env for MCTS tree expansion.
 
-        The cloned instance shares *no* mutable state with the original.
+        The cloned instance shares *no* mutable state with the original. It
+        copies the simulator as it stands and does not seed again from the
+        converted state: this runs once per simulation.
         """
-
-        new_env = BridgeMCTSEnv(self._converted_state)
+        new_env = object.__new__(BridgeMCTSEnv)
+        new_env._converted_state = self._converted_state
         new_env.env = self.env.clone()
+        new_env.proxy_stats = dict(self.proxy_stats)
         return new_env
 
     def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
@@ -254,6 +309,12 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 class Civ6MctsPolicy:
     """Async policy that runs GumbelMCTS over the Civ6 bridge state.
 
+    The search runs in the MicroCiv simulator. ``network`` must take the
+    simulator's observation (13 channels), and the action returned is an index
+    in the simulator's action space, not in the live action space the bridge's
+    ``ActionConverter`` decodes. Until a translator exists (GM-B6) this policy
+    is not something ``BridgeAgentLoop`` can play a live game with.
+
     Args:
         network: Neural network implementing the ``NetworkProtocol``.
         config: :class:`~alpha_zero.core.civ6_mcts.GumbelMCTSConfig`.
@@ -289,7 +350,8 @@ class Civ6MctsPolicy:
                 to seed the simulation environment.
 
         Returns:
-            ``(action_index, diagnostics)`` where *diagnostics* contains
+            ``(action_index, diagnostics)`` where *action_index* is in the
+            simulator's action space and *diagnostics* contains
             ``value_estimate``, ``policy_kind``, and ``mcts_sims``.
 
         Raises:
