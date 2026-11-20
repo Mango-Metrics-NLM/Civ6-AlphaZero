@@ -167,9 +167,16 @@ python -m alpha_zero.rules import-gameinfo SNAPSHOT.json
 ```
 
 The first command checks that the rules importer accepts the snapshot and files it as
-`<CIV6AZ_DATA_ROOT>/gameinfo/gameinfo-<time>.json`. It refuses to write inside the
-repository, with no data root set, or over an existing file, and it prints the second
-command. The second writes a rule-set file, also under the data root. Then
+`<CIV6AZ_DATA_ROOT>/gameinfo/gameinfo-<time>.json`, and it prints the second command. It
+refuses, with a one-line reason:
+
+- to write inside the repository (symbolic links are followed first), with no data root
+  set, or over an existing file;
+- a snapshot that lacks one of the six tables: the mod leaves a table out when it could
+  not read it, and a rule set built from the rest would silently have no units, say;
+- when the newest snapshot in the log is unfinished. A `Lua.log` covers a whole launch and
+  holds one snapshot per game loaded, whose tables can differ; `--allow-earlier` files the
+  last complete one anyway and says so. The second writes a rule-set file, also under the data root. Then
 `CIV6AZ_BRIDGE_RULESET=<rule-set file>` and `CIV6AZ_BRIDGE_GAMEINFO=<snapshot>` give the
 bridge slots for the real trees ("Research slots" above).
 

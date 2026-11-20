@@ -41,6 +41,8 @@ DOCUMENT: dict[str, Any] = {
     "TechnologyPrereqs": [{"Technology": "TECH_B", "PrereqTech": "TECH_A"}],
     "Civics": [{"CivicType": "CIVIC_X", "Cost": 10, "EraType": "ERA_ANCIENT"}],
     "CivicPrereqs": [],
+    "Buildings": [],
+    "Units": [],
 }
 
 
@@ -189,12 +191,11 @@ class TestCheckSnapshot:
         "document",
         [
             {**DOCUMENT, "Wonders": []},
-            {k: v for k, v in DOCUMENT.items() if k != "Technologies"},
             {**DOCUMENT, "Technologies": [{"TechnologyType": "TECH WITH SPACE", "Cost": 1}]},
             {**DOCUMENT, "TechnologyPrereqs": [{"Technology": "TECH_B", "PrereqTech": "TECH_Z"}]},
             [],
         ],
-        ids=["unknown-table", "missing-technologies", "non-identifier", "unknown-prereq", "list"],
+        ids=["unknown-table", "non-identifier", "unknown-prereq", "list"],
     )
     def test_an_unimportable_document_raises_with_the_importers_message(
         self, gc: ModuleType, document: Any
@@ -315,22 +316,16 @@ class TestWriteSnapshot:
     def test_a_failed_final_rename_leaves_no_partial_file(
         self, gc: ModuleType, root: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Partly untestable: only an implementation that publishes through os.replace /
-        # os.rename is exercised. The property asserted holds for any other way too: the
-        # destination is absent or complete, and no temporary file is left behind.
         def refuse(*_args: Any, **_kwargs: Any) -> None:
-            raise OSError("simulated rename failure")
+            raise OSError("simulated publish failure")
 
+        # Both ways of giving the file its name fail: a hard link and a rename.
+        monkeypatch.setattr(os, "link", refuse)
         monkeypatch.setattr(os, "replace", refuse)
         monkeypatch.setattr(os, "rename", refuse)
-        try:
+        with pytest.raises(gc.GameInfoCaptureError):
             gc.write_snapshot(DOCUMENT, name="probe")
-        except (OSError, gc.GameInfoCaptureError):
-            pass
-        names = _files(root)
-        assert names in ([], ["gameinfo/probe.json"]), names
-        if names:
-            assert json.loads((root / names[0]).read_text(encoding="utf-8")) == DOCUMENT
+        assert _files(root) == []
 
 
 class TestCommandLine:

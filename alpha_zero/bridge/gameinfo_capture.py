@@ -24,6 +24,7 @@ import re
 import sys
 import tempfile
 from collections.abc import Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -39,8 +40,26 @@ CHUNK_PREFIX = "AZ_GAMEINFO_CHUNK:"
 END_PREFIX = "AZ_GAMEINFO_END:"
 SUBDIR = "gameinfo"
 
+#: The tables a capture must hold. The mod leaves one out when it could not
+#: read it, and the importer would take a missing ``Units`` for "no units".
+REQUIRED_TABLES: tuple[str, ...] = (
+    "Technologies",
+    "TechnologyPrereqs",
+    "Civics",
+    "CivicPrereqs",
+    "Buildings",
+    "Units",
+)
+
 _CHUNK = re.compile(r"(\d+)/(\d+):(.*)", re.DOTALL)
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+_MAX_NAME_LENGTH = 100
+#: Names Windows gives to devices, whatever follows a dot.
+_DEVICE_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{n}" for n in range(1, 10)}
+    | {f"lpt{n}" for n in range(1, 10)}
+)
 
 
 class GameInfoCaptureError(ValueError):
@@ -63,19 +82,39 @@ def _parse_document(text: str, where: str) -> dict[str, Any]:
     return document
 
 
-def snapshot_from_log(text: str) -> dict[str, Any]:
-    """The last complete GameInfo message in the text of a ``Lua.log``.
+@dataclass(frozen=True)
+class LogScan:
+    """What a ``Lua.log`` holds.
+
+    Attributes:
+        document: The last complete GameInfo message, or None when there is none.
+        complete: How many complete messages the log holds (one per game load).
+        later_incomplete: True when an unfinished message follows the last
+            complete one, so ``document`` is not the newest load's.
+    """
+
+    document: dict[str, Any] | None
+    complete: int
+    later_incomplete: bool
+
+
+def scan_log(text: str) -> LogScan:
+    """Find the GameInfo messages in the text of a ``Lua.log``.
 
     A message is one ``AZ_GAMEINFO:`` line, or ``AZ_GAMEINFO_CHUNK:i/n:`` lines
-    closed by ``AZ_GAMEINFO_END:n`` with every piece present. An unfinished
-    chunk set is passed over for an earlier complete message.
+    closed by ``AZ_GAMEINFO_END:n`` with every piece present and every line
+    agreeing on ``n``. A log covers a whole launch, so it can hold one message
+    per game loaded, and their tables can differ (other mods, other rules).
 
     Raises:
-        GameInfoCaptureError: If the log holds no complete message, or the
-            last complete one is not a JSON object.
+        GameInfoCaptureError: If the last complete message is not a JSON object.
     """
     last: str | None = None
+    complete = 0
+    later_incomplete = False
     pieces: dict[int, str] = {}
+    totals: set[int] = set()
+
     for line in text.splitlines():
         # The chunk and end markers start with the single-line marker's
         # letters, so they are tried first.
@@ -84,26 +123,51 @@ def snapshot_from_log(text: str) -> dict[str, Any]:
             match = _CHUNK.fullmatch(chunk)
             if match:
                 if int(match.group(1)) == 1:
-                    pieces = {}
+                    pieces, totals = {}, set()
                 pieces[int(match.group(1))] = match.group(3)
+                totals.add(int(match.group(2)))
+            # A chunk set is open: until it is closed, the newest message is unfinished.
+            later_incomplete = last is not None
             continue
         end = _after(line, END_PREFIX)
         if end is not None:
             total = int(end.strip()) if end.strip().isdigit() else -1
-            if total > 0 and sorted(pieces) == list(range(1, total + 1)):
+            if total > 0 and totals == {total} and sorted(pieces) == list(range(1, total + 1)):
                 last = "".join(pieces[i] for i in range(1, total + 1))
-            pieces = {}
+                complete += 1
+                later_incomplete = False
+            else:
+                later_incomplete = last is not None
+            pieces, totals = {}, set()
             continue
         single = _after(line, LINE_PREFIX)
         if single is not None:
             last = single.strip()
-            pieces = {}
-    if last is None:
+            complete += 1
+            later_incomplete = False
+            pieces, totals = {}, set()
+
+    document = None if last is None else _parse_document(last, "the GameInfo message in the log")
+    return LogScan(document=document, complete=complete, later_incomplete=later_incomplete)
+
+
+def snapshot_from_log(text: str) -> dict[str, Any]:
+    """The last complete GameInfo message in the text of a ``Lua.log``.
+
+    An unfinished chunk set is passed over for an earlier complete message;
+    :func:`scan_log` says when that happened.
+
+    Raises:
+        GameInfoCaptureError: If the log holds no complete message, or the
+            last complete one is not a JSON object.
+    """
+    document = scan_log(text).document
+    if document is None:
         raise GameInfoCaptureError(
             "no complete GameInfo message in the log: the mod writes one when a game "
             "loads (ENABLE_GAMEINFO_EXPORT), so load a game with the mod enabled first"
         )
-    return _parse_document(last, "the GameInfo message in the log")
+    return document
 
 
 def snapshot_from_file(path: str | os.PathLike[str]) -> dict[str, Any]:
@@ -126,6 +190,14 @@ def check_snapshot(document: Any) -> rules_gameinfo.ImportSummary:
     Raises:
         GameInfoCaptureError: With the importer's own message, if it does not.
     """
+    if isinstance(document, dict):
+        missing = [table for table in REQUIRED_TABLES if table not in document]
+        if missing:
+            raise GameInfoCaptureError(
+                "the snapshot is incomplete: the mod could not read "
+                f"{', '.join(missing)} (its log says why); a rule set built from it "
+                "would silently lack them"
+            )
     try:
         return rules_gameinfo.convert(document)
     except ValueError as exc:
@@ -143,9 +215,14 @@ def write_snapshot(document: Any, *, name: str | None = None) -> Path:
     check_snapshot(document)
 
     stem = name if name is not None else datetime.now(UTC).strftime("gameinfo-%Y%m%dT%H%M%SZ")
-    if not _NAME.fullmatch(stem):
+    if (
+        not _NAME.fullmatch(stem)
+        or len(stem) > _MAX_NAME_LENGTH
+        or stem.split(".", 1)[0].lower() in _DEVICE_NAMES
+    ):
         raise GameInfoCaptureError(
-            f"{stem!r} is not a plain file name (letters, digits, '.', '-', '_')"
+            f"{stem!r} is not a usable file name (letters, digits, '.', '-', '_'; "
+            f"at most {_MAX_NAME_LENGTH} characters; not a device name)"
         )
 
     raw_root = os.environ.get(DATA_ROOT_ENV, "").strip()
@@ -154,27 +231,42 @@ def write_snapshot(document: Any, *, name: str | None = None) -> Path:
             f"{DATA_ROOT_ENV} is not set: a snapshot is the user's own game data and is "
             "written under the data root, outside the repository"
         )
-    destination = Path(raw_root).expanduser().resolve() / SUBDIR / f"{stem}.json"
+
+    # Where the file would really land: symbolic links are followed first, so a
+    # data root or a gameinfo/ directory that points into a repository is seen
+    # for what it is. Nothing is created before this check.
+    try:
+        directory = (Path(raw_root).expanduser() / SUBDIR).resolve()
+    except (OSError, RuntimeError) as exc:
+        raise GameInfoCaptureError(f"cannot resolve {raw_root!r}: {exc}") from exc
+    destination = directory / f"{stem}.json"
     checkout = rules_gameinfo.enclosing_checkout(destination)
+    source_tree = rules_gameinfo.checkout_root()
+    if checkout is None and source_tree is not None and source_tree in destination.parents:
+        checkout = source_tree
     if checkout is not None:
         raise GameInfoCaptureError(
-            f"{destination} is inside the repository checkout {checkout}: "
+            f"{destination} is inside the repository {checkout}: "
             f"point {DATA_ROOT_ENV} at a directory outside it"
         )
     if destination.exists():
         raise GameInfoCaptureError(f"{destination} already exists; snapshots are never overwritten")
 
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    handle, temporary = tempfile.mkstemp(
-        dir=destination.parent, prefix=destination.name + ".", suffix=".tmp"
-    )
+    temporary: str | None = None
     try:
+        directory.mkdir(parents=True, exist_ok=True)
+        handle, temporary = tempfile.mkstemp(
+            dir=directory, prefix=destination.name + ".", suffix=".tmp"
+        )
         with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as out:
             json.dump(document, out, indent=1, sort_keys=True)
             out.write("\n")
         _publish(Path(temporary), destination)
+    except OSError as exc:
+        raise GameInfoCaptureError(f"cannot write {destination}: {exc}") from exc
     finally:
-        Path(temporary).unlink(missing_ok=True)
+        if temporary is not None:
+            Path(temporary).unlink(missing_ok=True)
     return destination
 
 
@@ -206,6 +298,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     source.add_argument("--from-log", metavar="PATH", help="the game's Lua.log")
     source.add_argument("--from-file", metavar="PATH", help="the mod's gameinfo.json")
     parser.add_argument("--name", help="file stem of the snapshot (default: gameinfo-<UTC time>)")
+    parser.add_argument(
+        "--allow-earlier",
+        action="store_true",
+        help="when the newest GameInfo message in the log is unfinished, file the last "
+        "complete one instead of refusing (it may be another game load's tables)",
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -215,7 +313,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 text = log.read_text(encoding="utf-8", errors="replace")
             except OSError as exc:
                 raise GameInfoCaptureError(f"cannot read {log}: {exc}") from exc
-            document = snapshot_from_log(text)
+            scan = scan_log(text)
+            if scan.document is None:
+                document = snapshot_from_log(text)  # raises, with the explanation
+            else:
+                document = scan.document
+            if scan.later_incomplete:
+                if not args.allow_earlier:
+                    raise GameInfoCaptureError(
+                        "the newest GameInfo message in the log is incomplete (the game was "
+                        "still writing it, or stopped); an earlier complete one exists, but it "
+                        "may be another game load's tables. Load the game again, or pass "
+                        "--allow-earlier to file the earlier one"
+                    )
+                print(
+                    "gameinfo_capture: the newest GameInfo message is incomplete; "
+                    "filing the last complete one (--allow-earlier)",
+                    file=sys.stderr,
+                )
+            elif scan.complete > 1:
+                print(
+                    f"gameinfo_capture: the log holds {scan.complete} GameInfo messages "
+                    "(one per game load); filing the last"
+                )
         else:
             document = snapshot_from_file(args.from_file)
         summary = check_snapshot(document)

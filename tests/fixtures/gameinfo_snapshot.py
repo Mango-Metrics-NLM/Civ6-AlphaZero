@@ -190,3 +190,37 @@ def messages(lines: list[str], marker: str = MARKER) -> list[tuple[str, list[int
 def log_text(lines: list[str], prefix: str = "") -> str:
     """The lines as a ``Lua.log`` text, each carrying the game's context prefix."""
     return "".join(f"{prefix}{line}\n" for line in lines)
+
+
+#: The smallest document the capture accepts: all six tables present (some empty).
+MINIMAL_DOCUMENT: dict[str, Any] = {
+    "Technologies": [
+        {"TechnologyType": "TECH_A", "Cost": 10, "EraType": "ERA_ANCIENT"},
+        {"TechnologyType": "TECH_B", "Cost": 20, "EraType": "ERA_ANCIENT"},
+    ],
+    "TechnologyPrereqs": [{"Technology": "TECH_B", "PrereqTech": "TECH_A"}],
+    "Civics": [{"CivicType": "CIVIC_X", "Cost": 10, "EraType": "ERA_ANCIENT"}],
+    "CivicPrereqs": [],
+    "Buildings": [],
+    "Units": [],
+}
+
+
+def single_line(document: dict[str, Any], prefix: str = "") -> str:
+    return f"{prefix}AZ_GAMEINFO:{json.dumps(document, separators=(',', ':'))}\n"
+
+
+def chunk_lines(
+    document: dict[str, Any],
+    pieces: int = 3,
+    *,
+    header_total: int | None = None,
+    end_total: int | None = None,
+) -> list[str]:
+    """A chunk set of ``pieces`` pieces; the totals in the headers / END line can be wrong."""
+    text = json.dumps(document, separators=(",", ":"))
+    size = -(-len(text) // pieces)
+    parts = [text[i : i + size] for i in range(0, len(text), size)]
+    shown = header_total if header_total is not None else len(parts)
+    lines = [f"AZ_GAMEINFO_CHUNK:{i}/{shown}:{p}\n" for i, p in enumerate(parts, 1)]
+    return [*lines, f"AZ_GAMEINFO_END:{end_total if end_total is not None else len(parts)}\n"]
