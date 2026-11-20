@@ -779,3 +779,18 @@ def test_a_clean_export_prints_no_skipped_or_civic_lines(
     assert main(["import-gameinfo", str(source), "--out", str(tmp_path / "r.yaml")]) == 0
     said = capsys.readouterr().out
     assert "5 techs" in said and "skipped" not in said and "civics" not in said
+
+
+def test_an_integer_beyond_the_digit_limit_in_the_export_is_exit_one_not_a_traceback(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Python refuses to convert a 5,000-digit JSON integer with a bare ValueError."""
+    source = tmp_path / "big.json"
+    source.write_text(
+        '{"Technologies":[{"TechnologyType":"T_A","Cost":' + "9" * 5000 + ',"Era":1}]}',
+        encoding="utf-8",
+    )
+    out = tmp_path / "out.yaml"
+    assert main(["import-gameinfo", str(source), "--out", str(out)]) == 1
+    assert "not UTF-8 JSON" in capsys.readouterr().err
+    assert not out.exists()

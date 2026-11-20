@@ -327,7 +327,9 @@ def import_gameinfo(
     destination = resolve_output(out, ruleset_id)
     try:
         document = json.loads(Path(source).read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+    except ValueError as exc:
+        # JSONDecodeError and UnicodeDecodeError are ValueErrors; so is Python's
+        # refusal to convert an integer beyond its digit limit.
         raise GameInfoError(f"{source}: not UTF-8 JSON ({exc})") from exc
     summary = convert(document, ruleset_id)
     destination.parent.mkdir(parents=True, exist_ok=True)
