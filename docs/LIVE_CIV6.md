@@ -1,11 +1,15 @@
 # Playing a live Civilization VI game (demo-grade)
 
-> **Status: demo-grade.** The bridge can deliver commands to a running,
-> unmodified Civilization VI and read the game state back. What has actually
-> been verified against a real game (2026-07-12) is **four autonomous turns,
-> all `END_TURN`, driven by a randomly initialised network**. Nothing here is
-> evidence that the agent plays Civilization VI well; it is evidence that the
-> plumbing works. The open issues are listed under *Known limitations*.
+> **Status: demo-grade.** The bridge can reach a running, unmodified
+> Civilization VI and read the game state back. What has actually been verified
+> against a real game (2026-07-12) is **four autonomous turns, all `END_TURN`,
+> driven by a randomly initialised network**. No unit or city command has been
+> seen to work, and read against the game's own UI scripts the ones shipped
+> cannot (a move names an operation type the game does not have; a production
+> order carries a raw id where the game expects a hash). That is being corrected
+> as GM-B7 (`kb/specs/20261120-live-command-layer-plan.md`). Nothing here is
+> evidence that the agent plays Civilization VI well. The open issues are listed
+> under *Known limitations*.
 
 This page is a how-to for an outside reader with a Windows machine and a Steam
 copy of the game. The engineering history (why the file transport was replaced,
