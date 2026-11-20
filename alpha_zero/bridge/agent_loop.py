@@ -33,7 +33,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 import numpy as np
 
@@ -53,6 +53,7 @@ from alpha_zero.bridge.health_checker import (
 )
 from alpha_zero.bridge.protocol import (
     END_TURN_BLOCKED,
+    AckMessage,
     CommandMessage,
     GameStateData,
     LuaCommand,
@@ -319,6 +320,27 @@ class AgentLoopConfig:
         if (raw := source.get(ENV_PREFIX + "FALLBACK_BOARD_SIZE")) is not None:
             kwargs["fallback_board_size"] = int(raw)
         return cls(**kwargs)
+
+
+def _as_ack_message(ack: Any) -> AckMessage:
+    """The transport's acknowledgement as an :class:`AckMessage`.
+
+    ``FileBridge`` returns an ``AckMessage``; ``LiveBridge`` returns the parsed
+    ``AZ_ACK`` JSON as a dict. Reading ``.success`` on the dict raised, and the
+    step's catch-all then sent a second ``end_turn`` after every acknowledged
+    command on the socket transport.
+
+    Raises:
+        TypeError: If the transport returned neither shape.
+    """
+    if isinstance(ack, AckMessage):
+        return ack
+    if isinstance(ack, dict):
+        return AckMessage.from_dict(ack)
+    if hasattr(ack, "success"):
+        # A test double or a transport's own ack type that reads like one.
+        return cast(AckMessage, ack)
+    raise TypeError(f"unusable acknowledgement of type {type(ack).__name__}")
 
 
 def _blocked_end_turn_message(ack: Any) -> str | None:
@@ -654,6 +676,7 @@ class BridgeAgentLoop:
                 )
             else:
                 ack = await self.bridge.send_and_wait_with_retry(command)
+            ack = _as_ack_message(ack)
         except CircuitBreakerOpenError as exc:
             self._stats.ack_failures += 1
             self._stats.last_error = f"circuit_open: {exc}"

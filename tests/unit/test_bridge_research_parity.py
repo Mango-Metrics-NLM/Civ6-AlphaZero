@@ -342,3 +342,84 @@ class TestAgentLoopBlockedEndTurn:
         assert stats["turns_played"] == 1
         assert stats["blocked_end_turns"] == 0
         assert stats["last_end_turn_blocker"] is None
+
+
+def _ack_dict(success: bool, executed: list[dict[str, Any]]) -> dict[str, Any]:
+    """An ack as the socket transport hands it over: the parsed ``AZ_ACK`` JSON, a dict."""
+    ack: dict[str, Any] = {"msg_id": 1, "timestamp": 0.0, "success": success, "executed": executed}
+    if not success:
+        ack["error_code"] = "EXECUTION_ERROR"
+        ack["error_message"] = "; ".join(str(e.get("message")) for e in executed)
+    return ack
+
+
+class TestAgentLoopReadsADictAck:
+    """``LiveBridge`` (the transport ``civ6_local`` uses) returns the ack as a dict.
+
+    The loop read ``ack.success`` on it, which raised ``AttributeError``; the step's
+    catch-all then sent a second, fire-and-forget ``end_turn`` after every command.
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_successful_dict_ack_sends_no_fallback_end_turn(
+        self, bridge: MagicMock, make_loop: Any
+    ) -> None:
+        bridge.send_and_wait_with_retry.return_value = _ack_dict(
+            True, [{"action_type": "end_turn", "success": True, "message": "End turn requested"}]
+        )
+        loop = make_loop(turns=1)
+        await loop.run()
+        stats = loop.stats()
+        assert stats["turns_played"] == 1
+        assert stats["fallback_end_turns"] == 0
+        assert stats["invalid_actions"] == 0
+        assert stats["last_error"] is None
+        bridge.send_command.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_blocked_dict_ack_is_counted(self, bridge: MagicMock, make_loop: Any) -> None:
+        message = "End turn blocked: ENDTURN_BLOCKING_RESEARCH (Choose a technology)"
+        bridge.send_and_wait_with_retry.return_value = _ack_dict(
+            False,
+            [
+                {
+                    "action_type": "end_turn",
+                    "success": False,
+                    "error_code": protocol.END_TURN_BLOCKED,
+                    "message": message,
+                }
+            ],
+        )
+        loop = make_loop(turns=1)
+        await loop.run()
+        stats = loop.stats()
+        assert stats["blocked_end_turns"] == 1
+        assert stats["last_end_turn_blocker"] == message
+        assert stats["fallback_end_turns"] == 0
+        bridge.send_command.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_dict_ack_counts_as_invalid(
+        self, bridge: MagicMock, make_loop: Any
+    ) -> None:
+        bridge.send_and_wait_with_retry.return_value = _ack_dict(
+            False,
+            [{"action_type": "unit_move", "success": False, "error_code": "INVALID_TARGET"}],
+        )
+        loop = make_loop(turns=1)
+        await loop.run()
+        stats = loop.stats()
+        assert stats["invalid_actions"] == 1
+        assert stats["fallback_end_turns"] == 0
+
+    @pytest.mark.asyncio
+    async def test_an_ack_that_is_neither_shape_is_an_ack_failure(
+        self, bridge: MagicMock, make_loop: Any
+    ) -> None:
+        bridge.send_and_wait_with_retry.return_value = "not an ack"
+        loop = make_loop(turns=1)
+        code = await loop.run()
+        assert code == BridgeAgentLoop.EXIT_OK
+        stats = loop.stats()
+        assert stats["ack_failures"] == 1
+        assert stats["fallback_end_turns"] == 0
