@@ -1,26 +1,27 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-19T23:20:00Z",
-    "current_focus": "Game-mechanics program, Phase 1 (empty play-path diff). GM-S0a is draft PR #143 and GM-K1 (rules kernel) is draft PR #144, stacked on #142. Holding until the maintainer merges one of them; GM-K2 is next.",
+    "last_timestamp": "2026-11-19T23:59:00Z",
+    "current_focus": "Game-mechanics program, Phase 1. PR #142 merged. Open drafts: #143 (GM-S0a), #146 (GM-K1, replaces the auto-closed #144), #147 (GM-K2, contains #146 until it merges). The kernel track (GM-K) is complete in code; the bridge track (GM-B) is next.",
     "resume_pointers": {
-        "current_task": "None in flight. Next is GM-K2 (pace, import-gameinfo) under OpenSpec add-game-rules-kernel, started only after one of PRs #142, #143, #144 merges.",
+        "current_task": "None in flight. Next slice: GM-B0 (generate the loaded Lua bundle, byte-identical to the committed one), OpenSpec add-bridge-research-parity.",
         "blocked_on": [
-            "maintainer: review and merge draft PRs #142 (plan and docs), #143 (golden fingerprint), #144 (rules kernel); agents do not merge",
+            "maintainer: review and merge #143, #146, then #147; agents do not merge",
+            "maintainer: confirm END_TURN blocked reporting (GM-B2) and GM-B3's four-module span at their PRs",
             "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "When #142 merges: retarget #144 to the default branch; merge the default branch into the PRs still open (each appends a ledger line and a summary entry)",
-            "GM-K2: alpha_zero/rules/pacing.py and gameinfo.py, CLI pace and import-gameinfo (science-v1-draft reports 580 and 780; the importer refuses a path inside the checkout), then task 3.1 (CLAUDE.md rows, make verify)",
-            "Type-check a new module locally with: python -m mypy <file> --python-version 3.13 --follow-imports=silent",
-            "Then bridge slices GM-B0..B5; END_TURN blocked reporting (GM-B2) and GM-B3's four-module span need confirmation at their PRs"
+            "After each merge, merge the default branch into the PRs still open (each appends a ledger line and a summary entry)",
+            "Base every follow-up PR on the default branch, never on another PR's branch (GitHub closed #144 when its base was deleted)",
+            "Type-check locally per file: python -m mypy FILE --python-version 3.13 --follow-imports=silent (mypy alpha_zero/ and make verify stop on numpy's stubs here)",
+            "GM-B0, then GM-B1 (lupa harness), GM-B2..B5"
         ]
     },
     "context_files": [
+        "kb/handoffs/20261119-devsqe-to-prepr-gm-k2-rules-tooling.md",
         "kb/handoffs/20261119-devsqe-to-prepr-gm-k1-rules-kernel.md",
-        "openspec/changes/add-game-rules-kernel/tasks.md",
-        "docs/GAME_RULES.md",
+        "openspec/changes/add-bridge-research-parity/proposal.md",
         "alpha_zero/rules/Agent.md",
-        "kb/specs/20261119-game-mechanics-plan.md",
-        "kb/handoffs/20261115-devsqe-to-prepr-v2-1-local-close-out.md"
+        "docs/GAME_RULES.md",
+        "kb/specs/20261119-game-mechanics-plan.md"
     ]
 }

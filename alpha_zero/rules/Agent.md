@@ -46,7 +46,9 @@ The rules kernel of the game-mechanics program (slice GM-K1; see `docs/GAME_RULE
 | `queries.py` | Prerequisite closure, available techs, research cost in integer percent |
 | `registry.py` | Declared-order index maps and their fingerprint |
 | `builtin.py` | The built-in table: resource, pinned hash, status; hash-checked loading |
-| `__main__.py` | The CLI: `validate` and `hash` |
+| `pacing.py` | Zero-game pacing: tree costs, turns at a constant rate, the science rates that land the capstone in the band |
+| `gameinfo.py` | Turns a GameInfo table export (JSON) into a rule-set file; refuses any output inside the repository |
+| `__main__.py` | The CLI: `validate`, `hash`, `pace`, `import-gameinfo` |
 | `data/` | The built-in rule-set files, shipped as package data |
 
 ---
@@ -75,6 +77,8 @@ The rules kernel of the game-mechanics program (slice GM-K1; see `docs/GAME_RULE
 |------|---------|
 | `python -m alpha_zero.rules validate science-v1-draft` | Check a built-in id or a file; exit 1 lists every violated rule |
 | `python -m alpha_zero.rules hash science-v1-draft` | Print a rule set's id and content sha256 |
+| `python -m alpha_zero.rules pace science-v1-draft --max_turns 60` | Tree costs and the science per turn the capstone needs; no game is played |
+| `python -m alpha_zero.rules import-gameinfo EXPORT.json --out PATH` | Build a rule set from the game's own tables; `PATH` must be outside the repository |
 | `pytest tests/unit/test_rules -v` | The kernel's tests, with a negative control per validator rule |
 
 ---
@@ -87,11 +91,12 @@ The rules kernel of the game-mechanics program (slice GM-K1; see `docs/GAME_RULE
 4. An id ends in `-draft` exactly when its status is `draft`; a draft is never logged
 5. Loading a built-in whose data does not hash to its pin raises
 6. Declared order is content: it defines registry indices and is part of the hash
+7. Real game data is never written inside the repository; only hand-written synthetic fixtures are tracked
 
 ---
 
 ## Dependencies
 
-- **Internal**: none (a leaf)
+- **Internal**: none (a leaf); `gameinfo.py` reads `CIV6AZ_DATA_ROOT` from the environment itself for that reason
 - **External**: `pyyaml`
 - **Consumed by**: its own CLI today; the bridge tech registry (GM-B3) and the science system (GM-S2) later

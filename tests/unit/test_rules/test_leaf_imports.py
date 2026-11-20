@@ -47,6 +47,7 @@ def test_every_module_is_discovered() -> None:
     names = {p.name for p in RULES_DIR.glob("*.py")}
     assert {"spec.py", "loader.py", "validate.py", "queries.py", "registry.py"} <= names
     assert {"builtin.py", "__main__.py", "__init__.py"} <= names
+    assert {"pacing.py", "gameinfo.py"} <= names
 
 
 def test_rules_package_imports_only_stdlib_yaml_and_itself() -> None:
