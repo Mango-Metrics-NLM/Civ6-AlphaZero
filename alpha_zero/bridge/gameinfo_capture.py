@@ -54,9 +54,11 @@ REQUIRED_TABLES: tuple[str, ...] = (
     "Units",
 )
 
-_CHUNK = re.compile(r"(\d+)/(\d+):(.*)", re.DOTALL)
+#: Piece numbers and counts have at most nine digits: a longer run of digits is
+#: not a count, and Python refuses to convert a very long one at all.
+_CHUNK = re.compile(r"([0-9]{1,9})/([0-9]{1,9}):(.*)", re.DOTALL)
 #: ``n:checksum``, ASCII digits only; blanks around the checksum are noise.
-_END = re.compile(r"([0-9]+):\s*([0-9]+)")
+_END = re.compile(r"([0-9]{1,9}):\s*([0-9]{1,10})")
 _NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 _MAX_NAME_LENGTH = 100
 #: Names Windows gives to devices, whatever follows a dot.
@@ -182,7 +184,12 @@ def _checked_join(end: str, pieces: dict[int, str], totals: set[int]) -> str | N
     if match is None:
         return None
     total, checksum = int(match.group(1)), int(match.group(2))
-    if total <= 0 or totals != {total} or sorted(pieces) != list(range(1, total + 1)):
+    # The count comes from the log. Compare it with how many pieces arrived
+    # before walking 1..n, so a line claiming a hundred million pieces costs
+    # nothing.
+    if total <= 0 or totals != {total} or len(pieces) != total:
+        return None
+    if any(index not in pieces for index in range(1, total + 1)):
         return None
     joined = "".join(pieces[i] for i in range(1, total + 1))
     if zlib.adler32(joined.encode("utf-8")) != checksum:
