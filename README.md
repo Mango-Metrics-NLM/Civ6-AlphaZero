@@ -10,9 +10,11 @@ An AlphaZero/MuZero-style self-play system for a simplified Civilization-like
 game (MicroCiv), engineered so that every claim about it can be checked,
 including the ones that turned out to be wrong.
 
-- **What this is:** a CPU-reproducible, seeded MCTS + policy/value training stack
-  with negative-controlled quality gates, a measured evaluation methodology, and a
-  demo-grade bridge that sends commands into a live Civilization VI.
+- **What this is:** a seeded, deterministic MCTS + policy/value training stack
+  supporting **CUDA GPUs** (single-GPU, multi-GPU/DDP, and Vertex AI GPU workers)
+  as well as **CPU** execution, with negative-controlled quality gates, a measured
+  evaluation methodology, and a demo-grade bridge that sends commands into a live
+  Civilization VI.
 - **What this isn't (yet):** a strong agent. No run on the corrected search has
   shown learning; see [Project status](#project-status) and
   [`docs/EVALUATION.md`](docs/EVALUATION.md).
@@ -29,7 +31,7 @@ than rounding up.
 | Area | State | Evidence |
 |---|---|---|
 | MicroCiv environment, encoders, five MCTS variants | Built. One shared, sign-correct value backup since 2026-09-04; forced-win oracle gates it | `tests/unit/test_mcts_backup_correctness.py` |
-| Local training loop (CPU) | Runs end to end. **No committed run demonstrates learning**; the only run predates the search fixes and ends below parity against random | [`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md) (pre-fix) |
+| Local training loop (CUDA GPU & CPU) | Runs end to end on CUDA GPUs (single-GPU and dual-GPU training + arena) and CPU. **No committed run demonstrates learning**; the only committed run predates the search fixes and ends below parity against random | [`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md) (pre-fix) |
 | Evaluation and promotion | Score-rate statistics with ternary intervals are the single source of truth; the deployed promotion default still cannot promote at the measured 73.5% draw rate | [`docs/EVALUATION.md`](docs/EVALUATION.md), [`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md) |
 | Reproducibility | A seed determines the whole local run; every search owns its RNG | [`docs/evidence/seeded_probe_reproducibility/`](docs/evidence/seeded_probe_reproducibility/README.md) |
 | Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; Python self-play worker API seeded (`seed=`), CLI `--seed` not yet exposed; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
@@ -68,10 +70,14 @@ flowchart LR
 
 ## Install
 
-Requires **Python 3.11+**. Everything runs on CPU; a GPU is an accelerator, never a
-dependency. The one exception is by choice, not need: the registered learning runs
-(A1, A1-R) are pinned to two named GPUs and a named CUDA build of torch, and refuse to
-start on anything else ([`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1, "Devices").
+Requires **Python 3.11+**. **This is not a CPU-only system:** training, self-play,
+evaluation arenas, and inference support **CUDA GPUs** (`--device cuda`,
+`--device cuda:0`, multi-GPU/DDP, Vertex AI GPU workers, or automatic CUDA
+detection when a CUDA PyTorch build is installed) as well as **CPU** for local
+development, CI, and hardware-free reproducibility. Registered learning runs
+(`A1`, `A1-R`) are explicitly GPU-first—pinned to two named GPUs (`cuda:0`
+training/self-play, `cuda:1` arena) and a pinned CUDA build of torch—and refuse to
+start on mismatched hardware ([`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1, "Devices").
 
 ```bash
 git clone https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero.git
@@ -106,12 +112,14 @@ There are no console scripts; run everything with `python -m`.
 ## Quickstart
 
 ```bash
-python -m alpha_zero.training_civ6 --dry_run                # smoke test, ~15 s on CPU
+python -m alpha_zero.training_civ6 --dry_run                # auto-uses CUDA if available (~15 s on CPU)
 python -m alpha_zero.orchestrator --preset fast --dry_run   # validate an orchestrator config
 ```
 
-Train a small model and play against it in the browser (keep `board_size`
-identical across the steps; the UI refuses a checkpoint trained at another size):
+Train a small model and play against it in the browser (use `--device cuda` or omit
+`--device` for automatic CUDA GPU selection, or pass `--device cpu` to match the
+CPU-only timing baseline below; keep `board_size` identical across the steps, as the
+UI refuses a checkpoint trained at another size):
 
 ```bash
 pip install -e '.[dev,web]'
