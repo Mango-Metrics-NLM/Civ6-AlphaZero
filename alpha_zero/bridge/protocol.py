@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -435,6 +436,11 @@ class Position:
         return cls(x=x, y=y)
 
 
+#: Action types whose ``item_id`` may be a game type name instead of a number.
+_NAMED_ITEM_ACTIONS = frozenset({ActionType.RESEARCH_TECH, ActionType.RESEARCH_CIVIC})
+_TYPE_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
 @dataclass
 class LuaCommand:
     """A command to be executed by the Lua mod.
@@ -444,7 +450,8 @@ class LuaCommand:
         unit_id: Unit ID for unit actions.
         city_id: City ID for city actions.
         target: Target position for movement/attack.
-        item_id: Item ID for production/research.
+        item_id: Item ID for production/research. An int, or for research the
+            game's type name (``"TECH_MINING"``), which the mod resolves itself.
         item_type: Type of item (unit, building, wonder, district).
         metadata: Additional action-specific data.
     """
@@ -453,7 +460,7 @@ class LuaCommand:
     unit_id: int | None = None
     city_id: int | None = None
     target: Position | None = None
-    item_id: int | None = None
+    item_id: int | str | None = None
     item_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -523,7 +530,15 @@ class LuaCommand:
             city_id = _validate_int(city_id, "city_id", context="LuaCommand")
 
         item_id = data.get("item_id")
-        if item_id is not None:
+        if (
+            isinstance(item_id, str)
+            and action_type in _NAMED_ITEM_ACTIONS
+            and _TYPE_NAME.fullmatch(item_id)
+        ):
+            # A research command may name its item by the game's type name
+            # ("TECH_MINING"); the mod resolves it. Kept as it is.
+            pass
+        elif item_id is not None:
             item_id = _validate_int(item_id, "item_id", context="LuaCommand")
 
         metadata = _validate_dict(data.get("metadata"), "metadata", context="LuaCommand")

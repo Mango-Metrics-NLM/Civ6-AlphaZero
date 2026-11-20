@@ -53,6 +53,7 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | `tuner_socket_bridge.py` | FireTunerClient (raw FireTuner TCP wire protocol), SocketTunerBridge (headless `command_transport="socket"` drop-in for TunerBridge), `lua_longstring()` helper |
 | `state_converter.py` | GameStateData → Civ6StateEncoder tensor conversion, terrain/unit mapping |
 | `action_converter.py` | Action index ↔ LuaCommand bidirectional conversion, action mask generation |
+| `tech_registry.py` | ResearchRegistry: which encoder slot and research action each technology and civic has, from a game rule set (`alpha_zero.rules`) and an optional GameInfo export; `resolve_registry()` reads `CIV6AZ_BRIDGE_RULESET` / `CIV6AZ_BRIDGE_GAMEINFO` |
 | `health_checker.py` | GameBridgeHealthChecker with circuit breaker, monitoring loop |
 
 ---

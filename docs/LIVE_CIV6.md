@@ -107,6 +107,46 @@ snapshot, so older than the current game), and [civ6-mcp](https://github.com/lmw
 own code won: civ6-mcp sends the row index in the research request and then falls back to the
 GameCore setter when the request has no effect, while the game's choosers send the hash.
 
+### Research slots (GM-B3)
+
+The encoder has a position for each technology and civic, and the action space a research
+action for each. Which number a technology gets must be the one the network was trained
+with, so it comes from a game rule set: a technology's slot is its position in the rule set
+(`alpha_zero.rules`), and the same number is its research action. The rules kernel has no
+civic tree yet, so civic slots follow the `Civics` table of a GameInfo export, in row order.
+
+| | With `CIV6AZ_BRIDGE_RULESET` | Without (the default) |
+|---|---|---|
+| Encoder | Researched techs (and civics, with `CIV6AZ_BRIDGE_GAMEINFO`) set their slots. | Technology and civic positions stay zero, as before. Counted, and warned about once. |
+| Research actions | A choice is offered when the rule set has a slot for it. The command names it by the game's type name, and the mod finds its own row. | A choice's action is the game's own row index, so research can be chosen with no setup. |
+
+**Turning the registry on can make the live agent worse at clearing a blocked turn.** A
+choice the rule set has no slot for cannot be offered, and the small built-in rule set knows
+few of the real game's technologies and no civics at all: with it, a turn blocked on a civic
+choice cannot be cleared, where the default mode would have offered every civic by row
+index. Use a registry when a network trained with that rule set is loaded; for a
+random-weights session the default is the better choice. The rule set that covers the real
+tree is the one `python -m alpha_zero.rules import-gameinfo` writes from a GameInfo export;
+capturing that export from a running game is GM-B4. No network has been trained with any of
+these slots.
+
+What to look for in the log:
+
+- At start-up each converter says which mode it is in: the rule set, the start of its
+  fingerprint and the number of technology and civic slots, or "no research registry". A
+  registry with no civic slots gets a warning.
+- The two converters must use the same registry. The state carries the registry's
+  fingerprint, and the action converter refuses a state numbered by another one.
+- What is lost is counted, not hidden, and warned about once, naming the first item
+  (`StateConverter.research_stats`, `ActionConverter.research_stats`): researched or offered
+  items the rule set does not know, and slots beyond what the encoder (100 each) or the
+  action space (73 technologies, 56 civics) has room for. A state converted twice in a row
+  is counted once. The counters are not yet part of the agent loop's own statistics.
+
+The current game has more technologies and civics than the action space has research
+actions; those cannot be chosen until the action space is sized from the rule set, which is
+a change on the release play path and waits for v2.1.0.
+
 ### Live checklist for the maintainer (GM-B2)
 
 Nothing below can be checked without the game. After `python scripts/install_civ6_mod.py`:
@@ -166,6 +206,8 @@ Nothing below can be checked without the game. After `python scripts/install_civ
 | `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to send one `END_TURN` at start-up to un-stall an idle game (socket transport only). |
 | `CIV6AZ_LOCAL_LOG_PATH` | auto | Path to the game's `Lua.log` if it is not in the default location. |
 | `CIV6AZ_LOCAL_USE_EVAL_HARNESS` | `0` | Same as `--eval-harness`. |
+| `CIV6AZ_BRIDGE_RULESET` | unset | The game rule set whose technology order gives the encoder slots and research actions: a built-in id (`science-v1-draft`) or the path of a rule-set file. Unset: see "Research slots" below. A value that cannot be loaded stops the start-up. |
+| `CIV6AZ_BRIDGE_GAMEINFO` | unset | Optional, with the rule set: the path of a GameInfo export whose `Civics` table gives the civic slots. |
 
 ## Known limitations
 
@@ -190,19 +232,20 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   (`max_units=20`, `max_cities=5`, `num_production_items=20` at the configured
   board size), not the full 84-channel / hierarchical space described for the
   real game.
-- **Research and buildings are exported and offered by the mod, but the agent
-  does not use them yet (GM-B2 done 2026-11-20, tested on a stand-in for the
-  game only; GM-B3 planned).** The exporter now writes researched techs and
-  civics by type name, the current research and civic with cost, progress and
-  boost, each of the player's cities' buildings and districts, and research
-  choices as legal actions; research is requested the way the game's own
-  chooser requests it (`UI.RequestPlayerOperation` with the row's hash), with
-  the GameCore setter as the fallback (see "What the mod exports" below). **None of this has run in a real game:** the
-  tests execute the mod's Lua against `tests/fixtures/lua/civ6_stub.lua`, which
-  is hand-written. On the Python side the new fields are parsed and nothing
-  else: the encoder's tech and civic slots are still zero and the action mask
-  ignores research actions until GM-B3. Plan:
-  `kb/specs/20261119-game-mechanics-plan.md`.
+- **Research is exported, offered and chosen; buildings are exported and not
+  used (GM-B2 and GM-B3 done 2026-11-20, tested on a stand-in for the game
+  only).** The exporter writes researched techs and civics by type name, the
+  current research and civic with cost, progress and boost, each of the
+  player's cities' buildings and districts, and research choices as legal
+  actions; research is requested the way the game's own chooser requests it
+  (see "What the mod exports" below). On the Python side the agent can now
+  choose research (it is in the action mask), and with a rule set configured
+  the encoder's technology and civic positions are filled (see "Research
+  slots" below). Still unused: city buildings and districts, the research
+  status (cost, progress, boost), and the end-turn blocker as a network
+  input. **None of this has run in a real game:** the tests execute the mod's
+  Lua against `tests/fixtures/lua/civ6_stub.lua`, which is hand-written.
+  Plan: `kb/specs/20261119-game-mechanics-plan.md`.
 - **`--mcts` search mode is not usable as wired (GM-B5: planned, not done).** It
   pairs the 84-channel network with the 13-channel MicroCiv simulator and
   decodes a simulator action index as a hierarchical action; an exception in
@@ -217,8 +260,10 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   nothing to the game, and the mod exports the state again with
   `end_turn_blocking` set and keeps listening. Before, it answered "Turn ended"
   whatever the game did and stopped listening. The agent loop counts these
-  (`blocked_end_turns`) instead of treating them as invalid actions. Limits:
-  the agent does not yet choose research (GM-B3), so a research blocker
+  (`blocked_end_turns`) instead of treating them as invalid actions. The
+  agent can choose research since GM-B3, which is what clears a research or
+  civic blocker; whether it does depends on the policy, and with random
+  weights nothing steers it there. Limits: a blocker that is not cleared
   repeats until the mod's command timeout (30 s from the start of the turn,
   after which the mod goes quiet, as it did before); blockers with no action
   in the action space (a policy slot, a governor, a pantheon) cannot be
