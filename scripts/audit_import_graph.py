@@ -37,6 +37,7 @@ import argparse
 import ast
 import json
 import logging
+import os
 import re
 import sys
 from collections import Counter, defaultdict
@@ -81,6 +82,9 @@ DEPLOY_GLOBS = (
 #     See tests/scripts/test_audit_import_graph.py for the negative control.
 SKIP_PARTS = {
     ".git",
+    ".claude",
+    ".worktrees",
+    "worktrees",
     "__pycache__",
     "venv",
     ".venv",
@@ -124,24 +128,51 @@ def _is_test(path: Path) -> bool:
     return "tests" in path.parts or path.name.startswith("test_") or path.name == "conftest.py"
 
 
-def _python_files(root: Path) -> list[Path]:
+def _skip_reason(
+    name: str, path: Path, skip_parts: set[str] | frozenset[str] = SKIP_PARTS
+) -> str | None:
+    """Return skip bucket name if directory ``path`` should be pruned, else ``None``."""
+    if name in skip_parts:
+        return name
+    if name.startswith((".venv", "venv")):
+        return name
+    if (path / "pyvenv.cfg").is_file() or (path / ".git").exists():
+        return name
+    return None
+
+
+def iter_python_files(
+    root: Path, *, skip_parts: set[str] | frozenset[str] = SKIP_PARTS
+) -> list[Path]:
+    """Return sorted ``.py`` files under ``root``, pruning venvs, VCS dirs, and worktrees."""
     kept: list[Path] = []
     skipped_by: Counter[str] = Counter()
-    for candidate in root.rglob("*.py"):
-        hit = SKIP_PARTS & set(candidate.parts)
-        if hit:
-            skipped_by[sorted(hit)[0]] += 1
-            continue
-        kept.append(candidate)
+    for dirpath, dirnames, filenames in os.walk(root):
+        dp = Path(dirpath)
+        pruned: list[str] = []
+        for d in dirnames:
+            reason = _skip_reason(d, dp / d, skip_parts=skip_parts)
+            if reason is not None:
+                skipped_by[reason] += 1
+            else:
+                pruned.append(d)
+        dirnames[:] = pruned
+        for fname in filenames:
+            if fname.endswith(".py"):
+                kept.append(dp / fname)
     if skipped_by:
         # DEBUG, not INFO: this runs on every ratchet invocation. It exists so a
         # surprising dead-module count can be explained rather than guessed at.
         logger.debug(
-            "skipped %d file(s) under %s",
+            "skipped %d directory tree(s) under %s",
             sum(skipped_by.values()),
             ", ".join(f"{name}={count}" for name, count in sorted(skipped_by.items())),
         )
-    return kept
+    return sorted(kept)
+
+
+def _python_files(root: Path) -> list[Path]:
+    return iter_python_files(root, skip_parts=SKIP_PARTS)
 
 
 def _resolve_relative(src_mod: str, src_path: Path, level: int, mod: str | None) -> str:
@@ -299,7 +330,8 @@ def deploy_references(root: Path, modules: dict[str, Path]) -> dict[str, set[str
     seen: set[Path] = set()
     for pattern in DEPLOY_GLOBS:
         for path in root.glob(pattern):
-            if not path.is_file() or path in seen or (SKIP_PARTS & set(path.parts)):
+            rel = path.relative_to(root)
+            if not path.is_file() or path in seen or (SKIP_PARTS & set(rel.parts)):
                 continue
             seen.add(path)
             try:
@@ -309,7 +341,7 @@ def deploy_references(root: Path, modules: dict[str, Path]) -> dict[str, set[str
             for hit in set(DOTTED_OR_PATH.findall(text)):
                 dotted = hit.replace("/", ".").removesuffix(".py")
                 if dotted in modules:
-                    refs[dotted].add(str(path.relative_to(root)))
+                    refs[dotted].add(rel.as_posix())
     return refs
 
 
@@ -374,7 +406,7 @@ def audit(root: Path, package_filter: str | None = None) -> list[ModuleReport]:
         reports.append(
             ModuleReport(
                 module=module,
-                path=str(path.relative_to(root)),
+                path=path.relative_to(root).as_posix(),
                 lines=lines,
                 test_importers=test_count,
                 entry_point=_is_entry_point(module, path),

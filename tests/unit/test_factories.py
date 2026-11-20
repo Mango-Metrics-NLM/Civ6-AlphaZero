@@ -384,6 +384,54 @@ class TestCreateRAGClient:
         # Graceful degradation - either works or returns None
         assert client is None or hasattr(client, "query")
 
+    def test_graceful_degradation_on_native_panic_base_exception(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """Native PyO3 PanicException (BaseException) must degrade instead of crashing."""
+        from types import SimpleNamespace
+
+        import alpha_zero.utils.rag_client as rc_mod
+        from alpha_zero.utils.factories import create_rag_client
+
+        class FakePanicError(BaseException):
+            pass
+
+        def boom(*_args, **_kwargs):
+            raise FakePanicError("range start index 10 out of range for slice of length 9")
+
+        monkeypatch.setattr(rc_mod, "CHROMA_AVAILABLE", True)
+        monkeypatch.setattr(
+            rc_mod, "chromadb", SimpleNamespace(PersistentClient=boom), raising=False
+        )
+        config = MockRAGConfig(enabled=True, persist_directory=str(tmp_path / "kb"))
+        client = create_rag_client(config=config)
+
+        assert client is not None
+        assert client.client is None
+        assert client.collection is None
+        assert client.query("test") == []
+        assert client.add_documents(["doc"]) is False
+        assert client.count() == 0
+
+    def test_keyboard_interrupt_is_not_swallowed_by_rag_client(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        from types import SimpleNamespace
+
+        import alpha_zero.utils.rag_client as rc_mod
+        from alpha_zero.utils.factories import create_rag_client
+
+        def interrupt(*_args, **_kwargs):
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(rc_mod, "CHROMA_AVAILABLE", True)
+        monkeypatch.setattr(
+            rc_mod, "chromadb", SimpleNamespace(PersistentClient=interrupt), raising=False
+        )
+        config = MockRAGConfig(enabled=True, persist_directory=str(tmp_path / "kb"))
+        with pytest.raises(KeyboardInterrupt):
+            create_rag_client(config=config)
+
 
 class TestCreateLLMClient:
     """Tests for create_llm_client factory function."""

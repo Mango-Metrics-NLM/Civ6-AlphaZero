@@ -236,5 +236,47 @@ def test_build_artifact_copy_does_not_hide_a_dead_module(tmp_path: Path, artifac
 
 def test_skip_parts_covers_the_known_build_artifact_directories() -> None:
     """Pin the set itself, so removing an entry fails here rather than silently."""
-    for required in ("build", "dist", ".tox", ".eggs"):
+    for required in ("build", "dist", ".tox", ".eggs", ".claude", ".worktrees", "worktrees"):
         assert required in aig.SKIP_PARTS, f"{required!r} missing from SKIP_PARTS"
+
+
+@pytest.mark.parametrize(
+    "isolated_dir",
+    [".venv-scan", "custom_env", ".claude/worktrees/wt1", "nested_wt"],
+)
+def test_pep405_venv_and_nested_worktree_copies_do_not_hide_a_dead_module(
+    tmp_path: Path, isolated_dir: str
+) -> None:
+    """PEP 405 virtualenvs and nested git worktrees must be pruned without hiding dead modules."""
+    _write(tmp_path, "alpha_zero/__init__.py", "")
+    _write(tmp_path, "alpha_zero/p/__init__.py", "from alpha_zero.p.hidden import H\n")
+    _write(tmp_path, "alpha_zero/p/hidden.py", "class H: ...\n")
+    _write(
+        tmp_path,
+        ".github/workflows/ci.yml",
+        "jobs:\n  x:\n    run: python -m alpha_zero.p.hidden\n",
+    )
+
+    before = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.p.hidden" in before
+    assert before["alpha_zero.p.hidden"].path == "alpha_zero/p/hidden.py"
+    assert before["alpha_zero.p.hidden"].deploy_refs == [".github/workflows/ci.yml"]
+
+    if isolated_dir == "custom_env":
+        _write(tmp_path, f"{isolated_dir}/pyvenv.cfg", "home = /usr/bin\n")
+    elif isolated_dir == "nested_wt":
+        _write(tmp_path, f"{isolated_dir}/.git", "gitdir: ../.git/worktrees/nested_wt\n")
+
+    _write(tmp_path, f"{isolated_dir}/alpha_zero/__init__.py", "")
+    _write(
+        tmp_path,
+        f"{isolated_dir}/alpha_zero/p/__init__.py",
+        "from alpha_zero.p.hidden import H\n",
+    )
+    _write(tmp_path, f"{isolated_dir}/alpha_zero/p/hidden.py", "class H: ...\n")
+
+    after = _by_module(aig.audit(tmp_path))
+    assert "alpha_zero.p.hidden" in after
+    assert after["alpha_zero.p.hidden"].path == "alpha_zero/p/hidden.py"
+    assert after["alpha_zero.p.hidden"].deploy_refs == [".github/workflows/ci.yml"]
+    assert set(before) == set(after)
