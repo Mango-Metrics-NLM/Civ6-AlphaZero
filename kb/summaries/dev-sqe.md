@@ -1,5 +1,14 @@
 # DEV-SQE Log
 
+## 2026-11-20 - GM-B5: the live search mode is refused; its simulator stand-in (branch `claude/gm-b5-mcts-refusal`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-B5 of `kb/specs/20261119-game-mechanics-plan.md` (OpenSpec `add-bridge-research-parity`, tasks 5.1 to 5.3), started on the maintainer's word. An un-mocked test of `--mode civ6 --mcts` first (the search raised on every turn, 84-channel network on a 13-channel simulator, and the agent loop sent `end_turn`); then `bridge/microciv_proxy.py` (live units and tiles onto MicroCiv's own types); then `civ6_local` refuses the mode at start-up naming GM-B5 and GM-B6.
+- **Files Changed:** `alpha_zero/bridge/microciv_proxy.py`, `alpha_zero/bridge/mcts_policy.py`, `alpha_zero/bridge/state_converter.py`, `alpha_zero/civ6_local.py`, `alpha_zero/bridge/Agent.md`, `tests/fixtures/bridge_search_states.py`, `tests/unit/test_bridge_mcts_policy.py`, `README.md`, `ROADMAP.md`, `docs/LIVE_CIV6.md`, `docs/MODULE_REFERENCE.md`, `CHANGELOG.md`, `CLAUDE.md`, `openspec/changes/add-bridge-research-parity/tasks.md`.
+- **Tests:** 358 pass in the five new test files; unit + integration, regression, governance and play-path closure on the final code head: 14,046 passed, none failed (one root-user sandbox test deselected); `ruff check .` clean; single-file mypy clean. `make verify` not run. **Nothing run against a real game.**
+- **Two older defects found by running the wiring:** `current_player` was the game's player id while the agent's own units are numbered 0 (own and enemy swapped when the agent is not game player 0, greedy path too); the simulator was built at the game's map size instead of the converter's board (found by the review). Both fixed.
+- **Review of record:** tests by `sdlc-qa-sdet` before the code; 17 planted defects in the real implementation all caught. `sdlc-architect` found nothing serious, the board-size defect, one coverage hole and two overstated doc claims; all acted on.
+- **Not done:** the action translator (GM-B6, not scheduled); `BridgeAgentLoop` still turns a hand-built search policy's failure into `end_turn`.
+
 ## 2026-11-20 - GM-B4: the game's own rule tables, captured from a running game (branch `claude/gm-b4-gameinfo-snapshot`)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-B4 of `kb/specs/20261119-game-mechanics-plan.md` (OpenSpec `add-bridge-research-parity`, tasks 4.1, 4.2). The mod writes six GameInfo tables once per game load (`GameInfoExporter.lua`); `bridge/gameinfo_capture.py` files that snapshot under the data root after the rules importer accepts it. Also fixed: the mod's JSON encoder, which wrote most ASCII as `\u00XX` and broke on quotes.
