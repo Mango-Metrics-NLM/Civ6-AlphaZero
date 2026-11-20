@@ -20,7 +20,7 @@ the wire-protocol notes, the per-module design) lives in
 | Lua mod `AlphaZeroAI` | `mod/AlphaZeroAI/` | Runs inside the game. Writes the game state out through `Lua.log`, polls `ExposedMembers.AlphaZeroCommand` for the next command, and acknowledges with `AZ_ACK`. |
 | Socket transport | `alpha_zero/bridge/tuner_socket_bridge.py` | Speaks the game's own FireTuner debug protocol over TCP (`127.0.0.1:4318`), finds the `GameCore_Tuner` Lua state and sets `ExposedMembers.AlphaZeroCommand` directly. No GUI, no relay panel, no file hop. |
 | File transport (legacy) | `alpha_zero/bridge/tuner_bridge.py` | Writes `commands.json` for a FireTuner GUI relay panel. The Lua sandbox has no `io` library, so the game cannot read the file itself; this path needs the FireTuner application open. Kept as the default for compatibility; the socket path is the one that was verified headless. |
-| Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (greedy network or Gumbel MCTS over a snapshot-seeded `MicroCivEnv`), sends one command per turn. |
+| Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (the greedy network; the search over a snapshot-seeded `MicroCivEnv` exists but is refused on a live game, see "Known limitations"), sends one command per turn. |
 | Entry point | `python -m alpha_zero.civ6_local --mode civ6` | Wires the above together; `--dry-run` validates the configuration without a game. |
 | Mod installer | `scripts/install_civ6_mod.py` | Copies the mod into the game's `Mods` directory (OneDrive-safe). |
 | Bundle generator | `scripts/build_lua_bundle.py` | Builds `Scripts/AlphaZeroMain.lua`, the one Lua file the game loads, from the module files beside it. |
@@ -232,13 +232,15 @@ Nothing below can be checked without the game. After `python scripts/install_civ
 3. **Start a new single-player game** with the mod enabled and let it reach
    the first turn.
 
-4. **Run the agent** against the live game over the socket transport. `--mcts`
-   runs Gumbel MCTS; `--no-mcts` uses the greedy network policy.
+4. **Run the agent** against the live game over the socket transport. It
+   plays the greedy network policy. `--mcts` (or `CIV6AZ_LOCAL_USE_MCTS=1`) is
+   refused in this mode: the command exits 1 before it connects to anything
+   (see "Known limitations").
 
    ```bash
    # Windows PowerShell
    $env:CIV6_BRIDGE_TRANSPORT = "socket"
-   python -m alpha_zero.civ6_local --mode civ6 --mcts
+   python -m alpha_zero.civ6_local --mode civ6
    ```
 
    Watch `Lua.log`: a delivered command appears as
@@ -294,13 +296,50 @@ Nothing below can be checked without the game. After `python scripts/install_civ
   input. **None of this has run in a real game:** the tests execute the mod's
   Lua against `tests/fixtures/lua/civ6_stub.lua`, which is hand-written.
   Plan: `kb/specs/20261119-game-mechanics-plan.md`.
-- **`--mcts` search mode is not usable as wired (GM-B5: planned, not done).** It
-  pairs the 84-channel network with the 13-channel MicroCiv simulator and
-  decodes a simulator action index as a hierarchical action; an exception in
-  the policy becomes `END_TURN`. This is the reading of the code recorded in
-  the plan, not yet shown by a test; GM-B5 starts by writing that test, then
-  makes the mode refuse at start-up, citing its gap id, until an action
-  translator exists. It does not refuse today.
+- **`--mcts` search mode is refused (GM-B5 done 2026-11-20).**
+  `python -m alpha_zero.civ6_local --mode civ6 --mcts` exits 1 at start-up,
+  before the bridge directory, the network or any connection is made, and so
+  does `--dry-run` with it. The search does not search the real game: it
+  plays in the MicroCiv simulator, seeded from the live state. As wired, the
+  live mode gave it the full-game network (84 input channels) where the
+  simulator's observation has 13, so the search raised on every turn and the
+  agent loop turned each failure into `END_TURN`: the mode ended turns and
+  did nothing else. A test that mocks nothing now shows this
+  (`tests/unit/test_bridge_search_mode_wiring.py`). A network that fits would
+  not be enough: the search answers with one of the simulator's 376 actions,
+  and the bridge would read that number as one of its own (88,562 with the
+  demo settings). Only `END_TURN` is the same number in both; a simulator
+  move, which names a unit and a direction, is read by the bridge as a move
+  to some other tile. What is missing is a
+  translator from a simulator action to a live command (**GM-B6**, not
+  scheduled); the refusal stays until that exists, the search is given a
+  network and checkpoint that fit the simulator, and an un-mocked end-to-end
+  test passes.
+- **What the search's simulator sees of a live state (GM-B5).** MicroCiv has
+  three unit types and three terrain types, so a live state is stood in for
+  (`alpha_zero/bridge/microciv_proxy.py`): melee and cavalry units are
+  warriors, ranged and siege units are archers, a settler is a settler;
+  mountains, water and ice are the simulator's mountain, the one terrain it
+  refuses to enter; hills are hills and everything else is plains. Units
+  with no stand-in are left out and counted: builders, traders, scouts,
+  ships, aircraft, support, religious and great-person units. No simulator
+  rule was added, so there is no water, no embarking and no ranged attack in
+  the search. Before this, a settler reached the simulator as a "civilian",
+  which could not found a city, and a mountain as "grassland", which could
+  be walked over. Three limits that remain: a unit the converter's own table
+  does not know is counted as a melee unit, so an unlisted ship becomes a
+  warrior standing on water; on a map larger than the board several game
+  tiles share one board tile, and that tile is impassable when any of them
+  is; and because units are left out, a unit's position in the simulator's
+  list is not its position in the live list.
+- **A game where the agent is not player 0 (fixed 2026-11-20, not seen
+  live).** With two players the converter numbers the agent's own units 0
+  whatever the agent's player id in the game is, but it reported the acting
+  player as that game id. When the two differed, the encoder put the agent's
+  units in the enemy's channels and no unit or city action was legal (ending
+  the turn, and research the game offered, still were). The acting player is
+  now reported by the same numbering. A single-player game normally makes the human seat player 0,
+  which is why this did not show in the sessions run so far.
 - **A blocked `END_TURN` is now reported, and the agent cannot clear every
   blocker (GM-B2 done 2026-11-20, not yet seen live).** When a notification
   blocks ending the turn (an unanswered research or production choice, for

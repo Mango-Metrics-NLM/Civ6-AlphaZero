@@ -46,10 +46,12 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   only so far): a data-driven rules kernel outside the play path, the golden
   fingerprint of the default env and the kernel tooling (GM-S0a, GM-K1, GM-K2;
   plan `kb/specs/20261119-game-mechanics-plan.md`).
-- `openspec/changes/add-bridge-research-parity`: planned: a generated Lua
-  bundle, a Lua test harness, exporter and Python wiring for researched techs,
-  buildings and research actions, the GameInfo snapshot and the `--mcts`
-  refusal (GM-B0..GM-B5).
+- `openspec/changes/add-bridge-research-parity`: built, not run in a real
+  game: a generated Lua bundle, a Lua test harness, exporter and Python wiring
+  for researched techs, buildings and research actions, the GameInfo snapshot
+  and the `--mcts` refusal (GM-B0..GM-B5). Open: the maintainer's live
+  checklist (`docs/LIVE_CIV6.md`) and the search-mode action translator
+  (GM-B6, not scheduled).
 
 ### Next — v2.1 "First validated learning run"
 

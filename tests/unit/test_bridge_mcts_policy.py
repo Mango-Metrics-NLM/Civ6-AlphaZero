@@ -77,7 +77,9 @@ def test_bridge_mcts_env_init(mock_converted_state: dict) -> None:
 
     # Check terrain
     assert (0, 0) in env.env.terrain
-    assert env.env.terrain[(0, 0)].terrain_type == "grassland"
+    # The converter's "grassland" is not a simulator terrain: it is seeded as the plains
+    # MicroCiv knows (GM-B5, microciv_proxy). Features and yields are kept as they came.
+    assert env.env.terrain[(0, 0)].terrain_type == "plains"
     assert env.env.terrain[(0, 0)].features == ["forest"]
 
     # IDs should be advanced beyond max present

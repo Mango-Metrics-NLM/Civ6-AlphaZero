@@ -194,7 +194,8 @@ class Civ6LocalConfig:
             CIV6AZ_LOCAL_NUM_PLAYERS       — number of players (int)
             CIV6AZ_LOCAL_NUM_SIMULATIONS   — MCTS simulations (int)
             CIV6AZ_LOCAL_DEVICE            — inference device
-            CIV6AZ_LOCAL_USE_MCTS          — use MCTS for bridge mode (1/true/yes)
+            CIV6AZ_LOCAL_USE_MCTS          — ask for the MCTS policy (1/true/yes); refused in
+                                             civ6 mode, see search_mode_refusal
             CIV6AZ_LOCAL_WEB_HOST          — web server bind address
             CIV6AZ_LOCAL_WEB_PORT          — web server port (int)
             CIV6AZ_LOCAL_BRIDGE_IPC_DIR    — bridge IPC directory
@@ -353,6 +354,46 @@ class Civ6LocalConfig:
 
 
 # ---------------------------------------------------------------------------
+# Live search mode: refused until it can work
+# ---------------------------------------------------------------------------
+
+#: The gap this refusal answers: the live search mode cannot work as wired.
+SEARCH_MODE_GAP_ID = "GM-B5"
+#: The gap that has to close first: the bridge action translator.
+SEARCH_TRANSLATOR_GAP_ID = "GM-B6"
+
+
+def search_mode_refusal(config: Civ6LocalConfig) -> str | None:
+    """Why this config cannot start, when it asks for the search on a live game.
+
+    The search (``--mcts``) plays in the MicroCiv simulator: it needs a network
+    that takes the simulator's observation, and it returns an action of the
+    simulator. The live mode gives it the full-game network and reads its
+    answer as a live action. The first fails on every turn and the agent loop
+    turns that failure into ``end_turn``; were it fixed, the second would send
+    a command the search never chose. So the mode is refused, not degraded,
+    until a translator exists and the search is given a network that fits the
+    simulator.
+
+    Args:
+        config: Local gameplay config.
+
+    Returns:
+        One line saying what is refused and why, or None when the config does
+        not ask for the search in ``civ6`` mode. The other modes are not the
+        live bridge and are never refused here.
+    """
+    if config.mode != "civ6" or not config.use_mcts:
+        return None
+    return (
+        f"--mcts is refused in civ6 mode ({SEARCH_MODE_GAP_ID}): the search plays in the "
+        "MicroCiv simulator and nothing translates its actions into live commands yet "
+        f"({SEARCH_TRANSLATOR_GAP_ID}). Run without --mcts (and without "
+        f"{ENV_PREFIX}USE_MCTS) to use the greedy network policy. See docs/LIVE_CIV6.md."
+    )
+
+
+# ---------------------------------------------------------------------------
 # Mode runners
 # ---------------------------------------------------------------------------
 
@@ -498,15 +539,21 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     Returns:
         Exit code: 0 = success / clean game end, 1 = setup failure (missing
-        bridge module / config), 2 = heartbeat lost with on_disconnect=exit,
-        130 = cancelled (Ctrl-C).
+        bridge module / config) or a refused search mode
+        (:func:`search_mode_refusal`), 2 = heartbeat lost with
+        on_disconnect=exit, 130 = cancelled (Ctrl-C).
     """
+    # Before anything is created or connected.
+    refusal = search_mode_refusal(config)
+    if refusal is not None:
+        logger.error(refusal)
+        return 1
+
     try:
         from alpha_zero.bridge.action_converter import ActionConverter
         from alpha_zero.bridge.agent_loop import (
             AgentLoopConfig,
             BridgeAgentLoop,
-            GreedyNetworkPolicy,
             PolicyEngine,
         )
         from alpha_zero.bridge.config import BridgeConfig
@@ -564,20 +611,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     network = _build_network_for_bridge(
         config, action_space_size=action_converter.action_space_size
     )
-    policy: PolicyEngine
-    if config.use_mcts:
-        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
-        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
-
-        gumbel_cfg = GumbelMCTSConfig(
-            num_simulations=config.num_simulations,
-            num_sampled_actions=min(config.num_simulations, 16),
-        )
-        policy = Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
-        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
-    else:
-        policy = GreedyNetworkPolicy(network=network, device=config.device)
-        logger.info("Bridge using GreedyNetworkPolicy")
+    policy: PolicyEngine = _build_bridge_policy(config, network)
 
     agent_cfg = AgentLoopConfig.from_env()
 
@@ -631,6 +665,39 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     except KeyboardInterrupt:
         logger.info("Bridge stopped by user.")
         return 130
+
+
+def _build_bridge_policy(config: Civ6LocalConfig, network: Any) -> Any:
+    """The policy the bridge agent loop runs: the search, or the greedy network.
+
+    ``run_civ6_bridge`` never gets here with ``use_mcts`` set: it refuses that
+    first (:func:`search_mode_refusal`). The search branch stays because it is
+    the wiring the refusal is about, and the test that shows why
+    (``tests/unit/test_bridge_search_mode_wiring.py``) builds the policy
+    through it.
+
+    Args:
+        config: Local gameplay config; ``use_mcts`` selects the search.
+        network: The network :func:`_build_network_for_bridge` built.
+
+    Returns:
+        A ``PolicyEngine`` for ``BridgeAgentLoop``.
+    """
+    if config.use_mcts:
+        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
+        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+
+        gumbel_cfg = GumbelMCTSConfig(
+            num_simulations=config.num_simulations,
+            num_sampled_actions=min(config.num_simulations, 16),
+        )
+        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
+        return Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
+
+    from alpha_zero.bridge.agent_loop import GreedyNetworkPolicy
+
+    logger.info("Bridge using GreedyNetworkPolicy")
+    return GreedyNetworkPolicy(network=network, device=config.device)
 
 
 def _build_network_for_bridge(
@@ -855,7 +922,11 @@ Examples:
         action="store_true",
         dest="use_mcts",
         default=None,
-        help="Use MCTS policy in civ6 mode (W2.2+)",
+        help=(
+            "Use the MCTS policy. Refused in civ6 mode until a translator from the "
+            f"search's actions to live commands exists ({SEARCH_MODE_GAP_ID}, "
+            f"{SEARCH_TRANSLATOR_GAP_ID})"
+        ),
     )
     mcts_group.add_argument(
         "--no-mcts",
@@ -1034,6 +1105,13 @@ def main(argv: list[str] | None = None) -> int:
     # Print non-fatal warnings
     for warning in config.validate():
         logger.warning("Config: %s", warning)
+
+    # A config that cannot start is not a valid one, so this comes before the
+    # dry run reports "Configuration valid".
+    refusal = search_mode_refusal(config)
+    if refusal is not None:
+        logger.error(refusal)
+        return 1
 
     if config.dry_run:
         print("Configuration valid:")

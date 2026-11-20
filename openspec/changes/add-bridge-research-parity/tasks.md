@@ -25,9 +25,9 @@
 - [x] 4.2 Hygiene test: no tracked file is a GameInfo snapshot; a path inside the checkout is refused
 
 ## 5. GM-B5: search proxy and `--mcts`
-- [ ] 5.1 An un-mocked test that drives `Civ6MctsPolicy` as `civ6_local` wires it and records the failure
-- [ ] 5.2 `microciv_proxy.py` maps unit classes and impassable tiles using existing MicroCiv rules only
-- [ ] 5.3 `--mcts` refuses at start-up naming the gap id; CLAUDE.md section 5.1 rows for `--mcts` and `--eval-harness` updated
+- [x] 5.1 An un-mocked test that drives `Civ6MctsPolicy` as `civ6_local` wires it and records the failure
+- [x] 5.2 `microciv_proxy.py` maps unit classes and impassable tiles using existing MicroCiv rules only
+- [x] 5.3 `--mcts` refuses at start-up naming the gap id; CLAUDE.md section 5.1 rows for `--mcts` and `--eval-harness` updated
 
 ## 6. Close-out
 - [ ] 6.1 Empty play-path diff on every PR; `make verify`; maintainer live checklist (reinstall the mod, one research choice, one reported blocker, one snapshot)

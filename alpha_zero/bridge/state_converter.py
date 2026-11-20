@@ -369,6 +369,9 @@ class StateConverter:
                 self.research_registry.fingerprint if self.research_registry else None
             ),
             "_map_size": (state.map_data.width, state.map_data.height),
+            # The board every position above is scaled onto. ``_map_size`` is
+            # the game's own map; the two differ on any map that is scaled.
+            "_board_size": self.board_size,
             "_player_id": state.player_id,
             # Pass-through reference to the original GameStateData so downstream
             # callers (e.g. agent_loop._build_observation) can re-encode without
@@ -719,7 +722,17 @@ class StateConverter:
         return visibility
 
     def _get_current_player_id(self, state: GameStateData) -> int:
-        """Get the current player index (0-based for encoder).
+        """The acting player's index among the converted units and cities.
+
+        This is the index :meth:`_resolve_player_index` gives the acting
+        player's own units, not the game's player id: with two players the
+        acting player is always index 0, whatever its id in the game setup.
+        The encoder, the action converter and the search simulator all pick
+        "own" units by comparing a unit's index with this value, so the two
+        must be the same number. (They were not when the acting player was not
+        game player 0: its units were index 0 and this was its game id, so the
+        encoder saw its units as the enemy's and no unit action was legal.)
+        The game's player id stays available as ``_player_id``.
 
         Args:
             state: Game state data.
@@ -727,8 +740,7 @@ class StateConverter:
         Returns:
             Player index.
         """
-        # For the encoder, return the actual player ID from the state.
-        return state.player_id
+        return self._resolve_player_index(state.player_id, state.player_id)
 
     def _extract_player_data(
         self,

@@ -197,7 +197,8 @@ skilled play is not. Prerequisites, installation and known limitations:
 ```bash
 python -m alpha_zero.civ6_local --mode civ6 --dry-run    # validate bridge config, no game needed
 python scripts/install_civ6_mod.py                       # install the mod
-python -m alpha_zero.civ6_local --mode civ6 --mcts       # drive the game with Gumbel MCTS
+python -m alpha_zero.civ6_local --mode civ6              # drive the game with the greedy network policy
+# --mcts is refused in civ6 mode: the search has no translator to live commands yet (GM-B6)
 ```
 
 ## Development and quality gates
