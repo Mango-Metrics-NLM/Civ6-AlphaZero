@@ -275,3 +275,42 @@ def test_non_utf8_file_is_a_load_error_naming_the_file(tmp_path: Path) -> None:
 def test_a_missing_file_stays_an_os_error(tmp_path: Path) -> None:
     with pytest.raises(OSError):
         load_ruleset(tmp_path / "nope.yaml")
+
+
+# --------------------------------------------------------------------------
+# Scalars PyYAML fails on with a bare ValueError (review findings on PR 146)
+# --------------------------------------------------------------------------
+
+_ONE_TECH = "schema_version: 1\nid: x\ntechs:\n  - id: a\n    era: 1\n    cost: {cost}\n"
+
+
+def test_an_integer_beyond_the_digit_limit_is_a_load_error_naming_its_line() -> None:
+    """Python refuses to convert a 5,000-digit decimal string; that is not a traceback."""
+    with pytest.raises(RulesetLoadError, match=r"5000 digits at line 6 is too large"):
+        parse_ruleset(_ONE_TECH.format(cost="9" * 5000))
+
+
+@pytest.mark.parametrize("value", ["2026-02-30", "2026-02-28", "2001-12-14t21:59:43.10-05:00"])
+def test_a_date_like_scalar_is_a_load_error_naming_its_line(value: str) -> None:
+    """Valid or not, a date is refused before PyYAML builds (or fails to build) one."""
+    with pytest.raises(RulesetLoadError, match=r"date-like value .* at line 6"):
+        parse_ruleset(_ONE_TECH.format(cost=value))
+
+
+def test_a_quoted_date_is_still_a_type_error_not_a_date_error() -> None:
+    with pytest.raises(RulesetLoadError, match=r"cost: expected an integer"):
+        parse_ruleset(_ONE_TECH.format(cost="'2026-02-30'"))
+
+
+def test_any_other_value_error_from_the_yaml_layer_is_a_load_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A safety net: no PyYAML constructor failure may escape as a bare ValueError."""
+    import alpha_zero.rules.loader as loader_module
+
+    def _boom(self: object) -> object:
+        raise ValueError("constructor failed")
+
+    monkeypatch.setattr(loader_module._StrictLoader, "get_single_data", _boom)
+    with pytest.raises(RulesetLoadError, match="not a valid YAML value: constructor failed"):
+        parse_ruleset(_ONE_TECH.format(cost="5"))

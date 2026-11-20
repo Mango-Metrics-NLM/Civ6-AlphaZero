@@ -53,6 +53,7 @@ ITEM_ID = re.compile(r"[a-z][a-z0-9_]*")
 RULESET_ID = re.compile(r"[a-z0-9]+(-[a-z0-9]+)*")
 _PLAIN_DECIMAL = re.compile(r"-?(0|[1-9][0-9]*)")
 _INT_TAG = "tag:yaml.org,2002:int"
+_TIMESTAMP_TAG = "tag:yaml.org,2002:timestamp"
 _MERGE_TAG = "tag:yaml.org,2002:merge"
 #: Terrain names a ``worked_terrain`` modifier may refer to (MicroCiv's terrain types).
 TERRAIN_NAMES: tuple[str, ...] = ("plains", "hills", "mountain")
@@ -66,7 +67,20 @@ class _StrictLoader(yaml.SafeLoader):
         if not _PLAIN_DECIMAL.fullmatch(text):
             line = node.start_mark.line + 1
             raise RulesetLoadError(f"integer {text!r} at line {line} is not plain decimal")
-        return int(text)
+        try:
+            return int(text)
+        except ValueError as exc:
+            # Python refuses to convert a decimal string beyond its digit limit.
+            line = node.start_mark.line + 1
+            raise RulesetLoadError(
+                f"integer of {len(text)} digits at line {line} is too large"
+            ) from exc
+
+    def construct_yaml_timestamp(self, node: yaml.ScalarNode) -> Any:
+        # A rule set holds no dates. PyYAML would build one from `2026-02-28` and
+        # raise a bare ValueError on `2026-02-30`; both are refused here.
+        line = node.start_mark.line + 1
+        raise RulesetLoadError(f"date-like value {node.value!r} at line {line} is not allowed")
 
     def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict[Hashable, Any]:
         seen: set[Hashable] = set()
@@ -86,6 +100,7 @@ class _StrictLoader(yaml.SafeLoader):
 
 
 _StrictLoader.add_constructor(_INT_TAG, _StrictLoader.construct_yaml_int)
+_StrictLoader.add_constructor(_TIMESTAMP_TAG, _StrictLoader.construct_yaml_timestamp)
 
 
 def _reject_yaml_features(text: str) -> None:
@@ -256,6 +271,11 @@ def parse_ruleset(text: str) -> RulesetSpec:
             loader.dispose()
     except yaml.YAMLError as exc:
         raise RulesetLoadError(f"not valid YAML: {exc}") from exc
+    except RulesetLoadError:
+        raise
+    except ValueError as exc:
+        # A PyYAML constructor that failed on a scalar (it raises bare ValueError).
+        raise RulesetLoadError(f"not a valid YAML value: {exc}") from exc
     raw = _mapping(
         document, "$", ("schema_version", "id", "techs", "units", "buildings", "victory")
     )
