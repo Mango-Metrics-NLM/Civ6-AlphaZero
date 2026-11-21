@@ -133,6 +133,9 @@ async def test_start_in_the_middle_of_a_state_sent_in_pieces(log: Path) -> None:
         _append(log, *pieces[2:], _hb(5), _hb(6))
         t._read_new_lines()
         assert t.stats["backlog_states_used"] == 0
+        # The pieces read before start are joined with the rest: the export
+        # that was under way is received, not lost.
+        assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 6
     finally:
         await t.stop()
 
@@ -196,5 +199,54 @@ async def test_line_separator_inside_a_name_does_not_cut_the_backlog_state(log: 
     try:
         assert t.backlog_state is not None
         assert t.backlog_state["city"] == name
+    finally:
+        await t.stop()
+
+
+async def test_a_truncated_log_forgets_a_state_not_yet_read(log: Path) -> None:
+    """A state published just before the game rewrote the log is the old game's."""
+    _append(log, "padding " * 50)
+    t = await _started(log)
+    try:
+        _append(log, _state(9), _hb(9))
+        t._read_new_lines()
+        assert t.state_seq == 1 and t.check_heartbeat() is True
+        log.write_text("")  # the game was relaunched before anyone asked
+        t._read_new_lines()
+        assert t.current_state() is None
+        assert t.latest_state is None
+        assert t.check_heartbeat() is False
+        with pytest.raises(StateTimeoutError):
+            await t.wait_for_state(timeout=SHORT)
+    finally:
+        await t.stop()
+
+
+async def test_a_truncated_log_forgets_a_state_already_read(log: Path) -> None:
+    _append(log, "padding " * 50)
+    t = await _started(log)
+    try:
+        _append(log, _state(9))
+        t._read_new_lines()
+        assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 9
+        log.write_text("")
+        t._read_new_lines()
+        assert t.current_state() is None  # require_new=False must not see the old game
+        _append(log, _state(1))
+        t._read_new_lines()
+        assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 1
+    finally:
+        await t.stop()
+
+
+async def test_pieces_from_before_start_do_not_complete_a_different_export(log: Path) -> None:
+    """Handed-over pieces are only good with their own end line."""
+    pieces = _chunks(6, pieces=4)
+    _append(log, *pieces[:2])
+    t = await _started(log)
+    try:
+        _append(log, _state(7))  # a newer whole state arrives instead of the rest
+        t._read_new_lines()
+        assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 7
     finally:
         await t.stop()
