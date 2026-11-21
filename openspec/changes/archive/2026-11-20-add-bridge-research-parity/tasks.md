@@ -30,4 +30,5 @@
 - [x] 5.3 `--mcts` refuses at start-up naming the gap id; CLAUDE.md section 5.1 rows for `--mcts` and `--eval-harness` updated
 
 ## 6. Close-out
-- [ ] 6.1 Empty play-path diff on every PR; `make verify`; maintainer live checklist (reinstall the mod, one research choice, one reported blocker, one snapshot)
+- [x] 6.1 Empty play-path diff on every PR; `make verify`; maintainer live checklist (reinstall the mod, one research choice, one reported blocker, one snapshot) — DEFERRED at archive
+  - The play-path diff and CI gates held on every PR (#148 to #153). **The maintainer's live checklist has not been run**: the box is ticked only because archived changes carry no open boxes (the convention of `2026-07-25-add-enterprise-docs-and-gates`, task 6.3). The checklist is carried, open, into the next change on this capability (`fix-live-command-layer`, GM-B7) and stays in `docs/LIVE_CIV6.md`.
