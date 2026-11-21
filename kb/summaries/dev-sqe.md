@@ -1,5 +1,12 @@
 # DEV-SQE Log
 
+## 2026-11-21 - GM-B7a: eight mod commands rewritten from the game's UI code (branch `claude/gm-b7a-command-executor`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-B7a of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `fix-live-command-layer`, tasks 1.1 to 1.7), approved by the maintainer on 2026-11-20. Read against the game's own UI scripts, a move named an operation type that does not exist and a production order carried a raw id; skip, fortify and sleep went out under names the UI does not use.
+- **Files Changed:** `mod/AlphaZeroAI/Scripts/ActionExecutor.lua`, `Main.lua`, `Config.lua`, `JsonEncoder.lua`, `AlphaZeroMain.lua` (generated), `alpha_zero/bridge/protocol.py`, `tests/fixtures/lua/civ6_stub.lua`, `tests/fixtures/lua/civ6_stub_commands.lua`, `tests/fixtures/lua_harness.py`, `tests/fixtures/lua_commands.py`, `tests/unit/test_lua_command_executor.py`, `tests/unit/test_lua_command_loop.py`, `tests/unit/test_bridge_protocol_named_production.py`, `tests/unit/test_lua_json_encoder.py`, `README.md`, `docs/LIVE_CIV6.md`, `CHANGELOG.md`, `CLAUDE.md`, `kb/specs/20261120-live-command-layer-plan.md`, `kb/specs/20261119-game-mechanics-gap-register.md`, `openspec/changes/fix-live-command-layer/`.
+- **Tests:** 84 new tests failed before the implementation; regression, governance, Lua, bridge and `civ6_local` suites on the merged branch: 3,512 passed, 13 skipped; twelve planted defects each caught; `ruff check .` clean; single-file mypy clean; play-path diff empty. `make verify` not run. **Nothing run against a real game.**
+- **Found by the independent review:** the new per-turn cap could trap a turn behind an end-of-turn blocker (fixed: commands that answer the blocker still run, up to twice the cap); a wonder named by type name slipped past the placement refusal; the docs claimed all commands where eight were rewritten.
+
 ## 2026-11-20 - GM-B5: the live search mode is refused; its simulator stand-in (branch `claude/gm-b5-mcts-refusal`)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-B5 of `kb/specs/20261119-game-mechanics-plan.md` (OpenSpec `add-bridge-research-parity`, tasks 5.1 to 5.3), started on the maintainer's word. An un-mocked test of `--mode civ6 --mcts` first (the search raised on every turn, 84-channel network on a 13-channel simulator, and the agent loop sent `end_turn`); then `bridge/microciv_proxy.py` (live units and tiles onto MicroCiv's own types); then `civ6_local` refuses the mode at start-up naming GM-B5 and GM-B6.

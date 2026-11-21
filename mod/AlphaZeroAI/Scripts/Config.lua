@@ -59,7 +59,17 @@ local DEFAULT_CONFIG = {
     INCLUDE_FOG_OF_WAR = true,
 
     -- Safety settings
-    MAX_ACTIONS_PER_TURN = 1000,   -- Prevent infinite action loops
+    MAX_ACTIONS_PER_TURN = 1000,   -- Prevent infinite action loops (per message)
+    -- Commands handled in one game turn before only END_TURN is accepted. A
+    -- loop that keeps sending a command the game ignores stops here.
+    MAX_COMMANDS_PER_TURN = 200,
+    -- Batches of game events between handling a command message and exporting
+    -- the next state. A request is carried out by the game after the script
+    -- returns; a state exported at once would still show the old game.
+    STATE_EXPORT_DELAY_TICKS = 2,
+    -- The same wait in frames, for a game that raises no event batch (it has
+    -- gone idle): the state is exported after this many frames at the latest.
+    STATE_EXPORT_MAX_FRAMES = 30,
     VALIDATE_COMMANDS = true,
     MAX_FILE_READ_BYTES = 10 * 1024 * 1024,  -- 10MB max file read
 

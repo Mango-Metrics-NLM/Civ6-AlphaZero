@@ -67,7 +67,17 @@ local DEFAULT_CONFIG = {
     INCLUDE_FOG_OF_WAR = true,
 
     -- Safety settings
-    MAX_ACTIONS_PER_TURN = 1000,   -- Prevent infinite action loops
+    MAX_ACTIONS_PER_TURN = 1000,   -- Prevent infinite action loops (per message)
+    -- Commands handled in one game turn before only END_TURN is accepted. A
+    -- loop that keeps sending a command the game ignores stops here.
+    MAX_COMMANDS_PER_TURN = 200,
+    -- Batches of game events between handling a command message and exporting
+    -- the next state. A request is carried out by the game after the script
+    -- returns; a state exported at once would still show the old game.
+    STATE_EXPORT_DELAY_TICKS = 2,
+    -- The same wait in frames, for a game that raises no event batch (it has
+    -- gone idle): the state is exported after this many frames at the latest.
+    STATE_EXPORT_MAX_FRAMES = 30,
     VALIDATE_COMMANDS = true,
     MAX_FILE_READ_BYTES = 10 * 1024 * 1024,  -- 10MB max file read
 
@@ -568,8 +578,14 @@ local escapeChars = {
 }
 
 -- One pass over the characters JSON does not allow raw in a string: the quote,
--- the backslash and the control characters (%c). The short forms come from
+-- the backslash and the control characters. The short forms come from
 -- escapeChars; any other control character is written as \u00XX.
+--
+-- The control characters are written out as bytes 0 to 31 and 127 (%z is the
+-- zero byte, which a Lua 5.1 pattern cannot hold literally). The class %c is
+-- not used: it asks the C library, and under the Windows C runtime that
+-- answers "control" for bytes at and above 0x80, which broke every non-ASCII
+-- character into \u00XX pieces.
 --
 -- This used to be two passes, the second with the pattern '[\x00-\x1f]'. Lua
 -- 5.1 has no \x escape, so that was the class "x, 0 to x, 1, f": it rewrote
@@ -578,7 +594,7 @@ local escapeChars = {
 -- a newline came back as the two characters "\n" and a quote ended the string
 -- early.
 local function escapeString(str)
-    str = string.gsub(str, '[%c"\\]', function(c)
+    str = string.gsub(str, '[%z\1-\31\127"\\]', function(c)
         return escapeChars[c] or string.format("\\u%04x", string.byte(c))
     end)
     return str
@@ -2867,6 +2883,11 @@ local ERROR_CODES = {
     -- The game will not end the turn until a pending choice is made. Not a
     -- malformed command: the agent clears the blocker and asks again.
     END_TURN_BLOCKED = "END_TURN_BLOCKED",
+    -- The game's own check said the unit or city cannot start this now.
+    OPERATION_REFUSED = "OPERATION_REFUSED",
+    -- The move or attack would put the player at war. The mod never does that
+    -- as a side effect; declaring war is the diplomacy command's business.
+    WOULD_START_WAR = "WOULD_START_WAR",
 }
 
 -- ----------------------------------------------------------------------------
@@ -2957,7 +2978,196 @@ local function executeEndTurn(playerId, command)
         "End turn unavailable: no UI.RequestAction in this Lua context"
 end
 
--- Move a unit to target position using RequestOperation (correct Civ6 API)
+-- ----------------------------------------------------------------------------
+-- Unit actions, requested the way the game's own UI requests them
+-- ----------------------------------------------------------------------------
+-- The game's unit panel does not hard-code operations. It walks
+-- GameInfo.UnitOperations and GameInfo.UnitCommands, uses each row's Hash,
+-- asks the game whether the unit can start it, and only then requests it.
+-- Every unit action here goes the same way, by the row's type name, so a name
+-- this version of the game does not have answers with a refusal that names it
+-- instead of a request the game ignores. Not verified in a real game: the
+-- names for skip and sleep are the least certain.
+
+-- The Hash and kind ("operation" / "command") of the row named `typeName`.
+local function findActionRow(typeName)
+    local sources = {
+        { table = "UnitOperations", column = "OperationType", kind = "operation" },
+        { table = "UnitCommands", column = "CommandType", kind = "command" },
+    }
+    for _, source in ipairs(sources) do
+        local gameTable = GameInfo and GameInfo[source.table]
+        if gameTable then
+            local found = nil
+            pcall(function()
+                for row in gameTable() do
+                    if row[source.column] == typeName then
+                        found = row
+                        break
+                    end
+                end
+            end)
+            if found and found.Hash ~= nil then
+                return found.Hash, source.kind
+            end
+        end
+    end
+    return nil, nil
+end
+
+-- The game's reasons for a refusal, as one line, or nil.
+local function failureReasons(results, key)
+    if type(results) ~= "table" or key == nil then return nil end
+    local reasons = results[key]
+    if type(reasons) ~= "table" or #reasons == 0 then return nil end
+    local parts = {}
+    for _, reason in ipairs(reasons) do
+        -- The game gives text keys; show the text where it can be looked up.
+        local text = tostring(reason)
+        if Locale and Locale.Lookup then
+            local ok, shown = pcall(Locale.Lookup, reason)
+            if ok and type(shown) == "string" and shown ~= "" then text = shown end
+        end
+        table.insert(parts, text)
+    end
+    return table.concat(parts, "; ")
+end
+
+-- Ask the game's strict check and, if it agrees, request the action.
+-- `params` is nil for an action without a target. Returns true, or false with
+-- an error code and message. A request is fire-and-forget: true means the
+-- game was asked, not that anything has happened yet.
+local function requestUnitAction(unit, typeName, params, label)
+    if not UnitManager then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. " unavailable: no UnitManager in this Lua context"
+    end
+    local hash, kind = findActionRow(typeName)
+    if hash == nil then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("%s: the game has no operation or command named %s", label, typeName)
+    end
+
+    local canStart, request, reasonsKey
+    if kind == "operation" then
+        canStart, request = UnitManager.CanStartOperation, UnitManager.RequestOperation
+        reasonsKey = UnitOperationResults and UnitOperationResults.FAILURE_REASONS
+    else
+        canStart, request = UnitManager.CanStartCommand, UnitManager.RequestCommand
+        -- The game's unit panel reads a command's reasons under the
+        -- operation results key.
+        reasonsKey = (UnitOperationResults and UnitOperationResults.FAILURE_REASONS)
+            or (UnitCommandResults and UnitCommandResults.FAILURE_REASONS)
+    end
+    if not canStart or not request then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            string.format("%s unavailable: UnitManager cannot check or request a unit %s", label, kind)
+    end
+
+    -- The strict form: with a target, the parameters; without one, `false`
+    -- ("for real", where `true` is the panel's loose "could it ever").
+    local ok, allowed, results
+    if kind == "command" then
+        ok, allowed, results = pcall(canStart, unit, hash, false, true)
+    elseif params then
+        -- `true` after the parameters asks for results (the reasons).
+        ok, allowed, results = pcall(canStart, unit, hash, nil, params, true)
+    else
+        ok, allowed, results = pcall(canStart, unit, hash, nil, false,
+            OperationResultsTypes and OperationResultsTypes.NO_TARGETS)
+    end
+    if not ok then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. ": the game's check raised: " .. tostring(allowed)
+    end
+    if allowed ~= true then
+        local reason = failureReasons(results, reasonsKey)
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            label .. " refused by the game" .. (reason and (": " .. reason) or "")
+    end
+
+    local requested, err
+    if params then
+        requested, err = pcall(request, unit, hash, params)
+    else
+        requested, err = pcall(request, unit, hash)
+    end
+    if not requested then
+        return false, ERROR_CODES.EXECUTION_FAILED, label .. ": the request raised: " .. tostring(err)
+    end
+    return true, nil, nil
+end
+
+-- Whether the player can see the plot. True when the game cannot say.
+local function plotIsVisible(playerId, x, y)
+    local visible = true
+    pcall(function()
+        local visibility = PlayersVisibility and PlayersVisibility[playerId]
+        if visibility and visibility.IsVisible then
+            visible = visibility:IsVisible(x, y) == true
+        end
+    end)
+    return visible
+end
+
+-- Refuse anything that would put the player at war: nil when it would not,
+-- else an error code and message. When the game cannot be asked, the answer
+-- is a refusal too: the mod does not attack on a guess.
+local function warRefusal(unit, x, y)
+    if not CombatManager or not CombatManager.IsAttackChangeWarState then
+        return ERROR_CODES.EXECUTION_FAILED,
+            "Cannot ask the game whether this would start a war (no CombatManager)"
+    end
+    local ok, results = pcall(function()
+        return CombatManager.IsAttackChangeWarState(unit:GetComponentID(), x, y)
+    end)
+    if not ok then
+        return ERROR_CODES.EXECUTION_FAILED,
+            "Asking the game whether this would start a war raised: " .. tostring(results)
+    end
+    if type(results) == "table" and #results > 0 then
+        return ERROR_CODES.WOULD_START_WAR,
+            string.format("Refused: (%d,%d) would start a war with player %s", x, y, tostring(results[1]))
+    end
+    return nil, nil
+end
+
+local function targetParams(target, modifierName)
+    local params = {}
+    params[UnitOperationTypes.PARAM_X] = target.x
+    params[UnitOperationTypes.PARAM_Y] = target.y
+    if modifierName and UnitOperationTypes.PARAM_MODIFIERS and UnitOperationMoveModifiers then
+        params[UnitOperationTypes.PARAM_MODIFIERS] = UnitOperationMoveModifiers[modifierName]
+    end
+    return params
+end
+
+-- Whether another player's unit or city stands on the plot.
+local function hasForeignOccupant(playerId, plot, x, y)
+    local found = false
+    pcall(function()
+        local units = Units and Units.GetUnitsInPlot and Units.GetUnitsInPlot(plot)
+        if type(units) ~= "table" then return end
+        if units.Members then
+            for _, unit in units:Members() do
+                if unit:GetOwner() ~= playerId then found = true end
+            end
+        else
+            for _, unit in ipairs(units) do
+                if unit:GetOwner() ~= playerId then found = true end
+            end
+        end
+    end)
+    if found then return true end
+    pcall(function()
+        local city = Cities and Cities.GetCityInPlot and Cities.GetCityInPlot(x, y)
+        if city and city:GetOwner() ~= playerId then found = true end
+    end)
+    return found
+end
+
+-- Move a unit. The request carries no attack modifier, so a move onto another
+-- player's unit is refused by the game's check and can never become an attack.
 local function executeUnitMove(playerId, command)
     local unitId = command.unit_id
     local target = command.target
@@ -2965,7 +3175,6 @@ local function executeUnitMove(playerId, command)
     if not unitId then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
     end
-
     if not target or not target.x or not target.y then
         return false, ERROR_CODES.INVALID_TARGET, "Missing or invalid target"
     end
@@ -2977,48 +3186,50 @@ local function executeUnitMove(playerId, command)
         return false, errCode, errMsg
     end
 
-    -- Check movement remaining
     local movesRemaining = unit:GetMovementMovesRemaining() or 0
     if movesRemaining <= 0 then
         return false, ERROR_CODES.NOT_ENOUGH_MOVEMENT, "Unit has no movement remaining"
     end
 
-    -- Get target plot
     local plot = Map and Map.GetPlot(target.x, target.y)
     if not plot then
         return false, ERROR_CODES.INVALID_TARGET, "Invalid target position"
     end
-
-    -- Check if target is passable
     if plot:IsImpassable() then
         return false, ERROR_CODES.INVALID_TARGET, "Target position is impassable"
     end
-
-    -- Execute move using UnitManager.RequestOperation (correct Civ6 API)
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        local params = {}
-        params[UnitOperationTypes.PARAM_X] = target.x
-        params[UnitOperationTypes.PARAM_Y] = target.y
-        UnitManager.RequestOperation(unit, UnitOperationTypes.MOVETO, params)
-        return true, nil, string.format("Unit %d moving to (%d,%d)", unitId, target.x, target.y)
+    if not UnitOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Move unavailable: no UnitOperationTypes in this Lua context"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Move execution failed: UnitManager.RequestOperation not available"
+    -- As the game's own move routine does, ask about war only for a plot the
+    -- player can see: a move into the fog is a move toward it, not onto it.
+    if plotIsVisible(playerId, target.x, target.y) then
+        local warCode, warMessage = warRefusal(unit, target.x, target.y)
+        if warCode then
+            return false, warCode, warMessage
+        end
+    end
+
+    local ok, code, message = requestUnitAction(
+        unit, "UNITOPERATION_MOVE_TO", targetParams(target, "NONE"), "Move")
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("Move of unit %d to (%d,%d) requested", unitId, target.x, target.y)
 end
 
--- Shared attack body. Issues the named Civ6 UnitOperation against the
--- target tile. `opName` must be a key on UnitOperationTypes (e.g.
--- "MOVE_TO" for melee engagement, "RANGE_ATTACK" for ranged units).
-local function _executeAttackOperation(playerId, command, opName, logLabel)
+-- Shared by the melee and the ranged attack.
+local function executeAttack(playerId, command, typeName, modifierName, label)
     local unitId = command.unit_id
     local target = command.target
 
-    if not unitId or not target then
+    if not unitId or not target or not target.x or not target.y then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id or target"
     end
 
     if Log then
-        Log.Info("Executing: %s unit=%d at (%d,%d)", logLabel, unitId, target.x, target.y)
+        Log.Info("Executing: %s unit=%d at (%d,%d)", label, unitId, target.x, target.y)
     end
 
     local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
@@ -3026,131 +3237,81 @@ local function _executeAttackOperation(playerId, command, opName, logLabel)
         return false, errCode, errMsg
     end
 
-    -- Check attacks remaining (applies to both melee and ranged).
     if (unit:GetAttacksRemaining() or 0) <= 0 then
         return false, ERROR_CODES.NOT_ENOUGH_MOVEMENT, "Unit has no attacks remaining"
     end
 
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        local op = UnitOperationTypes[opName]
-        if op == nil then
-            return false, ERROR_CODES.EXECUTION_FAILED,
-                string.format("UnitOperationTypes.%s not available", opName)
-        end
-        local params = {}
-        params[UnitOperationTypes.PARAM_X] = target.x
-        params[UnitOperationTypes.PARAM_Y] = target.y
-        UnitManager.RequestOperation(unit, op, params)
-        return true, nil, string.format("%s executed at (%d,%d)", logLabel, target.x, target.y)
+    local plot = Map and Map.GetPlot(target.x, target.y)
+    if not plot then
+        return false, ERROR_CODES.INVALID_TARGET, "Invalid target position"
+    end
+    if not hasForeignOccupant(playerId, plot, target.x, target.y) then
+        return false, ERROR_CODES.INVALID_TARGET,
+            string.format("Nothing to attack at (%d,%d)", target.x, target.y)
+    end
+    if not UnitOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            label .. " unavailable: no UnitOperationTypes in this Lua context"
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Attack execution failed"
+    local warCode, warMessage = warRefusal(unit, target.x, target.y)
+    if warCode then
+        return false, warCode, warMessage
+    end
+
+    local ok, code, message = requestUnitAction(unit, typeName, targetParams(target, modifierName), label)
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("%s at (%d,%d) requested", label, target.x, target.y)
 end
 
--- Melee attack: move onto the target tile to engage. Civ6's MOVE_TO
--- operation against an occupied enemy tile resolves to a melee attack.
--- (Hardening fix for gap-analysis C1 on commit 3572832: previously this
--- routed through RANGE_ATTACK, which silent-no-ops for melee units.)
+-- Melee attack: the move operation with the attack modifier, which is how the
+-- game's own move routine engages a unit on the destination tile.
 local function executeUnitAttack(playerId, command)
-    return _executeAttackOperation(playerId, command, "MOVE_TO", "UNIT_ATTACK")
+    return executeAttack(playerId, command, "UNITOPERATION_MOVE_TO", "ATTACK", "Attack")
 end
 
--- Ranged attack: explicit RANGE_ATTACK operation for archers / catapults /
--- bombards. Distinct from melee per Python ActionType.UNIT_RANGED_ATTACK.
+-- Ranged attack: its own operation (archers, catapults, bombards).
 local function executeUnitRangedAttack(playerId, command)
-    return _executeAttackOperation(playerId, command, "RANGE_ATTACK", "UNIT_RANGED_ATTACK")
+    return executeAttack(playerId, command, "UNITOPERATION_RANGE_ATTACK", nil, "Ranged attack")
 end
 
--- Fortify a unit
+-- A unit action without a target.
+local function executeSimpleUnitAction(playerId, command, typeName, label)
+    local unitId = command.unit_id
+    if not unitId then
+        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
+    end
+
+    if Log then Log.Info("Executing: %s unit=%d", label, unitId) end
+
+    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
+    if not unit then
+        return false, errCode, errMsg
+    end
+
+    local ok, code, message = requestUnitAction(unit, typeName, nil, label)
+    if not ok then
+        return false, code, message
+    end
+    return true, nil, string.format("%s of unit %d requested", label, unitId)
+end
+
 local function executeUnitFortify(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_FORTIFY unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.FORTIFY)
-        return true, nil, "Unit fortified"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Fortify execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_FORTIFY", "Fortify")
 end
 
--- Skip unit turn
 local function executeUnitSkip(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_SKIP unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.WAIT)
-        return true, nil, "Unit skipped"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Skip execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_SKIP_TURN", "Skip")
 end
 
--- Sleep unit (distinct from skip)
 local function executeUnitSleep(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_SLEEP unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestCommand and UnitCommandTypes then
-        UnitManager.RequestCommand(unit, UnitCommandTypes.SLEEP)
-        return true, nil, "Unit sleeping"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Sleep execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_SLEEP", "Sleep")
 end
 
--- Found a city with a settler
 local function executeFoundCity(playerId, command)
-    local unitId = command.unit_id
-
-    if not unitId then
-        return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
-    end
-
-    if Log then Log.Info("Executing: UNIT_FOUND_CITY unit=%d", unitId) end
-
-    local unit, errCode, errMsg = safeGetUnit(playerId, unitId)
-    if not unit then
-        return false, errCode, errMsg
-    end
-
-    if UnitManager and UnitManager.RequestOperation and UnitOperationTypes then
-        UnitManager.RequestOperation(unit, UnitOperationTypes.FOUND_CITY)
-        return true, nil, "City founded"
-    end
-
-    return false, ERROR_CODES.EXECUTION_FAILED, "Found city execution failed"
+    return executeSimpleUnitAction(playerId, command, "UNITOPERATION_FOUND_CITY", "Found city")
 end
 
 -- Build improvement
@@ -3179,63 +3340,116 @@ local function executeUnitBuild(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Build execution failed"
 end
 
--- Item type dispatch tables for production commands.
--- Maps item_type -> CityOperationTypes param key (for CityManager API)
-local PRODUCTION_PARAM_KEYS = {
-    unit = "PARAM_UNIT_TYPE",
-    building = "PARAM_BUILDING_TYPE",
-    wonder = "PARAM_BUILDING_TYPE",  -- Wonders use building param
-    district = "PARAM_DISTRICT_TYPE",
+-- Production. The game's own production panel sends the row's Hash under the
+-- parameter of its kind, with the exclusive insert mode (replace, do not
+-- queue). Districts and wonders also need a plot, which this command does not
+-- carry, so they are refused.
+local PRODUCTION_KINDS = {
+    unit = { table = "Units", column = "UnitType", param = "PARAM_UNIT_TYPE" },
+    building = { table = "Buildings", column = "BuildingType", param = "PARAM_BUILDING_TYPE" },
+    district = { table = "Districts", column = "DistrictType", param = "PARAM_DISTRICT_TYPE", placed = true },
 }
+local PRODUCTION_ORDER = { "unit", "building", "district" }
 
--- Maps item_type -> buildQueue method name (for fallback API)
-local PRODUCTION_QUEUE_METHODS = {
-    unit = "AddUnitType",
-    building = "AddBuildingType",
-    wonder = "AddWonderType",
-    district = "AddDistrictType",
-}
+local function findProductionRow(kind, matches)
+    local gameTable = GameInfo and GameInfo[kind.table]
+    if not gameTable then return nil end
+    local found = nil
+    pcall(function()
+        for row in gameTable() do
+            if matches(row) then
+                found = row
+                break
+            end
+        end
+    end)
+    return found
+end
 
--- Set city production using CityManager.RequestOperation (correct Civ6 API)
+-- The row and kind for an item given by type name (looked up in every kind)
+-- or by row index (in the kind `itemType` names; units when it names none).
+local function resolveProductionItem(item, itemType)
+    if type(item) == "string" then
+        for _, name in ipairs(PRODUCTION_ORDER) do
+            local kind = PRODUCTION_KINDS[name]
+            local row = findProductionRow(kind, function(r) return r[kind.column] == item end)
+            if row then return row, kind end
+        end
+        return nil, nil
+    end
+    local kind = PRODUCTION_KINDS[itemType or "unit"]
+    if not kind then return nil, nil end
+    local row = findProductionRow(kind, function(r) return r.Index == item end)
+    return row, kind
+end
+
 local function executeCityProduce(playerId, command)
     local cityId = command.city_id
     local itemId = command.item_id
-    local itemType = command.item_type or "unit"  -- default to unit
+    local itemType = command.item_type
 
-    if not cityId or not itemId then
+    if not cityId or itemId == nil then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing city_id or item_id"
     end
 
-    if Log then Log.Info("Executing: CITY_PRODUCE city=%d item=%s type=%s", cityId, tostring(itemId), tostring(itemType)) end
+    if Log then
+        Log.Info("Executing: CITY_PRODUCE city=%d item=%s type=%s", cityId, tostring(itemId), tostring(itemType))
+    end
 
     local city, errCode, errMsg = safeGetCity(playerId, cityId)
     if not city then
         return false, errCode, errMsg
     end
 
-    -- Primary method: CityManager.RequestOperation (correct Civ6 API)
-    if CityManager and CityManager.RequestOperation and CityOperationTypes then
-        local paramKey = PRODUCTION_PARAM_KEYS[itemType] or PRODUCTION_PARAM_KEYS["unit"]
-        local params = {}
-        params[CityOperationTypes[paramKey]] = itemId
-        CityManager.RequestOperation(city, CityOperationTypes.BUILD, params)
-        return true, nil, string.format("City %d producing %s (%s)", cityId, tostring(itemId), tostring(itemType))
+    if itemType == "wonder" then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            "A wonder needs a plot; placement is not supported: " .. tostring(itemId)
     end
 
-    -- Fallback: buildQueue methods (for different Civ6 mod contexts)
-    local buildQueue = city:GetBuildQueue()
-    if buildQueue then
-        local methodName = PRODUCTION_QUEUE_METHODS[itemType] or PRODUCTION_QUEUE_METHODS["unit"]
-        local method = buildQueue[methodName]
-        if method then
-            local ok, result = pcall(function() return method(buildQueue, itemId) end)
-            if ok and result then
-                return true, nil, string.format("City %d producing %s (fallback)", cityId, tostring(itemId))
-            end
+    local row, kind = resolveProductionItem(itemId, itemType)
+    if not row then
+        return false, ERROR_CODES.INVALID_COMMAND, "Unknown production item: " .. tostring(itemId)
+    end
+    local typeName = tostring(row[kind.column])
+    -- A district always needs a plot; a building does when its row says so
+    -- (wonders), as the game's production panel checks before it builds one.
+    if kind.placed or row.RequiresPlacement == true then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            typeName .. " needs a plot; placement is not supported"
+    end
+    if row.Hash == nil then
+        return false, ERROR_CODES.EXECUTION_FAILED, typeName .. " has no hash in this Lua context"
+    end
+
+    if not CityManager or not CityManager.RequestOperation or not CityOperationTypes then
+        return false, ERROR_CODES.EXECUTION_FAILED,
+            "Production unavailable: no CityManager in this Lua context"
+    end
+
+    -- The strict form: "can this city start it now".
+    local allowed = nil
+    pcall(function()
+        local buildQueue = city:GetBuildQueue()
+        if buildQueue and buildQueue.CanProduce then
+            allowed = buildQueue:CanProduce(row.Hash, false, true)
         end
+    end)
+    -- Anything but a clear yes is a refusal, a game that cannot be asked
+    -- included: a request without it would be acknowledged as a success.
+    if allowed ~= true then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("City %d cannot start %s now%s", cityId, typeName,
+                allowed == nil and " (the game could not be asked)" or "")
     end
 
-    return false, ERROR_CODES.EXECUTION_FAILED, "Production set failed"
+    local params = {}
+    params[CityOperationTypes[kind.param]] = row.Hash
+    params[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_EXCLUSIVE
+    local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
+    if not requested then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+    end
+    return true, nil, string.format("City %d: production of %s requested", cityId, typeName)
 end
 
 -- ----------------------------------------------------------------------------
@@ -3931,11 +4145,19 @@ local bridgeState = {
     actionsThisTurn = 0,
     lastError = nil,
     turnStartTime = 0,
+    -- When the last command message was handled; the command window runs
+    -- from the later of this and the turn's start.
+    lastCommandTime = 0,
+    -- Frames left before the state is exported after a command message; nil
+    -- when no export is pending.
+    exportAfterTicks = nil,
 }
 
 -- Polling state (use explicit callback reference for reliable removal)
 local isPolling = false
 local pollCallback = nil  -- Will be set to AlphaZeroBridge.PollCommands after definition
+local frameCallback = nil -- The per-frame poll, where the context has frame updates
+local hasFrames = false
 
 -- Track registered events for graceful shutdown
 local registeredEvents = {}
@@ -4097,6 +4319,9 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
     bridgeState.turnStartTime = (os and os.time) and os.time() or 0
+    bridgeState.lastCommandTime = bridgeState.turnStartTime
+    bridgeState.exportAfterTicks = nil
+    bridgeState.exportAfterFrames = nil
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -4134,12 +4359,31 @@ function AlphaZeroBridge.StartPolling()
         return  -- Already polling
     end
 
+    local started = false
     if Events and Events.GameCoreEventPublishComplete then
         -- Ensure pollCallback is set
         if not pollCallback then
             pollCallback = AlphaZeroBridge.PollCommands
         end
         Events.GameCoreEventPublishComplete.Add(pollCallback)
+        started = true
+    end
+
+    -- Frames as well, where this context has them (the game's own panels use
+    -- ContextPtr:SetUpdate). The event above is raised only after a batch of
+    -- game events: in a game that has gone idle it never comes, so on it
+    -- alone the state after a command would not be exported and no further
+    -- command would be read.
+    hasFrames = false
+    if ContextPtr and ContextPtr.SetUpdate then
+        if not frameCallback then
+            frameCallback = function() AlphaZeroBridge.PollCommands("frame") end
+        end
+        hasFrames = pcall(function() ContextPtr:SetUpdate(frameCallback) end)
+        started = started or hasFrames
+    end
+
+    if started then
         isPolling = true
     else
         if Log then Log.Warn("No timer mechanism available for polling") end
@@ -4151,18 +4395,50 @@ function AlphaZeroBridge.StopPolling()
     if isPolling and Events and Events.GameCoreEventPublishComplete and pollCallback then
         Events.GameCoreEventPublishComplete.Remove(pollCallback)
     end
+    if hasFrames and ContextPtr and ContextPtr.ClearUpdate then
+        pcall(function() ContextPtr:ClearUpdate() end)
+    end
+    hasFrames = false
     isPolling = false
 end
 
 -- Poll for and process commands
-function AlphaZeroBridge.PollCommands()
+function AlphaZeroBridge.PollCommands(source)
     if not bridgeState.isMyTurn or not bridgeState.waitingForCommand then
         return
     end
 
-    -- Command timeout check
+    -- The state after a command message is exported a little later, once the
+    -- game has carried the requests out. Until then no command is read: the
+    -- next one should be chosen on the new state. The wait ends after
+    -- STATE_EXPORT_DELAY_TICKS batches of game events, or, when the game
+    -- raises none (it has gone idle), after STATE_EXPORT_MAX_FRAMES frames.
+    if bridgeState.exportAfterTicks then
+        if source == "frame" then
+            if bridgeState.exportAfterFrames then
+                bridgeState.exportAfterFrames = bridgeState.exportAfterFrames - 1
+            end
+        else
+            bridgeState.exportAfterTicks = bridgeState.exportAfterTicks - 1
+        end
+        if bridgeState.exportAfterTicks > 0 and (bridgeState.exportAfterFrames or 1) > 0 then
+            return
+        end
+        bridgeState.exportAfterTicks = nil
+        bridgeState.exportAfterFrames = nil
+        local exported, exportErr = AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        if not exported then
+            if Log then Log.Error("Failed to export state after a command: %s", tostring(exportErr)) end
+            bridgeState.lastError = exportErr
+        end
+        return
+    end
+
+    -- Command timeout check: the window runs from the last command handled,
+    -- so a turn of many commands is not cut off thirty seconds after it began.
     local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
-    local elapsed = ((os and os.time) and os.time() or 0) - bridgeState.turnStartTime
+    local since = math.max(bridgeState.turnStartTime or 0, bridgeState.lastCommandTime or 0)
+    local elapsed = ((os and os.time) and os.time() or 0) - since
     if elapsed > timeout then
         if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
         bridgeState.waitingForCommand = false
@@ -4199,23 +4475,66 @@ function AlphaZeroBridge.PollCommands()
     AlphaZeroBridge.ProcessCommands(commandMessage)
 end
 
+-- Commands that can answer what blocks the end of a turn.
+local UNBLOCKING_ACTIONS = {
+    research_tech = true, research_civic = true, city_produce = true,
+    unit_skip = true, unit_fortify = true, unit_sleep = true,
+}
+
 -- Process a command message
 function AlphaZeroBridge.ProcessCommands(commandMessage)
     if Log then Log.Info("Processing commands: msg_id=%s", tostring(commandMessage.msg_id)) end
 
-    local results = AlphaZeroActionExecutor.ExecuteCommands(
-        bridgeState.aiPlayerId,
-        commandMessage
-    )
+    -- A cap on commands per turn, so a loop that keeps sending a command the
+    -- game ignores stops. Past it only END_TURN is carried out, with one
+    -- exception: while the game refuses to end the turn (a research,
+    -- production or unit-orders choice is open), the commands that can answer
+    -- that choice are still carried out, or the cap itself would trap the
+    -- turn. That allowance ends at twice the cap.
+    local commands = commandMessage.commands or {}
+    local cap = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("MAX_COMMANDS_PER_TURN")) or 200
+    local onlyEndTurn, onlyUnblocking = #commands > 0, #commands > 0
+    for _, command in ipairs(commands) do
+        if command.action_type ~= "end_turn" then
+            onlyEndTurn = false
+            if not UNBLOCKING_ACTIONS[command.action_type] then onlyUnblocking = false end
+        end
+    end
 
-    -- Count actions
-    bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #(commandMessage.commands or {})
+    -- The count the turn would reach with this message: a batch may not carry
+    -- it past a limit either.
+    local projected = bridgeState.actionsThisTurn + #commands
+    local overCap = projected > cap and not onlyEndTurn
+    if overCap and onlyUnblocking and projected <= 2 * cap then
+        local blocker = nil
+        if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
+            local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
+            blocker = ok and found or nil
+        end
+        if blocker then overCap = false end
+    end
+
+    local results, errorCode
+    if overCap then
+        local message = string.format(
+            "%d commands already handled this turn (the cap is %d); only end_turn is accepted",
+            bridgeState.actionsThisTurn, cap)
+        if Log then Log.Warn(message) end
+        results = { msg_id = commandMessage.msg_id, success = false, executed = {}, errors = { message } }
+        errorCode = "COMMAND_CAP_REACHED"
+    else
+        -- Only a message that is carried out keeps the command window open.
+        bridgeState.lastCommandTime = (os and os.time) and os.time() or 0
+        results = AlphaZeroActionExecutor.ExecuteCommands(bridgeState.aiPlayerId, commandMessage)
+        errorCode = "EXECUTION_ERROR"
+        bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #commands
+    end
 
     -- Write acknowledgment
     local ackSuccess = AlphaZeroFileIO.WriteAck(
         commandMessage.msg_id or 0,
         results.success,
-        results.success and nil or "EXECUTION_ERROR",
+        results.success and nil or errorCode,
         results.success and nil or table.concat(results.errors, "; "),
         results.executed
     )
@@ -4236,8 +4555,18 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
     if endTurnExecuted then
         bridgeState.waitingForCommand = false
     else
-        -- Export new state after actions
-        AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        -- Export the new state some frames from now, not in this one: the
+        -- game has not carried the requests out yet.
+        local delay = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_DELAY_TICKS")) or 2
+        if delay < 1 then delay = 1 end
+        bridgeState.exportAfterTicks = math.floor(delay)
+        if hasFrames then
+            local frames = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_MAX_FRAMES")) or 30
+            if frames < 1 then frames = 1 end
+            bridgeState.exportAfterFrames = math.floor(frames)
+        else
+            bridgeState.exportAfterFrames = nil
+        end
     end
 end
 
