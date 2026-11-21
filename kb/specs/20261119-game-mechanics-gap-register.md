@@ -51,7 +51,7 @@ The LF rows keep their own release and authority. This table records only which 
 | LF-C1 seed NPlayerMCTS | GM-S7 entry criterion |
 | LF-C2 3-player run | GM-S7 entry criterion |
 | LF-C3 wire DeterminizedMCTS | Every GM-S rung depends on it (fog off until it lands); GM-S7 entry |
-| LF-H1 turn-cycle stall | GM-B2 tests the END_TURN blocker as a lead (a hypothesis, to confirm in the live checklist); GM-D1 corrects `docs/LIVE_CIV6.md` |
+| LF-H1 turn-cycle stall | GM-B2 tests the END_TURN blocker as a lead (a hypothesis, to confirm in the live checklist); GM-B7c-1 fixes a second lead, states discarded by the socket transport when they arrive with their ack (also a hypothesis until seen live); GM-D1 corrects `docs/LIVE_CIV6.md` |
 | LF-H2 live session with a trained checkpoint | Consumes GM-B2 and GM-B3 (state parity); search mode needs GM-B6, until then GM-B5 refuses |
 | LF-H3 atomic IPC salvage | No GM row carries it; GM-B2 and GM-B3 touch the same bridge files, so coordinate at v2.3 |
 | LF-H4 Unciv stub | No GM row |
