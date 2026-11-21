@@ -71,10 +71,13 @@ local DEFAULT_CONFIG = {
     -- Commands handled in one game turn before only END_TURN is accepted. A
     -- loop that keeps sending a command the game ignores stops here.
     MAX_COMMANDS_PER_TURN = 200,
-    -- Frames between handling a command message and exporting the next state.
-    -- A request is carried out by the game after the script returns; a state
-    -- exported in the same frame would still show the old game.
+    -- Batches of game events between handling a command message and exporting
+    -- the next state. A request is carried out by the game after the script
+    -- returns; a state exported at once would still show the old game.
     STATE_EXPORT_DELAY_TICKS = 2,
+    -- The same wait in frames, for a game that raises no event batch (it has
+    -- gone idle): the state is exported after this many frames at the latest.
+    STATE_EXPORT_MAX_FRAMES = 30,
     VALIDATE_COMMANDS = true,
     MAX_FILE_READ_BYTES = 10 * 1024 * 1024,  -- 10MB max file read
 
@@ -4153,6 +4156,8 @@ local bridgeState = {
 -- Polling state (use explicit callback reference for reliable removal)
 local isPolling = false
 local pollCallback = nil  -- Will be set to AlphaZeroBridge.PollCommands after definition
+local frameCallback = nil -- The per-frame poll, where the context has frame updates
+local hasFrames = false
 
 -- Track registered events for graceful shutdown
 local registeredEvents = {}
@@ -4316,6 +4321,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.turnStartTime = (os and os.time) and os.time() or 0
     bridgeState.lastCommandTime = bridgeState.turnStartTime
     bridgeState.exportAfterTicks = nil
+    bridgeState.exportAfterFrames = nil
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -4353,12 +4359,31 @@ function AlphaZeroBridge.StartPolling()
         return  -- Already polling
     end
 
+    local started = false
     if Events and Events.GameCoreEventPublishComplete then
         -- Ensure pollCallback is set
         if not pollCallback then
             pollCallback = AlphaZeroBridge.PollCommands
         end
         Events.GameCoreEventPublishComplete.Add(pollCallback)
+        started = true
+    end
+
+    -- Frames as well, where this context has them (the game's own panels use
+    -- ContextPtr:SetUpdate). The event above is raised only after a batch of
+    -- game events: in a game that has gone idle it never comes, so on it
+    -- alone the state after a command would not be exported and no further
+    -- command would be read.
+    hasFrames = false
+    if ContextPtr and ContextPtr.SetUpdate then
+        if not frameCallback then
+            frameCallback = function() AlphaZeroBridge.PollCommands("frame") end
+        end
+        hasFrames = pcall(function() ContextPtr:SetUpdate(frameCallback) end)
+        started = started or hasFrames
+    end
+
+    if started then
         isPolling = true
     else
         if Log then Log.Warn("No timer mechanism available for polling") end
@@ -4370,24 +4395,37 @@ function AlphaZeroBridge.StopPolling()
     if isPolling and Events and Events.GameCoreEventPublishComplete and pollCallback then
         Events.GameCoreEventPublishComplete.Remove(pollCallback)
     end
+    if hasFrames and ContextPtr and ContextPtr.ClearUpdate then
+        pcall(function() ContextPtr:ClearUpdate() end)
+    end
+    hasFrames = false
     isPolling = false
 end
 
 -- Poll for and process commands
-function AlphaZeroBridge.PollCommands()
+function AlphaZeroBridge.PollCommands(source)
     if not bridgeState.isMyTurn or not bridgeState.waitingForCommand then
         return
     end
 
-    -- The state after a command message is exported some frames later, once
-    -- the game has carried the requests out. Until then no command is read:
-    -- the next one should be chosen on the new state.
+    -- The state after a command message is exported a little later, once the
+    -- game has carried the requests out. Until then no command is read: the
+    -- next one should be chosen on the new state. The wait ends after
+    -- STATE_EXPORT_DELAY_TICKS batches of game events, or, when the game
+    -- raises none (it has gone idle), after STATE_EXPORT_MAX_FRAMES frames.
     if bridgeState.exportAfterTicks then
-        bridgeState.exportAfterTicks = bridgeState.exportAfterTicks - 1
-        if bridgeState.exportAfterTicks > 0 then
+        if source == "frame" then
+            if bridgeState.exportAfterFrames then
+                bridgeState.exportAfterFrames = bridgeState.exportAfterFrames - 1
+            end
+        else
+            bridgeState.exportAfterTicks = bridgeState.exportAfterTicks - 1
+        end
+        if bridgeState.exportAfterTicks > 0 and (bridgeState.exportAfterFrames or 1) > 0 then
             return
         end
         bridgeState.exportAfterTicks = nil
+        bridgeState.exportAfterFrames = nil
         local exported, exportErr = AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
         if not exported then
             if Log then Log.Error("Failed to export state after a command: %s", tostring(exportErr)) end
@@ -4522,6 +4560,13 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         local delay = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_DELAY_TICKS")) or 2
         if delay < 1 then delay = 1 end
         bridgeState.exportAfterTicks = math.floor(delay)
+        if hasFrames then
+            local frames = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_MAX_FRAMES")) or 30
+            if frames < 1 then frames = 1 end
+            bridgeState.exportAfterFrames = math.floor(frames)
+        else
+            bridgeState.exportAfterFrames = nil
+        end
     end
 end
 
