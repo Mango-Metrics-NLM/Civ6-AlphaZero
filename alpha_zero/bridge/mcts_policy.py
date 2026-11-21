@@ -396,9 +396,13 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             and not truncated
             and self.env.turn < self.env.max_turns
         ):
-            # Ended only because nobody else is in sight: not a win.
+            # Ended only because nobody else is in sight: not a win, and not a
+            # loss for whoever is to move next. The simulator applied one or
+            # the other by comparing its winner with the mover after the step.
             if self.env.winner == self.env.current_player:
                 reward -= float(REWARDS.WIN_REWARD)
+            elif self.env.winner is not None:
+                reward += float(REWARDS.WIN_REWARD)
             self.env.done = False
             self.env.winner = None
             terminated = False

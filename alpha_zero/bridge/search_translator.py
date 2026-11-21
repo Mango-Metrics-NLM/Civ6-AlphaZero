@@ -125,8 +125,13 @@ class SearchTranslator:
         # Board cell and live tile of every converted unit, by live id.
         self._unit_cell: dict[int, tuple[int, int]] = {}
         self._unit_tile: dict[int, tuple[int, int]] = {}
+        # Only the acting player's own units: the game's unit ids are per
+        # owner, so another player's unit can carry the same id.
+        me = getattr(raw, "player_id", None)
         for unit in state.get("units", []) if isinstance(state.get("units"), list) else []:
             if not isinstance(unit, Mapping) or not _is_int(unit.get("_id")):
+                continue
+            if _is_int(me) and "_owner_id" in unit and unit["_owner_id"] != me:
                 continue
             cell, tile = _tile(unit.get("position")), _tile(unit.get("_original_pos"))
             if cell is not None:
