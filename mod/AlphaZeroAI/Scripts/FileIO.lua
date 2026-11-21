@@ -201,12 +201,20 @@ function AlphaZeroFileIO.Append(path, content)
 end
 
 -- Delete a file
+-- True when the file is gone afterwards (or was never there); false and why
+-- when it is still there. The removal is attempted first and the file looked
+-- for afterwards: os.remove reports a failure by returning nil, which is not
+-- an error pcall sees, and a file that cannot be read can often still be
+-- removed. Limit: a file that can be neither read nor removed looks absent.
 function AlphaZeroFileIO.Delete(path)
-    if not os or not os.remove then return true, nil end
-    local ok, err = pcall(os.remove, path)
-    if not ok then
+    local reason = "os.remove not available"
+    if os and os.remove then
+        local ok, removed, err = pcall(os.remove, path)
+        reason = (not ok and removed) or err or "os.remove failed"
+    end
+    if fileExists(path) then
         if Log then Log.Warn("Could not delete file: %s", path) end
-        return false, err
+        return false, tostring(reason)
     end
     return true, nil
 end
@@ -351,13 +359,24 @@ function AlphaZeroFileIO.BeginGameInfo()
         ExposedMembers.AlphaZeroGameInfo = nil
     end
     if HAS_IO then
+        -- Overwritten, not deleted: a delete can fail without a word, and the
+        -- previous load's snapshot would then stand as this load's. The
+        -- capture refuses a file that holds only this marker.
         local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
-        if path then
-            AlphaZeroFileIO.Delete(path)
+        if not path then return false end
+        local ok, err = AlphaZeroFileIO.Write(path, "AZ_GAMEINFO_BEGIN")
+        if ok then return true end
+        -- A read-only file cannot take the marker but can often be removed.
+        local deleted, deleteErr = AlphaZeroFileIO.Delete(path)
+        if deleted then return true end
+        if Log then
+            Log.Error("The previous GameInfo snapshot could not be marked (%s) or removed (%s)",
+                tostring(err), tostring(deleteErr))
         end
-        return
+        return false
     end
     print("AZ_GAMEINFO_BEGIN")
+    return true
 end
 
 -- Write the rule-table snapshot (GM-B4): a file when file access exists,

@@ -10,9 +10,11 @@ An AlphaZero/MuZero-style self-play system for a simplified Civilization-like
 game (MicroCiv), engineered so that every claim about it can be checked,
 including the ones that turned out to be wrong.
 
-- **What this is:** a CPU-reproducible, seeded MCTS + policy/value training stack
-  with negative-controlled quality gates, a measured evaluation methodology, and a
-  demo-grade bridge that sends commands into a live Civilization VI.
+- **What this is:** a seeded, deterministic MCTS + policy/value training stack
+  supporting **CUDA GPUs** (single-GPU, multi-GPU/DDP, and Vertex AI GPU workers)
+  as well as **CPU** execution, with negative-controlled quality gates, a measured
+  evaluation methodology, and a demo-grade bridge that sends commands into a live
+  Civilization VI.
 - **What this isn't (yet):** a strong agent. No run on the corrected search has
   shown learning; see [Project status](#project-status) and
   [`docs/EVALUATION.md`](docs/EVALUATION.md).
@@ -29,11 +31,11 @@ than rounding up.
 | Area | State | Evidence |
 |---|---|---|
 | MicroCiv environment, encoders, five MCTS variants | Built. One shared, sign-correct value backup since 2026-09-04; forced-win oracle gates it | `tests/unit/test_mcts_backup_correctness.py` |
-| Local training loop (CPU) | Runs end to end. **No committed run demonstrates learning**; the only run predates the search fixes and ends below parity against random | [`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md) (pre-fix) |
+| Local training loop (CUDA GPU & CPU) | Runs end to end on CUDA GPUs (single-GPU and dual-GPU training + arena) and CPU. **No committed run demonstrates learning**; the only committed run predates the search fixes and ends below parity against random | [`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md) (pre-fix) |
 | Evaluation and promotion | Score-rate statistics with ternary intervals are the single source of truth; the deployed promotion default still cannot promote at the measured 73.5% draw rate | [`docs/EVALUATION.md`](docs/EVALUATION.md), [`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md) |
 | Reproducibility | A seed determines the whole local run; every search owns its RNG | [`docs/evidence/seeded_probe_reproducibility/`](docs/evidence/seeded_probe_reproducibility/README.md) |
-| Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; self-play worker not yet seeded; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
-| Live Civilization VI bridge | Demo-grade: only end-of-turn commands have been seen to arrive (four, on random weights, 2026-07-12); eight unit and city commands were rewritten from the game's UI code (GM-B7a) and have not been run in a real game; turn-cycle stall open | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
+| Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; Python self-play worker API seeded (`seed=`), CLI `--seed` not yet exposed; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
+| Live Civilization VI bridge | Demo-grade: only end-of-turn commands have been seen to arrive (four, on random weights, 2026-07-12); eight unit and city commands were rewritten from the game's UI code (GM-B7a) and have not been run in a real game; turn-cycle stall open. Rules kernel (`alpha_zero/rules/`) + schema-2 Lua exporter / `lupa` harness / research wiring / GameInfo capture / `--mcts` refusal (GM-B0..B5) landed off the play path (`tests/unit/test_lua_harness.py`, unverified in a live game; live search translator GM-B6 open) | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
 | MuZero, N-player, PBT, fog of war, hierarchical planning | Built; unvalidated by any committed artifact | [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md) |
 | Hex-crystalline encoder | Published on the Hub; its head-to-head result is superseded (pre-fix, seed overlap) | [`docs/model_cards/hexcrystal_encoder.md`](docs/model_cards/hexcrystal_encoder.md) |
 | Hugging Face Spaces, transformer/MuZero Hub repos, Elo dataset | Scaffold / planned, not published | `spaces/`, [`docs/HF_PUBLISHING.md`](docs/HF_PUBLISHING.md) |
@@ -68,10 +70,14 @@ flowchart LR
 
 ## Install
 
-Requires **Python 3.11+**. Everything runs on CPU; a GPU is an accelerator, never a
-dependency. The one exception is by choice, not need: the registered learning runs
-(A1, A1-R) are pinned to two named GPUs and a named CUDA build of torch, and refuse to
-start on anything else ([`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1, "Devices").
+Requires **Python 3.11+**. **This is not a CPU-only system:** training, self-play,
+evaluation arenas, and inference support **CUDA GPUs** (`--device cuda`,
+`--device cuda:0`, multi-GPU/DDP, Vertex AI GPU workers, or automatic CUDA
+detection when a CUDA PyTorch build is installed) as well as **CPU** for local
+development, CI, and hardware-free reproducibility. Registered learning runs
+(`A1`, `A1-R`) are explicitly GPU-first—pinned to two named GPUs (`cuda:0`
+training/self-play, `cuda:1` arena) and a pinned CUDA build of torch—and refuse to
+start on mismatched hardware ([`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1, "Devices").
 
 ```bash
 git clone https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero.git
@@ -97,20 +103,23 @@ Optional extras (individually, or together with `.[all]`):
 | `tuning` | Optuna hyperparameter search |
 | `jax` | JAX backend (optional) |
 | `chess` | Chess benchmarking harness (its sdist does not build on current Debian setuptools, so it is kept out of `dev`) |
+| `lua` | Test-only `lupa` Lua 5.1 runtime for `mod/AlphaZeroAI/` harness tests (`make verify` and CI set `CIV6AZ_REQUIRE_LUA=1`) |
 | `eval` | Advisor output-contract harness, installed from a git URL; not part of `all` |
-| `all` | Every extra above except `eval` |
+| `all` | Every extra above except `eval` and test-only `lua` |
 
 There are no console scripts; run everything with `python -m`.
 
 ## Quickstart
 
 ```bash
-python -m alpha_zero.training_civ6 --dry_run                # smoke test, ~15 s on CPU
+python -m alpha_zero.training_civ6 --dry_run                # auto-uses CUDA if available (~15 s on CPU)
 python -m alpha_zero.orchestrator --preset fast --dry_run   # validate an orchestrator config
 ```
 
-Train a small model and play against it in the browser (keep `board_size`
-identical across the steps; the UI refuses a checkpoint trained at another size):
+Train a small model and play against it in the browser (use `--device cuda` or omit
+`--device` for automatic CUDA GPU selection, or pass `--device cpu` to match the
+CPU-only timing baseline below; keep `board_size` identical across the steps, as the
+UI refuses a checkpoint trained at another size):
 
 ```bash
 pip install -e '.[dev,web]'
@@ -166,8 +175,9 @@ opponent, replay sampling, batch order and network initialisation. Streams are
 derived by name from one seed (`alpha_zero/utils/seeding.py`), so self-play varies
 with the iteration while evaluation stays on a fixed held-out set. Two runs at one
 seed are identical (`tests/regression/test_training_determinism_regression.py`).
-The deployed cloud workers are not yet seeded; that change touches distributed
-coordination and is tracked separately.
+The deployed self-play worker's Python API (`run_selfplay`, `run_muzero_selfplay`,
+`run_batch_selfplay`) is deterministically seeded when passed `seed=`, while its
+standalone CLI (`parse_args`) does not yet expose `--seed`.
 
 On a GPU, seeding is not enough: CUDA kernels are non-deterministic by default. A seeded
 run on a CUDA device therefore enforces deterministic algorithms, and an operation with no
@@ -205,6 +215,8 @@ python -m alpha_zero.civ6_local --mode civ6              # drive the game with t
 ## Development and quality gates
 
 ```bash
+make install-lua         # install dev extras plus the lupa Lua 5.1 harness runtime
+make check-lua-bundle    # verify AlphaZeroMain.lua matches its Lua source modules
 make verify-fast         # lint, types, regression and governance gates — the inner loop
 make verify              # every CI gate in one pass — run before opening a PR
 make test-all            # coverage, mirroring CI's coverage job (gate: 85%)

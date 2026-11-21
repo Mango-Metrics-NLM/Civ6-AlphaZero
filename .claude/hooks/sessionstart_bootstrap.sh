@@ -56,6 +56,7 @@ OPTIONAL = {
     "tqdm": "tqdm",
     "pytest_asyncio": "pytest-asyncio",
     "pytest_timeout": "pytest-timeout",
+    "lupa": "lupa",
 }
 
 missing_required = [pkg for mod, pkg in REQUIRED.items() if importlib.util.find_spec(mod) is None]

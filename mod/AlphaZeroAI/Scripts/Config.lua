@@ -175,6 +175,37 @@ function AlphaZeroConfig.Init()
     return currentConfig
 end
 
+-- The files the bridge reads and writes: each path is its directory and name.
+local DERIVED_PATHS = {
+    { path = "STATE_PATH", file = "STATE_FILE" },
+    { path = "COMMANDS_PATH", file = "COMMANDS_FILE" },
+    { path = "ACK_PATH", file = "ACK_FILE" },
+    { path = "HEARTBEAT_PATH", file = "HEARTBEAT_FILE" },
+    { path = "ERROR_PATH", file = "ERROR_FILE" },
+    { path = "GAMEINFO_PATH", file = "GAMEINFO_FILE" },
+}
+
+-- Merge overrides into the configuration. A path follows its directory and
+-- its file name: overriding either moves the path, unless the path itself is
+-- overridden, which wins.
+function AlphaZeroConfig.ApplyOverrides(overrides)
+    if not currentConfig then
+        AlphaZeroConfig.Init()
+    end
+    if type(overrides) ~= "table" then
+        return currentConfig
+    end
+    currentConfig = mergeTables(currentConfig, overrides)
+    local PATH_SEP = currentConfig.PATH_SEP or DEFAULT_PATH_SEP
+    for _, entry in ipairs(DERIVED_PATHS) do
+        if overrides[entry.path] == nil
+            and (overrides.COMM_DIR ~= nil or overrides[entry.file] ~= nil) then
+            currentConfig[entry.path] = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig[entry.file]
+        end
+    end
+    return currentConfig
+end
+
 -- Load configuration overrides from JSON file (safe, no code execution)
 function AlphaZeroConfig.LoadOverrides()
     if not currentConfig then
@@ -200,16 +231,7 @@ function AlphaZeroConfig.LoadOverrides()
     if AlphaZeroJson and content and #content > 0 then
         local overrides, err = AlphaZeroJson.Decode(content)
         if overrides and type(overrides) == 'table' then
-            currentConfig = mergeTables(currentConfig, overrides)
-            -- Recalculate derived paths if COMM_DIR changed
-            if overrides.COMM_DIR then
-                currentConfig.STATE_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.STATE_FILE
-                currentConfig.COMMANDS_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.COMMANDS_FILE
-                currentConfig.ACK_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ACK_FILE
-                currentConfig.HEARTBEAT_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.HEARTBEAT_FILE
-                currentConfig.ERROR_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.ERROR_FILE
-                currentConfig.GAMEINFO_PATH = currentConfig.COMM_DIR .. PATH_SEP .. currentConfig.GAMEINFO_FILE
-            end
+            AlphaZeroConfig.ApplyOverrides(overrides)
         elseif err then
             print("[AlphaZero] Config override parse error: " .. tostring(err))
         end

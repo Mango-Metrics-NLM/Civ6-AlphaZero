@@ -128,6 +128,14 @@ test_error.log
 pytest_*.txt
 .superpowers/
 
+# Local MLflow & LLM evaluation outputs (dev tracking stores, not runtime code)
+mlruns/
+mlflow.db
+mlflow.db-shm
+mlflow.db-wal
+mlartifacts/
+eval_results/
+
 # Civ6 mod source and superpowers docs (not needed in container image)
 mod/
 docs/superpowers/

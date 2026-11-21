@@ -142,6 +142,57 @@ def _reject_same_game_type(ids: tuple[str, ...], prefix: str, kind: str) -> None
             )
 
 
+def civic_ids(civic_types: Iterable[Any]) -> tuple[str, ...]:
+    """The civic ids, by slot, that ``civic_types`` gives: lower case, in order.
+
+    This is the whole rule for what may number civic slots. The snapshot
+    capture applies it before filing, so a snapshot that is filed is one this
+    registry accepts.
+
+    Raises:
+        ResearchRegistryError: If one is not a non-empty string, one is given
+            twice (compared without case), or two are the same civic to the
+            game (``code_of_laws`` and ``civic_code_of_laws``).
+    """
+    ids: list[str] = []
+    seen: set[str] = set()
+    for civic in civic_types:
+        if not isinstance(civic, str) or not civic:
+            raise ResearchRegistryError(f"a civic type must be a non-empty string, got {civic!r}")
+        lowered = civic.lower()
+        if lowered in seen:
+            raise ResearchRegistryError(f"civic given twice: {civic!r}")
+        seen.add(lowered)
+        ids.append(lowered)
+    _reject_same_game_type(tuple(ids), _CIVIC_PREFIX, "civic")
+    return tuple(ids)
+
+
+def civic_types_of(document: Any, where: str) -> tuple[str, ...]:
+    """The ``CivicType`` values of a GameInfo document's ``Civics`` table, in row order.
+
+    Raises:
+        ResearchRegistryError: If the document is not an object, has no
+            ``Civics`` table, or a row has no string ``CivicType``. The
+            message starts with ``where``.
+    """
+    if not isinstance(document, dict):
+        raise ResearchRegistryError(f"{where} is not a JSON object")
+    rows = document.get(_CIVICS_TABLE)
+    if not isinstance(rows, list):
+        raise ResearchRegistryError(f"{where} has no {_CIVICS_TABLE} table")
+
+    civics: list[str] = []
+    for number, row in enumerate(rows):
+        civic = row.get(_CIVIC_TYPE_COLUMN) if isinstance(row, dict) else None
+        if not isinstance(civic, str) or not civic:
+            raise ResearchRegistryError(
+                f"{where}: {_CIVICS_TABLE} row {number} has no {_CIVIC_TYPE_COLUMN}"
+            )
+        civics.append(civic)
+    return tuple(civics)
+
+
 def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> ResearchRegistry:
     """Build the registry for ``spec``, with civic slots in the order of ``civic_types``.
 
@@ -152,20 +203,10 @@ def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> Research
     tech_ids = tuple(rules.tech_index)
     _reject_same_game_type(tech_ids, _TECH_PREFIX, "technology")
 
-    civic_ids: list[str] = []
-    seen: set[str] = set()
-    for civic in civic_types:
-        if not isinstance(civic, str) or not civic:
-            raise ResearchRegistryError(f"a civic type must be a non-empty string, got {civic!r}")
-        lowered = civic.lower()
-        if lowered in seen:
-            raise ResearchRegistryError(f"civic given twice: {civic!r}")
-        seen.add(lowered)
-        civic_ids.append(lowered)
-    _reject_same_game_type(tuple(civic_ids), _CIVIC_PREFIX, "civic")
+    civics = list(civic_ids(civic_types))
 
     payload = json.dumps(
-        {"rules": rules.fingerprint, "civics": civic_ids},
+        {"rules": rules.fingerprint, "civics": civics},
         sort_keys=True,
         separators=(",", ":"),
         ensure_ascii=True,
@@ -174,7 +215,7 @@ def from_ruleset(spec: RulesetSpec, civic_types: Iterable[str] = ()) -> Research
         ruleset_id=spec.id,
         fingerprint=hashlib.sha256(payload.encode("ascii")).hexdigest(),
         tech_ids=tech_ids,
-        civic_ids=tuple(civic_ids),
+        civic_ids=tuple(civics),
     )
 
 
@@ -188,24 +229,10 @@ def civic_types_from_gameinfo(path: str | os.PathLike[str]) -> tuple[str, ...]:
     source = Path(path).expanduser()
     try:
         document = json.loads(source.read_text(encoding="utf-8"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError covers a decode error, bad UTF-8 and a number too long to convert.
         raise ResearchRegistryError(f"cannot read the GameInfo export {source}: {exc}") from exc
-    if not isinstance(document, dict):
-        raise ResearchRegistryError(f"the GameInfo export {source} is not a JSON object")
-    rows = document.get(_CIVICS_TABLE)
-    if not isinstance(rows, list):
-        raise ResearchRegistryError(f"the GameInfo export {source} has no {_CIVICS_TABLE} table")
-
-    civics: list[str] = []
-    for number, row in enumerate(rows):
-        civic = row.get(_CIVIC_TYPE_COLUMN) if isinstance(row, dict) else None
-        if not isinstance(civic, str) or not civic:
-            raise ResearchRegistryError(
-                f"the GameInfo export {source}: {_CIVICS_TABLE} row {number} "
-                f"has no {_CIVIC_TYPE_COLUMN}"
-            )
-        civics.append(civic)
-    return tuple(civics)
+    return civic_types_of(document, f"the GameInfo export {source}")
 
 
 def _load_spec(ruleset: str) -> RulesetSpec:
