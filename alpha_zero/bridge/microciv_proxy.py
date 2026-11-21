@@ -41,6 +41,11 @@ SIMULATOR_TERRAIN: frozenset[str] = frozenset({SIM_PLAINS, SIM_HILLS, SIM_MOUNTA
 #: The game's name for the unit that founds cities.
 _RAW_SETTLER = "UNIT_SETTLER"
 
+#: Units the converter files under a category that has a stand-in, but which
+#: cannot fight: a battering ram and a siege tower are ``siege`` to the
+#: converter and would otherwise enter the simulator as attacking archers.
+_RAW_NO_STAND_IN: frozenset[str] = frozenset({"unit_battering_ram", "unit_siege_tower"})
+
 #: Converter unit categories (``UnitMapping``) that have a MicroCiv stand-in.
 #: A category that is not here has none: naval and air units (MicroCiv has no
 #: water and no air), support, religious and great-person units, and civilians
@@ -90,8 +95,11 @@ def simulator_unit_class(unit_type: Any, raw_type: Any = None) -> str | None:
         ``"warrior"``, ``"settler"`` or ``"archer"``; None for a unit MicroCiv
         has nothing for. Never raises.
     """
-    if _word(raw_type) == _RAW_SETTLER.lower():
+    raw = _word(raw_type)
+    if raw == _RAW_SETTLER.lower():
         return SIM_SETTLER
+    if raw in _RAW_NO_STAND_IN:
+        return None
     return _CLASS_OF_CATEGORY.get(_word(unit_type))
 
 

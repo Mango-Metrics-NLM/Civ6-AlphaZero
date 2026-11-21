@@ -112,6 +112,20 @@ class TestSimulatorUnitClass:
     ) -> None:
         assert proxy.simulator_unit_class(unit_type, raw_type) == expected
 
+    @pytest.mark.parametrize(
+        "raw_type",
+        ["UNIT_BATTERING_RAM", "UNIT_SIEGE_TOWER", "unit_battering_ram", "  Unit_Siege_Tower\n"],
+    )
+    @pytest.mark.parametrize("unit_type", ["siege", "SIEGE", "melee", "ranged", "archer", None])
+    def test_a_ram_or_tower_has_no_stand_in_whatever_the_category_says(
+        self, proxy: ModuleType, unit_type: Any, raw_type: str
+    ) -> None:
+        assert proxy.simulator_unit_class(unit_type, raw_type) is None
+
+    def test_control_a_catapult_is_still_an_archer(self, proxy: ModuleType) -> None:
+        assert proxy.simulator_unit_class("siege", "UNIT_CATAPULT") == "archer"
+        assert proxy.simulator_unit_class("siege", None) == "archer"
+
     def test_raw_type_is_optional(self, proxy: ModuleType) -> None:
         assert proxy.simulator_unit_class("melee") == "warrior"
         assert proxy.simulator_unit_class("civilian") is None
@@ -135,6 +149,9 @@ class TestSimulatorUnitClass:
         for civ6_type, category in UnitMapping().UNITS.items():
             seen_categories.add(category)
             expected = "settler" if civ6_type == "UNIT_SETTLER" else by_category.get(category)
+            if civ6_type in {"UNIT_BATTERING_RAM", "UNIT_SIEGE_TOWER"}:
+                # Review follow-up S1: melee-only siege has no ranged stand-in.
+                expected = None
             assert proxy.simulator_unit_class(category, civ6_type) == expected, civ6_type
         # The table above names every category the converter can produce.
         assert seen_categories == {
@@ -417,6 +434,20 @@ class TestSeedingUnits:
         else:
             assert _sim_units(env)[7] == expected
         assert _sim_units(env)[3] == "warrior"
+
+    @pytest.mark.parametrize("ram", ["UNIT_BATTERING_RAM", "UNIT_SIEGE_TOWER"])
+    def test_an_own_ram_or_tower_is_not_seeded_and_is_counted(self, ram: str) -> None:
+        state = make_state(
+            units=[
+                unit(7, ram, 0, 5, 5),
+                unit(8, "UNIT_CATAPULT", 0, 6, 6),
+                unit(3, "UNIT_WARRIOR", 1, *ENEMY),
+            ]
+        )
+        env, converted = _seed(state)
+        assert [u["type"] for u in converted["units"]].count("siege") == 2, "premise"
+        assert _sim_units(env) == {8: "archer", 3: "warrior"}
+        assert env.proxy_stats == {"units": 2, "units_not_represented": 1, "impassable_tiles": 0}
 
     def test_unit_fields_are_kept(self) -> None:
         state = make_state(
