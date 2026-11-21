@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -49,6 +50,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LEDGER = REPO_ROOT / "kb" / "ledger" / "ledger.jsonl"
 SESSIONS_DIR = REPO_ROOT / "kb" / "sessions"
 HANDOFFS_PREFIX = "kb/handoffs/"
+
+logger = logging.getLogger("validate_kb")
 
 # Frozen grandfathering boundary. Entries dated on or after this may only use the
 # current event names and must carry a session_id; earlier entries are exempt.
@@ -132,7 +135,11 @@ def _validate_ledger(path: Path, issues: list[Issue], *, cross_file: bool) -> No
     if not path.is_file():
         issues.append(Issue("K1", "ledger file is missing", path))
         return
-    for lineno, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    logger.debug(
+        "scanning ledger %s (%d lines, cross_file=%s)", _relpath(path), len(lines), cross_file
+    )
+    for lineno, raw in enumerate(lines, start=1):
         if not raw.strip():
             continue
         try:
@@ -182,7 +189,9 @@ def _validate_ledger_entry(
 def _validate_sessions(issues: list[Issue]) -> None:
     if not SESSIONS_DIR.is_dir():
         return
-    for state in sorted(SESSIONS_DIR.glob("*.state.json")):
+    state_files = sorted(SESSIONS_DIR.glob("*.state.json"))
+    logger.debug("scanning %d session state file(s)", len(state_files))
+    for state in state_files:
         try:
             json.loads(state.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
@@ -287,29 +296,46 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--path", help="validate a single file in isolation (hook mode)")
     parser.add_argument("--quiet", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="log scanned ledger/session targets and outcome (stderr)",
+    )
     args = parser.parse_args(argv)
     if args.git and args.no_git:
         parser.error("--git and --no-git are mutually exclusive")
 
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
+
     issues: list[Issue] = []
     try:
         if args.path:
-            _validate_path(Path(args.path).resolve(), issues)
+            target = Path(args.path).resolve()
+            logger.debug("validating single path %s", _relpath(target))
+            _validate_path(target, issues)
         else:
             _validate_ledger(LEDGER, issues, cross_file=True)
             _validate_sessions(issues)
             if not args.no_git:
+                logger.debug("running K7 git immutability check (require=%s)", args.git)
                 _validate_handoff_immutability(issues, quiet=args.quiet, require=args.git)
     except OSError as exc:  # pragma: no cover - defensive I/O guard
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+
+    issues.sort(key=lambda i: (str(_relpath(i.file)), i.line or 0, i.code, i.message))
+    logger.debug("finished: %d issue(s)", len(issues))
 
     if args.json:
         payload = [
             {"code": i.code, "message": i.message, "file": str(_relpath(i.file)), "line": i.line}
             for i in issues
         ]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for issue in issues:
             print(issue.render(), file=sys.stderr)

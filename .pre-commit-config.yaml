@@ -96,6 +96,14 @@ repos:
         language: system
         files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|CITATION\.cff|docs/|pyproject\.toml|alpha_zero/__init__\.py|CHANGELOG\.md)
         pass_filenames: false
+      - id: check-lua-bundle
+        name: check Civ6 Lua bundle sync
+        entry: python scripts/build_lua_bundle.py --check
+        language: system
+        # always_run: pre-commit drops deleted files before matching `files`, so a
+        # commit that only deletes a module would skip the check. It costs ~50 ms.
+        always_run: true
+        pass_filenames: false
       # Scoped to tests/regression/ (2026-09-02): the unit suite cannot complete
       # in the dev sandbox, so a pre-push hook running it was either skipped
       # with --no-verify or never finished -- a dead gate either way. CI owns

@@ -343,6 +343,26 @@ def _no_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return seen
 
 
+def _loads(text: str) -> Any:
+    return json.loads(text, object_pairs_hook=_no_duplicate_keys)
+
+
+def loads(text: str) -> Any:
+    """Read the text of a GameInfo export strictly.
+
+    Raises:
+        GameInfoError: a key appears twice in one object, or the text is not
+            JSON. A number too long for Python to convert counts as not JSON:
+            ``json`` raises a plain ``ValueError`` for it, not a decode error.
+    """
+    try:
+        return _loads(text)
+    except GameInfoError:
+        raise
+    except ValueError as exc:
+        raise GameInfoError(f"not JSON ({exc})") from exc
+
+
 def import_gameinfo(
     source: Path, out: str | None, ruleset_id: str = DEFAULT_RULESET_ID
 ) -> tuple[Path, ImportSummary]:
@@ -361,9 +381,7 @@ def import_gameinfo(
     """
     destination = resolve_output(out, ruleset_id)
     try:
-        document = json.loads(
-            Path(source).read_text(encoding="utf-8"), object_pairs_hook=_no_duplicate_keys
-        )
+        document = _loads(Path(source).read_text(encoding="utf-8"))
     except GameInfoError as exc:
         raise GameInfoError(f"{source}: {exc}") from exc
     except ValueError as exc:

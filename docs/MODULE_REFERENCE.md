@@ -4,8 +4,8 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v2.0.0, 2026-11-10 (`core/mcts/backup.py` and `utils/seeding.py` added;
-  module set unchanged since the 2026-09-02 Tier A dead-code removal)
+- **As of:** v2.0.0, 2026-11-20 (`rules` kernel added and `bridge` updated for GM-B0..GM-B5 research wiring, GameInfo capture, and `--mcts` refusal;
+  module set unchanged since `alpha_zero/rules/` landed in GM-K1)
 - **Submodule count:** 31
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
@@ -27,7 +27,7 @@ or removed.
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
 | `local` | 6 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, optionally with a pinned torch build, and the running-pinned preflight (`pinned_env.py`); fail-closed GCP isolation (`isolation.py`); the device check that refuses a card whose GPUs the pinned environment cannot provide (`devices.py`); the run-card model and loader (`card.py`); and the run-card driver that prices, pins, probes and runs a `configs/run_cards/` card (`run_card.py`) |
-| `bridge` | 18 | Civ6 Lua mod bridge: file IPC + headless FireTuner socket transport |
+| `bridge` | 18 | Civ6 Lua mod bridge: file IPC, headless FireTuner socket transport, research slot registry (`tech_registry.py`), GameInfo snapshot capture (`gameinfo_capture.py`), and simulator proxy / `--mcts` refusal (`microciv_proxy.py`, `mcts_policy.py`) |
 | `distributed` | 8 | Process-based distributed training: actor, learner, coordinator, shared storage |
 | `optimizations` | 7 | Training optimization strategies + Optuna hyperparameter search |
 | `spacetimedb` | 9 | SpacetimeDB integration |
@@ -57,8 +57,8 @@ CI `[dev]` install does not provide:
   optional extras (web, spacetimedb, llm) or live services.
 - **`cloud/`** — still omitted from the repo-wide gate, but **no longer unmeasured**. Since
   2026-09-02, CI's `cloud-tests` job measures it separately with `.coveragerc-cloud` and holds
-  it to the per-package floor in `coverage-floors.json` (**58%**, measured **59.7%** across
-  26 files / 5,485 statements on 2026-09-02). A floor may only ever be raised. Reproduce with
+  it to the per-package floor in `coverage-floors.json` (**58%**, measured **60.2%** across
+  26 files / 5,538 statements on 2026-11-20). A floor may only ever be raised. Reproduce with
   `make test-cloud-coverage`.
 
 The repo-wide gate (85%) re-tightens as the remaining omitted modules are brought under

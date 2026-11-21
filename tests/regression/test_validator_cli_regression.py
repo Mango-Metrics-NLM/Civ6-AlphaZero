@@ -183,6 +183,22 @@ class TestValidatorsShareOneContract:
         assert result.returncode == 0, f"{script} --json exited {result.returncode}"
         parsed = json.loads(result.stdout)
         assert isinstance(parsed, (list, dict))
+        assert json.dumps(parsed, indent=2, sort_keys=True) == result.stdout.strip(), (
+            f"{script} --json output must be formatted with indent=2, sort_keys=True"
+        )
+
+    @pytest.mark.parametrize("script", ALL_VALIDATORS)
+    def test_verbose_flag_is_accepted_and_logs_to_stderr(self, script: str) -> None:
+        extra = ("--no-git", "--verbose") if script == "validate_kb.py" else ("--verbose",)
+        result = _run(script, *extra)
+        assert result.returncode == 0, (
+            f"{script} {' '.join(extra)} exited {result.returncode}:\n"
+            f"{result.stdout}\n{result.stderr}"
+        )
+        logger_name = script.removesuffix(".py")
+        assert f"{logger_name} DEBUG " in result.stderr, (
+            f"{script} --verbose did not emit structured stderr DEBUG logs:\n{result.stderr}"
+        )
 
     def test_every_path_validator_is_listed_here(self) -> None:
         """Keeps PATH_VALIDATORS honest as validators are added.

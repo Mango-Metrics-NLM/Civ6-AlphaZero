@@ -155,8 +155,18 @@ buildings and units with their costs, eras and prerequisites. Identifiers and wh
 only, no text. With file access it writes `gameinfo.json` beside its other files; without
 (the usual case) it prints the snapshot to `Lua.log` as `AZ_GAMEINFO` lines, cut into pieces
 like a state. Each attempt starts with an `AZ_GAMEINFO_BEGIN` line (or, with file access, by
-deleting the previous `gameinfo.json`), and the closing line of a snapshot in pieces carries a
-checksum of the whole text. `ENABLE_GAMEINFO_EXPORT = false` in the mod's config turns it off.
+overwriting the previous `gameinfo.json` with that line, which the capture refuses as a
+snapshot the mod began and did not finish; a read-only file is removed instead), and the closing line of a snapshot in pieces
+carries a checksum of the whole text. A table with a row or a value the mod cannot export
+(anything but an identifier or a whole number) is left out whole, and the capture then
+refuses the snapshot for lacking it.
+
+`ENABLE_GAMEINFO_EXPORT = false` turns the export off, but only where the mod can read its
+override file (`alphazero_config.json`), which needs file access. Without file access (the
+usual case) there is no switch at run time: the export runs at game load, before any
+outside channel exists. To turn it off there, change the default in
+`mod/AlphaZeroAI/Scripts/Config.lua`, run `python scripts/build_lua_bundle.py` and reinstall
+the mod. The export only prints to `Lua.log`; nothing leaves the machine.
 
 To use it:
 
@@ -176,6 +186,8 @@ refuses, with a one-line reason:
   set, or over an existing file;
 - a snapshot that lacks one of the six tables: the mod leaves a table out when it could
   not read it, and a rule set built from the rest would silently have no units, say;
+- a snapshot that is not strict JSON (a key written twice, a number too long to read), or
+  whose civics could not number research slots (a row with no name, the same civic twice);
 - when the newest snapshot in the log is unfinished: still being written, cut short, with
   a line missing (the checksum then does not match, so pieces of two snapshots are never
   joined), or an attempt that could read no table. A `Lua.log` covers a whole launch and

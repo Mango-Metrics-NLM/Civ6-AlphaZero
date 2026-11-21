@@ -47,6 +47,7 @@ from alpha_zero.cloud.gcp.config import (
     NetworkArchitectureConfig,
 )
 from alpha_zero.cloud.gcp.storage import GCSModelStorage, GCSTrajectoryStorage
+from alpha_zero.utils.seeding import SeedStream, derive_seed, enforce_deterministic_backend
 
 logger = logging.getLogger(__name__)
 
@@ -632,6 +633,44 @@ def dummy_trajectory(
     return trajectory
 
 
+def _apply_search_seed(
+    mcts_kwargs: dict[str, Any], seed: int | None, game_idx: int, device: str, preset: str
+) -> None:
+    """Thread a per-game search seed into ``mcts_kwargs``; a seeded run needs deterministic CUDA."""
+    if seed is not None and game_idx == 0:
+        enforce_deterministic_backend(device)
+        if preset != "default":  # its clones and combat draw from generators no seed reaches
+            logger.warning("seed=%d does not make gameplay preset %r repeat", seed, preset)
+    search_seed = derive_seed(seed, SeedStream.SELF_PLAY_SEARCH, game_idx)
+    if search_seed is not None and seed is not None and "seed" not in mcts_kwargs:
+        mcts_kwargs["seed"] = search_seed
+        logger.debug("Self-play game %d search seed: base=%d -> %d", game_idx, seed, search_seed)
+
+
+def _sign_rewards(trajectory: dict[str, Any], winner: int | None) -> None:
+    """Populate ``trajectory['rewards']`` signed per player-to-move from ``winner``."""
+    trajectory["rewards"] = [
+        outcome_value_for_player(winner, player) for player in trajectory["players"]
+    ]
+
+
+def _cleanup_after_game(
+    game_idx: int, num_games: int, device: str, label: str = "Progress"
+) -> None:
+    """Release CUDA cache after a game and log periodic RSS memory usage."""
+    if device != "cpu":
+        torch.cuda.empty_cache()
+    if (game_idx + 1) % 10 != 0:
+        return
+    mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
+    logger.info("%s: %d/%d games, Memory: %.0f MB", label, game_idx + 1, num_games, mem_mb)
+    if mem_mb > MEMORY_THRESHOLD_MB:
+        logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
+        gc.collect()
+        if device != "cpu":
+            torch.cuda.empty_cache()
+
+
 def run_selfplay(
     model: torch.nn.Module,
     num_games: int,
@@ -661,15 +700,12 @@ def run_selfplay(
             (c_puct, dirichlet_alpha, dirichlet_epsilon, temperature, temperature_threshold).
         dry_run: If True, create dummy trajectories without running games.
         device: Device for neural network inference (e.g., "cuda" or "cpu").
-        seed: Base seed for environment generation. Each game ``i`` is seeded
-            with ``seed + i``, so a run is reproducible while games still
-            differ from one another. ``None`` (the default) leaves environments
-            unseeded, preserving historical behavior.
-
-            Note that seeding the global RNGs is not sufficient on its own:
-            ``MicroCivEnv`` holds its own ``numpy`` generator, so without this
-            argument the game stream varies between runs even under a fixed
-            global seed.
+        seed: Base seed for environment and search generation. Each game ``i``
+            seeds its environment with ``seed + i`` and its MCTS search via
+            ``derive_seed(seed, SeedStream.SELF_PLAY_SEARCH, i)``, so a seeded
+            run is reproducible end to end while games still differ from one
+            another. ``None`` (the default) leaves both unseeded, preserving
+            historical behavior.
 
     Returns:
         List of trajectory dictionaries, each containing:
@@ -761,6 +797,7 @@ def run_selfplay(
                     continue
                 mcts_kwargs[k] = v
 
+        _apply_search_seed(mcts_kwargs, seed, game_idx, device, gameplay_preset)
         mcts = create_mcts(
             variant=mcts_type,
             network=model,
@@ -827,9 +864,7 @@ def run_selfplay(
         # Sign the game outcome per player-to-move (only if we collected data).
         elif trajectory["spatial"]:
             winner = final_info.get("winner", getattr(env, "winner", None))
-            trajectory["rewards"] = [
-                outcome_value_for_player(winner, player) for player in trajectory["players"]
-            ]
+            _sign_rewards(trajectory, winner)
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
@@ -837,27 +872,8 @@ def run_selfplay(
             logger.debug("Game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
 
         # Cleanup after each game to prevent memory accumulation
-        del trajectory
-        del mcts
-        del env
-        if device != "cpu":
-            torch.cuda.empty_cache()
-
-        # Log progress and memory usage periodically
-        if (game_idx + 1) % 10 == 0:
-            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
-            logger.info(
-                "Progress: %d/%d games, Memory: %.0f MB",
-                game_idx + 1,
-                num_games,
-                mem_mb,
-            )
-            # Force garbage collection if memory is getting high
-            if mem_mb > MEMORY_THRESHOLD_MB:
-                logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
-                gc.collect()
-                if device != "cpu":
-                    torch.cuda.empty_cache()
+        del trajectory, mcts, env
+        _cleanup_after_game(game_idx, num_games, device)
 
     # Log final statistics including any failed games
     if failed_games > 0:
@@ -881,6 +897,7 @@ def run_muzero_selfplay(
     device: str = "cpu",
     temperature_schedule: str = "threshold",
     gameplay_preset: str = "default",
+    seed: int | None = None,
 ) -> list[dict]:
     """Run MuZero self-play games using learned dynamics model.
 
@@ -898,6 +915,10 @@ def run_muzero_selfplay(
         dry_run: If True, create dummy trajectories.
         device: Device for neural network inference.
         temperature_schedule: Temperature decay schedule type.
+        gameplay_preset: Gameplay preset name (default ``"default"``).
+        seed: Optional base RNG seed; when set, seeds each game's environment
+            (``seed + i``) and search RNG via
+            ``derive_seed(seed, SeedStream.SELF_PLAY_SEARCH, i)``.
 
     Returns:
         List of trajectory dictionaries with MuZero-specific fields:
@@ -940,6 +961,7 @@ def run_muzero_selfplay(
             board_size=board_size,
             max_turns=max_turns,
             gameplay_preset=gameplay_preset,
+            seed=None if seed is None else seed + game_idx,
         )
 
         # MuZero MCTS uses the dynamics model for tree search
@@ -952,6 +974,7 @@ def run_muzero_selfplay(
                 if v is not None:
                     mcts_kwargs[k] = v
 
+        _apply_search_seed(mcts_kwargs, seed, game_idx, device, gameplay_preset)
         mcts = create_mcts(
             variant="muzero",
             network=model,
@@ -1021,9 +1044,7 @@ def run_muzero_selfplay(
             logger.warning("MuZero game %d/%d failed", game_idx + 1, num_games)
         elif trajectory["spatial"]:
             winner = final_info.get("winner", getattr(env, "winner", None))
-            trajectory["rewards"] = [
-                outcome_value_for_player(winner, player) for player in trajectory["players"]
-            ]
+            _sign_rewards(trajectory, winner)
             trajectories.append(trajectory)
 
         elapsed = time.time() - start_time
@@ -1031,26 +1052,8 @@ def run_muzero_selfplay(
             logger.debug("MuZero game %d/%d completed in %.1fs", game_idx + 1, num_games, elapsed)
 
         # Cleanup
-        del trajectory
-        del mcts
-        del env
-        if device != "cpu":
-            torch.cuda.empty_cache()
-
-        # Log progress periodically
-        if (game_idx + 1) % 10 == 0:
-            mem_mb = psutil.Process().memory_info().rss / 1024 / 1024 if _PSUTIL_AVAILABLE else 0.0
-            logger.info(
-                "MuZero progress: %d/%d games, Memory: %.0f MB",
-                game_idx + 1,
-                num_games,
-                mem_mb,
-            )
-            if mem_mb > MEMORY_THRESHOLD_MB:
-                logger.warning("High memory usage (%.0f MB), forcing GC", mem_mb)
-                gc.collect()
-                if device != "cpu":
-                    torch.cuda.empty_cache()
+        del trajectory, mcts, env
+        _cleanup_after_game(game_idx, num_games, device, label="MuZero progress")
 
     if failed_games > 0:
         logger.warning("MuZero self-play: %d/%d games failed", failed_games, num_games)
@@ -1267,9 +1270,7 @@ def run_batch_selfplay(
                 # Sign the outcome per player-to-move, from the absolute winner.
                 env_i = vec_env.get_env(i)
                 winner = getattr(env_i, "winner", None)
-                traj["rewards"] = [
-                    outcome_value_for_player(winner, player) for player in traj["players"]
-                ]
+                _sign_rewards(traj, winner)
                 # A game the loop cut short is not a draw -- it is an unlabelled
                 # game being recorded as one. Count them so a budget that is too
                 # small shows up in the logs instead of quietly flattening every

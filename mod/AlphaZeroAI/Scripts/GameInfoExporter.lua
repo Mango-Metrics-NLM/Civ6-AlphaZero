@@ -42,8 +42,12 @@ local function sanitise(value)
     return nil
 end
 
--- The rows of one game table, or nil when the game has no such table or
--- reading it fails. A row left with no column at all is dropped.
+-- The rows of one game table, or nil when the game has no such table or it
+-- cannot be read whole. A column the game leaves empty (nil) is left out of
+-- its row. A column that is present but is not an identifier or a whole
+-- number, or a row with none of the columns, fails the whole table: dropping
+-- the value or the row would hand the importer a prerequisite that is not
+-- there or a move count of zero, and it could not tell.
 local function exportTable(spec)
     local gameTable = GameInfo and GameInfo[spec.name]
     if not gameTable then
@@ -55,15 +59,21 @@ local function exportTable(spec)
         for row in gameTable() do
             local copy, kept = {}, 0
             for _, column in ipairs(spec.columns) do
-                local value = sanitise(row[column])
-                if value ~= nil then
+                local raw = row[column]
+                if raw ~= nil then
+                    local value = sanitise(raw)
+                    if value == nil then
+                        error(string.format("%s.%s holds a value that is not exported",
+                            spec.name, column))
+                    end
                     copy[column] = value
                     kept = kept + 1
                 end
             end
-            if kept > 0 then
-                table.insert(rows, copy)
+            if kept == 0 then
+                error(string.format("%s has a row with none of its columns", spec.name))
             end
+            table.insert(rows, copy)
         end
     end)
     if not ok then
@@ -99,14 +109,20 @@ end
 
 -- Export the snapshot and hand it to FileIO. Returns true, or false and why.
 function AlphaZeroGameInfo.ExportAndWrite()
+    -- false: the previous load's snapshot could be neither marked nor removed.
+    local begun = true
     if AlphaZeroFileIO and AlphaZeroFileIO.BeginGameInfo then
-        AlphaZeroFileIO.BeginGameInfo()
+        begun = AlphaZeroFileIO.BeginGameInfo()
     end
     local document, missing = AlphaZeroGameInfo.Export()
     if #missing > 0 and Log then
         Log.Warn("GameInfo tables not exported: %s", table.concat(missing, ", "))
     end
     if next(document) == nil then
+        if begun == false then
+            return false, "no GameInfo table could be read, and the previous snapshot "
+                .. "could not be removed: the file on disk is from an earlier game load"
+        end
         return false, "no GameInfo table could be read"
     end
     if not AlphaZeroFileIO or not AlphaZeroFileIO.WriteGameInfo then

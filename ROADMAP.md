@@ -42,18 +42,21 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
   reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
   and A1/A1-R run-card execution remains open until run on the maintainer's GPU machine.
-- `openspec/changes/add-game-rules-kernel`: planned (documentation and tracking
-  only so far): a data-driven rules kernel outside the play path, the golden
-  fingerprint of the default env and the kernel tooling (GM-S0a, GM-K1, GM-K2;
-  plan `kb/specs/20261119-game-mechanics-plan.md`).
-- `openspec/changes/archive/2026-11-20-add-bridge-research-parity`: built, not run in a real
-  game: a generated Lua bundle, a Lua test harness, exporter and Python wiring
-  for researched techs, buildings and research actions, the GameInfo snapshot
-  and the `--mcts` refusal (GM-B0..GM-B5). Open: the maintainer's live
-  checklist (`docs/LIVE_CIV6.md`) and the search-mode action translator
-  (GM-B6, not scheduled).
+- `openspec/changes/add-game-rules-kernel`: GM-S0a (golden env fingerprint), GM-K1
+  (`alpha_zero/rules/` kernel), and GM-K2 (`pace`, `import-gameinfo`) landed off the
+  play path (PRs #143, #146, #147; no training environment consumes it yet); pending
+  OpenSpec archive (plan `kb/specs/20261119-game-mechanics-plan.md`).
+- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path, not run in a real
+  game: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter
+  and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py`
+  snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153).
+  Open: the maintainer's live checklist (`docs/LIVE_CIV6.md`) and the search-mode action
+  translator (`GM-B6`, not scheduled).
 
 ### Next — v2.1 "First validated learning run"
+
+- Follow-up: expose `--seed` on `selfplay_worker.py`'s standalone CLI (`parse_args()`) if
+  standalone CLI invocations need reproducible seeding alongside the already-seeded Python API.
 
 - **A1**, registered in [`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1
   (2026-11-11): 20 iterations × 24 self-play games at board 8 / 60 turns on the
