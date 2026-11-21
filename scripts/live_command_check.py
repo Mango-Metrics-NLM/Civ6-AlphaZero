@@ -155,8 +155,11 @@ async def run_check(
         after = await bridge.wait_for_state(timeout=timeout, require_new=True)
     except Exception as exc:
         if command.get("action_type") == "end_turn":
-            out(f"turn ended; no new state within {timeout:g}s (the other players may be moving)")
-            return EXIT_EFFECT
+            out(
+                f"end of turn accepted, NOT confirmed: no new state within {timeout:g}s "
+                "(the other players may still be moving; a longer --timeout may show it)"
+            )
+            return EXIT_NO_EFFECT
         out(f"no state after the command within {timeout:g}s ({exc})")
         return EXIT_NO_CONTACT
 
@@ -196,7 +199,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         command = build_command(args)
-    except ValueError as exc:
+        LuaCommand.from_dict(command)  # a command the protocol cannot express is a usage error
+    except Exception as exc:
         parser.error(str(exc))
 
     async def _session() -> int:

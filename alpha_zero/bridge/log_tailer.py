@@ -94,6 +94,14 @@ class TailerStats:
     backlog_states_used: int = 0
 
 
+def _turn_of(state: dict[str, Any]) -> Any:
+    """The game turn of a state message, wrapped (``{"state": {...}}``) or bare."""
+    inner = state.get("state")
+    if isinstance(inner, dict) and "turn_id" in inner:
+        return inner["turn_id"]
+    return state.get("turn_id")
+
+
 # --- Main class ---
 
 
@@ -196,8 +204,18 @@ class LogTailer:
         # across two chunk lines, so the pieces can be joined and decoded as
         # one (see ``_parse_json``); ``replace`` destroyed both halves.
         self._file = open(self._log_path, encoding="utf-8", errors="surrogateescape")
-        self._backlog_state = self._scan_backlog()
-        self._file.seek(0, os.SEEK_END)
+        # A restart is a new session: nothing read before it is current.
+        self._latest_state = None
+        self._state_seq = self._handed_seq = 0
+        self._latest_heartbeat = None
+        self._heartbeat_time = 0.0
+        self._chunk_buffer.clear()
+        self._chunk_total = 0
+        self._state_event.clear()
+        # The live tail starts exactly where the backlog scan stopped, so a
+        # line written in between is in one of the two, never in neither.
+        self._backlog_state, scanned_to = self._scan_backlog()
+        self._file.seek(scanned_to)
         self._file_pos = self._file.tell()
         self._running = True
 
@@ -255,6 +273,11 @@ class LogTailer:
             )
             self._file.seek(0)
             self._file_pos = 0
+            # A new log is a new game session: the old one's state is not
+            # current, and neither are its half-read pieces.
+            self._backlog_state = None
+            self._chunk_buffer.clear()
+            self._chunk_total = 0
 
         # Read new lines with readline() in a loop rather than
         # ``for line in self._file``: the file-object iterator keeps an
@@ -295,6 +318,7 @@ class LogTailer:
 
     def _handle_state(self, json_str: str) -> None:
         """Parse a complete (non-chunked) state JSON."""
+        self._backlog_state = None  # a newer state, readable or not
         data = self._parse_json(json_str)
         if data is not None:
             self._stats.states_received += 1
@@ -313,40 +337,60 @@ class LogTailer:
         self._backlog_state = None
         self._state_event.set()
 
-    def _scan_backlog(self) -> dict[str, Any] | None:
-        """The last complete state in the end of the existing log, or None.
+    def _scan_backlog(self) -> tuple[dict[str, Any] | None, int]:
+        """The last complete state in the existing log, and where the scan ended.
 
         Only states are read: an old ack answers nothing and an old heartbeat
-        must not make the mod look alive.
+        must not make the mod look alive. The state is not used when the log
+        ends inside a state sent in pieces (a newer one is being written) or
+        when the newest state in it could not be read.
+
+        Returns:
+            ``(state or None, byte offset the live tail must start from)``.
         """
-        if not self._backlog_bytes:
-            return None
         try:
             size = os.path.getsize(self._log_path)
+        except OSError:
+            return None, 0
+        if not self._backlog_bytes:
+            return None, size
+        try:
             with open(self._log_path, "rb") as handle:
                 start = max(0, size - self._backlog_bytes)
                 handle.seek(start)
-                raw = handle.read()
+                raw = handle.read(size - start)
         except OSError:
-            return None
-        lines = raw.decode("utf-8", errors="surrogateescape").splitlines()
+            return None, size
+        # Only complete lines: a last line still being written belongs to the
+        # live tail. ``split("\n")``, as the live path splits; ``splitlines``
+        # would also cut at U+2028 inside a name.
+        end = raw.rfind(b"\n") + 1
+        scanned_to = start + end
+        lines = raw[:end].decode("utf-8", errors="surrogateescape").split("\n")
         if start > 0 and lines:
             lines = lines[1:]  # the scan began inside a line
         reader = LogTailer(self._log_path, backlog_bytes=0)
+        newest_unreadable = False
         for line in lines:
+            line = line.rstrip("\r")
             content = _PREFIX_RE.sub("", line.strip()).strip()
-            if content.startswith((_STATE_PREFIX, _CHUNK_PREFIX, _CHUNK_END_PREFIX)):
-                try:
-                    reader._parse_line(line)
-                except Exception:  # a damaged line is not worth failing start for
-                    logger.debug("Unreadable backlog line skipped", exc_info=True)
-        if reader._latest_state is not None:
-            logger.info(
-                "A state from before start is in the log (turn=%s); it is used once "
-                "a heartbeat shows the mod is listening",
-                reader._latest_state.get("turn_id", "?"),
-            )
-        return reader._latest_state
+            if not content.startswith((_STATE_PREFIX, _CHUNK_PREFIX, _CHUNK_END_PREFIX)):
+                continue
+            before = reader._state_seq
+            try:
+                reader._parse_line(line)
+            except Exception:  # a damaged line is not worth failing start for
+                logger.debug("Unreadable backlog line skipped", exc_info=True)
+            if not content.startswith(_CHUNK_PREFIX):
+                newest_unreadable = reader._state_seq == before
+        if reader._chunk_buffer or newest_unreadable or reader._latest_state is None:
+            return None, scanned_to
+        logger.info(
+            "A state from before start is in the log (turn=%s); it is used once a "
+            "heartbeat for that turn shows the mod is listening",
+            _turn_of(reader._latest_state),
+        )
+        return reader._latest_state, scanned_to
 
     def _handle_chunk(self, chunk_str: str) -> None:
         """Parse a state chunk: seq/total:data."""
@@ -392,6 +436,9 @@ class LogTailer:
         full_json = "".join(parts)
         self._chunk_buffer.clear()
         self._chunk_total = 0
+        # A newer state was written, readable or not: the one from before
+        # start is no longer the current one.
+        self._backlog_state = None
 
         data = self._parse_json(full_json)
         if data is not None:
@@ -411,11 +458,12 @@ class LogTailer:
             self._latest_heartbeat = data
             self._heartbeat_time = time.monotonic()
             self._stats.heartbeats_received += 1
-            if self._backlog_state is not None:
-                # The mod writes heartbeats only while it listens for a
-                # command, so the state it wrote before we started is the one
-                # it is waiting on.
-                backlog = self._backlog_state
+            backlog = self._backlog_state
+            if backlog is not None and data.get("turn") == _turn_of(backlog) is not None:
+                # The mod is alive and on the turn of the state it wrote
+                # before we started. (A heartbeat alone is not enough: the mod
+                # also writes one when a game loads.) A reload of the same
+                # save at the same turn cannot be told apart from here.
                 self._stats.backlog_states_used += 1
                 self._publish_state(backlog)
 
@@ -491,14 +539,20 @@ class LogTailer:
         Raises:
             StateTimeoutError: If no state arrives within timeout.
         """
-        if self._state_seq <= self._handed_seq:
+        deadline = time.monotonic() + timeout
+        while self._state_seq <= self._handed_seq:
             # Nothing unseen. No await sits between this check and the clear,
-            # so a state cannot slip in between and be lost.
+            # so a state cannot slip in between and be lost. A loop, because
+            # another caller woken by the same state may have taken it.
             self._state_event.clear()
             try:
-                await asyncio.wait_for(self._state_event.wait(), timeout=timeout)
+                await asyncio.wait_for(
+                    self._state_event.wait(), timeout=max(0.0, deadline - time.monotonic())
+                )
             except TimeoutError:
                 raise StateTimeoutError(timeout) from None
+            if self._latest_state is None:
+                raise StateTimeoutError(timeout)
 
         state = self._hand_out()
         if state is None:

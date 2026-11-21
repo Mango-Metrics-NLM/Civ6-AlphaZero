@@ -273,7 +273,13 @@ python scripts/live_command_check.py --action unit_move --unit-id 65536 --x 10 -
 It connects as the agent does (the same environment variables, below). Exit 0: accepted and the
 effect is visible; 1: refused, or accepted with nothing to show; 2: no state or no answer. If it
 reports "no state from the game", the mod is not waiting for a command (it stops 30 seconds after
-the last one); `--use-backlog` acts on the last state already in `Lua.log`.
+the last one); `--use-backlog` acts on the last state already in `Lua.log`. An accepted `end_turn`
+with no new state inside the timeout is reported as "accepted, NOT confirmed" and exits 1: the
+other players may still be moving, so try a longer `--timeout`.
+
+Started in the middle of a turn, the agent and this tool use the state already in `Lua.log` once
+a heartbeat for the same game turn arrives. One case cannot be told apart from here: the same save
+reloaded at the same turn. If you reload, start the agent after the turn has begun again.
 
 What it compares between the two states: the turn number, the end-turn blocker, current research
 and civic, each own city's current production, and each own unit's tile and remaining moves. A

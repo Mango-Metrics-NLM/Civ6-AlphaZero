@@ -36,8 +36,10 @@ def _ack_line(msg_id: int) -> str:
     return f"AlphaZeroMain: AZ_ACK:{json.dumps({'msg_id': msg_id, 'success': True})}"
 
 
-def _hb_line() -> str:
-    return f"AlphaZeroMain: AZ_HB:{json.dumps({'lua_alive': True})}"
+def _hb_line(turn: int | None = None) -> str:
+    """A heartbeat as the mod writes it; ``turn`` is the game turn it reports."""
+    body = {"lua_alive": True} if turn is None else {"lua_alive": True, "turn": turn}
+    return f"AlphaZeroMain: AZ_HB:{json.dumps(body)}"
 
 
 def _append(path: Path, *lines: str) -> None:
@@ -229,7 +231,7 @@ class TestBacklogState:
                 await b.wait_for_state(timeout=SHORT, require_new=False)
             assert b.backlog_state() is not None
 
-            _append(log, _hb_line())
+            _append(log, _hb_line(4))
             b._tailer._read_new_lines()
             assert b.stats["backlog_states_used"] == 1
             assert b.backlog_state() is None
