@@ -669,3 +669,27 @@ class TestReviewFindings:
         game = c.load(fog)
         assert run(game, attack())[:2] == (False, "WOULD_START_WAR")
         assert nothing_requested(game)
+
+
+class TestProductionNeedsAClearYes:
+    """Review of #158: a city that cannot be asked was treated as one that said yes."""
+
+    @pytest.mark.parametrize(
+        "setup",
+        [
+            "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce = nil\n",
+            "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce ="
+            " function() error('not in this context') end\n",
+            "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce ="
+            " function() return nil end\n",
+            "Players[0]:GetCities():FindID(301).GetBuildQueue = function() return nil end\n",
+        ],
+        ids=["no CanProduce", "CanProduce raises", "CanProduce answers nil", "no build queue"],
+    )
+    def test_nothing_is_requested_without_an_explicit_yes(self, setup: str) -> None:
+        game = c.load(setup)
+        success, code, _ = run(game, produce("UNIT_WARRIOR"))
+        assert (success, code) == (False, "OPERATION_REFUSED")
+        assert nothing_requested(game)
+        c.frame(game)
+        assert building(game) is None

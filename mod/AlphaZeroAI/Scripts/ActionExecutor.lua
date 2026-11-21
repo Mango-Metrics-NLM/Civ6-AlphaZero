@@ -626,7 +626,8 @@ local function executeCityProduce(playerId, command)
         end
     end)
     -- Anything but a clear yes is a refusal, a game that cannot be asked
-    -- included: this answer also decides what the exporter offers.
+    -- included: a request without it would be acknowledged as a success,
+    -- and this answer also decides what the exporter offers.
     if allowed ~= true then
         return false, ERROR_CODES.OPERATION_REFUSED,
             string.format("City %d cannot start %s now%s", cityId, typeName,

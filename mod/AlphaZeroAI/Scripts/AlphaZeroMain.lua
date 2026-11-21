@@ -3431,7 +3431,8 @@ local function executeCityProduce(playerId, command)
         end
     end)
     -- Anything but a clear yes is a refusal, a game that cannot be asked
-    -- included: this answer also decides what the exporter offers.
+    -- included: a request without it would be acknowledged as a success,
+    -- and this answer also decides what the exporter offers.
     if allowed ~= true then
         return false, ERROR_CODES.OPERATION_REFUSED,
             string.format("City %d cannot start %s now%s", cityId, typeName,
@@ -4493,8 +4494,11 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         end
     end
 
-    local overCap = bridgeState.actionsThisTurn >= cap and not onlyEndTurn
-    if overCap and onlyUnblocking and bridgeState.actionsThisTurn < 2 * cap then
+    -- The count the turn would reach with this message: a batch may not carry
+    -- it past a limit either.
+    local projected = bridgeState.actionsThisTurn + #commands
+    local overCap = projected > cap and not onlyEndTurn
+    if overCap and onlyUnblocking and projected <= 2 * cap then
         local blocker = nil
         if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
             local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
