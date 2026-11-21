@@ -1,5 +1,12 @@
 # DEV-SQE Log
 
+## 2026-11-21 - GM-B7b: the mod offers what it will carry out; production by name (branch `claude/gm-b7b-exporter-offers`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-B7b of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `fix-live-command-layer`, tasks 2.1 to 2.4). The exporter's offers came from hand rules the executor did not share (a neighbour table wrong for both row parities, occupied tiles, peace-time attacks, production asked by index); the Python side mapped production names to slots with a per-process hash.
+- **Files Changed:** `mod/AlphaZeroAI/Scripts/StateExporter.lua`, `ActionExecutor.lua`, `AlphaZeroMain.lua` (generated), `alpha_zero/bridge/production_slots.py` (new), `alpha_zero/bridge/action_converter.py`, `alpha_zero/bridge/Agent.md`, `tests/fixtures/lua/civ6_stub.lua`, `tests/fixtures/lua/civ6_stub_commands.lua`, `tests/unit/test_lua_exporter_offers.py`, `tests/unit/test_bridge_production_slots.py`, `tests/unit/test_lua_harness.py`, `tests/unit/test_action_converter.py`, `tests/unit/test_bridge_action_converter.py`, `docs/LIVE_CIV6.md`, `docs/MODULE_REFERENCE.md`, `CHANGELOG.md`, `CLAUDE.md`.
+- **Tests:** 105 new tests failed before the implementation; Lua, bridge and regression suites on the merged branch: 3,568 passed, 13 skipped; ten planted defects each caught; `ruff check .` clean; play-path diff empty. `make verify` not run. **Nothing run against a real game.**
+- **Found by the independent review:** an export walked the unit table once per candidate item; the production check passed when the game could not be asked, which as the offer gate would have listed everything; a slot nothing was offered at went out as a bare number.
+
 ## 2026-11-21 - GM-B7a: eight mod commands rewritten from the game's UI code (branch `claude/gm-b7a-command-executor`)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-B7a of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `fix-live-command-layer`, tasks 1.1 to 1.7), approved by the maintainer on 2026-11-20. Read against the game's own UI scripts, a move named an operation type that does not exist and a production order carried a raw id; skip, fortify and sleep went out under names the UI does not use.
