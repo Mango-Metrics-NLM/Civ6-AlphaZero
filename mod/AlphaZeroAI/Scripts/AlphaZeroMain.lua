@@ -568,8 +568,14 @@ local escapeChars = {
 }
 
 -- One pass over the characters JSON does not allow raw in a string: the quote,
--- the backslash and the control characters (%c). The short forms come from
+-- the backslash and the control characters. The short forms come from
 -- escapeChars; any other control character is written as \u00XX.
+--
+-- The control characters are written out as bytes 0 to 31 and 127 (%z is the
+-- zero byte, which a Lua 5.1 pattern cannot hold literally). The class %c is
+-- not used: it asks the C library, and under the Windows C runtime that
+-- answers "control" for bytes at and above 0x80, which broke every non-ASCII
+-- character into \u00XX pieces.
 --
 -- This used to be two passes, the second with the pattern '[\x00-\x1f]'. Lua
 -- 5.1 has no \x escape, so that was the class "x, 0 to x, 1, f": it rewrote
@@ -578,7 +584,7 @@ local escapeChars = {
 -- a newline came back as the two characters "\n" and a quote ended the string
 -- early.
 local function escapeString(str)
-    str = string.gsub(str, '[%c"\\]', function(c)
+    str = string.gsub(str, '[%z\1-\31\127"\\]', function(c)
         return escapeChars[c] or string.format("\\u%04x", string.byte(c))
     end)
     return str
