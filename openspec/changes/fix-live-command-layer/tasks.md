@@ -16,8 +16,9 @@
 - [x] 2.4 Greedy production by name in a new module; the same command in two processes
 
 ## 3. GM-B7c: the loop
-- [ ] 3.1 `bridge/command_policy.py`: per-turn ledger, refused commands not resent, cap, game-turn counting
-- [ ] 3.2 `scripts/live_command_check.py`
+- [x] 3.1 `bridge/turn_ledger.py` (planned as `command_policy.py`): per-turn ledger, refused commands not resent, once-per-turn choices, cap, declared stall; game turns counted by a new setting (`CIV6AZ_AGENT_MAX_GAME_TURNS`), `max_turns` keeps counting steps
+- [x] 3.2 `scripts/live_command_check.py` (landed with the transport fix, OpenSpec change `fix-live-state-delivery`)
+- [x] 3.3 The real loop run against the mod's Lua in the stand-in (`tests/fixtures/lua_bridge.py`)
 
 ## 4. Verification
 - [ ] 4.1 Empty play-path diff on every PR; debt ratchet; `build_lua_bundle.py --check`; Lua suites with `CIV6AZ_REQUIRE_LUA=1`

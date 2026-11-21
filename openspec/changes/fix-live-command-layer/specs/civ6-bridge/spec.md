@@ -80,9 +80,23 @@ would start a war; a city's production choices SHALL be asked by row hash.
 ### Requirement: The loop does not resend what the game refused
 
 Within one game turn the agent loop SHALL NOT send a command the mod refused in that turn again,
-SHALL stop sending after a fixed number of commands, and SHALL count `--max-turns` in game turns.
+SHALL choose research and each city's production at most once unless the choice had no effect,
+SHALL send only `end_turn` after a fixed number of commands, and SHALL be able to stop after a
+configured number of game turns (`CIV6AZ_AGENT_MAX_GAME_TURNS`). A choice that cannot be sent
+MUST be re-selected, not answered by ending the turn. When the game keeps blocking the end of
+turn and nothing sent changes that, the loop SHALL declare a stall and stop sending, not spin.
 
 #### Scenario: A refused command
 
 - **WHEN** the mod answers a command with a failure
 - **THEN** the same command is not sent again before the turn ends
+
+#### Scenario: A turn that cannot be ended
+
+- **WHEN** the game answers `end_turn` with a blocker three times running and the state does not change
+- **THEN** the loop reports a stalled turn and exits with code 3 (or, with `on_stall=wait`, sends nothing more in that turn)
+
+#### Scenario: A limit in game turns
+
+- **WHEN** `max_game_turns` is 3 and each turn takes several commands
+- **THEN** commands are sent in exactly three game turns
