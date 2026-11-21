@@ -137,9 +137,11 @@ async def run_check(
         out("WARNING: no fresh state; using the last state already in Lua.log")
     out(f"state: turn {before.turn_id}, blocker {before.end_turn_blocking}")
 
-    message = CommandMessage.create_single(
-        msg_id=bridge.next_msg_id(), command=LuaCommand.from_dict(command)
-    )
+    lua_command = LuaCommand.from_dict(command)
+    message = CommandMessage.create_single(msg_id=bridge.next_msg_id(), command=lua_command)
+    # Judge what is actually sent: the protocol turns an id written as text
+    # into a number, and the states carry numbers.
+    command = lua_command.to_dict()
     out(f"sending: {json.dumps(command, sort_keys=True)}")
     try:
         ack = await bridge.send_and_wait(message, timeout=timeout)

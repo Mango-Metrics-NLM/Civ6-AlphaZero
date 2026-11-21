@@ -205,13 +205,7 @@ class LogTailer:
         # one (see ``_parse_json``); ``replace`` destroyed both halves.
         self._file = open(self._log_path, encoding="utf-8", errors="surrogateescape")
         # A restart is a new session: nothing read before it is current.
-        self._latest_state = None
-        self._state_seq = self._handed_seq = 0
-        self._latest_heartbeat = None
-        self._heartbeat_time = 0.0
-        self._chunk_buffer.clear()
-        self._chunk_total = 0
-        self._state_event.clear()
+        self._forget_session()
         # The live tail starts exactly where the backlog scan stopped, so a
         # line written in between is in one of the two, never in neither.
         self._backlog_state, scanned_to = self._scan_backlog()
@@ -273,11 +267,12 @@ class LogTailer:
             )
             self._file.seek(0)
             self._file_pos = 0
-            # A new log is a new game session: the old one's state is not
-            # current, and neither are its half-read pieces.
+            # A new log is a new game session: nothing read from the old one
+            # is current. That covers the state found at start and half-read
+            # pieces, and also a state already published (handed out or not)
+            # and the old game's heartbeat.
             self._backlog_state = None
-            self._chunk_buffer.clear()
-            self._chunk_total = 0
+            self._forget_session()
 
         # Read new lines with readline() in a loop rather than
         # ``for line in self._file``: the file-object iterator keeps an
@@ -328,6 +323,16 @@ class LogTailer:
                 data.get("turn_id", "?"),
                 len(data.get("map", {}).get("tiles", [])),
             )
+
+    def _forget_session(self) -> None:
+        """Drop everything read so far: published state, cursors, pieces, heartbeat."""
+        self._latest_state = None
+        self._state_seq = self._handed_seq = 0
+        self._latest_heartbeat = None
+        self._heartbeat_time = 0.0
+        self._chunk_buffer.clear()
+        self._chunk_total = 0
+        self._state_event.clear()
 
     def _publish_state(self, data: dict[str, Any]) -> None:
         """Make ``data`` the newest state and wake whoever waits for one."""
@@ -383,7 +388,15 @@ class LogTailer:
                 logger.debug("Unreadable backlog line skipped", exc_info=True)
             if not content.startswith(_CHUNK_PREFIX):
                 newest_unreadable = reader._state_seq == before
-        if reader._chunk_buffer or newest_unreadable or reader._latest_state is None:
+        if reader._chunk_buffer:
+            # The log ends inside a state sent in pieces. Its first pieces are
+            # behind the point the live tail starts from, so they are handed
+            # over: the rest then completes the state instead of being joined
+            # with nothing. The older state is not the current one.
+            self._chunk_buffer = dict(reader._chunk_buffer)
+            self._chunk_total = reader._chunk_total
+            return None, scanned_to
+        if newest_unreadable or reader._latest_state is None:
             return None, scanned_to
         logger.info(
             "A state from before start is in the log (turn=%s); it is used once a "
