@@ -96,3 +96,37 @@ class TestRoundTrip:
         finally:
             runtime.execute("Civ6Stub.notifications[0] = {}")
         assert state["end_turn_blocking_message"] == 'Choose "Mining"\nor another'
+
+
+class TestControlCharactersAreSpelledOut:
+    """The escaped set is the byte range JSON names, not the C runtime's idea of "control".
+
+    Lua's ``%c`` class asks the C library's ``iscntrl``. Under the Windows C runtime that is
+    true for some bytes at and above 0x80, so the continuation bytes of a UTF-8 character
+    were rewritten as ``\\u00XX`` and a non-ASCII string did not come back (seen on
+    Windows with ``"café 中"``; on Linux the same test passed). The range is now written
+    out, so the result cannot depend on the platform.
+    """
+
+    def test_the_source_does_not_use_the_c_librarys_control_class(self) -> None:
+        source = (h.REPO_ROOT / "mod/AlphaZeroAI/Scripts/JsonEncoder.lua").read_text("utf-8")
+        gsub_lines = [line for line in source.splitlines() if "string.gsub(str" in line]
+        assert gsub_lines, "premise: the encoder escapes with one string.gsub call"
+        assert all("%c" not in line for line in gsub_lines), gsub_lines
+
+    @pytest.mark.parametrize("byte", [*range(0x80, 0x100)])
+    def test_every_byte_from_0x80_up_passes_through_unchanged(
+        self, runtime: Any, byte: int
+    ) -> None:
+        # Compared inside Lua: a lone high byte is not valid UTF-8 and cannot cross to Python.
+        same = runtime.eval(
+            f"(AlphaZeroJson.Encode(string.char({byte}))) == string.char(34, {byte}, 34)"
+        )
+        assert same is True
+
+    @pytest.mark.parametrize("byte", [*range(0, 0x20), 0x7F])
+    def test_every_control_byte_is_escaped(self, runtime: Any, byte: int) -> None:
+        result = runtime.eval(f"AlphaZeroJson.Encode(string.char({byte}))")
+        encoded = result[0] if isinstance(result, tuple) else result
+        assert isinstance(encoded, str) and encoded.startswith('"\\')
+        assert json.loads(encoded) == chr(byte)

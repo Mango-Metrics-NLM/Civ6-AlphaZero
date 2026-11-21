@@ -30,11 +30,19 @@ local bridgeState = {
     actionsThisTurn = 0,
     lastError = nil,
     turnStartTime = 0,
+    -- When the last command message was handled; the command window runs
+    -- from the later of this and the turn's start.
+    lastCommandTime = 0,
+    -- Frames left before the state is exported after a command message; nil
+    -- when no export is pending.
+    exportAfterTicks = nil,
 }
 
 -- Polling state (use explicit callback reference for reliable removal)
 local isPolling = false
 local pollCallback = nil  -- Will be set to AlphaZeroBridge.PollCommands after definition
+local frameCallback = nil -- The per-frame poll, where the context has frame updates
+local hasFrames = false
 
 -- Track registered events for graceful shutdown
 local registeredEvents = {}
@@ -196,6 +204,9 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.actionsThisTurn = 0
     bridgeState.waitingForCommand = true
     bridgeState.turnStartTime = (os and os.time) and os.time() or 0
+    bridgeState.lastCommandTime = bridgeState.turnStartTime
+    bridgeState.exportAfterTicks = nil
+    bridgeState.exportAfterFrames = nil
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -233,12 +244,31 @@ function AlphaZeroBridge.StartPolling()
         return  -- Already polling
     end
 
+    local started = false
     if Events and Events.GameCoreEventPublishComplete then
         -- Ensure pollCallback is set
         if not pollCallback then
             pollCallback = AlphaZeroBridge.PollCommands
         end
         Events.GameCoreEventPublishComplete.Add(pollCallback)
+        started = true
+    end
+
+    -- Frames as well, where this context has them (the game's own panels use
+    -- ContextPtr:SetUpdate). The event above is raised only after a batch of
+    -- game events: in a game that has gone idle it never comes, so on it
+    -- alone the state after a command would not be exported and no further
+    -- command would be read.
+    hasFrames = false
+    if ContextPtr and ContextPtr.SetUpdate then
+        if not frameCallback then
+            frameCallback = function() AlphaZeroBridge.PollCommands("frame") end
+        end
+        hasFrames = pcall(function() ContextPtr:SetUpdate(frameCallback) end)
+        started = started or hasFrames
+    end
+
+    if started then
         isPolling = true
     else
         if Log then Log.Warn("No timer mechanism available for polling") end
@@ -250,18 +280,50 @@ function AlphaZeroBridge.StopPolling()
     if isPolling and Events and Events.GameCoreEventPublishComplete and pollCallback then
         Events.GameCoreEventPublishComplete.Remove(pollCallback)
     end
+    if hasFrames and ContextPtr and ContextPtr.ClearUpdate then
+        pcall(function() ContextPtr:ClearUpdate() end)
+    end
+    hasFrames = false
     isPolling = false
 end
 
 -- Poll for and process commands
-function AlphaZeroBridge.PollCommands()
+function AlphaZeroBridge.PollCommands(source)
     if not bridgeState.isMyTurn or not bridgeState.waitingForCommand then
         return
     end
 
-    -- Command timeout check
+    -- The state after a command message is exported a little later, once the
+    -- game has carried the requests out. Until then no command is read: the
+    -- next one should be chosen on the new state. The wait ends after
+    -- STATE_EXPORT_DELAY_TICKS batches of game events, or, when the game
+    -- raises none (it has gone idle), after STATE_EXPORT_MAX_FRAMES frames.
+    if bridgeState.exportAfterTicks then
+        if source == "frame" then
+            if bridgeState.exportAfterFrames then
+                bridgeState.exportAfterFrames = bridgeState.exportAfterFrames - 1
+            end
+        else
+            bridgeState.exportAfterTicks = bridgeState.exportAfterTicks - 1
+        end
+        if bridgeState.exportAfterTicks > 0 and (bridgeState.exportAfterFrames or 1) > 0 then
+            return
+        end
+        bridgeState.exportAfterTicks = nil
+        bridgeState.exportAfterFrames = nil
+        local exported, exportErr = AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        if not exported then
+            if Log then Log.Error("Failed to export state after a command: %s", tostring(exportErr)) end
+            bridgeState.lastError = exportErr
+        end
+        return
+    end
+
+    -- Command timeout check: the window runs from the last command handled,
+    -- so a turn of many commands is not cut off thirty seconds after it began.
     local timeout = (AlphaZeroConfig and AlphaZeroConfig.Get("COMMAND_TIMEOUT")) or 30.0
-    local elapsed = ((os and os.time) and os.time() or 0) - bridgeState.turnStartTime
+    local since = math.max(bridgeState.turnStartTime or 0, bridgeState.lastCommandTime or 0)
+    local elapsed = ((os and os.time) and os.time() or 0) - since
     if elapsed > timeout then
         if Log then Log.Warn("Command timeout after %ds, stopping poll", elapsed) end
         bridgeState.waitingForCommand = false
@@ -298,23 +360,66 @@ function AlphaZeroBridge.PollCommands()
     AlphaZeroBridge.ProcessCommands(commandMessage)
 end
 
+-- Commands that can answer what blocks the end of a turn.
+local UNBLOCKING_ACTIONS = {
+    research_tech = true, research_civic = true, city_produce = true,
+    unit_skip = true, unit_fortify = true, unit_sleep = true,
+}
+
 -- Process a command message
 function AlphaZeroBridge.ProcessCommands(commandMessage)
     if Log then Log.Info("Processing commands: msg_id=%s", tostring(commandMessage.msg_id)) end
 
-    local results = AlphaZeroActionExecutor.ExecuteCommands(
-        bridgeState.aiPlayerId,
-        commandMessage
-    )
+    -- A cap on commands per turn, so a loop that keeps sending a command the
+    -- game ignores stops. Past it only END_TURN is carried out, with one
+    -- exception: while the game refuses to end the turn (a research,
+    -- production or unit-orders choice is open), the commands that can answer
+    -- that choice are still carried out, or the cap itself would trap the
+    -- turn. That allowance ends at twice the cap.
+    local commands = commandMessage.commands or {}
+    local cap = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("MAX_COMMANDS_PER_TURN")) or 200
+    local onlyEndTurn, onlyUnblocking = #commands > 0, #commands > 0
+    for _, command in ipairs(commands) do
+        if command.action_type ~= "end_turn" then
+            onlyEndTurn = false
+            if not UNBLOCKING_ACTIONS[command.action_type] then onlyUnblocking = false end
+        end
+    end
 
-    -- Count actions
-    bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #(commandMessage.commands or {})
+    -- The count the turn would reach with this message: a batch may not carry
+    -- it past a limit either.
+    local projected = bridgeState.actionsThisTurn + #commands
+    local overCap = projected > cap and not onlyEndTurn
+    if overCap and onlyUnblocking and projected <= 2 * cap then
+        local blocker = nil
+        if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
+            local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
+            blocker = ok and found or nil
+        end
+        if blocker then overCap = false end
+    end
+
+    local results, errorCode
+    if overCap then
+        local message = string.format(
+            "%d commands already handled this turn (the cap is %d); only end_turn is accepted",
+            bridgeState.actionsThisTurn, cap)
+        if Log then Log.Warn(message) end
+        results = { msg_id = commandMessage.msg_id, success = false, executed = {}, errors = { message } }
+        errorCode = "COMMAND_CAP_REACHED"
+    else
+        -- Only a message that is carried out keeps the command window open.
+        bridgeState.lastCommandTime = (os and os.time) and os.time() or 0
+        results = AlphaZeroActionExecutor.ExecuteCommands(bridgeState.aiPlayerId, commandMessage)
+        errorCode = "EXECUTION_ERROR"
+        bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #commands
+    end
 
     -- Write acknowledgment
     local ackSuccess = AlphaZeroFileIO.WriteAck(
         commandMessage.msg_id or 0,
         results.success,
-        results.success and nil or "EXECUTION_ERROR",
+        results.success and nil or errorCode,
         results.success and nil or table.concat(results.errors, "; "),
         results.executed
     )
@@ -335,8 +440,18 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
     if endTurnExecuted then
         bridgeState.waitingForCommand = false
     else
-        -- Export new state after actions
-        AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+        -- Export the new state some frames from now, not in this one: the
+        -- game has not carried the requests out yet.
+        local delay = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_DELAY_TICKS")) or 2
+        if delay < 1 then delay = 1 end
+        bridgeState.exportAfterTicks = math.floor(delay)
+        if hasFrames then
+            local frames = tonumber(AlphaZeroConfig and AlphaZeroConfig.Get("STATE_EXPORT_MAX_FRAMES")) or 30
+            if frames < 1 then frames = 1 end
+            bridgeState.exportAfterFrames = math.floor(frames)
+        else
+            bridgeState.exportAfterFrames = nil
+        end
     end
 end
 

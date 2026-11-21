@@ -454,7 +454,9 @@ class TestItemIdStringsOnlyForResearch:
         assert cmd.item_id == number
         assert type(cmd.item_id) is int
 
-    @pytest.mark.parametrize("action", ["city_produce", "city_buy", "unit_build", "end_turn"])
+    # city_produce left this list with GM-B7a: a production command may name its item
+    # (tests/unit/test_bridge_protocol_named_production.py).
+    @pytest.mark.parametrize("action", ["city_buy", "unit_build", "end_turn"])
     def test_an_identifier_is_refused_for_any_other_action(self, action: str) -> None:
         with pytest.raises(ProtocolValidationError):
             LuaCommand.from_dict({"action_type": action, "item_id": "UNIT_WARRIOR"})

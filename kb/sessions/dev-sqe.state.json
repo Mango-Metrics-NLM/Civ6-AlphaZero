@@ -1,32 +1,31 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-20T04:22:00Z",
-    "current_focus": "Game-mechanics program, Phase 1. Merged: #142, #143 (GM-S0a), #146 (GM-K1), #147 (GM-K2), #148 (GM-B0), #149 (GM-B1), #150 (GM-B2), #151 (GM-B3). Open: #152 (GM-B4) and GM-B5 on claude/gm-b5-mcts-refusal, which is built on GM-B4's branch. With GM-B5 every Phase 1 slice of the plan is built; none has run in a real game.",
+    "last_timestamp": "2026-11-21T16:35:00Z",
+    "current_focus": "Game-mechanics program: the live command layer (GM-B7) ahead of the search translator (GM-B6), task plan kb/specs/20261120-live-command-layer-plan.md. Merged since the last state: #152 (GM-B4), #153 (GM-B5), #154 (review follow-ups), #156 (maintainer's post-merge AQA). Open: #155 (OpenSpec archive) and GM-B7a on claude/gm-b7a-command-executor. Nothing has run in a real game.",
     "resume_pointers": {
-        "current_task": "None in flight. Phase 1 of the game-mechanics plan is built. Phase 2 (GM-S rungs) starts after v2.1.0 and each rung needs its own OpenSpec change and confirmation.",
+        "current_task": "GM-B7a is built and reviewed; its PR is open or about to be. Next: GM-B7b (exporter: neighbours from the game, offered actions from the strict check, production choices by hash; greedy production by name), then GM-B7c (agent loop), then the maintainer's live sitting, then GM-B6a/b.",
         "blocked_on": [
-            "maintainer: review and merge #152 (GM-B4), then the GM-B5 PR",
-            "maintainer: the live checklist in docs/LIVE_CIV6.md, six steps (nothing was run against a real game)",
-            "maintainer: whether the converters' research_stats go into BridgeAgentLoop.stats() (needs agent_loop.py)",
-            "maintainer: whether GM-B6 (search-mode action translator) gets a slot",
+            "maintainer: merge #155 and the GM-B7a PR",
+            "maintainer: the live sitting, 16 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
+            "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
             "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
-            "A mode whose tests mock its core is untested: build it through the entry point's own functions and mock nothing, at least once",
-            "Seed test states from maps that are larger than the converter's board as well as equal to it; the board-size defect hid behind unscaled fixtures",
-            "A GM-B6 translator must map simulator units to live units by unit id, not by list position: the proxy leaves units out",
-            "Base every follow-up PR on the default branch, never on another PR's branch",
-            "When several PRs are open and to be merged in order, chain the branches first (each merges its predecessor) so collisions are resolved once: ledger = union by timestamp, CLAUDE.md = both rows (later date first) and the later footer, summary = both, state = newer",
-            "For a game API, read the game's own UI Lua (CQUI Community Edition has a copy) before a third-party project",
-            "Lua 5.1 has no \\\\x escape in string literals: use %c, %z or decimal escapes in patterns",
-            "After v2.1.0: size the action space's research actions from the rule set; real_civ6_env.py should not treat END_TURN_BLOCKED as an invalid action"
+            "A guard added to stop a loop can be the loop: test a cap together with the state it guards against (the per-turn cap trapped a blocked turn)",
+            "A stand-in written from the same reading as the code under test cannot catch a wrong reading: list those assumptions for the live check instead of calling them tested",
+            "Tests of a command assert on the game state after the next frame, never on a recorded call or the command's own answer",
+            "For a game API, read the game's own UI Lua first; a strict check the UI never asks is unverified even when the stand-in models it",
+            "Lua's %c asks the C library and differs on Windows: write byte ranges out",
+            "Base every follow-up PR on the default branch; when a PR merges, merge the default branch into the open ones and resolve doc conflicts there",
+            "A push that lands after its PR merged is not merged: check the default branch contains the commit",
+            "The debt ratchet counts lines of coverage-omitted files and skip sites: a fix in alpha_zero/cloud has a line budget"
         ]
     },
     "context_files": [
-        "kb/handoffs/20261120-devsqe-to-prepr-gm-b5-mcts-refusal.md",
-        "alpha_zero/bridge/microciv_proxy.py",
-        "alpha_zero/bridge/mcts_policy.py",
-        "alpha_zero/civ6_local.py",
+        "kb/handoffs/20261121-devsqe-to-prepr-gm-b7a-command-executor.md",
+        "kb/specs/20261120-live-command-layer-plan.md",
+        "mod/AlphaZeroAI/Scripts/ActionExecutor.lua",
+        "tests/fixtures/lua/civ6_stub_commands.lua",
         "docs/LIVE_CIV6.md"
     ]
 }
