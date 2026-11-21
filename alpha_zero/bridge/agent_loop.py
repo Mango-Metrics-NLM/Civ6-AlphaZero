@@ -52,6 +52,7 @@ from alpha_zero.bridge.health_checker import (
     CircuitBreakerOpenError,
     GameBridgeHealthChecker,
 )
+from alpha_zero.bridge.offer_filter import sendable, vetoed
 from alpha_zero.bridge.protocol import (
     END_TURN_BLOCKED,
     AckMessage,
@@ -222,6 +223,14 @@ def _others_left(mask: Any, action_idx: Any) -> bool:
         return False
 
 
+def _is_offered(mask: Any, action_idx: Any) -> bool:
+    """Whether ``action_idx`` is in the mask (a policy may answer outside it)."""
+    try:
+        return bool(mask[action_idx])
+    except Exception:
+        return False
+
+
 def _as_ack_message(ack: Any) -> AckMessage:
     """The transport's acknowledgement as an :class:`AckMessage`.
 
@@ -386,6 +395,8 @@ class BridgeAgentLoop:
         ledger = self._ledger.stats()
         for key in ("game_turns_played", "refused_commands", "no_effect_commands"):
             stats[key] = ledger[key]
+        # The ledger also sees a fallback end_turn blocked (from the next state).
+        stats["blocked_end_turns"] = max(stats["blocked_end_turns"], ledger["blocked_end_turns"])
         return stats
 
     async def run(self) -> int:
@@ -562,15 +573,27 @@ class BridgeAgentLoop:
         else is offered. Past the turn's command cap only ``end_turn`` is sent.
         """
         end_turn = LuaCommand.from_dict({"action_type": "end_turn"})
+        unblocking_only = False
         if self._ledger.over_cap():
-            logger.warning(
-                "Turn %s: %d commands sent, the cap; only end_turn from here",
-                state.turn_id,
-                self._ledger.commands_this_turn,
+            if not self._ledger.may_unblock():
+                logger.warning(
+                    "Turn %s: %d commands sent, the cap; only end_turn from here",
+                    state.turn_id,
+                    self._ledger.commands_this_turn,
+                )
+                return end_turn
+            # The game is blocking end_turn: what could unblock it still goes.
+            unblocking_only = True
+
+        def convert(index: int) -> LuaCommand:
+            return self.action_converter.convert(
+                index, converted_state, legal_actions=state.legal_actions, validate=True
             )
+
+        mask, ready = sendable(self._ledger, convert, legal_mask, unblocking_only)
+        if not np.any(mask):
             return end_turn
 
-        mask = legal_mask
         for attempt in range(self.config.max_reselections + 1):
             # Networks consume spatial + vector + action_mask; the converter
             # has already produced the structural inputs.
@@ -604,6 +627,8 @@ class BridgeAgentLoop:
             if self.eval_harness and attempt == 0:
                 self.eval_harness.on_turn_end(state.turn_id, diagnostics)
 
+            if action_idx in ready:
+                return cast(LuaCommand, ready[action_idx])
             # Convert action -> Lua command.
             try:
                 lua_command = self.action_converter.convert(
@@ -623,24 +648,29 @@ class BridgeAgentLoop:
                 return None
             else:
                 others = _others_left(mask, action_idx)
-                if self._ledger.is_suppressed(lua_command):
-                    why = "refused or without effect earlier this turn"
-                elif is_end_turn(lua_command) and self._ledger.end_turn_withheld() and others:
-                    why = "the game is blocking the end of turn"
-                else:
+                if not vetoed(self._ledger, lua_command, unblocking_only, others):
                     return lua_command
+                why = "not to be sent again this turn"
 
-            if attempt >= self.config.max_reselections or not _others_left(mask, action_idx):
-                logger.warning(
-                    "Action %d not sent (%s) and nothing else to choose; ending the turn",
-                    action_idx,
-                    why,
-                )
+            if (
+                attempt >= self.config.max_reselections
+                or not _is_offered(mask, action_idx)
+                or not _others_left(mask, action_idx)
+            ):
+                logger.warning("Action %d not sent (%s); no further choice", action_idx, why)
                 break
             logger.info("Action %d not sent (%s); choosing again", action_idx, why)
             self._stats.reselections += 1
             mask = mask.copy()
             mask[action_idx] = 0
+
+        # The policy could not name something sendable. While the game blocks
+        # the end of turn, anything that may still be sent beats an end_turn
+        # that will be refused.
+        if self._ledger.end_turn_withheld():
+            for command in ready.values():
+                if not is_end_turn(command):
+                    return cast(LuaCommand, command)
         return end_turn
 
     async def _send_and_account(self, state: GameStateData, lua_command: LuaCommand) -> None:
@@ -662,11 +692,13 @@ class BridgeAgentLoop:
                 ack = await self.bridge.send_and_wait_with_retry(command)
             ack = _as_ack_message(ack)
         except CircuitBreakerOpenError as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"circuit_open: {exc}"
             logger.warning("Circuit breaker open on send (%s); skipping ack", exc)
             self._maybe_log_snapshot(state, command, None, exc)
         except (AckTimeoutError, ConnectionLostError) as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"ack: {exc}"
             logger.warning(
@@ -676,6 +708,7 @@ class BridgeAgentLoop:
             )
             self._maybe_log_snapshot(state, command, None, exc)
         except Exception as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"send: {exc}"
             logger.error("send_and_wait_with_retry raised: %s", exc, exc_info=True)

@@ -241,7 +241,20 @@ class TestRefusedCommand:
         loop, bridge, policy, code = play(runtime, move_101_first, bridge=bridge, max_game_turns=1)
         assert failed_acks(runtime) == ["NOT_ENOUGH_MOVEMENT"], "premise: the mod refused it once"
         assert requests_made(runtime) >= 1, "premise: other commands were carried out"
-        assert policy.picked.count(MOVE_101) >= 2, "premise: the policy did ask for it again"
+        offered_again = [
+            state
+            for state in c.states(runtime)[1:]
+            if any(
+                action.get("action") == "move"
+                and action.get("unit_id") == 101
+                and [0, 1] in action.get("targets", [])
+                for action in state["legal_actions"]
+            )
+        ]
+        assert offered_again, "premise: the mod offered the refused move again"
+        # Since the review round the refused move is taken out of the mask
+        # before the policy is asked, so the policy names it only once.
+        assert policy.picked.count(MOVE_101) == 1
         assert bridge.commands_sent().count(MOVE_101) == 1
         assert code == BridgeAgentLoop.EXIT_OK
         assert runtime.eval("Civ6Stub.turn") == 13

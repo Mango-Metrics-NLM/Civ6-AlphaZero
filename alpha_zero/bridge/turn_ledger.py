@@ -31,7 +31,15 @@ from alpha_zero.bridge.state_diff import expected_effect, summarize
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["LedgerLimits", "Outcome", "TurnLedger", "command_key", "is_end_turn"]
+__all__ = [
+    "UNBLOCKING_ACTIONS",
+    "LedgerLimits",
+    "Outcome",
+    "TurnLedger",
+    "action_of",
+    "command_key",
+    "is_end_turn",
+]
 
 _END_TURN = "end_turn"
 
@@ -40,6 +48,18 @@ _END_TURN = "end_turn"
 #: "the best of what is offered" names a different item after every choice and
 #: a deterministic policy would change its mind until the turn's cap.
 _ONCE_PER_TURN = frozenset({"research_tech", "research_civic", "city_produce"})
+
+#: Commands that can answer what blocks the end of a turn; the mod's own list
+#: (``UNBLOCKING_ACTIONS`` in ``Main.lua``). Past the turn's cap these are
+#: still sent while the game blocks ``end_turn``, up to twice the cap, or the
+#: cap itself would trap the turn.
+UNBLOCKING_ACTIONS = frozenset(
+    {"research_tech", "research_civic", "city_produce", "unit_skip", "unit_fortify", "unit_sleep"}
+)
+
+#: The mod's answer when its own per-turn cap is reached. Not a refusal of the
+#: command: nothing but ``end_turn`` will be carried out this turn.
+_MOD_CAP_CODE = "COMMAND_CAP_REACHED"
 
 
 def _as_dict(command: Any) -> dict[str, Any]:
@@ -91,6 +111,13 @@ def _choice_slot(command: Any) -> str | None:
     if action not in _ONCE_PER_TURN:
         return None
     return f"{action}|{'' if data.get('city_id') is None else data['city_id']}"
+
+
+def action_of(command: Any) -> str | None:
+    """The action type of a command, as text."""
+    action = _as_dict(command).get("action_type")
+    action = getattr(action, "value", action)
+    return action if isinstance(action, str) else None
 
 
 def is_end_turn(command: Any) -> bool:
@@ -156,6 +183,7 @@ class TurnLedger:
         self._refused: dict[str, str | None] = {}
         self._no_effect: dict[str, int] = {}
         self._chosen: set[str] = set()
+        self._mod_cap_hit = False
         self._blocked_streak = 0
         self._withheld_on: dict[str, Any] | None = None
         self._end_turn_withheld = False
@@ -181,6 +209,7 @@ class TurnLedger:
                 self._blocked_streak = 0
             if self._end_turn_withheld and summary is not None and summary != self._withheld_on:
                 self._end_turn_withheld = False
+            self._release_reopened_choices(summary, getattr(state, "end_turn_blocking", None))
         self._seen_a_state = True
         self.turn_id = turn_id
         self._last_summary = summary
@@ -209,6 +238,13 @@ class TurnLedger:
         if code == END_TURN_BLOCKED:
             self._record_blocked()
             return Outcome.BLOCKED_END_TURN
+        if code == _MOD_CAP_CODE:
+            # The mod's count of this turn is ahead of ours (a restart in
+            # mid-turn, or a cap set above the mod's). The command itself was
+            # not judged, so it is not remembered as refused.
+            self._mod_cap_hit = True
+            self._refused_total += 1
+            return Outcome.REFUSED
         if is_end_turn(data):
             # end_turn is never suppressed; a refusal of it is only counted.
             self._refused_total += 1
@@ -227,13 +263,35 @@ class TurnLedger:
         key = command_key(command)
         return key in self._refused or self._no_effect.get(key, 0) >= self.limits.no_effect_limit
 
+    def has_vetoes(self) -> bool:
+        """Whether anything is ruled out right now (so the offers need filtering)."""
+        return bool(self._refused or self._chosen or self._end_turn_withheld) or any(
+            count >= self.limits.no_effect_limit for count in self._no_effect.values()
+        )
+
     def end_turn_withheld(self) -> bool:
         """Whether the game blocked ``end_turn`` and nothing has changed since."""
         return self._end_turn_withheld
 
+    def send_failed(self) -> None:
+        """The last command sent got no answer (the send raised): nothing is known."""
+        self._pending = None
+
     def over_cap(self) -> bool:
         """Whether this game turn has used up its commands."""
-        return self.commands_this_turn >= self.limits.max_commands_per_turn
+        return self._mod_cap_hit or self.commands_this_turn >= self.limits.max_commands_per_turn
+
+    def may_unblock(self) -> bool:
+        """Past the cap: whether a command that could unblock the turn may still go out.
+
+        True while the game is blocking ``end_turn`` and fewer than twice the
+        cap have been sent. Without this the cap would trap a turn whose
+        blocker appears late: only ``end_turn`` would be sent, and refused.
+        """
+        return (
+            self._end_turn_withheld
+            and self.commands_this_turn < 2 * self.limits.max_commands_per_turn
+        )
 
     def stalled(self) -> bool:
         """Whether the turn can neither be ended nor, it seems, unblocked."""
@@ -254,9 +312,31 @@ class TurnLedger:
         self._refused.clear()
         self._no_effect.clear()
         self._chosen.clear()
+        self._mod_cap_hit = False
         self._blocked_streak = 0
         self._end_turn_withheld = False
         self._withheld_on = None
+
+    def _release_reopened_choices(self, summary: dict[str, Any] | None, blocking: Any) -> None:
+        """Let a choice be made again when the game asks for it again.
+
+        A boost can finish the research chosen earlier this turn, and a
+        reloaded save shows the same turn with nothing chosen: the game then
+        blocks the end of turn until a new choice is made.
+        """
+        if not self._chosen:
+            return
+        blocker = blocking if isinstance(blocking, str) else ""
+        if (summary is not None and summary.get("research") is None) or "RESEARCH" in blocker:
+            self._chosen.discard("research_tech|")
+        if (summary is not None and summary.get("civic") is None) or "CIVIC" in blocker:
+            self._chosen.discard("research_civic|")
+        cities = summary.get("cities", {}) if summary is not None else {}
+        for city_id, city in cities.items():
+            if city.get("producing") is None:
+                self._chosen.discard(f"city_produce|{city_id}")
+        if "PRODUCTION" in blocker:
+            self._chosen = {slot for slot in self._chosen if not slot.startswith("city_produce|")}
 
     def _record_blocked(self) -> None:
         self._blocked_streak += 1
