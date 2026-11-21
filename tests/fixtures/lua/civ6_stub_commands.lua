@@ -541,4 +541,23 @@ function Civ6Stub.nextTurn()
         spec.skipped = nil
     end
     return Civ6Stub.turn
+
+-- Frames without game events (an idle game)
+-- ----------------------------------------------------------------------------
+-- The mod's context: ContextPtr:SetUpdate(f) asks for f on every frame, as the
+-- game's own panels do. Civ6Stub.tick() plays a frame in which the game also
+-- publishes a batch of events and does NOT call the frame update, so a test
+-- says which of the two it means. Civ6Stub.idleFrames(n) plays n frames with
+-- no event at all: requests are carried out, then only the update runs.
+ContextPtr = ContextPtr or {}
+function ContextPtr:SetUpdate(callback) Civ6Stub.frameUpdate = callback end
+function ContextPtr:ClearUpdate() Civ6Stub.frameUpdate = nil end
+
+function Civ6Stub.idleFrames(count)
+    local applied = 0
+    for _ = 1, count or 1 do
+        applied = applied + Civ6Stub.applyRequests()
+        if Civ6Stub.frameUpdate then Civ6Stub.frameUpdate(0.016) end
+    end
+    return applied
 end

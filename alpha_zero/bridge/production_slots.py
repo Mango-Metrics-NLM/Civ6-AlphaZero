@@ -37,6 +37,22 @@ def _sort_key(item: Any) -> tuple[int, Any]:
     return (0, item) if isinstance(item, int) and not isinstance(item, bool) else (1, str(item))
 
 
+def _normal(item: Any) -> Any:
+    """A row number written as text is the number.
+
+    ``LegalAction.from_dict`` already reads ``"5"`` as 5; an offer built
+    directly must give the same slots and the same command, or the mod takes
+    the text for a type name and refuses it.
+    """
+    # The same rule as ``LegalAction.from_dict``.
+    if isinstance(item, str) and (item.isdigit() or (item.startswith("-") and item[1:].isdigit())):
+        try:
+            return int(item)
+        except ValueError:  # a digit-like character int() does not read
+            return item
+    return item
+
+
 def offered(
     items: Iterable[Any],
     item_types: Mapping[str, str] | None = None,
@@ -49,7 +65,8 @@ def offered(
     for item in items:
         if item is None or isinstance(item, bool):
             continue
-        groups.setdefault(kinds.get(str(item), fallback), set()).add(item)
+        kind = kinds.get(str(item), kinds.get(str(_normal(item)), fallback))
+        groups.setdefault(kind, set()).add(_normal(item))
     return {kind: tuple(sorted(group, key=_sort_key)) for kind, group in groups.items()}
 
 
@@ -60,6 +77,7 @@ def slot_of(
     default_type: str | None = DEFAULT_KIND,
 ) -> tuple[str, int] | None:
     """``(kind, slot)`` of an offered item, or None when it was not offered."""
+    item = _normal(item)
     for kind, group in offered(items, item_types, default_type).items():
         if item in group:
             return kind, group.index(item)

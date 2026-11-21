@@ -307,8 +307,11 @@ Live checklist, continuing the one above:
    blocker is gone in a later state. Same for `unit_fortify` and `unit_sleep`.
 9. Send `city_produce` with `item_id` `"UNIT_WARRIOR"` to a city that is building something
    else: it now builds the warrior and nothing is queued behind it.
-10. Count the states (or frames) between a command and the first state that shows its effect.
-    If two frames is too few, raise `STATE_EXPORT_DELAY_TICKS`.
+10. Count the states between a command and the first state that shows its effect. The wait is
+    `STATE_EXPORT_DELAY_TICKS` (2) batches of game events, or `STATE_EXPORT_MAX_FRAMES` (30) frames
+    when the game raises none; if the first state after a command still shows the old game, raise
+    the first. Also watch for the opposite: in an idle game the state should still arrive within
+    about half a second, not never (the mod used to wait for event batches only).
 11. Send `unit_attack` on a unit of a player you are at peace with: the answer is
     `WOULD_START_WAR` and no war starts.
 12. Send `unit_move` onto a tile holding a unit you are at war with: it is refused and there
