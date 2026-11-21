@@ -1,0 +1,383 @@
+{
+ "cities": [
+  {
+   "available_production": [],
+   "buildings": [
+    "BUILDING_MONUMENT"
+   ],
+   "defense_strength": 10,
+   "districts": [
+    "DISTRICT_CITY_CENTER",
+    "DISTRICT_CAMPUS"
+   ],
+   "id": 301,
+   "is_capital": true,
+   "name": "Stubville",
+   "owner": 0,
+   "population": 3,
+   "production_progress": 3,
+   "x": 1,
+   "y": 1
+  }
+ ],
+ "current_player": "CIVILIZATION_STUB_A",
+ "era": 1,
+ "game_speed": "GAMESPEED_STANDARD",
+ "is_game_over": false,
+ "legal_actions": [
+  {
+   "action": "end_turn"
+  },
+  {
+   "action": "research_tech",
+   "item_names": [
+    "TECH_WRITING"
+   ],
+   "items": [
+    2
+   ]
+  },
+  {
+   "action": "research_civic",
+   "item_names": [
+    "CIVIC_FOREIGN_TRADE"
+   ],
+   "items": [
+    2
+   ]
+  }
+ ],
+ "map": {
+  "height": 3,
+  "tiles": [
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS",
+    "x": 0,
+    "y": 0,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_PLAINS",
+    "x": 0,
+    "y": 1,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS",
+    "x": 0,
+    "y": 2,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_PLAINS",
+    "x": 1,
+    "y": 0,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [
+     "FEATURE_FOREST",
+     "FEATURE_HILLS"
+    ],
+    "improvement": "IMPROVEMENT_FARM",
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": 0,
+    "resource": "RESOURCE_WHEAT",
+    "terrain": "TERRAIN_GRASS",
+    "x": 1,
+    "y": 1,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_PLAINS",
+    "x": 1,
+    "y": 2,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS",
+    "x": 2,
+    "y": 0,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_PLAINS",
+    "x": 2,
+    "y": 1,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS",
+    "x": 2,
+    "y": 2,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_PLAINS",
+    "x": 3,
+    "y": 0,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS",
+    "x": 3,
+    "y": 1,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   },
+   {
+    "features": [
+     "FEATURE_MOUNTAIN"
+    ],
+    "is_revealed": true,
+    "is_visible": true,
+    "owner_id": -1,
+    "terrain": "TERRAIN_GRASS_MOUNTAIN",
+    "x": 3,
+    "y": 2,
+    "yields": {
+     "culture": 0,
+     "faith": 0,
+     "food": 2,
+     "gold": 0,
+     "production": 1,
+     "science": 0
+    }
+   }
+  ],
+  "width": 4
+ },
+ "player": {
+  "civic_status": {
+   "boost_triggered": false,
+   "cost": 40,
+   "index": 1,
+   "progress": 10,
+   "turns_left": 15,
+   "type": "CIVIC_CRAFTSMANSHIP"
+  },
+  "civics_researched": [
+   "CIVIC_CODE_OF_LAWS"
+  ],
+  "civilization": "CIVILIZATION_STUB_A",
+  "culture_per_turn": 2,
+  "current_civic": "CIVIC_CRAFTSMANSHIP",
+  "current_research": "TECH_MINING",
+  "faith": 0,
+  "gold": 50,
+  "gold_per_turn": 3,
+  "id": 0,
+  "is_alive": true,
+  "is_human": true,
+  "research_status": {
+   "boost_triggered": true,
+   "cost": 50,
+   "index": 1,
+   "progress": 20,
+   "turns_left": 8,
+   "type": "TECH_MINING"
+  },
+  "science_per_turn": 4,
+  "score": 10,
+  "techs_researched": [
+   "TECH_POTTERY"
+  ]
+ },
+ "player_id": 0,
+ "players": [
+  {
+   "civic_status": {
+    "boost_triggered": false,
+    "cost": 40,
+    "index": 1,
+    "progress": 10,
+    "turns_left": 15,
+    "type": "CIVIC_CRAFTSMANSHIP"
+   },
+   "civics_researched": [
+    "CIVIC_CODE_OF_LAWS"
+   ],
+   "civilization": "CIVILIZATION_STUB_A",
+   "culture_per_turn": 2,
+   "current_civic": "CIVIC_CRAFTSMANSHIP",
+   "current_research": "TECH_MINING",
+   "faith": 0,
+   "gold": 50,
+   "gold_per_turn": 3,
+   "id": 0,
+   "is_alive": true,
+   "is_human": true,
+   "research_status": {
+    "boost_triggered": true,
+    "cost": 50,
+    "index": 1,
+    "progress": 20,
+    "turns_left": 8,
+    "type": "TECH_MINING"
+   },
+   "science_per_turn": 4,
+   "score": 10,
+   "techs_researched": [
+    "TECH_POTTERY"
+   ]
+  }
+ ],
+ "schema_version": 2,
+ "turn_id": 12,
+ "units": [
+  {
+   "can_attack": false,
+   "combat_strength": 0,
+   "damage": 0,
+   "hp": 100,
+   "id": 101,
+   "is_civilian": true,
+   "max_hp": 100,
+   "max_movement": 2,
+   "movement": 2,
+   "owner": 0,
+   "promotions": [],
+   "range": 0,
+   "ranged_strength": 0,
+   "type_name": "UNIT_SETTLER",
+   "x": 0,
+   "y": 0
+  },
+  {
+   "can_attack": true,
+   "combat_strength": 20,
+   "damage": 0,
+   "hp": 100,
+   "id": 102,
+   "is_civilian": false,
+   "max_hp": 100,
+   "max_movement": 2,
+   "movement": 2,
+   "owner": 0,
+   "promotions": [],
+   "range": 0,
+   "ranged_strength": 0,
+   "type_name": "UNIT_WARRIOR",
+   "x": 1,
+   "y": 0
+  }
+ ],
+ "winner_id": -1
+}
