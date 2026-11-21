@@ -37,8 +37,10 @@ def _ack_line(msg_id: int, success: bool = True) -> str:
     return f"AlphaZeroMain: AZ_ACK:{json.dumps({'msg_id': msg_id, 'success': success})}"
 
 
-def _hb_line() -> str:
-    return f"AlphaZeroMain: AZ_HB:{json.dumps({'lua_alive': True})}"
+def _hb_line(turn: int | None = None) -> str:
+    """A heartbeat as the mod writes it; ``turn`` is the game turn it reports."""
+    body = {"lua_alive": True} if turn is None else {"lua_alive": True, "turn": turn}
+    return f"AlphaZeroMain: AZ_HB:{json.dumps(body)}"
 
 
 def _chunk_lines(turn: int, parts: int = 3) -> list[str]:
@@ -260,7 +262,7 @@ class TestBacklogState:
         _append(log, _state_line(4))
         t = await _started(log)
         try:
-            _append(log, _hb_line())
+            _append(log, _hb_line(4))
             t._read_new_lines()
 
             assert t.state_seq == 1
@@ -268,7 +270,7 @@ class TestBacklogState:
             assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 4
             assert t.backlog_state is None
 
-            _append(log, _hb_line())
+            _append(log, _hb_line(4))
             t._read_new_lines()
             assert t.state_seq == 1
             assert t.stats["backlog_states_used"] == 1
@@ -282,7 +284,7 @@ class TestBacklogState:
             backlog = t.backlog_state
             assert backlog is not None
             assert backlog["turn_id"] == 9
-            _append(log, _hb_line())
+            _append(log, _hb_line(9))
             t._read_new_lines()
             assert (await t.wait_for_state(timeout=SHORT))["turn_id"] == 9
         finally:
@@ -341,26 +343,28 @@ class TestBacklogState:
         finally:
             await t.stop()
 
-    async def test_incomplete_chunked_last_state_falls_back_to_the_earlier_one(
+    async def test_incomplete_chunked_last_state_is_not_replaced_by_an_earlier_one(
         self, log: Path
     ) -> None:
         chunks = _chunk_lines(6)
         _append(log, _state_line(5), *chunks[:-1])  # no END line
         t = await _started(log)
         try:
-            backlog = t.backlog_state
-            assert backlog is not None
-            assert backlog["turn_id"] == 5
+            # A newer state was being written (or was damaged): the earlier
+            # one is not the current one, so nothing is offered.
+            assert t.backlog_state is None
         finally:
             await t.stop()
 
-    async def test_truncated_json_last_state_falls_back_to_the_earlier_one(self, log: Path) -> None:
+    async def test_truncated_json_last_state_is_not_replaced_by_an_earlier_one(
+        self, log: Path
+    ) -> None:
         _append(log, _state_line(5), 'AlphaZeroMain: AZ_STATE:{"turn_id": 6, "map": {"wid')
         t = await _started(log)
         try:
-            backlog = t.backlog_state
-            assert backlog is not None
-            assert backlog["turn_id"] == 5
+            # A newer state was being written (or was damaged): the earlier
+            # one is not the current one, so nothing is offered.
+            assert t.backlog_state is None
         finally:
             await t.stop()
 
