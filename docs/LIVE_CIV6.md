@@ -431,6 +431,11 @@ turn it now keeps a ledger (`alpha_zero/bridge/turn_ledger.py`):
 - after the game blocks `end_turn`, the agent does not choose `end_turn` again while anything
   else is offered and the state has not changed;
 - a choice the converter rejects is chosen again, not answered by ending the turn;
+- what the ledger rules out is removed from the offers before the policy is asked;
+- past the cap, commands that can answer a blocker (research, production, skip, fortify, sleep)
+  still go out while the game blocks `end_turn`, up to twice the cap;
+- research or a city's production may be chosen again in the same turn when the game asks again
+  (a boost finished the research; the state shows nothing in progress);
 - three blocked `end_turn` answers in a row with no change in between is a stall: see
   `CIV6AZ_AGENT_ON_STALL` below.
 
