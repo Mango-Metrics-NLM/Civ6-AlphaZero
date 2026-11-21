@@ -157,7 +157,14 @@ end
 local dryRun = false
 
 -- The Hash and kind ("operation" / "command") of the row named `typeName`.
+-- Found rows are remembered: the game's tables do not change while it runs,
+-- and the exporter asks for the same few names for every unit and tile.
+local actionRows = {}
 local function findActionRow(typeName)
+    local known = actionRows[typeName]
+    if known then
+        return known.hash, known.kind
+    end
     local sources = {
         { table = "UnitOperations", column = "OperationType", kind = "operation" },
         { table = "UnitCommands", column = "CommandType", kind = "command" },
@@ -175,6 +182,7 @@ local function findActionRow(typeName)
                 end
             end)
             if found and found.Hash ~= nil then
+                actionRows[typeName] = { hash = found.Hash, kind = source.kind }
                 return found.Hash, source.kind
             end
         end
@@ -538,12 +546,20 @@ end
 
 -- The row and kind for an item given by type name (looked up in every kind)
 -- or by row index (in the kind `itemType` names; units when it names none).
+-- Found rows are remembered (see findActionRow): without this, listing what
+-- a city can build walked the unit table once per candidate item.
+local productionRows = {}
 local function resolveProductionItem(item, itemType)
     if type(item) == "string" then
+        local known = productionRows[item]
+        if known then return known.row, known.kind end
         for _, name in ipairs(PRODUCTION_ORDER) do
             local kind = PRODUCTION_KINDS[name]
             local row = findProductionRow(kind, function(r) return r[kind.column] == item end)
-            if row then return row, kind end
+            if row then
+                productionRows[item] = { row = row, kind = kind }
+                return row, kind
+            end
         end
         return nil, nil
     end
@@ -587,6 +603,11 @@ local function executeCityProduce(playerId, command)
         return false, ERROR_CODES.NOT_IMPLEMENTED,
             typeName .. " needs a plot; placement is not supported"
     end
+    -- The game's production panel never offers to build these.
+    if row.MustPurchase == true then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            typeName .. " can only be purchased, not built"
+    end
     if row.Hash == nil then
         return false, ERROR_CODES.EXECUTION_FAILED, typeName .. " has no hash in this Lua context"
     end
@@ -596,8 +617,7 @@ local function executeCityProduce(playerId, command)
             "Production unavailable: no CityManager in this Lua context"
     end
 
-    -- The strict form: "can this city start it now". Skipped when the method
-    -- is missing in this Lua context.
+    -- The strict form: "can this city start it now".
     local allowed = nil
     pcall(function()
         local buildQueue = city:GetBuildQueue()
@@ -605,9 +625,12 @@ local function executeCityProduce(playerId, command)
             allowed = buildQueue:CanProduce(row.Hash, false, true)
         end
     end)
-    if allowed == false then
+    -- Anything but a clear yes is a refusal, a game that cannot be asked
+    -- included: this answer also decides what the exporter offers.
+    if allowed ~= true then
         return false, ERROR_CODES.OPERATION_REFUSED,
-            string.format("City %d cannot start %s now", cityId, typeName)
+            string.format("City %d cannot start %s now%s", cityId, typeName,
+                allowed == nil and " (the game could not be asked)" or "")
     end
 
     local params = {}
@@ -1192,10 +1215,10 @@ function AlphaZeroActionExecutor.Check(playerId, command)
         return false, ERROR_CODES.NOT_IMPLEMENTED,
             "No check for action type: " .. tostring(command and command.action_type)
     end
-    local savedLog = Log
+    local savedLog, savedDryRun = Log, dryRun
     dryRun, Log = true, nil  -- a check per candidate would flood the log
     local ok, success, errCode, message = pcall(AlphaZeroActionExecutor.Execute, playerId, command)
-    dryRun, Log = false, savedLog
+    dryRun, Log = savedDryRun, savedLog  -- a check inside a check stays a check
     if not ok then
         return false, ERROR_CODES.EXECUTION_FAILED, "Exception: " .. tostring(success)
     end

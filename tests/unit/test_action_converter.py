@@ -634,6 +634,23 @@ class TestUnitActionConversion:
             converter.convert(idx, state, validate=False)
 
 
+def _offer(city_id: int, kind: str, slot: int) -> list[LegalAction]:
+    """A produce offer with enough items of ``kind`` that ``slot`` names one.
+
+    Since GM-B7b a production index is a position among the offered items, and a slot
+    nothing was offered at is refused: these tests supply the offer.
+    """
+    names = [f"ITEM_{i:02d}" for i in range(slot + 1)]
+    return [
+        LegalAction(
+            action_type="produce",
+            city_id=city_id,
+            items=names,
+            item_types=dict.fromkeys(names, kind),
+        )
+    ]
+
+
 class TestCityActionConversion:
     """Tests for _convert_city_action covering all city action types."""
 
@@ -665,28 +682,28 @@ class TestCityActionConversion:
     def test_convert_produce_unit(self, converter, state):
         """Test PRODUCE_UNIT city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_UNIT, 5)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "unit", 5), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "unit"
 
     def test_convert_produce_building(self, converter, state):
         """Test PRODUCE_BUILDING city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_BUILDING, 3)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "building", 3), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "building"
 
     def test_convert_produce_wonder(self, converter, state):
         """Test PRODUCE_WONDER city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_WONDER, 1)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "wonder", 1), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "wonder"
 
     def test_convert_produce_district(self, converter, state):
         """Test PRODUCE_DISTRICT city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_DISTRICT, 2)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "district", 2), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "district"
 

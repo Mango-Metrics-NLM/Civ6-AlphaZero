@@ -399,3 +399,40 @@ class TestEndToEnd:
         runtime.execute("Civ6Stub.applyRequests()")
         assert runtime.eval("Civ6Stub.city(301).building") == name
         assert int(runtime.eval("#Civ6Stub.dropped")) == 0
+
+
+class TestReviewFindings:
+    """Review of GM-B7b: a slot nothing was offered at, and items beyond the slots."""
+
+    def _unit_slot_index(self, conv: ActionConverter, slot: int) -> int:
+        return conv.action_space.encode(
+            HierarchicalAction(
+                category=ActionCategory.CITY_ACTION,
+                selector=0,
+                action_type=CityActionType.PRODUCE_UNIT.value,
+                target=slot,
+            )
+        )
+
+    def test_a_slot_with_no_offered_item_is_not_sent_as_a_number(self) -> None:
+        """Without the offered items a slot names nothing. Sending the bare slot would be read
+        by the mod as a row index: another item."""
+        from alpha_zero.bridge.action_converter import InvalidActionError
+
+        conv = make_converter(20)
+        index = self._unit_slot_index(conv, 0)
+        with pytest.raises(InvalidActionError):
+            conv.convert(index, STATE, None)
+        with pytest.raises(InvalidActionError):
+            conv.convert(index, STATE, [], validate=False)
+
+    def test_items_beyond_the_slots_are_counted(self) -> None:
+        names = [f"UNIT_{i:02d}" for i in range(25)]
+        conv = make_converter(20)
+        conv.generate_action_mask(legal(produce_action(names, dict.fromkeys(names, "unit"))), STATE)
+        assert conv.production_stats["items_beyond_slots"] == 5
+
+    def test_nothing_is_counted_when_everything_fits(self) -> None:
+        conv = make_converter(20)
+        conv.generate_action_mask(legal(produce_action(ITEMS, KINDS)), STATE)
+        assert conv.production_stats["items_beyond_slots"] == 0

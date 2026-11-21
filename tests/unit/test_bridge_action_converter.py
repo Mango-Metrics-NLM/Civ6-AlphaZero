@@ -365,6 +365,23 @@ class TestActionSpaceSize:
 # ===========================================================================
 
 
+def _offer(city_id: int, kind: str, slot: int) -> list[LegalAction]:
+    """A produce offer with enough items of ``kind`` that ``slot`` names one.
+
+    Since GM-B7b a production index is a position among the offered items, and a slot
+    nothing was offered at is refused: these tests supply the offer.
+    """
+    names = [f"ITEM_{i:02d}" for i in range(slot + 1)]
+    return [
+        LegalAction(
+            action_type="produce",
+            city_id=city_id,
+            items=names,
+            item_types=dict.fromkeys(names, kind),
+        )
+    ]
+
+
 class TestActionConverterConvert:
     """Tests for the convert method that maps action_idx -> LuaCommand."""
 
@@ -560,11 +577,13 @@ class TestActionConverterConvert:
             target=5,
         )
         flat_idx = converter.action_space.encode(action)
-        cmd = converter.convert(flat_idx, game_state_with_cities, validate=False)
+        cmd = converter.convert(
+            flat_idx, game_state_with_cities, _offer(100, "unit", 5), validate=False
+        )
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.city_id == 100
         assert cmd.item_type == "unit"
-        assert cmd.item_id == 5
+        assert cmd.item_id == "ITEM_05"
 
     def test_city_produce_building_action(
         self, converter: ActionConverter, game_state_with_cities: dict
@@ -576,7 +595,9 @@ class TestActionConverterConvert:
             target=3,
         )
         flat_idx = converter.action_space.encode(action)
-        cmd = converter.convert(flat_idx, game_state_with_cities, validate=False)
+        cmd = converter.convert(
+            flat_idx, game_state_with_cities, _offer(100, "building", 3), validate=False
+        )
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "building"
 
@@ -590,7 +611,9 @@ class TestActionConverterConvert:
             target=1,
         )
         flat_idx = converter.action_space.encode(action)
-        cmd = converter.convert(flat_idx, game_state_with_cities, validate=False)
+        cmd = converter.convert(
+            flat_idx, game_state_with_cities, _offer(100, "wonder", 1), validate=False
+        )
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "wonder"
 
@@ -604,7 +627,9 @@ class TestActionConverterConvert:
             target=2,
         )
         flat_idx = converter.action_space.encode(action)
-        cmd = converter.convert(flat_idx, game_state_with_cities, validate=False)
+        cmd = converter.convert(
+            flat_idx, game_state_with_cities, _offer(100, "district", 2), validate=False
+        )
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "district"
 

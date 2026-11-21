@@ -161,7 +161,9 @@ _PRODUCE_ACTION: dict[str, CityActionType] = {
 def _convert_item_id_to_int(item_id: Any) -> int | None:
     """An item id as a number: an int as it is, a numeric string, a name by a stable bucket.
 
-    Production no longer uses this (see ``production_slots``); kept for purchases.
+    Nothing in the bridge calls this any more: production uses ``production_slots`` and
+    purchases send the action's own number. Kept because it is imported by tests and
+    may be by callers outside this package.
     """
     return production_slots.legacy_slot(item_id)
 
@@ -233,6 +235,8 @@ class ActionConverter:
         self.board_size = board_size
         self.research_registry = choose_registry(research_registry)
         self._research_stats = {"unmapped_research_items": 0, "research_out_of_range": 0}
+        #: Offered production items the last mask had no slot for.
+        self.production_stats = {"items_beyond_slots": 0}
         self._warned_lost_research = False
         # The research offers the counters last counted, so that building the
         # mask twice for one state counts once.
@@ -712,7 +716,7 @@ class ActionConverter:
         if kind is not None:
             # The slot is the item's position among what the game offered this
             # city; the command carries the item itself (its type name).
-            item: int | str = item_id
+            item: int | str | None = None
             for action in self._parse_legal_actions(legal_actions or ()):
                 if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
                     offered = production_slots.item_at(
@@ -720,6 +724,13 @@ class ActionConverter:
                     )
                     if offered is not None:
                         item = offered
+            if item is None:
+                # A slot names nothing without the offer it came from. Sent as a
+                # number, the mod would read it as a row index: another item.
+                raise InvalidActionError(
+                    f"Production slot {item_id} ({kind}) of city {city_id} was not offered",
+                    decoded.to_flat_index(self.action_space),
+                )
             return LuaCommand(
                 action_type=ActionType.CITY_PRODUCE, city_id=city_id, item_id=item, item_type=kind
             )
@@ -1006,6 +1017,7 @@ class ActionConverter:
         """
         self._check_same_registry(game_state)
         mask = np.zeros(self.action_space_size, dtype=np.float32)
+        beyond_slots = 0
 
         parsed_actions = self._parse_legal_actions(legal_actions)
 
@@ -1056,16 +1068,18 @@ class ActionConverter:
                     groups = production_slots.offered(
                         action.items, action.item_types, action.item_type
                     )
+                    bound = self.action_space.config.num_production_items
                     for kind, group in groups.items():
                         city_action = _PRODUCE_ACTION.get(kind)
                         if city_action is None:
                             continue
                         # Past the action space's bound a slot would spill into
                         # the next action type's range: it cannot be chosen.
-                        for slot in range(
-                            min(len(group), self.action_space.config.num_production_items)
-                        ):
+                        beyond_slots += max(0, len(group) - bound)
+                        for slot in range(min(len(group), bound)):
                             self._try_encode_city_action(mask, city_idx, city_action, slot)
+
+        self.production_stats = {"items_beyond_slots": beyond_slots}
 
         # Research choices
         research_actions = [

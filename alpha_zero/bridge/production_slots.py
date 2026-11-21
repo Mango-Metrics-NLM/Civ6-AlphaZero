@@ -81,8 +81,9 @@ def item_at(
 def legacy_slot(item: Any) -> int | None:
     """The number the old mapping gave an item id, made the same in every process.
 
-    An integer is itself, a numeric string its value, a name a CRC bucket. Kept for
-    callers outside the mask (purchases); production slots use :func:`slot_of`.
+    An integer is itself, a numeric string its value, a name a CRC bucket. Nothing in
+    the bridge uses it now; it backs ``action_converter._convert_item_id_to_int``,
+    which older callers and tests import.
     """
     if isinstance(item, bool) or item is None:
         return None

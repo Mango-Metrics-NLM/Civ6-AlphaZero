@@ -281,13 +281,16 @@ action is one the mod will not refuse:
 - an attack is offered only where it would not start a war; a ranged attack only to a unit
   the game lets start one;
 - a city's choices are asked by the row's hash, in the strict form, and exclude anything that
-  needs a plot. They are listed by type name.
+  needs a plot or can only be bought. They are listed by type name. When the game cannot be
+  asked, nothing is listed.
 
 On the Python side a production item's action slot is its position among the offered items
 of its kind (`alpha_zero/bridge/production_slots.py`), the same in every process, and the
 command carries the item's name. Before, a name was mapped with Python's salted string hash
-into 200 buckets: the slot differed from one process to the next, and most items landed
-outside the action space's 20 slots and could never be chosen. Limit: a slot means "the
+into 200 buckets: the slot differed from one process to the next, names could collide, and in
+`civ6_local`'s 20-slot action space most items landed outside the slots and could never be
+chosen. Items beyond the slots are still dropped (the alphabetically last of their kind);
+they are now counted (`ActionConverter.production_stats`). Limit: a slot means "the
 n-th offered item", not a fixed item, so it is enough for the greedy policy and not for a
 policy that is to learn what to build.
 
@@ -315,11 +318,22 @@ Live checklist, continuing the one above:
     `city_produce` by row index: each takes effect.
 15. Send `city_produce` naming a wonder: `NOT_IMPLEMENTED`, and nothing is queued.
 16. Note the text of one refusal: whether it carries the game's reason, and in what form.
-17. Read one exported state: every unit with moves has `move` targets and each is one step
-    away; a city that is building nothing lists items by name. If a unit has no `move`
-    action at all, `Map.GetAdjacentPlot` or `DirectionTypes` is missing in the mod's context.
+17. Read one exported state: a unit that has moves and a free neighbouring tile has `move`
+    targets, each one step away; a city that is building nothing lists items by name. If no
+    unit is offered a move, run one check in FireTuner and read its message:
+    `AlphaZeroActionExecutor.Check(0, { action_type = "unit_move", unit_id = <id>, target = { x = .., y = .. } })`.
+    The cause can be a missing adjacency call, a missing `CombatManager` (the mod refuses
+    every move it cannot ask about), a missing `UnitManager`, or no `UNITOPERATION_MOVE_TO` row.
 18. Let the greedy agent run (`python -m alpha_zero.civ6_local --mode civ6`): a city with no
     production starts building something, and no command comes back `OPERATION_REFUSED`.
+    On a map larger than the agent's board a chosen move target is scaled down and back and
+    often comes back as a tile that was not offered; the agent then ends the turn instead.
+    So units may hardly move even when nothing is refused: that is a known limit of the
+    scaling, not of the commands.
+19. Time one export in the middle of a game (dozens of units, several cities). It asks the
+    game once per unit, neighbour and action and once per unit and building row per city.
+20. Note whether a refused check writes anything to `Lua.log`, whether a `MustPurchase` item
+    is ever offered, and what a unit at the map's wrap seam is offered.
 
 What the stand-in cannot tell us, because it was written from the same reading as the mod:
 whether skip, sleep and fortify are operations under those names; whether the strict check

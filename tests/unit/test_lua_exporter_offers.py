@@ -659,3 +659,72 @@ class TestEverythingElseIsUnchanged:
         names = [a["action"] for a in h.export_state(load())["legal_actions"]]
         assert names[0] == "end_turn"
         assert names[-2:] == ["research_tech", "research_civic"]
+
+
+# ---------------------------------------------------------------------------
+# Review of GM-B7b
+# ---------------------------------------------------------------------------
+WARRIOR = {"action_type": "city_produce", "city_id": 301, "item_id": "UNIT_WARRIOR"}
+NO_CAN_PRODUCE = "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce = nil\n"
+RAISING_CAN_PRODUCE = (
+    "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce ="
+    " function() error('not in this context') end\n"
+)
+#: Counts full walks of GameInfo.Units (the iterator being started).
+COUNT_UNIT_WALKS = (
+    "Civ6Stub.unitWalks = 0\n"
+    "do local real = GameInfo.Units\n"
+    "GameInfo.Units = function() Civ6Stub.unitWalks = Civ6Stub.unitWalks + 1 return real() end end\n"
+)
+
+
+class TestReviewFindings:
+    @pytest.mark.parametrize(
+        "setup", [NO_CAN_PRODUCE, RAISING_CAN_PRODUCE], ids=["absent", "raises"]
+    )
+    def test_a_city_that_cannot_be_asked_is_offered_nothing(self, setup: str) -> None:
+        """When the game cannot say what a city can start, nothing is offered or requested
+        (the check used to pass, so every unit and building in the game was listed)."""
+        runtime = load(setup)
+        assert check(runtime, WARRIOR)[:2] == (False, "OPERATION_REFUSED")
+        assert execute(runtime, WARRIOR)[:2] == (False, "OPERATION_REFUSED")
+        action = produce_action(h.export_state(runtime))
+        assert action is not None, "premise: the city builds nothing, so the action is offered"
+        assert list(action["items"]) == []
+        runtime.execute("Civ6Stub.applyRequests()")
+        assert runtime.eval("Civ6Stub.city(301).building") is None
+
+    def test_an_item_that_can_only_be_bought_is_not_built(self) -> None:
+        """The game's production panel never offers to build a MustPurchase row."""
+        runtime = load(
+            "for row in GameInfo.Units() do"
+            " if row.UnitType == 'UNIT_WARRIOR' then row.MustPurchase = true end end\n"
+        )
+        success, code, message = check(runtime, WARRIOR)
+        assert (success, code) == (False, "OPERATION_REFUSED")
+        assert "purchase" in message.lower()
+        action = produce_action(h.export_state(runtime))
+        assert action is not None and "UNIT_WARRIOR" not in list(action["items"])
+
+    def test_an_export_does_not_walk_the_unit_table_once_per_item(self) -> None:
+        """Each production check used to scan GameInfo.Units from the top; with a few hundred
+        rows that is tens of thousands of row visits per city per export. Lookups are kept."""
+        runtime = load(COUNT_UNIT_WALKS)
+        h.export_state(runtime)
+        runtime.execute("Civ6Stub.unitWalks = 0")
+        h.export_state(runtime)
+        # One walk to list the candidates; resolving each is a remembered lookup. (Other
+        # parts of the export may read the table too: a small constant, not one per item.)
+        assert runtime.eval("Civ6Stub.unitWalks") <= 4
+
+    def test_a_check_inside_a_check_stays_a_dry_run(self) -> None:
+        """A nested check must not leave the outer one free to request."""
+        runtime = load(
+            "do local real = UnitManager.CanStartOperation\n"
+            "UnitManager.CanStartOperation = function(...)\n"
+            "  if not Civ6Stub.nested then Civ6Stub.nested = true\n"
+            "    AlphaZeroActionExecutor.Check(0, { action_type = 'unit_skip', unit_id = 101 }) end\n"
+            "  return real(...) end end\n"
+        )
+        assert check(runtime, {"action_type": "unit_skip", "unit_id": 102})[:2] == (True, None)
+        assert runtime.eval("#Civ6Stub.unitRequests") == 0
