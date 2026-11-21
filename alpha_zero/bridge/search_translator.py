@@ -74,6 +74,10 @@ def _is_int(value: Any) -> TypeGuard[int]:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
+def _xy(tile: tuple[int, int]) -> dict[str, int]:
+    return {"x": tile[0], "y": tile[1]}
+
+
 def _tile(value: Any) -> tuple[int, int] | None:
     """A target as an (x, y) pair of ints, or None."""
     if isinstance(value, Mapping):
@@ -149,7 +153,7 @@ class SearchTranslator:
             unit_id, city_id = getattr(offer, "unit_id", None), getattr(offer, "city_id", None)
             if kind == "end_turn":
                 self._end_turn = True
-            elif kind in ("move", "attack") and _is_int(unit_id):
+            elif kind in ("move", "attack", "ranged_attack") and _is_int(unit_id):
                 tiles = [t for t in map(_tile, getattr(offer, "targets", None) or []) if t]
                 self._unit_offers.setdefault((kind, unit_id), []).extend(tiles)
             elif kind in ("skip", "found_city") and _is_int(unit_id):
@@ -228,25 +232,54 @@ class SearchTranslator:
         destination = (cell[0] + delta[0], cell[1] + delta[1])
         if not (0 <= destination[0] < self._board and 0 <= destination[1] < self._board):
             return _no("the destination is off the board")
-        offered = self._unit_offers.get((kind, unit_id), [])
-        if not offered:
-            return _no(f"no {kind} was offered for the unit")
         centre = self._destination_point(cell, delta)
 
-        if kind == "attack":
-            offered = [t for t in offered if self._inside_step(t, centre)]
+        def nearest(tiles: list[tuple[int, int]]) -> tuple[int, int]:
+            return min(tiles, key=lambda t: (self._distance(t, centre), t[1], t[0]))
+
+        if kind == "move":
+            offered = self._unit_offers.get(("move", unit_id), [])
             if not offered:
-                return _no("no offered attack into that cell")
-        best = min(offered, key=lambda t: (self._distance(t, centre), t[1], t[0]))
-        if kind == "move" and not self._distance(best, centre) < self._distance(tile, centre):
-            return _no("no offered tile is nearer the destination")
-        return Translation(
-            {
-                "action_type": "unit_move" if kind == "move" else "unit_attack",
-                "unit_id": unit_id,
-                "target": {"x": best[0], "y": best[1]},
-            }
-        )
+                return _no("no move was offered for the unit")
+            best = nearest(offered)
+            if not self._distance(best, centre) < self._distance(tile, centre):
+                return _no("no offered tile is nearer the destination")
+            return Translation(
+                {"action_type": "unit_move", "unit_id": unit_id, "target": _xy(best)}
+            )
+
+        # An attack: a melee attack offered into the destination cell, else a
+        # ranged one (the game offers an archer `ranged_attack`, and the
+        # simulator has one attack action for both).
+        for offer, command in (("attack", "unit_attack"), ("ranged_attack", "unit_ranged_attack")):
+            inside = [
+                t
+                for t in self._unit_offers.get((offer, unit_id), [])
+                if self._in_cell(t, destination, centre)
+            ]
+            if inside:
+                return Translation(
+                    {"action_type": command, "unit_id": unit_id, "target": _xy(nearest(inside))}
+                )
+        if not any(self._unit_offers.get((o, unit_id)) for o in ("attack", "ranged_attack")):
+            return _no("no attack was offered for the unit")
+        return _no("no offered attack into that cell")
+
+    def _in_cell(
+        self, tile: tuple[int, int], cell: tuple[int, int], point: tuple[float, float]
+    ) -> bool:
+        """Whether an attack on ``tile`` is an attack into ``cell``.
+
+        On a map at least as large as the board the converter's own scaling
+        decides (round, then clamp at the board's edge), so the answer agrees
+        with the cell the simulator saw the target in. On a smaller map a
+        cell is a fraction of a tile and the box around the destination point
+        decides.
+        """
+        width, height = self._size()
+        if width >= self._cells() and height >= self._cells():
+            return self._cell_of(tile) == cell
+        return self._inside_step(tile, point)
 
     def _produce_command(self, action: Mapping[str, Any]) -> Translation:
         index, wanted = action.get("city_idx"), action.get("unit_type")
@@ -268,6 +301,18 @@ class SearchTranslator:
         )
 
     # ------------------------------------------------------------------
+    def _size(self) -> tuple[int, int]:
+        """The map's (width, height); the callers have checked it is known."""
+        if self._map is None:
+            raise ValueError("the map size is unknown")
+        return self._map
+
+    def _cells(self) -> int:
+        """The board's side; the callers have checked it is known."""
+        if self._board is None:
+            raise ValueError("the board size is unknown")
+        return int(self._board)
+
     def _steps(self) -> tuple[float, float]:
         """Game tiles per board cell on each axis, never less than one tile.
 
@@ -275,8 +320,7 @@ class SearchTranslator:
         smaller than the board a cell is a fraction of a tile, and one cell
         over would not be a different tile at all; a step is then one tile.
         """
-        assert self._map is not None and self._board is not None
-        return max(1.0, self._map[0] / self._board), max(1.0, self._map[1] / self._board)
+        return max(1.0, self._size()[0] / self._cells()), max(1.0, self._size()[1] / self._cells())
 
     def _destination_point(
         self, cell: tuple[int, int], delta: tuple[int, int]
@@ -287,25 +331,30 @@ class SearchTranslator:
         ``cx`` is centred on ``cx * W / B``. On a map at least as large as the
         board this is the centre of the destination cell.
         """
-        assert self._map is not None and self._board is not None
         step_x, step_y = self._steps()
         return (
-            cell[0] * self._map[0] / self._board + delta[0] * step_x,
-            cell[1] * self._map[1] / self._board + delta[1] * step_y,
+            cell[0] * self._size()[0] / self._cells() + delta[0] * step_x,
+            cell[1] * self._size()[1] / self._cells() + delta[1] * step_y,
         )
+
+    def _cell_of(self, tile: tuple[int, int]) -> tuple[int, int]:
+        """The board cell of a game tile, by the converter's own scaling."""
+        width, height = self._size()
+        top = self._cells() - 1
+        x = round(tile[0] * self._cells() / width)
+        y = round(tile[1] * self._cells() / height)
+        return max(0, min(top, x)), max(0, min(top, y))
 
     def _inside_step(self, tile: tuple[int, int], point: tuple[float, float]) -> bool:
         """Whether ``tile`` lies in the cell-sized box around ``point``."""
-        assert self._map is not None
         step_x, step_y = self._steps()
-        dx = abs(tile[0] - point[0]) % self._map[0]
-        dx = min(dx, self._map[0] - dx)
+        dx = abs(tile[0] - point[0]) % self._size()[0]
+        dx = min(dx, self._size()[0] - dx)
         return dx <= step_x / 2 + _EPSILON and abs(tile[1] - point[1]) <= step_y / 2 + _EPSILON
 
     def _distance(self, tile: tuple[int, int], point: tuple[float, float]) -> float:
-        assert self._map is not None
-        dx = abs(tile[0] - point[0]) % self._map[0]
-        dx = min(dx, self._map[0] - dx)  # the map wraps east-west
+        dx = abs(tile[0] - point[0]) % self._size()[0]
+        dx = min(dx, self._size()[0] - dx)  # the map wraps east-west
         return math.hypot(dx, tile[1] - point[1])
 
     # ------------------------------------------------------------------

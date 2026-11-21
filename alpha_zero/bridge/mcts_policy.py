@@ -28,7 +28,7 @@ from alpha_zero.bridge.microciv_proxy import (
     simulator_unit_class,
 )
 from alpha_zero.bridge.search_translator import SearchTranslator
-from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
+from alpha_zero.core.civ6_mcts import POLICY_TARGET_ONE_HOT, GumbelMCTS, GumbelMCTSConfig
 from alpha_zero.core.protocols import EnvironmentProtocol
 from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
 from alpha_zero.utils.constants import GAME, REWARDS
@@ -89,8 +89,10 @@ def _busy_city_ids(converted_state: Any) -> set[tuple[Any, Any]]:
         return set()
     busy: set[tuple[Any, Any]] = set()
     for city in cities:
+        # Anything but "nothing" is busy, whatever its type (the mod passes on
+        # what the game's build queue returns), as the turn ledger reads it.
         current = getattr(city, "current_production", None)
-        if isinstance(current, str) and current:
+        if current is not None and current != "":
             busy.add((getattr(city, "owner_id", None), getattr(city, "id", None)))
     return busy
 
@@ -217,7 +219,14 @@ class BridgeMCTSEnv(EnvironmentProtocol):
                     position=c_dict.get("position", (0, 0)),
                     population=c_dict.get("population", _DEFAULT_CITY_POPULATION),
                     defense=c_dict.get("defense", _DEFAULT_CITY_DEFENSE),
-                    production=c_dict.get("production", _DEFAULT_CITY_PRODUCTION),
+                    # A busy city's progress is not known in the simulator's
+                    # units (the converter's field holds turns left), so its
+                    # placeholder build starts from nothing.
+                    production=(
+                        _DEFAULT_CITY_PRODUCTION
+                        if is_busy
+                        else c_dict.get("production", _DEFAULT_CITY_PRODUCTION)
+                    ),
                     production_queue=_BUSY_PLACEHOLDER if is_busy else None,
                 )
             )
@@ -230,9 +239,13 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 
         self.env.done = False
 
-        # With nobody else in sight (the usual state of an opening) the
-        # simulator sees one surviving player and would call the game won on
-        # the first step; ``step`` does not let it end for that reason.
+        # With nobody else in the seeded state the simulator sees one
+        # surviving player and would call the game won on the first step;
+        # ``step`` does not let it end for that reason. With the mod's default
+        # settings this is EVERY live state, not only an opening: the mod
+        # exports the acting player's own units and cities unless
+        # OBSERVE_ALL_PLAYERS is on, so the search plans on a board with no
+        # other player on it (registered as a gap; it needs a mod change).
         me = self.env.current_player
         self._no_visible_enemy = not any(u.player != me for u in self.env.units) and not any(
             c.player != me for c in self.env.cities
@@ -534,6 +547,8 @@ class Civ6MctsPolicy:
             ``(command, record)``. With nothing translatable the command is
             ``end_turn`` and ``record["fallback"]`` says why.
         """
+        if converted_state is None:
+            raise ValueError("Civ6MctsPolicy requires converted_state to seed the simulation env.")
         env = BridgeMCTSEnv.from_bridge_state(converted_state, max_turns=self.max_turns)
         translator = SearchTranslator(
             converted_state, env.own_unit_ids(), env.own_city_ids(), allowed=allowed
@@ -561,13 +576,17 @@ class Civ6MctsPolicy:
             record["fallback"] = "nothing the search could choose translates to an offered command"
             return dict(_END_TURN_COMMAND), record
 
-        mcts = self.mcts
-        if decision_seed is not None:
-            mcts = GumbelMCTS(
-                network=self.network,
-                config=replace(self.config, seed=int(decision_seed)),
-                device=self.device,
-            )
+        # The search that ACTS reports its halving winner (a one-hot). The
+        # default completed-Q target spreads mass over every root child, an
+        # unvisited one included, so its largest entry can be an action the
+        # search never looked at. One search object per call: the shared one
+        # holds an RNG and counters, and this runs in a worker thread.
+        seed = int(decision_seed) if decision_seed is not None else self.config.seed
+        mcts = GumbelMCTS(
+            network=self.network,
+            config=replace(self.config, seed=seed, policy_target=POLICY_TARGET_ONE_HOT),
+            device=self.device,
+        )
         policy_probs, root_value = await asyncio.to_thread(mcts.search, env)
         stats = mcts.last_search_stats
         record["root_value"] = float(root_value)

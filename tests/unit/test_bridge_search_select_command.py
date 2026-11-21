@@ -88,10 +88,14 @@ class TestChosenCommand:
         json.dumps(command)
         assert json.loads(json.dumps(record))["command"] == command
 
-    def test_the_chosen_action_has_the_most_mass_among_the_translatable(
-        self, policy: Civ6MctsPolicy
-    ) -> None:
-        """Run the search again on the restricted root, as the policy does, and compare."""
+    def test_the_chosen_action_is_the_search_s_own_winner(self, policy: Civ6MctsPolicy) -> None:
+        """Run the search again on the restricted root and compare with its halving winner.
+
+        The acting search reports a one-hot on the halving winner. The default
+        completed-Q target gives mass to root children the search never
+        visited, so "the largest mass" could be an unsearched action (found by
+        the independent review; this test first pinned the largest mass).
+        """
         state = rich_state()
         converted = convert(state)
         _, record = _run(policy, state, decision_seed=11)
@@ -101,12 +105,17 @@ class TestChosenCommand:
         env.restrict_root(mask)
         search = type(policy.mcts)(
             network=policy.network,
-            config=GumbelMCTSConfig(num_simulations=SIMS, num_sampled_actions=4, seed=11),
+            config=GumbelMCTSConfig(
+                num_simulations=SIMS, num_sampled_actions=4, seed=11, policy_target="one_hot"
+            ),
             device="cpu",
         )
         probs, _ = search.search(env)
-        assert set(np.nonzero(probs)[0].tolist()) <= set(record["root_actions"])
-        assert record["chosen_action"] == int(np.argmax(probs))
+        winners = np.nonzero(probs)[0].tolist()
+        assert len(winners) == 1, "premise: a one-hot names exactly the halving winner"
+        assert winners[0] in record["root_actions"]
+        assert record["chosen_action"] == winners[0]
+        assert record["policy_mass"] == 1.0
         assert record["policy_mass"] == pytest.approx(float(probs[record["chosen_action"]]))
 
     def test_a_live_turn_past_the_horizon_is_still_searched(self, policy: Civ6MctsPolicy) -> None:

@@ -464,6 +464,12 @@ the log line "Turn N is stalled" names the blocker it could not answer.
 
 ## Known limitations
 
+- **The search mode is still refused, and would see nobody else.** GM-B6a added the translation from
+  the search's simulator action to an offered live command (`alpha_zero/bridge/search_translator.py`),
+  but the agent loop does not use it yet (GM-B6b). Separately, with the mod's default settings
+  (`OBSERVE_ALL_PLAYERS` off) only your own units and cities are exported, so the search's
+  simulator never contains another player (GM-B8, a mod change).
+
 - **Turn-cycle stall.** After a handful of automated end-turns the game's own
   turn cycle stalls: the local player's `TURN_ACTIVE` flag reads `false` with
   no popup blocking it, and no headless way to force-advance the turn from

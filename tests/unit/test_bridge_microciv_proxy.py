@@ -105,6 +105,12 @@ UNIT_CLASS_TABLE: list[tuple[Any, Any, str | None]] = [
 ]
 
 
+def _proxy_counts(env: Any) -> dict[str, int]:
+    """The proxy's own three counters (GM-B6a added search-side fields beside them)."""
+    keys = ("units", "units_not_represented", "impassable_tiles")
+    return {key: env.proxy_stats[key] for key in keys}
+
+
 class TestSimulatorUnitClass:
     @pytest.mark.parametrize(("unit_type", "raw_type", "expected"), UNIT_CLASS_TABLE)
     def test_table(
@@ -447,7 +453,7 @@ class TestSeedingUnits:
         env, converted = _seed(state)
         assert [u["type"] for u in converted["units"]].count("siege") == 2, "premise"
         assert _sim_units(env) == {8: "archer", 3: "warrior"}
-        assert env.proxy_stats == {"units": 2, "units_not_represented": 1, "impassable_tiles": 0}
+        assert _proxy_counts(env) == {"units": 2, "units_not_represented": 1, "impassable_tiles": 0}
 
     def test_unit_fields_are_kept(self) -> None:
         state = make_state(
@@ -489,7 +495,7 @@ class TestSeedingUnits:
         )
         env, converted = _seed(state)
         assert _sim_units(env) == {9: "warrior", 3: "warrior"}
-        assert env.proxy_stats == {"units": 2, "units_not_represented": 2, "impassable_tiles": 0}
+        assert _proxy_counts(env) == {"units": 2, "units_not_represented": 2, "impassable_tiles": 0}
         assert env.proxy_stats["units"] + env.proxy_stats["units_not_represented"] == len(
             converted["units"]
         )
@@ -499,8 +505,8 @@ class TestSeedingUnits:
 
     def test_stats_for_an_empty_state(self) -> None:
         env, _ = _seed(make_state())
-        assert env.proxy_stats == {"units": 0, "units_not_represented": 0, "impassable_tiles": 0}
-        assert set(env.proxy_stats) == {"units", "units_not_represented", "impassable_tiles"}
+        assert _proxy_counts(env) == {"units": 0, "units_not_represented": 0, "impassable_tiles": 0}
+        assert {"units", "units_not_represented", "impassable_tiles"} <= set(env.proxy_stats)
 
     def test_hand_made_state_without_a_raw_state(self) -> None:
         """A converted dict that has no ``_raw_state`` is judged by its category alone."""
@@ -519,7 +525,7 @@ class TestSeedingUnits:
         }
         env = BridgeMCTSEnv.from_bridge_state(converted)
         assert _sim_units(env) == {1: "warrior", 3: "archer"}
-        assert env.proxy_stats == {"units": 2, "units_not_represented": 2, "impassable_tiles": 0}
+        assert _proxy_counts(env) == {"units": 2, "units_not_represented": 2, "impassable_tiles": 0}
 
 
 class TestSeedingTerrain:
@@ -663,7 +669,7 @@ class TestSettlerFoundsACity:
         env, _ = _seed(state)
         found = env.env.action_space_handler.found_city_offset + 0
         assert env.get_valid_actions()[found] == 0.0
-        assert env.proxy_stats == {"units": 1, "units_not_represented": 1, "impassable_tiles": 0}
+        assert _proxy_counts(env) == {"units": 1, "units_not_represented": 1, "impassable_tiles": 0}
 
 
 class TestClone:
@@ -683,15 +689,12 @@ class TestClone:
         env = self._env()
         cloned = env.clone()
 
-        assert (
-            cloned.proxy_stats
-            == env.proxy_stats
-            == {
-                "units": 2,
-                "units_not_represented": 1,
-                "impassable_tiles": 1,
-            }
-        )
+        assert cloned.proxy_stats == env.proxy_stats
+        assert _proxy_counts(env) == {
+            "units": 2,
+            "units_not_represented": 1,
+            "impassable_tiles": 1,
+        }
         assert cloned.env is not env.env
         assert _sim_units(cloned) == _sim_units(env)
 
