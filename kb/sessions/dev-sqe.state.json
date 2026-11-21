@@ -1,31 +1,31 @@
 {
     "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-21T16:35:00Z",
-    "current_focus": "Game-mechanics program: the live command layer (GM-B7) ahead of the search translator (GM-B6), task plan kb/specs/20261120-live-command-layer-plan.md. Merged since the last state: #152 (GM-B4), #153 (GM-B5), #154 (review follow-ups), #156 (maintainer's post-merge AQA). Open: #155 (OpenSpec archive) and GM-B7a on claude/gm-b7a-command-executor. Nothing has run in a real game.",
+    "last_timestamp": "2026-11-21T17:28:00Z",
+    "current_focus": "Game-mechanics program: the live command layer (GM-B7), task plan kb/specs/20261120-live-command-layer-plan.md. Merged: #154, #155, #156. Open: #158 (GM-B7a) and GM-B7b on claude/gm-b7b-exporter-offers (contains GM-B7a). Nothing has run in a real game.",
     "resume_pointers": {
-        "current_task": "GM-B7a is built and reviewed; its PR is open or about to be. Next: GM-B7b (exporter: neighbours from the game, offered actions from the strict check, production choices by hash; greedy production by name), then GM-B7c (agent loop), then the maintainer's live sitting, then GM-B6a/b.",
+        "current_task": "GM-B7a (#158) and GM-B7b are built and reviewed. Next: GM-B7c (agent loop: a refused command is not resent in a turn, a cap, --max-turns in game turns; scripts/live_command_check.py), then the maintainer's live sitting, then GM-B6a/b.",
         "blocked_on": [
-            "maintainer: merge #155 and the GM-B7a PR",
-            "maintainer: the live sitting, 16 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
+            "maintainer: merge #158 (GM-B7a) and the GM-B7b PR",
+            "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
             "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
             "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
         ],
         "next_steps": [
+            "When a check becomes a gate (the executor's check now decides what is offered), re-read what it does when it cannot ask: fail-open that was tolerable on execution listed everything as an offer",
             "A guard added to stop a loop can be the loop: test a cap together with the state it guards against (the per-turn cap trapped a blocked turn)",
             "A stand-in written from the same reading as the code under test cannot catch a wrong reading: list those assumptions for the live check instead of calling them tested",
             "Tests of a command assert on the game state after the next frame, never on a recorded call or the command's own answer",
             "For a game API, read the game's own UI Lua first; a strict check the UI never asks is unverified even when the stand-in models it",
             "Lua's %c asks the C library and differs on Windows: write byte ranges out",
             "Base every follow-up PR on the default branch; when a PR merges, merge the default branch into the open ones and resolve doc conflicts there",
-            "A push that lands after its PR merged is not merged: check the default branch contains the commit",
-            "The debt ratchet counts lines of coverage-omitted files and skip sites: a fix in alpha_zero/cloud has a line budget"
+            "A push that lands after its PR merged is not merged: check the default branch contains the commit"
         ]
     },
     "context_files": [
+        "kb/handoffs/20261121-devsqe-to-prepr-gm-b7b-exporter-offers.md",
         "kb/handoffs/20261121-devsqe-to-prepr-gm-b7a-command-executor.md",
         "kb/specs/20261120-live-command-layer-plan.md",
-        "mod/AlphaZeroAI/Scripts/ActionExecutor.lua",
-        "tests/fixtures/lua/civ6_stub_commands.lua",
-        "docs/LIVE_CIV6.md"
+        "mod/AlphaZeroAI/Scripts/StateExporter.lua",
+        "alpha_zero/bridge/production_slots.py"
     ]
 }

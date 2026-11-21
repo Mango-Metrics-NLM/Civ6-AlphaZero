@@ -386,15 +386,16 @@ class TestKnownGaps:
         # today's behaviour; not changed by GM-B2 (player 1 exists in the stub)
         assert [p["id"] for p in state["players"]] == [0]
 
-    def test_move_targets_include_occupied_tiles(self, state: dict[str, Any]) -> None:
-        # today's behaviour; not changed by GM-B2
-        # Warrior 102 may "move" onto (2,0), where enemy 201 stands (that is an attack, not
-        # a move), and onto (0,0), where friendly settler 101 stands. Either would be
-        # rejected by the game's own movement rules; the exporter offers them anyway.
+    def test_move_targets_exclude_occupied_tiles(self, state: dict[str, Any]) -> None:
+        # Changed by GM-B7b (E6): this used to pin the opposite ("the exporter offers
+        # them anyway"). Warrior 102 is no longer offered (2,0), where enemy 201 stands
+        # (that is an attack, not a move), nor (0,0), where friendly settler 101 stands:
+        # the game's own check refuses both.
         (move,) = _actions_for(state, "move", unit_id=102)
         targets = {tuple(t) for t in move["targets"]}
-        assert (2, 0) in targets
-        assert (0, 0) in targets
+        assert (2, 0) not in targets
+        assert (0, 0) not in targets
+        assert targets == {(1, 1), (0, 1)}
 
 
 class TestLegalActions:
@@ -419,9 +420,12 @@ class TestLegalActions:
         assert not [a for a in state["legal_actions"] if a.get("unit_id") == 201]
 
     def test_move_targets_are_adjacent_and_in_bounds(self, state: dict[str, Any]) -> None:
+        # GM-B7b (E5, E6): neighbours come from the game's own adjacency. On the even row
+        # y = 0 the neighbours of (0, 0) inside the 4x3 map are (1, 0) and (0, 1); (1, 0) holds
+        # the warrior, so only (0, 1) is offered. The old hand table also offered (1, 1).
         (move,) = _actions_for(state, "move", unit_id=101)
         targets = {tuple(t) for t in move["targets"]}
-        assert targets == {(1, 0), (0, 1), (1, 1)}
+        assert targets == {(0, 1)}
 
     def test_no_move_target_is_the_mountain(self, state: dict[str, Any]) -> None:
         for action in _actions_for(state, "move"):
@@ -429,20 +433,25 @@ class TestLegalActions:
 
     def test_impassable_tiles_are_filtered_from_move_targets(self) -> None:
         # Non-vacuity for the mountain test: no stub unit is adjacent to (3,2), so that
-        # assertion holds trivially. Make a tile next to settler 101 impassable and show
-        # the exporter drops exactly that target.
+        # assertion holds trivially. Make a tile next to warrior 102 impassable and show
+        # the exporter drops exactly that target (GM-B7b: it used to be settler 101 and (1,1),
+        # which is not one of its neighbours; the settler's only free neighbour is (0,1)).
         setup = "Map.GetPlot(1, 1).IsImpassable = function() return true end"
         state = h.export_state(h.load_mod(setup=setup))
-        (move,) = _actions_for(state, "move", unit_id=101)
-        assert {tuple(t) for t in move["targets"]} == {(1, 0), (0, 1)}
+        (move,) = _actions_for(state, "move", unit_id=102)
+        assert {tuple(t) for t in move["targets"]} == {(0, 1)}
+        setup = "Map.GetPlot(0, 1).IsImpassable = function() return true end"
+        state = h.export_state(h.load_mod(setup=setup))
+        assert _actions_for(state, "move", unit_id=101) == []
 
     def test_produce_lists_what_the_stub_allows(self, state: dict[str, Any]) -> None:
         (produce,) = _actions_for(state, "produce", city_id=301)
-        assert produce["items"] == ["UNIT_WARRIOR", "BUILDING_GRANARY", "DISTRICT_CAMPUS"]
+        # GM-B7b (E4): the game is asked by row hash and strictly, so the settler (loose
+        # only) and the campus (needs a plot) are not offered.
+        assert produce["items"] == ["UNIT_WARRIOR", "BUILDING_GRANARY"]
         assert produce["item_types"] == {
             "UNIT_WARRIOR": "unit",
             "BUILDING_GRANARY": "building",
-            "DISTRICT_CAMPUS": "district",
         }
 
     def test_produce_follows_can_produce(self) -> None:

@@ -25,11 +25,6 @@ local STATE_SCHEMA_VERSION = 2
 -- GameInfo row type names by row Index, one table per GameInfo table name.
 local typeNameCaches = {}
 
--- Hex-grid neighbor offsets (Civ6 uses offset coordinates).
--- Neighbor positions differ based on whether the row (y) is even or odd.
-local HEX_EVEN_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
-local HEX_ODD_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, -1}}
-
 -- ----------------------------------------------------------------------------
 -- Helper Functions
 -- ----------------------------------------------------------------------------
@@ -211,12 +206,27 @@ local function getCivicTypeName(civicId)
     return "CIVIC_UNKNOWN_" .. tostring(civicId)
 end
 
--- Get hex grid neighbors (Civ6 uses offset coordinates)
+-- The plots one step from (x, y), from the game's own adjacency (which also
+-- knows where the map wraps). No table of offsets is kept here: the one this
+-- file used to carry was wrong for both row parities. Where the game's call
+-- is missing there are no neighbours, and so no moves are offered.
+local DIRECTION_NAMES = {
+    "DIRECTION_NORTHEAST", "DIRECTION_EAST", "DIRECTION_SOUTHEAST",
+    "DIRECTION_SOUTHWEST", "DIRECTION_WEST", "DIRECTION_NORTHWEST",
+}
 local function getHexNeighbors(x, y)
     local neighbors = {}
-    local offsets = (y % 2 == 0) and HEX_EVEN_ROW_OFFSETS or HEX_ODD_ROW_OFFSETS
-    for _, offset in ipairs(offsets) do
-        table.insert(neighbors, {x + offset[1], y + offset[2]})
+    if not Map or not Map.GetAdjacentPlot or not DirectionTypes then
+        return neighbors
+    end
+    for _, name in ipairs(DIRECTION_NAMES) do
+        local direction = DirectionTypes[name]
+        if direction ~= nil then
+            local ok, plot = pcall(Map.GetAdjacentPlot, x, y, direction)
+            if ok and plot then
+                table.insert(neighbors, {plot:GetX(), plot:GetY()})
+            end
+        end
     end
     return neighbors
 end
@@ -262,20 +272,28 @@ local function getObservablePlayerIds(playerId)
     return playerIds
 end
 
--- Get producible items from a GameInfo table (Units, Buildings, or Districts)
--- Returns items appended to the provided items/itemTypes tables
-local function collectProducibleItems(buildQueue, gameInfoTable, typeField, itemCategory, items, itemTypes)
-    if not gameInfoTable or not buildQueue or not buildQueue.CanProduce then
+-- Whether the executor would carry this command out now. The executor's
+-- own check, so an offered action is one that will not be refused.
+local function wouldBeAccepted(playerId, command)
+    if not AlphaZeroActionExecutor or not AlphaZeroActionExecutor.Check then
+        return false
+    end
+    local ok, accepted = pcall(AlphaZeroActionExecutor.Check, playerId, command)
+    return ok and accepted == true
+end
+
+-- The items of one GameInfo table a city could start now, by type name.
+-- Asked through the executor's check: by the row's Hash, the strict form,
+-- and nothing that needs a plot.
+local function collectProducibleItems(playerId, cityId, gameInfoTable, typeField, itemCategory, items, itemTypes)
+    if not gameInfoTable then
         return
     end
     for row in gameInfoTable() do
-        local ok, canProd = pcall(function()
-            return buildQueue:CanProduce(row.Index, true)
-        end)
-        if ok and canProd then
-            local key = row[typeField] or row.Index
-            table.insert(items, key)
-            itemTypes[key] = itemCategory
+        local name = row[typeField]
+        if name and wouldBeAccepted(playerId, { action_type = "city_produce", city_id = cityId, item_id = name }) then
+            table.insert(items, name)
+            itemTypes[name] = itemCategory
         end
     end
 end
@@ -775,97 +793,49 @@ local function exportLegalActions(playerId)
     if playerUnits then
         for _, unit in playerUnits:Members() do
             local unitId = unit:GetID()
-            local movesRemaining = unit:GetMovementMovesRemaining() or 0
+            local ux, uy = unit:GetX(), unit:GetY()
+            local neighbors = getHexNeighbors(ux, uy)
 
-            if movesRemaining > 0 then
-                -- Get valid move targets using hex-grid neighbors
+            -- Every action below is offered exactly when the executor's own
+            -- check accepts the command it stands for.
+            local function accepted(actionType, target)
+                local command = { action_type = actionType, unit_id = unitId }
+                if target then command.target = { x = target[1], y = target[2] } end
+                return wouldBeAccepted(playerId, command)
+            end
+            local function acceptedTargets(actionType, candidates)
                 local targets = {}
-                local ux, uy = unit:GetX(), unit:GetY()
-                local neighbors = getHexNeighbors(ux, uy)
-
-                for _, neighbor in ipairs(neighbors) do
-                    local tx, ty = neighbor[1], neighbor[2]
-                    if tx >= 0 and ty >= 0 then
-                        local plot = Map and Map.GetPlot(tx, ty)
-                        if plot and not plot:IsImpassable() then
-                            table.insert(targets, {tx, ty})
-                        end
+                for _, candidate in ipairs(candidates) do
+                    if accepted(actionType, candidate) then
+                        table.insert(targets, {candidate[1], candidate[2]})
                     end
                 end
-
-                if #targets > 0 then
-                    table.insert(actions, {
-                        action = "move",
-                        unit_id = unitId,
-                        targets = targets,
-                    })
-                end
-
-                -- Fortify action (available if unit has movement)
-                if not unit:IsCivilian() then
-                    table.insert(actions, {
-                        action = "fortify",
-                        unit_id = unitId,
-                    })
-                end
-
-                -- Skip action (always available if has movement)
-                table.insert(actions, {
-                    action = "skip",
-                    unit_id = unitId,
-                })
-
-                -- Found city (if settler)
-                local typeInfo = getUnitTypeInfo(unit:GetUnitType())
-                if typeInfo.type_name == "UNIT_SETTLER" or
-                   (typeInfo.is_civilian and string.find(typeInfo.type_name, "SETTLER")) then
-                    table.insert(actions, {
-                        action = "found_city",
-                        unit_id = unitId,
-                    })
-                end
+                return targets
             end
 
-            -- Attack actions (check for enemy units in range)
-            if (unit:GetAttacksRemaining() or 0) > 0 then
-                local ux, uy = unit:GetX(), unit:GetY()
-                local range = unit:GetRange() or 1
-                local attackTargets = {}
+            local moveTargets = acceptedTargets("unit_move", neighbors)
+            if #moveTargets > 0 then
+                table.insert(actions, { action = "move", unit_id = unitId, targets = moveTargets })
+            end
+            if accepted("unit_fortify") then
+                table.insert(actions, { action = "fortify", unit_id = unitId })
+            end
+            if accepted("unit_skip") then
+                table.insert(actions, { action = "skip", unit_id = unitId })
+            end
+            if accepted("unit_found_city") then
+                table.insert(actions, { action = "found_city", unit_id = unitId })
+            end
 
-                -- Get tiles in attack range
-                local tilesInRange
-                if range <= 1 then
-                    tilesInRange = getHexNeighbors(ux, uy)
-                else
-                    tilesInRange = getHexTilesInRange(ux, uy, range)
-                end
-
-                for _, tilePos in ipairs(tilesInRange) do
-                    local tx, ty = tilePos[1], tilePos[2]
-                    if tx >= 0 and ty >= 0 then
-                        local plot = Map and Map.GetPlot(tx, ty)
-                        if plot then
-                            -- Check for enemy units on this tile
-                            local plotUnits = Units and Units.GetUnitsInPlot(plot)
-                            if plotUnits then
-                                for _, enemyUnit in plotUnits:Members() do
-                                    if enemyUnit:GetOwner() ~= playerId then
-                                        table.insert(attackTargets, {tx, ty})
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-
-                if #attackTargets > 0 then
-                    local attackAction = range > 1 and "ranged_attack" or "attack"
-                    table.insert(actions, {
-                        action = attackAction,
-                        unit_id = unitId,
-                        targets = attackTargets,
-                    })
+            local attackTargets = acceptedTargets("unit_attack", neighbors)
+            if #attackTargets > 0 then
+                table.insert(actions, { action = "attack", unit_id = unitId, targets = attackTargets })
+            end
+            local range = unit:GetRange() or 0
+            if range >= 1 then
+                local rangedTargets = acceptedTargets("unit_ranged_attack", getHexTilesInRange(ux, uy, range))
+                if #rangedTargets > 0 then
+                    table.insert(actions, { action = "ranged_attack", unit_id = unitId, targets = rangedTargets })
                 end
             end
         end
@@ -884,9 +854,9 @@ local function exportLegalActions(playerId)
                 local itemTypes = {}
 
                 if GameInfo then
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Units, "UnitType", "unit", items, itemTypes)
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Districts, "DistrictType", "district", items, itemTypes)
+                    local cityId = city:GetID()
+                    pcall(collectProducibleItems, playerId, cityId, GameInfo.Units, "UnitType", "unit", items, itemTypes)
+                    pcall(collectProducibleItems, playerId, cityId, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
                 end
 
                 if #items > 0 or needsProduction then

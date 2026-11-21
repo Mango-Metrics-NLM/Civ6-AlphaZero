@@ -270,6 +270,31 @@ The eight now go the way the game's own UI sends them:
   the cap. When the window does run out, the mod stops listening and the turn stays open
   until someone ends it by hand, as before.
 
+**What the mod offers (GM-B7b).** The `legal_actions` of an exported state are now exactly
+what the executor's own check accepts at that moment
+(`AlphaZeroActionExecutor.Check`, the executor run without sending anything), so an offered
+action is one the mod will not refuse:
+
+- a unit's move targets are the game's own adjacent plots (`Map.GetAdjacentPlot`), minus
+  what the game's check refuses (occupied tiles, impassable ones). The table of offsets the
+  exporter used to carry was wrong for both row parities and is gone; where the game's
+  adjacency call is missing no move is offered at all;
+- an attack is offered only where it would not start a war; a ranged attack only to a unit
+  the game lets start one;
+- a city's choices are asked by the row's hash, in the strict form, and exclude anything that
+  needs a plot or can only be bought. They are listed by type name. When the game cannot be
+  asked, nothing is listed.
+
+On the Python side a production item's action slot is its position among the offered items
+of its kind (`alpha_zero/bridge/production_slots.py`), the same in every process, and the
+command carries the item's name. Before, a name was mapped with Python's salted string hash
+into 200 buckets: the slot differed from one process to the next, names could collide, and in
+`civ6_local`'s 20-slot action space most items landed outside the slots and could never be
+chosen. Items beyond the slots are still dropped (the alphabetically last of their kind);
+they are now counted (`ActionConverter.production_stats`). Limit: a slot means "the
+n-th offered item", not a fixed item, so it is enough for the greedy policy and not for a
+policy that is to learn what to build.
+
 All of this has run only against the hand-written stand-in for the game
 (`tests/fixtures/lua/civ6_stub_commands.lua`), which was written from the same reading of the
 game's UI code. It shows the mod does what that code does, not that the game accepts it.
@@ -297,6 +322,22 @@ Live checklist, continuing the one above:
     `city_produce` by row index: each takes effect.
 15. Send `city_produce` naming a wonder: `NOT_IMPLEMENTED`, and nothing is queued.
 16. Note the text of one refusal: whether it carries the game's reason, and in what form.
+17. Read one exported state: a unit that has moves and a free neighbouring tile has `move`
+    targets, each one step away; a city that is building nothing lists items by name. If no
+    unit is offered a move, run one check in FireTuner and read its message:
+    `AlphaZeroActionExecutor.Check(0, { action_type = "unit_move", unit_id = <id>, target = { x = .., y = .. } })`.
+    The cause can be a missing adjacency call, a missing `CombatManager` (the mod refuses
+    every move it cannot ask about), a missing `UnitManager`, or no `UNITOPERATION_MOVE_TO` row.
+18. Let the greedy agent run (`python -m alpha_zero.civ6_local --mode civ6`): a city with no
+    production starts building something, and no command comes back `OPERATION_REFUSED`.
+    On a map larger than the agent's board a chosen move target is scaled down and back and
+    often comes back as a tile that was not offered; the agent then ends the turn instead.
+    So units may hardly move even when nothing is refused: that is a known limit of the
+    scaling, not of the commands.
+19. Time one export in the middle of a game (dozens of units, several cities). It asks the
+    game once per unit, neighbour and action and once per unit and building row per city.
+20. Note whether a refused check writes anything to `Lua.log`, whether a `MustPurchase` item
+    is ever offered, and what a unit at the map's wrap seam is offered.
 
 What the stand-in cannot tell us, because it was written from the same reading as the mod:
 whether skip, sleep and fortify are operations under those names; whether the strict check
