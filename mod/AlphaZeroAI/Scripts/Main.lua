@@ -351,8 +351,11 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         end
     end
 
-    local overCap = bridgeState.actionsThisTurn >= cap and not onlyEndTurn
-    if overCap and onlyUnblocking and bridgeState.actionsThisTurn < 2 * cap then
+    -- The count the turn would reach with this message: a batch may not carry
+    -- it past a limit either.
+    local projected = bridgeState.actionsThisTurn + #commands
+    local overCap = projected > cap and not onlyEndTurn
+    if overCap and onlyUnblocking and projected <= 2 * cap then
         local blocker = nil
         if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
             local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)

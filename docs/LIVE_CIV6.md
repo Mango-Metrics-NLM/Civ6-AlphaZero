@@ -263,7 +263,8 @@ The eight now go the way the game's own UI sends them:
   2), not in the same frame, and reads no command in between.
 - The mod keeps listening for `COMMAND_TIMEOUT` seconds after the *last* command, not after the
   turn's start. After `MAX_COMMANDS_PER_TURN` commands (default 200) in a turn it accepts only
-  `end_turn` and answers anything else with `COMMAND_CAP_REACHED`. One exception, so the cap
+  `end_turn` and answers anything else with `COMMAND_CAP_REACHED`; a message that would carry
+  the count past the cap is refused whole. One exception, so the cap
   cannot trap a turn: while the game refuses to end the turn, commands that can answer the
   open choice (research, production, skip, fortify, sleep) are still carried out, up to twice
   the cap. When the window does run out, the mod stops listening and the turn stays open

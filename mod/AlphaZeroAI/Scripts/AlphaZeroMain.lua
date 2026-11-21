@@ -3423,8 +3423,7 @@ local function executeCityProduce(playerId, command)
             "Production unavailable: no CityManager in this Lua context"
     end
 
-    -- The strict form: "can this city start it now". Skipped when the method
-    -- is missing in this Lua context.
+    -- The strict form: "can this city start it now".
     local allowed = nil
     pcall(function()
         local buildQueue = city:GetBuildQueue()
@@ -3432,9 +3431,12 @@ local function executeCityProduce(playerId, command)
             allowed = buildQueue:CanProduce(row.Hash, false, true)
         end
     end)
-    if allowed == false then
+    -- Anything but a clear yes is a refusal, a game that cannot be asked
+    -- included: a request without it would be acknowledged as a success.
+    if allowed ~= true then
         return false, ERROR_CODES.OPERATION_REFUSED,
-            string.format("City %d cannot start %s now", cityId, typeName)
+            string.format("City %d cannot start %s now%s", cityId, typeName,
+                allowed == nil and " (the game could not be asked)" or "")
     end
 
     local params = {}
@@ -4461,8 +4463,11 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         end
     end
 
-    local overCap = bridgeState.actionsThisTurn >= cap and not onlyEndTurn
-    if overCap and onlyUnblocking and bridgeState.actionsThisTurn < 2 * cap then
+    -- The count the turn would reach with this message: a batch may not carry
+    -- it past a limit either.
+    local projected = bridgeState.actionsThisTurn + #commands
+    local overCap = projected > cap and not onlyEndTurn
+    if overCap and onlyUnblocking and projected <= 2 * cap then
         local blocker = nil
         if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
             local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)

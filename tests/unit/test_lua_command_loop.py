@@ -301,3 +301,32 @@ class TestTheCapAndAnEndOfTurnBlocker:
         exchange(capped, [c.unit_move(102, 0, 1)], 2, at=20)  # refused by the cap
         exchange(capped, [c.unit_move(102, 0, 1)], 3, at=40)  # more than 30 s after message 1
         assert c.pending(capped), "the mod went on listening on the strength of a refused message"
+
+
+class TestABatchCannotCrossTheCap:
+    """Review of #158: the cap looked at the count before the batch, so a batch could pass it."""
+
+    def test_a_batch_that_would_cross_the_cap_executes_nothing(self, capped: Any) -> None:
+        exchange(capped, [SKIP, SKIP], 1)
+        exchange(capped, [c.unit_move(102, 0, 1), SKIP], 2)  # 2 handled + 2 > 3
+        ack = c.acks(capped)[-1]
+        assert (ack["success"], ack["error_code"]) == (False, "COMMAND_CAP_REACHED")
+        assert (capped.eval("Civ6Stub.unit(102).x"), capped.eval("Civ6Stub.unit(102).y")) == (1, 0)
+
+    def test_control_a_batch_that_ends_exactly_at_the_cap_is_executed(self, capped: Any) -> None:
+        exchange(capped, [SKIP, SKIP], 1)
+        exchange(capped, [c.unit_move(102, 0, 1)], 2)  # 2 handled + 1 == 3
+        assert c.acks(capped)[-1]["success"] is True
+        assert (capped.eval("Civ6Stub.unit(102).x"), capped.eval("Civ6Stub.unit(102).y")) == (0, 1)
+
+    def test_a_blocker_clearing_batch_cannot_cross_twice_the_cap(self) -> None:
+        game = c.loaded_turn(PRODUCTION_BLOCKER)
+        game.execute("AlphaZeroConfig.Set('MAX_COMMANDS_PER_TURN', 3)")
+        game.execute("Civ6Stub.cities[301].canProduce = { UNIT_WARRIOR = 'later' }")
+        exchange(game, [SKIP, SKIP, SKIP], 1)
+        exchange(
+            game, [PRODUCE_WARRIOR, PRODUCE_WARRIOR], 2
+        )  # 3 + 2 <= 6: allowed (refused by the game)
+        assert c.acks(game)[-1]["error_code"] != "COMMAND_CAP_REACHED"
+        exchange(game, [PRODUCE_WARRIOR, PRODUCE_WARRIOR], 3)  # 5 + 2 > 6
+        assert c.acks(game)[-1]["error_code"] == "COMMAND_CAP_REACHED"
