@@ -512,3 +512,33 @@ function UI.CanEndTurn()
     if unitNeedingOrders(Game.GetLocalPlayer()) then return false end
     return canEndTurn()
 end
+
+-- ----------------------------------------------------------------------------
+-- Turns (GM-B7c-2): the game turn advances when an end of turn is carried out
+-- ----------------------------------------------------------------------------
+-- An accepted end-of-turn request only sets Civ6Stub.turnEnded. The other
+-- players' moves and the next turn's start are played by Civ6Stub.nextTurn(),
+-- which a test (or the Python bridge adapter) calls: it is the point at which
+-- the real game would raise its turn events.
+Civ6Stub.turn = 12
+Civ6Stub.turnEnded = false
+function Game.GetCurrentGameTurn() return Civ6Stub.turn end
+
+local requestAction = UI.RequestAction
+function UI.RequestAction(action)
+    requestAction(action)
+    if action == ActionTypes.ACTION_ENDTURN and UI.CanEndTurn() then
+        Civ6Stub.turnEnded = true
+    end
+end
+
+function Civ6Stub.nextTurn()
+    Civ6Stub.turnEnded = false
+    Civ6Stub.turn = Civ6Stub.turn + 1
+    for _, spec in ipairs(Civ6Stub.units) do
+        spec.turnMoves = spec.turnMoves or spec.fullMoves or 2
+        spec.moves = spec.turnMoves
+        spec.skipped = nil
+    end
+    return Civ6Stub.turn
+end
