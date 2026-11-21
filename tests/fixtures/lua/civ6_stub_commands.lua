@@ -541,7 +541,9 @@ function Civ6Stub.nextTurn()
         spec.skipped = nil
     end
     return Civ6Stub.turn
+end
 
+-- ----------------------------------------------------------------------------
 -- Frames without game events (an idle game)
 -- ----------------------------------------------------------------------------
 -- The mod's context: ContextPtr:SetUpdate(f) asks for f on every frame, as the
