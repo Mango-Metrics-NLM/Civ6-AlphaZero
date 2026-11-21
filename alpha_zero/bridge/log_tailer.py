@@ -192,7 +192,10 @@ class LogTailer:
             await asyncio.sleep(1.0)
 
         # Open and seek to end
-        self._file = open(self._log_path, encoding="utf-8", errors="replace")
+        # ``surrogateescape`` keeps the bytes of a character the mod split
+        # across two chunk lines, so the pieces can be joined and decoded as
+        # one (see ``_parse_json``); ``replace`` destroyed both halves.
+        self._file = open(self._log_path, encoding="utf-8", errors="surrogateescape")
         self._backlog_state = self._scan_backlog()
         self._file.seek(0, os.SEEK_END)
         self._file_pos = self._file.tell()
@@ -274,12 +277,15 @@ class LogTailer:
     def _parse_line(self, line: str) -> None:
         """Parse a single log line for AZ_ prefixed messages."""
         # Strip Civ6 context prefix (e.g. "AlphaZeroMain: ")
-        content = _PREFIX_RE.sub("", line).strip()
+        unstripped = _PREFIX_RE.sub("", line.lstrip())
+        content = unstripped.strip()
 
         if content.startswith(_STATE_PREFIX):
             self._handle_state(content[len(_STATE_PREFIX) :])
         elif content.startswith(_CHUNK_PREFIX):
-            self._handle_chunk(content[len(_CHUNK_PREFIX) :])
+            # A piece is cut anywhere, also next to a space inside a string:
+            # its own leading and trailing spaces are data.
+            self._handle_chunk(unstripped[len(_CHUNK_PREFIX) :])
         elif content.startswith(_CHUNK_END_PREFIX):
             self._handle_chunk_end(content[len(_CHUNK_END_PREFIX) :])
         elif content.startswith(_HB_PREFIX):
@@ -323,7 +329,7 @@ class LogTailer:
                 raw = handle.read()
         except OSError:
             return None
-        lines = raw.decode("utf-8", errors="replace").splitlines()
+        lines = raw.decode("utf-8", errors="surrogateescape").splitlines()
         if start > 0 and lines:
             lines = lines[1:]  # the scan began inside a line
         reader = LogTailer(self._log_path, backlog_bytes=0)
@@ -331,7 +337,7 @@ class LogTailer:
             content = _PREFIX_RE.sub("", line.strip()).strip()
             if content.startswith((_STATE_PREFIX, _CHUNK_PREFIX, _CHUNK_END_PREFIX)):
                 try:
-                    reader._parse_line(line.strip())
+                    reader._parse_line(line)
                 except Exception:  # a damaged line is not worth failing start for
                     logger.debug("Unreadable backlog line skipped", exc_info=True)
         if reader._latest_state is not None:
@@ -455,6 +461,11 @@ class LogTailer:
         """
         if not json_str:
             return None
+        if not json_str.isascii():
+            # Bytes that did not decode alone (half of a character split across
+            # two chunk lines) were kept as surrogates; now that the pieces are
+            # joined, decode them together. What is still not UTF-8 is replaced.
+            json_str = json_str.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
         try:
             # json.loads returns Any; bridge messages are always JSON objects.
             return cast("dict[str, Any]", json.loads(json_str))
