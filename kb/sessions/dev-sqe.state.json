@@ -1,31 +1,34 @@
 {
-    "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-    "last_timestamp": "2026-11-21T17:28:00Z",
-    "current_focus": "Game-mechanics program: the live command layer (GM-B7), task plan kb/specs/20261120-live-command-layer-plan.md. Merged: #154, #155, #156. Open: #158 (GM-B7a) and GM-B7b on claude/gm-b7b-exporter-offers (contains GM-B7a). Nothing has run in a real game.",
-    "resume_pointers": {
-        "current_task": "GM-B7a (#158) and GM-B7b are built and reviewed. Next: GM-B7c (agent loop: a refused command is not resent in a turn, a cap, --max-turns in game turns; scripts/live_command_check.py), then the maintainer's live sitting, then GM-B6a/b.",
-        "blocked_on": [
-            "maintainer: merge #158 (GM-B7a) and the GM-B7b PR",
-            "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
-            "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
-            "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
-        ],
-        "next_steps": [
-            "When a check becomes a gate (the executor's check now decides what is offered), re-read what it does when it cannot ask: fail-open that was tolerable on execution listed everything as an offer",
-            "A guard added to stop a loop can be the loop: test a cap together with the state it guards against (the per-turn cap trapped a blocked turn)",
-            "A stand-in written from the same reading as the code under test cannot catch a wrong reading: list those assumptions for the live check instead of calling them tested",
-            "Tests of a command assert on the game state after the next frame, never on a recorded call or the command's own answer",
-            "For a game API, read the game's own UI Lua first; a strict check the UI never asks is unverified even when the stand-in models it",
-            "Lua's %c asks the C library and differs on Windows: write byte ranges out",
-            "Base every follow-up PR on the default branch; when a PR merges, merge the default branch into the open ones and resolve doc conflicts there",
-            "A push that lands after its PR merged is not merged: check the default branch contains the commit"
-        ]
-    },
-    "context_files": [
-        "kb/handoffs/20261121-devsqe-to-prepr-gm-b7b-exporter-offers.md",
-        "kb/handoffs/20261121-devsqe-to-prepr-gm-b7a-command-executor.md",
-        "kb/specs/20261120-live-command-layer-plan.md",
-        "mod/AlphaZeroAI/Scripts/StateExporter.lua",
-        "alpha_zero/bridge/production_slots.py"
+  "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+  "last_timestamp": "2026-11-21T19:05:00Z",
+  "current_focus": "Game-mechanics program: the live command layer (GM-B7), task plan kb/specs/20261120-live-command-layer-plan.md. Open PRs: #158 (GM-B7a), #159 (GM-B7b). Built, no PR yet: GM-B7c-1 on claude/gm-b7c1-transport-states and GM-B7c-2 on claude/gm-b7c2-turn-ledger. Nothing has run in a real game.",
+  "resume_pointers": {
+    "current_task": "GM-B7a/b/c are built and reviewed. Open the GM-B7c-1 PR when #158 merges and the GM-B7c-2 PR when #159 merges (two PRs open at most). Then the maintainer's live sitting, then GM-B6a/b.",
+    "blocked_on": [
+      "maintainer: merge #158 (GM-B7a), then #159 (GM-B7b); the two GM-B7c PRs open as slots free",
+      "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
+      "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
+      "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
+    ],
+    "next_steps": [
+      "An event that is cleared before it is waited on loses whatever set it first: hand out by sequence number. And a fallback that makes an old value look current needs a check that the old value is still in force, not only that something is alive",
+      "Run the real loop against the real mod code before reviewing it: the stand-in as a GameBridge (tests/fixtures/lua_bridge.py) found a spin no reading had (research re-chosen after every choice)",
+      "A veto applied after the policy's choice costs a choice: filter the offers before asking",
+      "When a check becomes a gate (the executor's check now decides what is offered), re-read what it does when it cannot ask: fail-open that was tolerable on execution listed everything as an offer",
+      "A guard added to stop a loop can be the loop: test a cap together with the state it guards against (the per-turn cap trapped a blocked turn)",
+      "A stand-in written from the same reading as the code under test cannot catch a wrong reading: list those assumptions for the live check instead of calling them tested",
+      "Tests of a command assert on the game state after the next frame, never on a recorded call or the command's own answer",
+      "For a game API, read the game's own UI Lua first; a strict check the UI never asks is unverified even when the stand-in models it",
+      "Lua's %c asks the C library and differs on Windows: write byte ranges out",
+      "Base every follow-up PR on the default branch; when a PR merges, merge the default branch into the open ones and resolve doc conflicts there",
+      "A push that lands after its PR merged is not merged: check the default branch contains the commit"
     ]
+  },
+  "context_files": [
+    "kb/handoffs/20261121-devsqe-to-prepr-gm-b7b-exporter-offers.md",
+    "kb/handoffs/20261121-devsqe-to-prepr-gm-b7a-command-executor.md",
+    "kb/specs/20261120-live-command-layer-plan.md",
+    "mod/AlphaZeroAI/Scripts/StateExporter.lua",
+    "alpha_zero/bridge/production_slots.py"
+  ]
 }
