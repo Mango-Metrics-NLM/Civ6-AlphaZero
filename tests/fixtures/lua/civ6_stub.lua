@@ -313,12 +313,11 @@ local function makeCity(spec)
     -- Asked by row Hash (what the game's own production panel sends):
     -- `CanProduce(hash, true)` is the loose check, `CanProduce(hash, false, true)`
     -- the strict one ("can start now"), and the two differ for the settler.
-    -- Asked by a small number, it answers as it did before the command
-    -- stand-in existed: row 1 of whatever table. The exporter still asks that
-    -- way (a known defect, GM-B7b); this branch goes when it is fixed.
+    -- Anything that is not the Hash of a producible row, a row Index included,
+    -- answers false: the game knows nothing by that number.
     function queue:CanProduce(ref, loose, strictFlag)
         local name = Civ6Stub.producibleName and Civ6Stub.producibleName(ref)
-        if not name then return ref == 1 end
+        if not name then return false end
         local table_ = state().canProduce or Civ6Stub.defaultCanProduce
         local entry = table_[name]
         if entry == nil then return false end

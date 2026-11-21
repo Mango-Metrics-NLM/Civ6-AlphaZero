@@ -151,8 +151,20 @@ end
 -- instead of a request the game ignores. Not verified in a real game: the
 -- names for skip and sleep are the least certain.
 
+-- True while AlphaZeroActionExecutor.Check runs: every check is made and
+-- nothing is requested, so "what the exporter offers" and "what the executor
+-- carries out" are one piece of code and cannot drift apart.
+local dryRun = false
+
 -- The Hash and kind ("operation" / "command") of the row named `typeName`.
+-- Found rows are remembered: the game's tables do not change while it runs,
+-- and the exporter asks for the same few names for every unit and tile.
+local actionRows = {}
 local function findActionRow(typeName)
+    local known = actionRows[typeName]
+    if known then
+        return known.hash, known.kind
+    end
     local sources = {
         { table = "UnitOperations", column = "OperationType", kind = "operation" },
         { table = "UnitCommands", column = "CommandType", kind = "command" },
@@ -170,6 +182,7 @@ local function findActionRow(typeName)
                 end
             end)
             if found and found.Hash ~= nil then
+                actionRows[typeName] = { hash = found.Hash, kind = source.kind }
                 return found.Hash, source.kind
             end
         end
@@ -248,6 +261,9 @@ local function requestUnitAction(unit, typeName, params, label)
             label .. " refused by the game" .. (reason and (": " .. reason) or "")
     end
 
+    if dryRun then
+        return true, nil, nil
+    end
     local requested, err
     if params then
         requested, err = pcall(request, unit, hash, params)
@@ -530,12 +546,20 @@ end
 
 -- The row and kind for an item given by type name (looked up in every kind)
 -- or by row index (in the kind `itemType` names; units when it names none).
+-- Found rows are remembered (see findActionRow): without this, listing what
+-- a city can build walked the unit table once per candidate item.
+local productionRows = {}
 local function resolveProductionItem(item, itemType)
     if type(item) == "string" then
+        local known = productionRows[item]
+        if known then return known.row, known.kind end
         for _, name in ipairs(PRODUCTION_ORDER) do
             local kind = PRODUCTION_KINDS[name]
             local row = findProductionRow(kind, function(r) return r[kind.column] == item end)
-            if row then return row, kind end
+            if row then
+                productionRows[item] = { row = row, kind = kind }
+                return row, kind
+            end
         end
         return nil, nil
     end
@@ -579,6 +603,11 @@ local function executeCityProduce(playerId, command)
         return false, ERROR_CODES.NOT_IMPLEMENTED,
             typeName .. " needs a plot; placement is not supported"
     end
+    -- The game's production panel never offers to build these.
+    if row.MustPurchase == true then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            typeName .. " can only be purchased, not built"
+    end
     if row.Hash == nil then
         return false, ERROR_CODES.EXECUTION_FAILED, typeName .. " has no hash in this Lua context"
     end
@@ -597,7 +626,8 @@ local function executeCityProduce(playerId, command)
         end
     end)
     -- Anything but a clear yes is a refusal, a game that cannot be asked
-    -- included: a request without it would be acknowledged as a success.
+    -- included: a request without it would be acknowledged as a success,
+    -- and this answer also decides what the exporter offers.
     if allowed ~= true then
         return false, ERROR_CODES.OPERATION_REFUSED,
             string.format("City %d cannot start %s now%s", cityId, typeName,
@@ -607,9 +637,11 @@ local function executeCityProduce(playerId, command)
     local params = {}
     params[CityOperationTypes[kind.param]] = row.Hash
     params[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_EXCLUSIVE
-    local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
-    if not requested then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+    if not dryRun then
+        local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
+        if not requested then
+            return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+        end
     end
     return true, nil, string.format("City %d: production of %s requested", cityId, typeName)
 end
@@ -1162,6 +1194,35 @@ function AlphaZeroActionExecutor.Execute(playerId, command)
         return false, ERROR_CODES.EXECUTION_FAILED, "Exception: " .. tostring(success)
     end
 
+    return success, errCode, message
+end
+
+-- The commands Check can answer for: the ones whose handlers ask the game
+-- before they request.
+local CHECKABLE = {
+    [ACTION_TYPES.UNIT_MOVE] = true, [ACTION_TYPES.UNIT_ATTACK] = true,
+    [ACTION_TYPES.UNIT_RANGED_ATTACK] = true, [ACTION_TYPES.UNIT_SKIP] = true,
+    [ACTION_TYPES.UNIT_FORTIFY] = true, [ACTION_TYPES.UNIT_SLEEP] = true,
+    [ACTION_TYPES.UNIT_FOUND_CITY] = true, [ACTION_TYPES.CITY_PRODUCE] = true,
+}
+
+-- What Execute would answer for this command, without requesting anything.
+-- The exporter offers an action exactly when this says yes.
+function AlphaZeroActionExecutor.Check(playerId, command)
+    if not command or not command.action_type then
+        return AlphaZeroActionExecutor.Execute(playerId, command)  -- refused there, nothing runs
+    end
+    if not CHECKABLE[command.action_type] then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            "No check for action type: " .. tostring(command and command.action_type)
+    end
+    local savedLog, savedDryRun = Log, dryRun
+    dryRun, Log = true, nil  -- a check per candidate would flood the log
+    local ok, success, errCode, message = pcall(AlphaZeroActionExecutor.Execute, playerId, command)
+    dryRun, Log = savedDryRun, savedLog  -- a check inside a check stays a check
+    if not ok then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Exception: " .. tostring(success)
+    end
     return success, errCode, message
 end
 

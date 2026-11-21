@@ -34,6 +34,8 @@
 --     that the list stays empty.
 --   * With Civ6Stub.unitsNeedOrders = true, an own unit that has moves and no
 --     orders blocks the end of turn (ENDTURN_BLOCKING_UNITS).
+--   * Map.GetAdjacentPlot(x, y, DirectionTypes.*) is the only source of
+--     neighbours; a city answers CanProduce only for a row Hash (GM-B7b).
 -- ============================================================================
 
 local function record(name, ...)
@@ -163,6 +165,30 @@ function Map.GetPlotDistance(x1, y1, x2, y2)
     local q2, r2 = cube(x2, y2)
     local dq, dr = q1 - q2, r1 - r2
     return math.max(math.abs(dq), math.abs(dr), math.abs(dq + dr))
+end
+
+-- The game's own adjacency: the plot one step from (x, y) in a direction, or
+-- nil off the map. Same geometry as GetPlotDistance above (odd rows half a
+-- tile to the right). The invented map does not wrap.
+DirectionTypes = {
+    DIRECTION_NORTHEAST = 0, DIRECTION_EAST = 1, DIRECTION_SOUTHEAST = 2,
+    DIRECTION_SOUTHWEST = 3, DIRECTION_WEST = 4, DIRECTION_NORTHWEST = 5,
+    NUM_DIRECTION_TYPES = 6,
+}
+local STEPS = {
+    -- { dx on an even row, dx on an odd row, dy }
+    [DirectionTypes.DIRECTION_NORTHEAST] = { 0, 1, 1 },
+    [DirectionTypes.DIRECTION_EAST] = { 1, 1, 0 },
+    [DirectionTypes.DIRECTION_SOUTHEAST] = { 0, 1, -1 },
+    [DirectionTypes.DIRECTION_SOUTHWEST] = { -1, 0, -1 },
+    [DirectionTypes.DIRECTION_WEST] = { -1, -1, 0 },
+    [DirectionTypes.DIRECTION_NORTHWEST] = { -1, 0, 1 },
+}
+function Map.GetAdjacentPlot(x, y, direction)
+    local step = STEPS[direction]
+    if not step then return nil end
+    local dx = (y % 2 == 0) and step[1] or step[2]
+    return Map.GetPlot(x + dx, y + step[3])
 end
 
 local function hasBit(value, bit)
