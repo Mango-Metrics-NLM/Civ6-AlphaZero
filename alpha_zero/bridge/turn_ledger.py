@@ -57,6 +57,10 @@ UNBLOCKING_ACTIONS = frozenset(
     {"research_tech", "research_civic", "city_produce", "unit_skip", "unit_fortify", "unit_sleep"}
 )
 
+#: Metadata fields the mod's executor reads as operands: a diplomacy
+#: command's sub-action and target player, a citizen command's lock.
+_METADATA_OPERANDS: tuple[str, ...] = ("sub_action", "target_player_id", "lock")
+
 #: The mod's answer when its own per-turn cap is reached. Not a refusal of the
 #: command: nothing but ``end_turn`` will be carried out this turn.
 _MOD_CAP_CODE = "COMMAND_CAP_REACHED"
@@ -92,6 +96,14 @@ def command_key(command: Any) -> str:
     action = data.get("action_type")
     action = getattr(action, "value", action)
     item = data.get("item_id")
+    metadata = data.get("metadata")
+    operands = ""
+    if isinstance(metadata, dict):
+        # Only what the mod's executor reads as part of WHAT is done; a
+        # descriptive field (a reason, a note) does not make a new command.
+        operands = ";".join(
+            f"{name}={metadata[name]}" for name in _METADATA_OPERANDS if name in metadata
+        )
     parts = (
         str(action),
         "" if data.get("unit_id") is None else str(data["unit_id"]),
@@ -99,6 +111,7 @@ def command_key(command: Any) -> str:
         where,
         "" if item is None else str(item),
         "" if data.get("item_type") is None else str(data["item_type"]),
+        operands,
     )
     return "|".join(parts)
 
@@ -332,10 +345,15 @@ class TurnLedger:
         if (summary is not None and summary.get("civic") is None) or "CIVIC" in blocker:
             self._chosen.discard("research_civic|")
         cities = summary.get("cities", {}) if summary is not None else {}
-        for city_id, city in cities.items():
-            if city.get("producing") is None:
-                self._chosen.discard(f"city_produce|{city_id}")
-        if "PRODUCTION" in blocker:
+        idle = [city_id for city_id, city in cities.items() if city.get("producing") is None]
+        for city_id in idle:
+            self._chosen.discard(f"city_produce|{city_id}")
+        if "PRODUCTION" in blocker and not idle:
+            # The game asks for a production choice and the state names no
+            # idle city: it cannot be told which one, so all are reopened. A
+            # city that IS building keeps its choice whenever an idle one is
+            # known, or a deterministic policy would keep changing the busy
+            # city's queue while the idle one keeps the blocker up.
             self._chosen = {slot for slot in self._chosen if not slot.startswith("city_produce|")}
 
     def _record_blocked(self) -> None:
