@@ -46,7 +46,7 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   (`alpha_zero/rules/` kernel), and GM-K2 (`pace`, `import-gameinfo`) landed off the
   play path (PRs #143, #146, #147; no training environment consumes it yet); pending
   OpenSpec archive (plan `kb/specs/20261119-game-mechanics-plan.md`).
-- `openspec/changes/add-bridge-research-parity`: built off the play path, not run in a real
+- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path, not run in a real
   game: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter
   and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py`
   snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153).
