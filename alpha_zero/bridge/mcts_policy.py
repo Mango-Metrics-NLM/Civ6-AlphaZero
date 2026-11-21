@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -25,10 +27,11 @@ from alpha_zero.bridge.microciv_proxy import (
     simulator_terrain,
     simulator_unit_class,
 )
+from alpha_zero.bridge.search_translator import SearchTranslator
 from alpha_zero.core.civ6_mcts import GumbelMCTS, GumbelMCTSConfig
 from alpha_zero.core.protocols import EnvironmentProtocol
 from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
-from alpha_zero.utils.constants import GAME
+from alpha_zero.utils.constants import GAME, REWARDS
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +67,32 @@ _DEFAULT_CITY_POPULATION: int = 1
 _DEFAULT_CITY_DEFENSE: int = 10
 _DEFAULT_CITY_PRODUCTION: int = 0
 
+#: What is sent when the search has nothing playable to say.
+_END_TURN_COMMAND: dict[str, Any] = {"action_type": "end_turn"}
+
+#: Turns the simulation is always left before its turn limit.
+_DEFAULT_MIN_LOOKAHEAD: int = 10
+
+#: What a city that is already building is seeded with. The simulator only
+#: needs it to be "not None"; the item itself is not the live one.
+_BUSY_PLACEHOLDER: str = "warrior"
+
 #: diagnostics["policy_kind"] value for the MCTS policy (distinct from greedy=0.0).
 _POLICY_KIND_MCTS: float = 1.0
+
+
+def _busy_city_ids(converted_state: Any) -> set[tuple[Any, Any]]:
+    """``(owner id, city id)`` of the cities the raw state shows as building."""
+    try:
+        cities = list(converted_state["_raw_state"].cities)
+    except Exception:  # no raw state to read: no city is known to be busy
+        return set()
+    busy: set[tuple[Any, Any]] = set()
+    for city in cities:
+        current = getattr(city, "current_production", None)
+        if isinstance(current, str) and current:
+            busy.add((getattr(city, "owner_id", None), getattr(city, "id", None)))
+    return busy
 
 
 class BridgeMCTSEnv(EnvironmentProtocol):
@@ -89,14 +116,21 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             current game frame.
         max_turns: Maximum turns for the inner simulation.  Defaults to
             :data:`_DEFAULT_MAX_TURNS`.
+        min_lookahead: Turns the simulation is always left before its turn
+            limit. The simulator's clock is the live turn clamped to
+            ``max_turns - min_lookahead``: a live game past the horizon the
+            network was trained for is then a playable root, not a game the
+            simulator ends on the first step.
     """
 
     def __init__(
         self,
         converted_state: dict[str, Any],
         max_turns: int = _DEFAULT_MAX_TURNS,
+        min_lookahead: int = _DEFAULT_MIN_LOOKAHEAD,
     ) -> None:
         self._converted_state = converted_state
+        self._root_mask: np.ndarray | None = None
         board_size = self._simulator_board_size(converted_state)
 
         # Determine number of players from the state.  Start with the minimum
@@ -110,7 +144,11 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 
         self.env = MicroCivEnv(board_size=board_size, max_turns=max_turns, num_players=num_players)
 
-        self.env.turn = converted_state.get("turn", 0)
+        live_turn = converted_state.get("turn", 0)
+        live_turn = live_turn if isinstance(live_turn, int) and live_turn > 0 else 0
+        latest = max(0, max_turns - max(0, min(min_lookahead, max_turns)))
+        sim_turn = min(live_turn, latest)
+        self.env.turn = sim_turn
         self.env.current_player = converted_state.get("current_player", 0)
 
         # Terrain. The simulator's rules test for its own terrain words, so a
@@ -163,9 +201,14 @@ class BridgeMCTSEnv(EnvironmentProtocol):
                 )
             )
 
-        # Cities
+        # Cities. One that is already building is seeded busy, so the
+        # simulator offers no production choice the live game would not take.
+        busy = _busy_city_ids(converted_state)
+        busy_cities = 0
         self.env.cities = []
         for c_dict in converted_state.get("cities", []):
+            is_busy = (c_dict.get("_owner_id"), c_dict.get("_id")) in busy
+            busy_cities += is_busy
             self.env.cities.append(
                 City(
                     id=c_dict.get("_id", 0),
@@ -175,7 +218,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
                     population=c_dict.get("population", _DEFAULT_CITY_POPULATION),
                     defense=c_dict.get("defense", _DEFAULT_CITY_DEFENSE),
                     production=c_dict.get("production", _DEFAULT_CITY_PRODUCTION),
-                    production_queue=None,
+                    production_queue=_BUSY_PLACEHOLDER if is_busy else None,
                 )
             )
 
@@ -187,10 +230,22 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 
         self.env.done = False
 
+        # With nobody else in sight (the usual state of an opening) the
+        # simulator sees one surviving player and would call the game won on
+        # the first step; ``step`` does not let it end for that reason.
+        me = self.env.current_player
+        self._no_visible_enemy = not any(u.player != me for u in self.env.units) and not any(
+            c.player != me for c in self.env.cities
+        )
+
         self.proxy_stats: dict[str, int] = {
             "units": len(self.env.units),
             "units_not_represented": units_not_represented,
             "impassable_tiles": impassable_tiles,
+            "busy_cities": busy_cities,
+            "no_visible_enemy": int(self._no_visible_enemy),
+            "sim_turn": sim_turn,
+            "turn_clamped": int(sim_turn != live_turn),
         }
         if units_not_represented:
             logger.debug(
@@ -254,6 +309,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         converted_state: dict[str, Any],
         *,
         max_turns: int = _DEFAULT_MAX_TURNS,
+        min_lookahead: int = _DEFAULT_MIN_LOOKAHEAD,
     ) -> BridgeMCTSEnv:
         """Named constructor for clarity at call sites.
 
@@ -261,7 +317,40 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         but is the preferred form when the caller already has
         ``StateConverter.convert()`` output.
         """
-        return cls(converted_state, max_turns=max_turns)
+        return cls(converted_state, max_turns=max_turns, min_lookahead=min_lookahead)
+
+    # ------------------------------------------------------------------
+    # What the translator needs (GM-B6a)
+    # ------------------------------------------------------------------
+
+    def own_unit_ids(self) -> list[int]:
+        """Live ids of the acting player's simulator units, in simulator order.
+
+        The simulator's ``unit_idx`` counts these; units the proxy left out
+        are not among them, so the index is not a place in the live list.
+        """
+        me = self.env.current_player
+        return [int(u.id) for u in self.env.units if u.player == me]
+
+    def own_city_ids(self) -> list[int]:
+        """Live ids of the acting player's simulator cities, in simulator order."""
+        me = self.env.current_player
+        return [int(c.id) for c in self.env.cities if c.player == me]
+
+    def restrict_root(self, mask: np.ndarray) -> None:
+        """Limit the legal actions of this position to ``mask`` until the first step.
+
+        The search reads the root's legal actions from the observation, so
+        restricting them here makes every root candidate one the mask allows
+        without touching the search.
+        """
+        self._root_mask = np.asarray(mask) > 0
+
+    def _masked(self, valid: np.ndarray) -> np.ndarray:
+        if self._root_mask is None:
+            return valid
+        masked: np.ndarray = valid * self._root_mask.astype(valid.dtype)
+        return masked
 
     # ------------------------------------------------------------------
     # EnvironmentProtocol implementation
@@ -278,6 +367,8 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         new_env._converted_state = self._converted_state
         new_env.env = self.env.clone()
         new_env.proxy_stats = dict(self.proxy_stats)
+        new_env._root_mask = self._root_mask
+        new_env._no_visible_enemy = self._no_visible_enemy
         return new_env
 
     def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
@@ -294,17 +385,38 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         )
 
     def step(self, action: int) -> tuple[dict[str, np.ndarray], float, bool, bool, dict[str, Any]]:
+        self._root_mask = None  # the restriction is on the root position only
+        was_done = self.env.done
         obs, reward, terminated, truncated, info = self.env.step(action)
-        return obs, float(reward), terminated, truncated, info
+        reward = float(reward)
+        if (
+            self._no_visible_enemy
+            and terminated
+            and not was_done
+            and not truncated
+            and self.env.turn < self.env.max_turns
+        ):
+            # Ended only because nobody else is in sight: not a win.
+            if self.env.winner == self.env.current_player:
+                reward -= float(REWARDS.WIN_REWARD)
+            self.env.done = False
+            self.env.winner = None
+            terminated = False
+            obs, info = self.env.get_observation(), self.env.get_info()
+        return obs, reward, terminated, truncated, info
 
     def get_observation(self) -> dict[str, np.ndarray]:
-        return self.env.get_observation()
+        obs = self.env.get_observation()
+        if self._root_mask is not None and "action_mask" in obs:
+            obs = dict(obs)
+            obs["action_mask"] = self._masked(obs["action_mask"])
+        return obs
 
     def get_info(self) -> dict[str, Any]:
         return self.env.get_info()
 
     def get_valid_actions(self) -> np.ndarray:
-        return self.env.get_valid_actions()
+        return self._masked(self.env.get_valid_actions())
 
     @property
     def action_space(self) -> Any:
@@ -394,3 +506,84 @@ class Civ6MctsPolicy:
         }
 
         return action_idx, diagnostics
+
+    async def select_command(
+        self,
+        converted_state: dict[str, Any],
+        *,
+        allowed: Callable[[dict[str, Any]], bool] | None = None,
+        decision_seed: int | None = None,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Search, and return the choice as a live command with a record of the decision.
+
+        The root is restricted to the simulator actions that translate into a
+        command the game offered (and ``allowed`` does not rule out), so the
+        search only weighs what can be played.
+
+        Args:
+            converted_state: Output of ``StateConverter.convert()``.
+            allowed: Optional veto on commands (the turn's ledger).
+            decision_seed: Seed for this decision's search; None keeps the
+                policy's configured behaviour.
+
+        Returns:
+            ``(command, record)``. With nothing translatable the command is
+            ``end_turn`` and ``record["fallback"]`` says why.
+        """
+        env = BridgeMCTSEnv.from_bridge_state(converted_state, max_turns=self.max_turns)
+        translator = SearchTranslator(
+            converted_state, env.own_unit_ids(), env.own_city_ids(), allowed=allowed
+        )
+        decode = env.env.action_space_handler.decode_action
+        root_mask, commands, reasons = translator.root_mask(env.env.get_valid_actions(), decode)
+        env.restrict_root(root_mask)
+
+        record: dict[str, Any] = {
+            "sim_turn": int(env.proxy_stats["sim_turn"]),
+            "turn_clamped": int(env.proxy_stats["turn_clamped"]),
+            "root_actions": sorted(commands),
+            "untranslatable": dict(sorted(reasons.items())),
+            "chosen_action": None,
+            "chosen_sim": None,
+            "command": dict(_END_TURN_COMMAND),
+            "policy_mass": 0.0,
+            "root_value": 0.0,
+            "search": {"root_evals": 0, "sim_evals": 0},
+            "proxy": {key: int(value) for key, value in env.proxy_stats.items()},
+            "seed": decision_seed if decision_seed is not None else self.config.seed,
+            "fallback": None,
+        }
+        if not commands:
+            record["fallback"] = "nothing the search could choose translates to an offered command"
+            return dict(_END_TURN_COMMAND), record
+
+        mcts = self.mcts
+        if decision_seed is not None:
+            mcts = GumbelMCTS(
+                network=self.network,
+                config=replace(self.config, seed=int(decision_seed)),
+                device=self.device,
+            )
+        policy_probs, root_value = await asyncio.to_thread(mcts.search, env)
+        stats = mcts.last_search_stats
+        record["root_value"] = float(root_value)
+        record["search"] = {"root_evals": int(stats.root_evals), "sim_evals": int(stats.sim_evals)}
+
+        probs = np.asarray(policy_probs, dtype=np.float64)
+        best = max(
+            commands, key=lambda index: (probs[index] if index < len(probs) else 0.0, -index)
+        )
+        mass = float(probs[best]) if best < len(probs) else 0.0
+        if not mass > 0.0:
+            record["fallback"] = "the search put no weight on a translatable action"
+            return dict(_END_TURN_COMMAND), record
+
+        action = decode(best)
+        record["chosen_action"] = int(best)
+        record["chosen_sim"] = {
+            key: (list(value) if isinstance(value, tuple) else value)
+            for key, value in action.items()
+        }
+        record["command"] = dict(commands[best])
+        record["policy_mass"] = mass
+        return dict(commands[best]), record
