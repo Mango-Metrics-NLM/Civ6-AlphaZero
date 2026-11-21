@@ -798,6 +798,8 @@ class BridgeAgentLoop:
             await self.bridge.send_command(cmd)
             logger.debug("Sent safe end_turn fallback (count=%d)", self._stats.fallback_end_turns)
         except Exception as exc:
+            # It never went out: a blocker in the next state is not its answer.
+            self._ledger.send_failed()
             logger.error("Even end_turn fallback failed: %s", exc, exc_info=True)
             self._stats.last_error = f"fallback_end_turn: {exc}"
 
