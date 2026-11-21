@@ -85,6 +85,13 @@ class TailerStats:
     chunks_received: int = 0
     parse_errors: int = 0
     lines_processed: int = 0
+    #: States that arrived and were replaced by a newer one before anyone
+    #: asked for them.
+    states_skipped: int = 0
+    #: Acks nobody waited for, dropped to keep the unread set bounded.
+    acks_dropped: int = 0
+    #: States taken from the log as it stood at start (a start in mid-turn).
+    backlog_states_used: int = 0
 
 
 # --- Main class ---
@@ -99,14 +106,32 @@ class LogTailer:
     Supports chunked state output (AZ_STATE_CHUNK:i/n:data) for large
     game states that exceed Lua.log's ~4KB line limit.
 
+    Every complete state gets a sequence number. :meth:`wait_for_state` hands
+    out the newest state that has not been handed out yet, at once when one is
+    already there. (It used to clear its event and then wait, so a state read
+    in the same poll batch as the ack before it was thrown away and the caller
+    waited for a state that had already come.)
+
     Args:
         log_path: Absolute path to Civ6 Lua.log file.
         poll_interval: Seconds between file poll attempts.
+        backlog_bytes: How much of the end of the existing log ``start`` scans
+            for the last complete state, so a start in the middle of a turn
+            can see the state the mod already wrote. ``0`` turns it off.
     """
 
-    def __init__(self, log_path: Path, poll_interval: float = 0.1) -> None:
+    #: Unread acks kept; fire-and-forget commands are never waited for.
+    MAX_UNREAD_ACKS = 256
+
+    def __init__(
+        self,
+        log_path: Path,
+        poll_interval: float = 0.1,
+        backlog_bytes: int = 8 * 1024 * 1024,
+    ) -> None:
         self._log_path = Path(log_path)
         self._poll_interval = poll_interval
+        self._backlog_bytes = max(0, int(backlog_bytes))
         self._running = False
         self._poll_task: asyncio.Task[None] | None = None
         self._file: Any = None
@@ -114,6 +139,14 @@ class LogTailer:
 
         # Latest parsed data
         self._latest_state: dict[str, Any] | None = None
+        # States made available so far, and the number of the last one handed
+        # to a caller. A state is new to the caller while the first is larger.
+        self._state_seq: int = 0
+        self._handed_seq: int = 0
+        # The last complete state in the log as it stood at start, until a
+        # live heartbeat shows the mod is listening (then it is made
+        # available) or a live state replaces it.
+        self._backlog_state: dict[str, Any] | None = None
         self._latest_heartbeat: dict[str, Any] | None = None
         self._heartbeat_time: float = 0.0
 
@@ -159,7 +192,11 @@ class LogTailer:
             await asyncio.sleep(1.0)
 
         # Open and seek to end
-        self._file = open(self._log_path, encoding="utf-8", errors="replace")
+        # ``surrogateescape`` keeps the bytes of a character the mod split
+        # across two chunk lines, so the pieces can be joined and decoded as
+        # one (see ``_parse_json``); ``replace`` destroyed both halves.
+        self._file = open(self._log_path, encoding="utf-8", errors="surrogateescape")
+        self._backlog_state = self._scan_backlog()
         self._file.seek(0, os.SEEK_END)
         self._file_pos = self._file.tell()
         self._running = True
@@ -240,12 +277,15 @@ class LogTailer:
     def _parse_line(self, line: str) -> None:
         """Parse a single log line for AZ_ prefixed messages."""
         # Strip Civ6 context prefix (e.g. "AlphaZeroMain: ")
-        content = _PREFIX_RE.sub("", line).strip()
+        unstripped = _PREFIX_RE.sub("", line.lstrip())
+        content = unstripped.strip()
 
         if content.startswith(_STATE_PREFIX):
             self._handle_state(content[len(_STATE_PREFIX) :])
         elif content.startswith(_CHUNK_PREFIX):
-            self._handle_chunk(content[len(_CHUNK_PREFIX) :])
+            # A piece is cut anywhere, also next to a space inside a string:
+            # its own leading and trailing spaces are data.
+            self._handle_chunk(unstripped[len(_CHUNK_PREFIX) :])
         elif content.startswith(_CHUNK_END_PREFIX):
             self._handle_chunk_end(content[len(_CHUNK_END_PREFIX) :])
         elif content.startswith(_HB_PREFIX):
@@ -257,14 +297,56 @@ class LogTailer:
         """Parse a complete (non-chunked) state JSON."""
         data = self._parse_json(json_str)
         if data is not None:
-            self._latest_state = data
             self._stats.states_received += 1
-            self._state_event.set()
+            self._publish_state(data)
             logger.debug(
                 "State received: turn=%s, tiles=%s",
                 data.get("turn_id", "?"),
                 len(data.get("map", {}).get("tiles", [])),
             )
+
+    def _publish_state(self, data: dict[str, Any]) -> None:
+        """Make ``data`` the newest state and wake whoever waits for one."""
+        self._latest_state = data
+        self._state_seq += 1
+        # A state read from the live log is newer than anything in the backlog.
+        self._backlog_state = None
+        self._state_event.set()
+
+    def _scan_backlog(self) -> dict[str, Any] | None:
+        """The last complete state in the end of the existing log, or None.
+
+        Only states are read: an old ack answers nothing and an old heartbeat
+        must not make the mod look alive.
+        """
+        if not self._backlog_bytes:
+            return None
+        try:
+            size = os.path.getsize(self._log_path)
+            with open(self._log_path, "rb") as handle:
+                start = max(0, size - self._backlog_bytes)
+                handle.seek(start)
+                raw = handle.read()
+        except OSError:
+            return None
+        lines = raw.decode("utf-8", errors="surrogateescape").splitlines()
+        if start > 0 and lines:
+            lines = lines[1:]  # the scan began inside a line
+        reader = LogTailer(self._log_path, backlog_bytes=0)
+        for line in lines:
+            content = _PREFIX_RE.sub("", line.strip()).strip()
+            if content.startswith((_STATE_PREFIX, _CHUNK_PREFIX, _CHUNK_END_PREFIX)):
+                try:
+                    reader._parse_line(line)
+                except Exception:  # a damaged line is not worth failing start for
+                    logger.debug("Unreadable backlog line skipped", exc_info=True)
+        if reader._latest_state is not None:
+            logger.info(
+                "A state from before start is in the log (turn=%s); it is used once "
+                "a heartbeat shows the mod is listening",
+                reader._latest_state.get("turn_id", "?"),
+            )
+        return reader._latest_state
 
     def _handle_chunk(self, chunk_str: str) -> None:
         """Parse a state chunk: seq/total:data."""
@@ -313,9 +395,8 @@ class LogTailer:
 
         data = self._parse_json(full_json)
         if data is not None:
-            self._latest_state = data
             self._stats.states_received += 1
-            self._state_event.set()
+            self._publish_state(data)
             logger.info(
                 "Chunked state reassembled (%d chunks, %d bytes): turn=%s",
                 expected_total,
@@ -330,6 +411,13 @@ class LogTailer:
             self._latest_heartbeat = data
             self._heartbeat_time = time.monotonic()
             self._stats.heartbeats_received += 1
+            if self._backlog_state is not None:
+                # The mod writes heartbeats only while it listens for a
+                # command, so the state it wrote before we started is the one
+                # it is waiting on.
+                backlog = self._backlog_state
+                self._stats.backlog_states_used += 1
+                self._publish_state(backlog)
 
     def _handle_ack(self, json_str: str) -> None:
         """Parse an ack JSON and notify waiters."""
@@ -350,12 +438,20 @@ class LogTailer:
 
         self._ack_queue[msg_id] = data
         self._stats.acks_received += 1
+        self._drop_old_unread_acks()
 
         # Notify any waiter for this msg_id
         if msg_id in self._ack_events:
             self._ack_events[msg_id].set()
 
         logger.debug("Ack received: msg_id=%s success=%s", msg_id, data.get("success"))
+
+    def _drop_old_unread_acks(self) -> None:
+        """Keep at most ``MAX_UNREAD_ACKS`` acks nobody is waiting for."""
+        unread = [key for key in self._ack_queue if key not in self._ack_events]
+        for key in unread[: max(0, len(unread) - self.MAX_UNREAD_ACKS)]:
+            del self._ack_queue[key]
+            self._stats.acks_dropped += 1
 
     def _parse_json(self, json_str: str) -> dict[str, Any] | None:
         """Parse JSON string with unicode unescape handling.
@@ -365,6 +461,11 @@ class LogTailer:
         """
         if not json_str:
             return None
+        if not json_str.isascii():
+            # Bytes that did not decode alone (half of a character split across
+            # two chunk lines) were kept as surrogates; now that the pieces are
+            # joined, decode them together. What is still not UTF-8 is replaced.
+            json_str = json_str.encode("utf-8", "surrogateescape").decode("utf-8", "replace")
         try:
             # json.loads returns Any; bridge messages are always JSON objects.
             return cast("dict[str, Any]", json.loads(json_str))
@@ -377,7 +478,9 @@ class LogTailer:
     # --- Public query methods ---
 
     async def wait_for_state(self, timeout: float = 30.0) -> dict[str, Any]:
-        """Wait for the next game state to arrive.
+        """The newest state not handed out yet; waits for one if there is none.
+
+        Returns at once when a state has arrived since the last hand-out.
 
         Args:
             timeout: Maximum seconds to wait.
@@ -388,14 +491,32 @@ class LogTailer:
         Raises:
             StateTimeoutError: If no state arrives within timeout.
         """
-        self._state_event.clear()
-        try:
-            await asyncio.wait_for(self._state_event.wait(), timeout=timeout)
-        except TimeoutError:
-            raise StateTimeoutError(timeout) from None
+        if self._state_seq <= self._handed_seq:
+            # Nothing unseen. No await sits between this check and the clear,
+            # so a state cannot slip in between and be lost.
+            self._state_event.clear()
+            try:
+                await asyncio.wait_for(self._state_event.wait(), timeout=timeout)
+            except TimeoutError:
+                raise StateTimeoutError(timeout) from None
 
-        if self._latest_state is None:
+        state = self._hand_out()
+        if state is None:
             raise StateTimeoutError(timeout)
+        return state
+
+    def current_state(self) -> dict[str, Any] | None:
+        """The latest state, marked as handed out; None when there is none."""
+        return self._hand_out()
+
+    def _hand_out(self) -> dict[str, Any] | None:
+        if self._latest_state is None:
+            return None
+        skipped = self._state_seq - self._handed_seq - 1
+        if skipped > 0:
+            self._stats.states_skipped += skipped
+            logger.warning("%d state(s) were replaced by a newer one before being read", skipped)
+        self._handed_seq = self._state_seq
         return self._latest_state
 
     async def wait_for_ack(self, msg_id: int, timeout: float = 10.0) -> dict[str, Any]:
@@ -446,6 +567,16 @@ class LogTailer:
         return self._latest_state
 
     @property
+    def state_seq(self) -> int:
+        """How many states have been made available so far."""
+        return self._state_seq
+
+    @property
+    def backlog_state(self) -> dict[str, Any] | None:
+        """The state found in the log at start, while it is still pending."""
+        return self._backlog_state
+
+    @property
     def latest_heartbeat(self) -> dict[str, Any] | None:
         """The most recently received heartbeat, or None."""
         return self._latest_heartbeat
@@ -460,6 +591,9 @@ class LogTailer:
             "chunks_received": self._stats.chunks_received,
             "parse_errors": self._stats.parse_errors,
             "lines_processed": self._stats.lines_processed,
+            "states_skipped": self._stats.states_skipped,
+            "acks_dropped": self._stats.acks_dropped,
+            "backlog_states_used": self._stats.backlog_states_used,
         }
 
     @property

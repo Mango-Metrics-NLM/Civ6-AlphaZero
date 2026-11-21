@@ -378,6 +378,34 @@ frames the game takes to carry a request out.
    `Command received via ExposedMembers` → `Executing: END_TURN` → `AZ_ACK`.
    Add `--eval-harness` to record per-turn telemetry to MLflow.
 
+### One command at a time (GM-B7c-1)
+
+`scripts/live_command_check.py` sends a single command to the running game and prints the mod's
+answer and what the next state shows, so each checklist item is one command and a few lines:
+
+```bash
+python scripts/live_command_check.py --action end_turn
+python scripts/live_command_check.py --action research_tech --item TECH_MINING
+python scripts/live_command_check.py --action unit_move --unit-id 65536 --x 10 --y 7
+```
+
+It connects as the agent does (the same environment variables, below). Exit 0: accepted and the
+effect is visible; 1: refused, or accepted with nothing to show; 2: no state or no answer. If it
+reports "no state from the game", the mod is not waiting for a command (it stops 30 seconds after
+the last one); `--use-backlog` acts on the last state already in `Lua.log`.
+
+What it compares between the two states: the turn number, the end-turn blocker, current research
+and civic, each own city's current production, and each own unit's tile and remaining moves. A
+change the mod does not export (a unit's fortified state) reads as "nothing", which is a limit of
+the export, not proof the game ignored the command.
+
+One more item for the checklist, the reason for this tool's transport fix:
+
+7. Send any command that does not end the turn. The line `changed: ...` (or `changed: nothing`)
+   should appear within a second or two, not after 30. Before GM-B7c-1 the state that follows a
+   command was discarded whenever it reached the log together with the command's answer, and the
+   agent then waited out its timeout while the mod gave the turn up.
+
 ### Environment variables
 
 | Variable | Default | Meaning |
