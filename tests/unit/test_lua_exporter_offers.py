@@ -257,8 +257,9 @@ class TestCheckIsADryRun:
         runtime = load()
         assert check(runtime, c.unit_move(102, 0, 1))[:2] == (True, None)
         runtime.execute("Civ6Stub.applyRequests()")
-        unit = runtime.eval("Civ6Stub.unit(102)")
-        assert (unit["x"], unit["y"], unit["moves"]) == (1, 0, 2)
+        # (corrected: Civ6Stub.unit returns the record and its index, read the fields in Lua)
+        where = runtime.eval("Civ6Stub.unit(102).x"), runtime.eval("Civ6Stub.unit(102).y")
+        assert (*where, runtime.eval("Civ6Stub.unit(102).moves")) == (1, 0, 2)
         assert runtime.eval("Civ6Stub.city(301).building") is None
         assert check(
             runtime, {"action_type": "city_produce", "city_id": 301, "item_id": "UNIT_WARRIOR"}

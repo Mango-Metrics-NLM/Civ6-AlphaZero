@@ -10,10 +10,10 @@
 - [x] 1.7 Negative controls: reverting each of E1, E2, E3, E7, E8 fails a named test
 
 ## 2. GM-B7b: the exporter and greedy production
-- [ ] 2.1 Neighbours from `Map.GetAdjacentPlot`; an independent Python adjacency check for both row parities
-- [ ] 2.2 Offered unit actions from the strict check; no attack that would start a war
-- [ ] 2.3 Production choices by hash, strict form, no placed items
-- [ ] 2.4 Greedy production by name in a new module; the same command in two processes
+- [x] 2.1 Neighbours from `Map.GetAdjacentPlot`; an independent Python adjacency check for both row parities
+- [x] 2.2 Offered unit actions from the strict check; no attack that would start a war
+- [x] 2.3 Production choices by hash, strict form, no placed items
+- [x] 2.4 Greedy production by name in a new module; the same command in two processes
 
 ## 3. GM-B7c: the loop
 - [ ] 3.1 `bridge/command_policy.py`: per-turn ledger, refused commands not resent, cap, game-turn counting

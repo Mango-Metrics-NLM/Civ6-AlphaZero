@@ -31,7 +31,7 @@ __all__ = ["ActionConverter", "ConversionResult", "InvalidActionError", "NoLegal
 
 import numpy as np
 
-from alpha_zero.bridge.config import GameConstants
+from alpha_zero.bridge import production_slots
 from alpha_zero.bridge.protocol import (
     ActionType,
     LegalAction,
@@ -146,47 +146,24 @@ class CityItemTypes:
     DISTRICT = "district"
 
 
-# Maximum range for hashed item IDs. Must match ActionSpaceConfig max production
-# items. Civ6 base game has ~170 distinct producible items across all categories.
-# Defined in GameConstants.ITEM_HASH_RANGE
+#: The production kind each city action type stands for (and the reverse).
+_PRODUCE_KIND: dict[int, str] = {
+    int(CityActionType.PRODUCE_UNIT): CityItemTypes.UNIT,
+    int(CityActionType.PRODUCE_BUILDING): CityItemTypes.BUILDING,
+    int(CityActionType.PRODUCE_WONDER): CityItemTypes.WONDER,
+    int(CityActionType.PRODUCE_DISTRICT): CityItemTypes.DISTRICT,
+}
+_PRODUCE_ACTION: dict[str, CityActionType] = {
+    kind: CityActionType(action) for action, kind in _PRODUCE_KIND.items()
+}
 
 
 def _convert_item_id_to_int(item_id: Any) -> int | None:
-    """Convert an item ID to integer, handling various input formats.
+    """An item id as a number: an int as it is, a numeric string, a name by a stable bucket.
 
-    This function handles backwards compatibility with different formats
-    that the Lua mod might send:
-    - Integer: returned as-is
-    - Numeric string (e.g., "42"): converted to int
-    - Type name string (e.g., "UNIT_WARRIOR"): hashed to consistent int
-
-    Args:
-        item_id: The item ID in various formats.
-
-    Returns:
-        Integer item ID, or None if conversion fails.
+    Production no longer uses this (see ``production_slots``); kept for purchases.
     """
-    if item_id is None:
-        return None
-
-    if isinstance(item_id, int):
-        return item_id
-
-    if isinstance(item_id, str):
-        # Try numeric string first
-        try:
-            return int(item_id)
-        except ValueError:
-            pass
-
-        # Handle Civ6 type name strings by hashing to consistent int
-        # Use modulo to keep in reasonable range for action space
-        if item_id:
-            return abs(hash(item_id)) % GameConstants.ITEM_HASH_RANGE
-
-    # Log unexpected types at debug level
-    logger.debug(f"Could not convert item_id '{item_id}' (type: {type(item_id).__name__}) to int")
-    return None
+    return production_slots.legacy_slot(item_id)
 
 
 class InvalidActionError(Exception):
@@ -731,39 +708,23 @@ class ActionConverter:
         action_type = CityActionType(decoded.action_type)
         item_id = decoded.target if isinstance(decoded.target, int) else 0
 
-        if action_type == CityActionType.PRODUCE_UNIT:
+        kind = _PRODUCE_KIND.get(int(action_type))
+        if kind is not None:
+            # The slot is the item's position among what the game offered this
+            # city; the command carries the item itself (its type name).
+            item: int | str = item_id
+            for action in self._parse_legal_actions(legal_actions or ()):
+                if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
+                    offered = production_slots.item_at(
+                        kind, item_id, action.items, action.item_types, action.item_type
+                    )
+                    if offered is not None:
+                        item = offered
             return LuaCommand(
-                action_type=ActionType.CITY_PRODUCE,
-                city_id=city_id,
-                item_id=item_id,
-                item_type=CityItemTypes.UNIT,
+                action_type=ActionType.CITY_PRODUCE, city_id=city_id, item_id=item, item_type=kind
             )
 
-        elif action_type == CityActionType.PRODUCE_BUILDING:
-            return LuaCommand(
-                action_type=ActionType.CITY_PRODUCE,
-                city_id=city_id,
-                item_id=item_id,
-                item_type=CityItemTypes.BUILDING,
-            )
-
-        elif action_type == CityActionType.PRODUCE_WONDER:
-            return LuaCommand(
-                action_type=ActionType.CITY_PRODUCE,
-                city_id=city_id,
-                item_id=item_id,
-                item_type=CityItemTypes.WONDER,
-            )
-
-        elif action_type == CityActionType.PRODUCE_DISTRICT:
-            return LuaCommand(
-                action_type=ActionType.CITY_PRODUCE,
-                city_id=city_id,
-                item_id=item_id,
-                item_type=CityItemTypes.DISTRICT,
-            )
-
-        elif action_type == CityActionType.BUY_UNIT:
+        if action_type == CityActionType.BUY_UNIT:
             return LuaCommand(
                 action_type=ActionType.CITY_BUY,
                 city_id=city_id,
@@ -997,22 +958,16 @@ class ActionConverter:
 
             for action in parsed_actions:
                 if action.city_id == city_id and action.action_type == LegalActionTypes.PRODUCE:
-                    item_id = decoded.target
-                    if not isinstance(item_id, int):
+                    kind = _PRODUCE_KIND.get(int(decoded.action_type))
+                    slot = decoded.target
+                    if kind is None or not isinstance(slot, int):
                         continue
-                    # decoded.target is always the hashed/converted int form
-                    # produced by generate_action_mask() via
-                    # _convert_item_id_to_int(). action.items holds the raw,
-                    # unhashed values Lua sent (which may be non-numeric
-                    # strings like "UNIT_WARRIOR"), so it must be hashed the
-                    # same way before comparing — comparing against the raw
-                    # strings directly always fails.
-                    legal_item_ids = {
-                        converted
-                        for raw_item in action.items
-                        if (converted := _convert_item_id_to_int(raw_item)) is not None
-                    }
-                    if item_id in legal_item_ids:
+                    if (
+                        production_slots.item_at(
+                            kind, slot, action.items, action.item_types, action.item_type
+                        )
+                        is not None
+                    ):
                         return True
             return False
 
@@ -1096,47 +1051,21 @@ class ActionConverter:
                 city_idx = self._find_city_idx(action.city_id, player_cities)
 
                 if city_idx is not None:
-                    for raw_item_id in action.items:
-                        # Convert item_id to int using robust conversion
-                        converted_id = _convert_item_id_to_int(raw_item_id)
-                        if converted_id is None:
-                            logger.debug(
-                                f"Skipping unconvertible item_id '{raw_item_id}' "
-                                f"for city {action.city_id} production"
-                            )
+                    # One slot per offered item, by its position among the
+                    # offered items of its kind (production_slots).
+                    groups = production_slots.offered(
+                        action.items, action.item_types, action.item_type
+                    )
+                    for kind, group in groups.items():
+                        city_action = _PRODUCE_ACTION.get(kind)
+                        if city_action is None:
                             continue
-                        item_id = converted_id
-
-                        # Determine item type per-item from action.item_types
-                        # (StateExporter.lua's per-item "item_types" map,
-                        # keyed by the raw/unhashed item id), falling back
-                        # to the legacy singular item_type field for
-                        # backwards compatibility with older payloads.
-                        item_type = action.item_types.get(str(raw_item_id), action.item_type)
-                        if item_type == CityItemTypes.UNIT:
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_UNIT, item_id
-                            )
-                        elif item_type == CityItemTypes.BUILDING:
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_BUILDING, item_id
-                            )
-                        elif item_type == CityItemTypes.WONDER:
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_WONDER, item_id
-                            )
-                        elif item_type == CityItemTypes.DISTRICT:
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_DISTRICT, item_id
-                            )
-                        else:
-                            # Unknown type - try both unit and building (backwards compat)
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_UNIT, item_id
-                            )
-                            self._try_encode_city_action(
-                                mask, city_idx, CityActionType.PRODUCE_BUILDING, item_id
-                            )
+                        # Past the action space's bound a slot would spill into
+                        # the next action type's range: it cannot be chosen.
+                        for slot in range(
+                            min(len(group), self.action_space.config.num_production_items)
+                        ):
+                            self._try_encode_city_action(mask, city_idx, city_action, slot)
 
         # Research choices
         research_actions = [

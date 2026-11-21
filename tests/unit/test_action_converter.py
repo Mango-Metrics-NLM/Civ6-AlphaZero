@@ -815,7 +815,7 @@ class TestActionLegalityChecking:
             category=ActionCategory.CITY_ACTION,
             selector=0,
             action_type=CityActionType.PRODUCE_UNIT.value,
-            target=5,
+            target=1,  # since GM-B7b: the item's position among the offered ones ([5, 10, 15])
         )
         legal = [LegalAction(action_type="produce", city_id=10, items=[5, 10, 15])]
         assert converter._is_action_legal(decoded, state, legal)
@@ -854,17 +854,12 @@ class TestActionLegalityChecking:
     def test_city_action_legal_with_string_item_id(self, converter):
         """Test city production is legal when items are raw string type names.
 
-        StateExporter.lua exports non-numeric production item ids (e.g.
-        "UNIT_WARRIOR") as strings. generate_action_mask() hashes those
-        strings via _convert_item_id_to_int() before encoding them into the
-        mask, so decoded.target on the policy-chosen action is always the
-        hashed int. _is_action_legal() must hash action.items the same way
-        before comparing, or legal string-keyed production is never
-        recognized as legal (regression for the always-False bug).
+        StateExporter.lua exports production items as type names ("UNIT_WARRIOR").
+        Since GM-B7b the mask marks an item at its position among the offered items
+        of its kind, and the legality check reads the same position, so a
+        name-keyed item the mask marked is recognised as legal (the regression this
+        test was written for: it used to be always False).
         """
-        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
-
-        hashed_item_id = _convert_item_id_to_int("UNIT_WARRIOR")
         state = {
             "current_player": 0,
             "cities": [{"_id": 10, "player": 0}],
@@ -873,7 +868,7 @@ class TestActionLegalityChecking:
             category=ActionCategory.CITY_ACTION,
             selector=0,
             action_type=CityActionType.PRODUCE_UNIT.value,
-            target=hashed_item_id,
+            target=0,
         )
         legal = [LegalAction(action_type="produce", city_id=10, items=["UNIT_WARRIOR"])]
         assert converter._is_action_legal(decoded, state, legal)

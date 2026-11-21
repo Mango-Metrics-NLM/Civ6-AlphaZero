@@ -151,6 +151,11 @@ end
 -- instead of a request the game ignores. Not verified in a real game: the
 -- names for skip and sleep are the least certain.
 
+-- True while AlphaZeroActionExecutor.Check runs: every check is made and
+-- nothing is requested, so "what the exporter offers" and "what the executor
+-- carries out" are one piece of code and cannot drift apart.
+local dryRun = false
+
 -- The Hash and kind ("operation" / "command") of the row named `typeName`.
 local function findActionRow(typeName)
     local sources = {
@@ -248,6 +253,9 @@ local function requestUnitAction(unit, typeName, params, label)
             label .. " refused by the game" .. (reason and (": " .. reason) or "")
     end
 
+    if dryRun then
+        return true, nil, nil
+    end
     local requested, err
     if params then
         requested, err = pcall(request, unit, hash, params)
@@ -605,9 +613,11 @@ local function executeCityProduce(playerId, command)
     local params = {}
     params[CityOperationTypes[kind.param]] = row.Hash
     params[CityOperationTypes.PARAM_INSERT_MODE] = CityOperationTypes.VALUE_EXCLUSIVE
-    local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
-    if not requested then
-        return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+    if not dryRun then
+        local requested, err = pcall(CityManager.RequestOperation, city, CityOperationTypes.BUILD, params)
+        if not requested then
+            return false, ERROR_CODES.EXECUTION_FAILED, "Production request raised: " .. tostring(err)
+        end
     end
     return true, nil, string.format("City %d: production of %s requested", cityId, typeName)
 end
@@ -1160,6 +1170,35 @@ function AlphaZeroActionExecutor.Execute(playerId, command)
         return false, ERROR_CODES.EXECUTION_FAILED, "Exception: " .. tostring(success)
     end
 
+    return success, errCode, message
+end
+
+-- The commands Check can answer for: the ones whose handlers ask the game
+-- before they request.
+local CHECKABLE = {
+    [ACTION_TYPES.UNIT_MOVE] = true, [ACTION_TYPES.UNIT_ATTACK] = true,
+    [ACTION_TYPES.UNIT_RANGED_ATTACK] = true, [ACTION_TYPES.UNIT_SKIP] = true,
+    [ACTION_TYPES.UNIT_FORTIFY] = true, [ACTION_TYPES.UNIT_SLEEP] = true,
+    [ACTION_TYPES.UNIT_FOUND_CITY] = true, [ACTION_TYPES.CITY_PRODUCE] = true,
+}
+
+-- What Execute would answer for this command, without requesting anything.
+-- The exporter offers an action exactly when this says yes.
+function AlphaZeroActionExecutor.Check(playerId, command)
+    if not command or not command.action_type then
+        return AlphaZeroActionExecutor.Execute(playerId, command)  -- refused there, nothing runs
+    end
+    if not CHECKABLE[command.action_type] then
+        return false, ERROR_CODES.NOT_IMPLEMENTED,
+            "No check for action type: " .. tostring(command and command.action_type)
+    end
+    local savedLog = Log
+    dryRun, Log = true, nil  -- a check per candidate would flood the log
+    local ok, success, errCode, message = pcall(AlphaZeroActionExecutor.Execute, playerId, command)
+    dryRun, Log = false, savedLog
+    if not ok then
+        return false, ERROR_CODES.EXECUTION_FAILED, "Exception: " .. tostring(success)
+    end
     return success, errCode, message
 end
 

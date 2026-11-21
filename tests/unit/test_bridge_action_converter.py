@@ -990,8 +990,9 @@ class TestGenerateActionMask:
         mask = converter.generate_action_mask(legal_actions, game_state)
         assert mask.sum() >= 2
 
-    def test_city_produce_unknown_type_backwards_compat(self, converter: ActionConverter) -> None:
-        """Unknown item_type should encode both unit and building (backwards compat)."""
+    def test_city_produce_unknown_type_is_a_unit(self, converter: ActionConverter) -> None:
+        """An item with no kind is offered as a unit (it used to be marked as unit and building,
+        two indexes for one item; the mod finds a named item whatever kind the command says)."""
         game_state = {
             "current_player": 0,
             "units": [],
@@ -1007,8 +1008,8 @@ class TestGenerateActionMask:
             LegalAction(action_type="end_turn"),
         ]
         mask = converter.generate_action_mask(legal_actions, game_state)
-        # Should have end_turn + at least produce_unit + produce_building
-        assert mask.sum() >= 3
+        # end_turn and one production index
+        assert mask.sum() == 2
 
     def test_dict_legal_actions_parsed(self, converter: ActionConverter) -> None:
         """Legal actions passed as dicts should be parsed properly."""
@@ -1268,11 +1269,13 @@ class TestIsActionLegal:
         assert converter._is_action_legal(decoded, game_state, legal_actions) is False
 
     def test_city_produce_legal(self, converter: ActionConverter) -> None:
+        # Since GM-B7b the target is the item's position among the offered items of its
+        # kind (production_slots), not the item id: [5, 6, 7] are slots 0, 1, 2.
         decoded = HierarchicalAction(
             category=ActionCategory.CITY_ACTION,
             selector=0,
             action_type=CityActionType.PRODUCE_UNIT.value,
-            target=5,
+            target=2,
         )
         game_state = {
             "current_player": 0,

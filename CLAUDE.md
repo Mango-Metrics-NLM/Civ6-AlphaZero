@@ -776,7 +776,7 @@ Civ6-AlphaZero/
 │   │   └── muzero_hyperparams.py # MuZero-specific hyperparams
 │   ├── tournament/              # ELO Tournament System (9 files)
 │   ├── web/                     # Web Interface (12 files, FastAPI + WebSocket)
-│   ├── bridge/                  # Civ6 Lua Mod Bridge (18 files, file IPC + FireTuner socket)
+│   ├── bridge/                  # Civ6 Lua Mod Bridge (19 files, file IPC + FireTuner socket)
 │   ├── hierarchical/            # Hierarchical Goal Planning (19 files)
 │   ├── training/                # Training integrations (11 files: MuZero trainer,
 │   │                           #   safeguards, diagnostics, convergence monitor)
@@ -1372,7 +1372,7 @@ validation" below was a pre-fix measurement. Releases through v1.8.0:
 
 ### Implemented (substantially built)
 - **PBT**: `alpha_zero/pbt/` (10 files) · **Tournament**: `alpha_zero/tournament/` (9 files)
-- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (18 files)
+- **Web Interface**: `alpha_zero/web/` (12 files) · **Civ6 Bridge**: `alpha_zero/bridge/` (19 files)
 - **Hierarchical Planning**: `alpha_zero/hierarchical/` (19 files)
 - **MuZero**: `alpha_zero/core/muzero_network.py`, `training/muzero_*`
 - **N-Player Multiplayer**: `alpha_zero/multiplayer/` (18 files)
