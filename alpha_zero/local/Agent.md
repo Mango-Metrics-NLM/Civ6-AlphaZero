@@ -18,6 +18,7 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 - **Preflight**: `assert_running_pinned` proves `alpha_zero.__file__` lies inside the pinned source or venv and that its version equals `pyproject.toml`.
 - **Devices**: `devices.py` decides whether the pinned environment can honour the devices a card names. The pinned child reports its own torch build, GPU names, architectures and one real CUDA operation per device (`TORCH_REPORT_CODE`); `device_problem` refuses a missing ordinal, a build without kernels for the GPU, a GPU that is not the one the card expects at that ordinal, or a torch other than the pinned one. It never substitutes another device. A card that pins torch must name every invocation's device explicitly, and its GPU runs must have a readable NVIDIA driver version (`driver_versions`), because a re-run is compared under the same driver. Non-zero `nvidia-smi` exits in `TORCH_REPORT_CODE` record a structured error (`CalledProcessError`) rather than looking like empty output.
 - **Run cards**: `run_card` prices every invocation of a `configs/run_cards/*.yaml` card with the runner's own parser and refuses a total over `max_games` without `approval_ref`, hardens only a data root it creates, enters local mode, pins the SHA, preflights a real pinned child, checks the card's devices, then runs the invocations sequentially and records `<root>/runs/<card_id>/run.json` (env var names only; the `device_plan`; VOID on interrupt or resume, FAILED on a non-zero child, with the child's last log lines as `error_tail`). `--probe` rehearses everything up to the device check in a throwaway `runs/probe-<card_id>-<time>` directory and launches nothing. Every run does that rehearsal first and claims `runs/<card_id>` only when it passes, so a refused card keeps its `card_id`; `run.json` records the rehearsal's directory (`rehearsal`) and the invocations that were started (`launched`, written before each child runs).
+- **Local gameplay configuration**: `gameplay_config.py` holds `Civ6LocalConfig`, YAML/env/preset loaders, default bridge IPC/log path delegation, demo bridge sizing constants, and the live `--mcts` refusal (`search_mode_refusal`) decoupled from `torch`/`numpy` imports; `alpha_zero/civ6_local.py` re-exports these symbols for backwards compatibility.
 
 ---
 
@@ -46,6 +47,7 @@ You are the **Local Pipeline Engineer**. You own how a run executes on a single 
 | `isolation.py` | `enter_local_mode`, `guard_gcs`, `is_local_mode`, `LocalModeViolation` (stdlib-only) |
 | `card.py` | `RunCard`, `Invocation`, `load_card`, `RunCardError`: the card model and its validation (unknown keys refused) |
 | `run_card.py` | `price_card`, `prepare_data_root`, `invocation_devices`, `run_card` (`probe=`), `device_report_lines`, `main` (CLI wrapper: `scripts/run_card.py`, `--price_only` / `--probe`) |
+| `gameplay_config.py` | `Civ6LocalConfig`, `search_mode_refusal`, `DEFAULT_DEMO_*` bounds, `VALID_*` constants, and torch-free path helpers extracted from `alpha_zero/civ6_local.py` |
 
 The data root these functions depend on lives in `alpha_zero/utils/data_root.py`; CUDA ordinal parsing in `alpha_zero/utils/device.py` (`cuda_ordinal`); the cuBLAS setting in `alpha_zero/utils/seeding.py`.
 
@@ -95,6 +97,6 @@ The data root these functions depend on lives in `alpha_zero/utils/data_root.py`
 
 ## Dependencies
 
-- **Internal**: `alpha_zero.utils.data_root`, `alpha_zero.utils.game_budget`, `alpha_zero.utils.device`, `alpha_zero.utils.seeding`; `alpha_zero.utils.atomic_io` is imported lazily inside `_build_venv` so child preflight without it stays intact; the runners priced by `run_card.py` (`training_civ6`, `evaluation.benchmark`, `orchestrator`) are imported lazily
-- **External**: `pyyaml` (cards); stdlib otherwise
-- **Consumed by**: `scripts/run_card.py`; `alpha_zero.cloud.gcp.storage` (`guard_gcs`)
+- **Internal**: `alpha_zero.utils.data_root`, `alpha_zero.utils.game_budget`, `alpha_zero.utils.device`, `alpha_zero.utils.seeding`; `alpha_zero.utils.atomic_io` is imported lazily inside `_build_venv` so child preflight without it stays intact; the runners priced by `run_card.py` (`training_civ6`, `evaluation.benchmark`, `orchestrator`) are imported lazily; `gameplay_config.py` lazily delegates default bridge paths to `alpha_zero.bridge.config`
+- **External**: `pyyaml` (cards and gameplay YAML config); stdlib otherwise
+- **Consumed by**: `scripts/run_card.py`; `alpha_zero.cloud.gcp.storage` (`guard_gcs`); `alpha_zero/civ6_local.py` (`gameplay_config`)

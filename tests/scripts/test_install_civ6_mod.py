@@ -12,6 +12,7 @@ import importlib.util
 import logging
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import patch
 
@@ -35,6 +36,23 @@ def _load_installer():
 @pytest.fixture()
 def installer():
     return _load_installer()
+
+
+@pytest.fixture(autouse=True)
+def _restore_root_logging() -> Iterator[None]:
+    """Prevent setup_logging() from leaking a closed capsys StreamHandler."""
+    root = logging.getLogger()
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
+    try:
+        yield
+    finally:
+        for handler in list(root.handlers):
+            if handler not in saved_handlers:
+                root.removeHandler(handler)
+                handler.close()
+        root.handlers[:] = saved_handlers
+        root.setLevel(saved_level)
 
 
 # ---------------------------------------------------------------------------
@@ -443,3 +461,71 @@ def test_script_invoked_as_subprocess_missing_source_dir_exits_nonzero(tmp_path)
     )
 
     assert result.returncode == 1
+
+
+# ---------------------------------------------------------------------------
+# verify_mod_installation() and --check / --verbose CLI verification
+# ---------------------------------------------------------------------------
+
+
+def test_verify_mod_installation_matching_trees_pass(installer, tmp_path) -> None:
+    """Identical source and installed mod trees pass SHA-256 verification."""
+    src = tmp_path / "src"
+    dst = tmp_path / "Mods" / installer.MOD_NAME
+    _make_tree(src, SOURCE_FILES)
+    _make_tree(dst, SOURCE_FILES)
+
+    ok, problems = installer.verify_mod_installation(src, dst)
+    assert ok is True
+    assert problems == []
+
+
+def test_verify_mod_installation_detects_missing_extra_and_mismatched_files(
+    installer, tmp_path
+) -> None:
+    """Verification reports missing, extra, and SHA-256-mismatched files."""
+    src = tmp_path / "src"
+    dst = tmp_path / "Mods" / installer.MOD_NAME
+    _make_tree(src, {"a.lua": "same", "b.lua": "missing_in_dst", "c.lua": "new_content"})
+    _make_tree(dst, {"a.lua": "same", "c.lua": "old_content", "stale.lua": "extra"})
+
+    ok, problems = installer.verify_mod_installation(src, dst)
+    assert ok is False
+    assert any("missing installed file: b.lua" in p for p in problems)
+    assert any("unexpected extra file: stale.lua" in p for p in problems)
+    assert any("SHA256 mismatch for c.lua" in p for p in problems)
+
+
+def test_verify_mod_installation_missing_target_directory_fails_cleanly(
+    installer, tmp_path
+) -> None:
+    """Missing target mod folder fails with an actionable error instead of raising."""
+    src = tmp_path / "src"
+    _make_tree(src, {"Main.lua": "print(1)\n"})
+
+    ok, problems = installer.verify_mod_installation(src, tmp_path / "missing")
+    assert ok is False
+    assert any("missing installed mod directory" in p for p in problems)
+
+
+def test_main_check_mode_exit_codes_and_verbose_logging(
+    installer, tmp_path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """``--check`` exits 0 on match (emitting debug hashes with ``--verbose``) and 1 on drift."""
+    src = tmp_path / "repo_mod"
+    mods_dir = tmp_path / "Mods"
+    installed = mods_dir / installer.MOD_NAME
+    files = {"AlphaZeroAI.modinfo": "<Mod/>", "Scripts/AlphaZeroMain.lua": "return 1\n"}
+    _make_tree(src, files)
+    _make_tree(installed, files)
+
+    rc_ok = installer.main(
+        ["--source-dir", str(src), "--mod-dir", str(mods_dir), "--check", "--verbose"]
+    )
+    out = capsys.readouterr().out
+    assert rc_ok == 0
+    assert "Verified AlphaZeroAI.modinfo:" in out
+
+    (installed / "Scripts/AlphaZeroMain.lua").write_text("return 2\n", encoding="utf-8")
+    rc_drift = installer.main(["--source-dir", str(src), "--mod-dir", str(mods_dir), "--check"])
+    assert rc_drift == 1

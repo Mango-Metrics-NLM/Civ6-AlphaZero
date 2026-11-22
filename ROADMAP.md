@@ -19,7 +19,7 @@ about learning.
 |-------|------|-----------------|-----------------------|
 | M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
 | M2 | Scale & Observability | ✅ Delivered; ⏸ **Vertex/GCP path dormant** (frozen 2026-11-11) | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
-| M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery proven, demo-grade.** Four `END_TURN`s on random weights, 2026-07-12; turn-cycle stall open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
+| M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery & live parity fixes landed, demo-grade.** Four `END_TURN`s on random weights (2026-07-12); FireTuner TCP, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live with five Lua fixes (2026-11-21); fresh Turn 1 soak open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
 | M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
 | M5 | Full Civ6 Mastery | ⏳ Future | — |
 
@@ -46,12 +46,7 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   (`alpha_zero/rules/` kernel), and GM-K2 (`pace`, `import-gameinfo`) landed off the
   play path (PRs #143, #146, #147; no training environment consumes it yet); pending
   OpenSpec archive (plan `kb/specs/20261119-game-mechanics-plan.md`).
-- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path, not run in a real
-  game: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter
-  and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py`
-  snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153).
-  Open: the maintainer's live checklist (`docs/LIVE_CIV6.md`) and the search-mode action
-  translator (`GM-B6`, not scheduled).
+- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py` snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153), followed by live Steam Civ 6 verification fixes for Win64 LLP64 integers, sole blocker authority, two-step `CanProduce`, `GetCurrentProductionTypeHash()`, short `YieldTypes` keys, `install_civ6_mod.py --check`, and `civ6_local.py` decomposition (`alpha_zero/local/gameplay_config.py`). Open: fresh Turn 1 multi-turn soak on the rebuilt bundle (`docs/LIVE_CIV6.md`) and the search-mode action translator (`GM-B6`, not scheduled).
 
 ### Next — v2.1 "First validated learning run"
 
@@ -203,8 +198,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   - **Tier B** — fourteen yes/no keep-or-delete decisions, 18,133 lines.
   - **WS3.2** — collapse the env prefix to `CIV6AZ_` only, behind a two-release
     warn-and-map shim in `env_loader.py`.
-  - **WS5** — decompose the seven remaining god files, each behind a re-export
-    shim with a patchability test.
+  - **WS5** — decompose the remaining god files (23 over 1,000 lines after extracting `alpha_zero/local/gameplay_config.py` from `civ6_local.py`), each behind a re-export shim with a patchability test.
   - **WS6** — consolidate duplicate definitions (`setup_logging`, `create_mcts`,
     Elo, `MCTSConfig`) and settle on one dependency manifest.
   - **WS7** — layering test, wider type-check scope, skip-site burndown,

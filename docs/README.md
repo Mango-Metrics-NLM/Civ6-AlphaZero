@@ -19,7 +19,7 @@ In this order:
 
 1. [`../README.md`](../README.md) — what the project is, what is proven and what is not, quick start.
 2. [`EVALUATION.md`](EVALUATION.md) — how strength is measured here (draw-aware score rate, sample sizes, what a number can and cannot show). <!-- lead: row added by W-E because the file landed before hand-off; adjust wording freely -->
-3. [`architecture/C4_ARCHITECTURE.md`](architecture/C4_ARCHITECTURE.md) — how the system is built (C4 context → containers → components).
+3. [`architecture/C4_ARCHITECTURE.md`](architecture/C4_ARCHITECTURE.md) — how the system is built (C4 context → containers → components). <!-- last verified 2026-11-21 -->
 4. [`../ROADMAP.md`](../ROADMAP.md) — milestones, with a *Validation (evidence)* column, and Now / Next / Later.
 5. [`../CONTRIBUTING.md`](../CONTRIBUTING.md) — set-up, the inner loop and the quality gates.
 
@@ -43,7 +43,7 @@ walkthrough is a welcome contribution.
 
 | Doc | What it helps you do | Audience | Status | Last verified |
 |-----|----------------------|----------|--------|---------------|
-| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: four `END_TURN`s on random weights verified live; GM-B0..B3 Lua bundle/harness/schema-2 research wiring tested offline). | user | Current | 2026-11-20 |
+| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: FireTuner socket transport, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live; 5 live Lua parity fixes landed; fresh Turn 1 soak open). | user | Current | 2026-11-21 |
 | [`HF_PUBLISHING.md`](HF_PUBLISHING.md) | Stage and publish the hex-crystalline encoder to the Hugging Face Hub. | contributor | Current | 2026-08-11 |
 | [`INFERENCE_SERVICE.md`](INFERENCE_SERVICE.md) | Run and call the FastAPI inference server. | operator | Current | 2026-08-11 |
 | [`GCP_INFRA.md`](GCP_INFRA.md) | Stand up the Vertex AI / GCS training infrastructure. | operator | Current | 2026-09-02 |
@@ -58,7 +58,7 @@ walkthrough is a welcome contribution.
 
 | Doc | What it is | Audience | Status | Last verified |
 |-----|------------|----------|--------|---------------|
-| [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md) | The `alpha_zero/` module inventory, one row per subpackage (gated by `check_doc_sync` D2). | contributor | Reference | 2026-11-20 |
+| [`MODULE_REFERENCE.md`](MODULE_REFERENCE.md) | The `alpha_zero/` module inventory, one row per subpackage (gated by `check_doc_sync` D2). | contributor | Reference | 2026-11-21 |
 | [`architecture/README.md`](architecture/README.md) | Entry to the architecture tree (C4 model + ADRs). | contributor | Reference | 2026-07-25 |
 | [`NAMING_CONVENTIONS.md`](NAMING_CONVENTIONS.md) | Environment variables, image tags and GCS path conventions. | operator | Reference | 2026-02-20 |
 | [`model_cards/README.md`](model_cards/README.md) | Index of model cards and what a card must state. | user | Reference | 2026-11-10 |

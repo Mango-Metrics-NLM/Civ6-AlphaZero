@@ -312,10 +312,29 @@ local function makeCity(spec)
         return collection(list)
     end
     function queue:CurrentlyBuilding() return spec.building end
+    function queue:GetCurrentProductionTypeHash()
+        if not spec.building then return 0 end
+        for _, kind in ipairs({
+            { rows = GameInfo.Units, col = "UnitType" },
+            { rows = GameInfo.Buildings, col = "BuildingType" },
+            { rows = GameInfo.Districts, col = "DistrictType" },
+        }) do
+            if kind.rows then
+                for row in kind.rows() do
+                    if row[kind.col] == spec.building and row.Hash ~= nil then
+                        return row.Hash
+                    end
+                end
+            end
+        end
+        return 0
+    end
     function queue:GetTurnsLeft() return 3 end
     -- Asked by row Hash (what the game's own production panel sends):
-    -- `CanProduce(hash, true)` is the loose check, `CanProduce(hash, false, true)`
-    -- the strict one ("can start now"), and the two differ for the settler.
+    -- `CanProduce(hash, true)` is the unlock check, `CanProduce(hash, false, true)`
+    -- the strict exclusion check ("can start now"). `"later"` passes only `true`;
+    -- `"locked"` mimics live Civ6 unresearched items where `(hash, true)` is false
+    -- even though `(hash, false, true)` returns true.
     -- Anything that is not the Hash of a producible row, a row Index included,
     -- answers false: the game knows nothing by that number.
     function queue:CanProduce(ref, loose, strictFlag)
@@ -324,8 +343,10 @@ local function makeCity(spec)
         local table_ = state().canProduce or Civ6Stub.defaultCanProduce
         local entry = table_[name]
         if entry == nil then return false end
-        if loose == false and strictFlag == true then return entry == "now" end
-        return true
+        if loose == false and strictFlag == true then
+            return entry == "now" or entry == "locked"
+        end
+        return entry ~= "locked"
     end
     function city:GetID() return spec.id end
     function city:GetName() return spec.name end

@@ -13,7 +13,7 @@ they pin behaviour the fix must keep, or reject what the fix must keep rejecting
 from __future__ import annotations
 
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import pytest
@@ -467,12 +467,12 @@ class TestForAShell:
     @pytest.mark.parametrize("windows", [False, True])
     def test_a_plain_path_is_unchanged(self, windows: bool) -> None:
         for text in ["/data/gameinfo/g-1.json", "C:/data/g.json", "rel/a_b-c.json"]:
-            assert gc._for_a_shell(Path(text), windows=windows) == text
+            assert gc._for_a_shell(PurePosixPath(text), windows=windows) == text
 
     @pytest.mark.parametrize("windows", [False, True])
     @pytest.mark.parametrize("text", ["/my data/g.json", "/a\tb/g.json", "/two  spaces/g.json"])
     def test_whitespace_alone_gets_double_quotes(self, text: str, windows: bool) -> None:
-        assert gc._for_a_shell(Path(text), windows=windows) == f'"{text}"'
+        assert gc._for_a_shell(PurePosixPath(text), windows=windows) == f'"{text}"'
 
     @pytest.mark.parametrize(
         "text",
@@ -482,19 +482,34 @@ class TestForAShell:
             '/say "hi"/g.json',
             "/it's/g.json",
             "/a;b/g.json",
+            "/a%TEMP%/g.json",
         ],
     )
     def test_a_posix_shell_gets_the_literal_path_back(self, text: str) -> None:
         import shlex
 
-        shown = gc._for_a_shell(Path(text), windows=False)
+        shown = gc._for_a_shell(PurePosixPath(text), windows=False)
         # What a POSIX shell would hand the program is the path itself, not an expansion.
         assert shlex.split(f"cmd {shown}") == ["cmd", text]
         assert shlex.split(f"CIV6AZ_BRIDGE_GAMEINFO={shown}") == [f"CIV6AZ_BRIDGE_GAMEINFO={text}"]
         assert not shown.startswith('"'), "double quotes would let the shell expand it"
 
     def test_on_windows_a_special_character_gets_double_quotes(self) -> None:
-        assert gc._for_a_shell(Path("C:/a&b/g.json"), windows=True) == '"C:/a&b/g.json"'
+        assert gc._for_a_shell(PurePosixPath("C:/a&b/g.json"), windows=True) == '"C:/a&b/g.json"'
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("C:/$env:TEMP/g.json", "'C:/$env:TEMP/g.json'"),
+            ("C:/%TEMP%/g.json", "'C:/%TEMP%/g.json'"),
+            ("C:/a`b/g.json", "'C:/a`b/g.json'"),
+            ("C:/it's $100/g.json", "'C:/it''s $100/g.json'"),
+        ],
+    )
+    def test_on_windows_expanding_characters_use_single_quotes(
+        self, text: str, expected: str
+    ) -> None:
+        assert gc._for_a_shell(PurePosixPath(text), windows=True) == expected
 
 
 class TestACompleteButInvalidLastLineIsAnError:

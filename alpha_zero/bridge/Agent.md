@@ -44,11 +44,17 @@ This module provides IPC for real Civ6 game communication over two selectable co
 
 | File | Responsibility |
 |------|---------------|
-| `config.py` | BridgeConfig, MapSizeConfig, MAP_SIZES, coordinate scaling |
+| `config.py` | `BridgeConfig` (including `BridgeConfig.from_live_env()`), `MapSizeConfig`, `MAP_SIZES`, coordinate scaling, `get_default_comm_dir()`, `get_default_civ6_log_path()`, and single-source transport constants (`DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`) |
 | `protocol.py` | Full typed JSON schema: StateMessage, CommandMessage, AckMessage, ErrorMessage, action/message types |
 | `file_bridge.py` | FileBridge (async polling, retry, heartbeat), MockFileBridge (testing) |
 | `live_bridge.py` | LiveBridge — composes LogTailer (state) + a command transport (TunerBridge or SocketTunerBridge) selected by `command_transport` |
 | `log_tailer.py` | LogTailer — reads state/heartbeat/ack from the Civ6 `Lua.log` (state IN) |
+| `agent_loop.py` | `BridgeAgentLoop`, `GreedyNetworkPolicy`, `PolicyEngine` — decodes live states, filters offers through the per-turn ledger, runs policy, and dispatches commands |
+| `agent_loop_config.py` | `AgentLoopConfig` (`CIV6AZ_AGENT_*` env overrides, command caps, stall handling) |
+| `turn_ledger.py` | `TurnLedger` — per-game-turn memory suppressing repeated refused/no-effect/blocked actions |
+| `offer_filter.py` | Removes `TurnLedger`-ruled-out choices from `legal_actions` before policy selection |
+| `state_diff.py` | Human-readable state delta and expected-effect verification used by `scripts/live_command_check.py` |
+| `eval_harness.py` | `BridgeEvalHarness` — optional MLflow per-turn telemetry logger for live play sessions |
 | `tuner_bridge.py` | TunerBridge — `command_transport="file"` command writer (`commands.json` for the FireTuner `.ltp` panel relay) |
 | `tuner_socket_bridge.py` | FireTunerClient (raw FireTuner TCP wire protocol), SocketTunerBridge (headless `command_transport="socket"` drop-in for TunerBridge), `lua_longstring()` helper |
 | `state_converter.py` | GameStateData → Civ6StateEncoder tensor conversion, terrain/unit mapping |
@@ -63,6 +69,7 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | `offers.py` | `is_offered`: whether a command is among the offers of a state; the loop checks a command policy's answer with it before sending |
 | `policy_factory.py` | The policy and network builders `civ6_local` uses, and `build_search_policy`: the search with a simulator-shaped network at the board and horizon a checkpoint records |
 | `microciv_proxy.py` | How a live state is stood in for inside MicroCiv: unit categories onto its three unit types (or left out), tiles onto its three terrain types (mountains, water and ice onto the impassable one). Standard library only; adds no simulator rule |
+| `utils.py` | Shared `parse_bool_env()` helper used across bridge configuration modules |
 
 ---
 
@@ -132,6 +139,8 @@ Select the transport via `BridgeConfig.command_transport` or the env vars consum
 7. `SocketTunerBridge` preserves the same async `start`/`stop`/`send_command`/`stats` surface as `TunerBridge`, so `LiveBridge` can swap transports via config alone
 8. `BridgeConfig.command_transport` only accepts `"file"` or `"socket"`; construction raises `ValueError` otherwise
 9. `FireTunerClient` always resolves the `GameCore_Tuner` state index via `LSQ:` before sending `CMD:` — the index is not assumed to be stable across game sessions
+10. `alpha_zero/bridge/config.py` stays free of heavyweight `torch`/`numpy` imports so `scripts/live_command_check.py` and `--dry-run` config resolution stay fast and self-contained
+11. Live Lua parity invariants enforced in `mod/AlphaZeroAI/Scripts/`: LLP64-safe integer formatting (`%.0f` + `-0.0 -> "0"`), sole end-turn blocker authority (`NotificationManager` / `GetEndTurnBlocker` without `UI.CanEndTurn()` bypass), two-step `CanProduce(hash, true)` + `CanProduce(hash, false, true)` check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` / `GameInfo.Yields` yield resolution
 
 ---
 

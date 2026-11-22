@@ -207,3 +207,14 @@ def test_negative_control_end_to_end_exit_code(tmp_path, monkeypatch, capsys) ->
     _write_skill(tmp_path, 'description: ">"')
     assert vs.main([]) == 1
     assert "S1" in capsys.readouterr().err
+
+
+def test_live_civ6_and_gpu_verify_skills_pass_single_file_validation_cleanly() -> None:
+    """Operational verification skills must pass validate_skills with zero errors or warnings."""
+    gate = vs._coverage_gate()
+    for skill_name in ("live-civ6-verify", "gpu-verify"):
+        skill_md = REPO_ROOT / ".claude" / "skills" / skill_name / "SKILL.md"
+        assert skill_md.is_file(), f"missing skill: {skill_md}"
+        issues: list[vs.Issue] = []
+        vs._validate_skill(skill_md, issues, gate)
+        assert issues == [], f"{skill_name} emitted validation issues: {issues}"

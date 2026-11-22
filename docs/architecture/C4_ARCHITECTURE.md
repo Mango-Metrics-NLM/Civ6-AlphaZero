@@ -88,8 +88,9 @@ flowchart TB
         MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator"]:::new
         WebUI["Web UI\nalpha_zero/web/\n(FastAPI + WebSocket game UI)"]:::worker
         RulesKernel["Game Rules Kernel (off play path)\nalpha_zero/rules/\n(validated, sha256-pinned rule sets)"]:::new
-        Bridge["Civ6 Bridge (GM-B0..B5)\nalpha_zero/bridge/\n(TechRegistry · GameInfo · --mcts refusal)"]:::worker
-        LuaMod["Civ6 Mod Bundle & Harness\nmod/AlphaZeroAI/ (AlphaZeroMain.lua)\nlupa Lua 5.1 fixture harness"]:::new
+        LocalCfg["Local Gameplay Entry & Config\nalpha_zero/civ6_local.py (thin CLI/runners)\n← local/gameplay_config.py (torch-free config)"]:::worker
+        Bridge["Civ6 Bridge (GM-B0..B7c)\nalpha_zero/bridge/\n(TechRegistry · GameInfo · TurnLedger · --mcts refusal)"]:::worker
+        LuaMod["Civ6 Mod Bundle & Harness\nmod/AlphaZeroAI/ (AlphaZeroMain.lua)\nlupa Lua 5.1 fixture harness + --check parity"]:::new
         TrainLoop["Local training loop\nalpha_zero/training_civ6.py\n(--seed → utils/seeding.py streams)"]:::worker
     end
 
@@ -556,22 +557,24 @@ flowchart LR
         Registry["registry.py + pacing.py + gameinfo.py\nvalidate | hash | pace | import-gameinfo"]:::leaf
     end
 
-    subgraph BridgePy["alpha_zero/bridge/ (18 modules)"]
+    subgraph BridgePy["alpha_zero/bridge/ (23 modules)"]
+        ConfigPy["config.py (torch-free paths & BridgeConfig.from_live_env)\n+ local/gameplay_config.py (Civ6LocalConfig)"]:::bridge
         TechReg["tech_registry.py + gameinfo_capture.py\nfrom_ruleset() + GameInfo snapshot CLI"]:::bridge
         Converters["state_converter.py + action_converter.py\nencoder tech/civic slots + offer mask"]:::bridge
         ProxyRefusal["microciv_proxy.py + mcts_policy.py\nMicroCiv proxy (--mcts refused until GM-B6)"]:::bridge
-        Proto["protocol.py + tuner_socket_bridge.py\nschema_version 2 + end_turn_blocking"]:::bridge
+        Proto["protocol.py + tuner_socket_bridge.py + turn_ledger.py\nschema_version 2 + end_turn_blocking + TurnLedger"]:::bridge
     end
 
     subgraph ModLua["mod/AlphaZeroAI/Scripts/"]
-        SrcLua["Config / JsonEncoder / StateExporter /\nGameInfoExporter / ActionExecutor / Main.lua"]:::lua
-        Bundler["scripts/build_lua_bundle.py --check\nwrites AlphaZeroMain.lua"]:::lua
+        SrcLua["Config / JsonEncoder (LLP64-safe) / StateExporter /\nGameInfoExporter / ActionExecutor / Main.lua"]:::lua
+        Bundler["scripts/build_lua_bundle.py --check\n+ scripts/install_civ6_mod.py --check (SHA-256)"]:::lua
         Harness["tests/fixtures/lua_harness.py\nlupa Lua 5.1 sandbox + civ6_stub.lua"]:::test
     end
 
     Yaml --> Loader --> Registry --> TechReg
     TechReg -->|"fingerprint + slot map"| Converters
     Converters <-->|"GameStateData / LuaCommand"| Proto
+    Proto <--> ConfigPy
     Converters -->|"scaled _board_size state"| ProxyRefusal
     SrcLua --> Bundler -->|"AlphaZeroMain.lua"| Harness
     Proto <-->|"TCP 4318 / Lua.log"| Harness
@@ -579,7 +582,8 @@ flowchart LR
 
 ---
 
-*Last revised: 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
+*Last revised: 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
+*Previously 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
 component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified
 all six governance validators on sorted `--json` / `--verbose` plus `check-lua-bundle` wiring.
 Previously 2026-11-18 — corrected `log_evaluation_result()` to 15 metrics (matching

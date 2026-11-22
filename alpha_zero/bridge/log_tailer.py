@@ -472,13 +472,15 @@ class LogTailer:
             self._heartbeat_time = time.monotonic()
             self._stats.heartbeats_received += 1
             backlog = self._backlog_state
-            if backlog is not None and data.get("turn") == _turn_of(backlog) is not None:
-                # The mod is alive and on the turn of the state it wrote
-                # before we started. (A heartbeat alone is not enough: the mod
-                # also writes one when a game loads.) A reload of the same
-                # save at the same turn cannot be told apart from here.
-                self._stats.backlog_states_used += 1
-                self._publish_state(backlog)
+            if backlog is not None:
+                backlog_turn = _turn_of(backlog)
+                if backlog_turn is not None and data.get("turn") == backlog_turn:
+                    # The mod is alive and on the turn of the state it wrote
+                    # before we started. (A heartbeat alone is not enough: the mod
+                    # also writes one when a game loads.) A reload of the same
+                    # save at the same turn cannot be told apart from here.
+                    self._stats.backlog_states_used += 1
+                    self._publish_state(backlog)
 
     def _handle_ack(self, json_str: str) -> None:
         """Parse an ack JSON and notify waiters."""

@@ -540,3 +540,84 @@ def test_unmocked_rules_bridge_lua_and_device_roundtrip(tmp_path: Path) -> None:
     assert runtime.eval("Civ6Stub.applyRequests()") == 1
     refreshed = GameStateData.from_dict(h.export_state(runtime))
     assert refreshed.players[0].current_research == "TECH_WRITING"
+
+
+def test_unmocked_live_civ6_parity_and_windows_portability_invariants(tmp_path: Path) -> None:
+    """AQA regression covering live-Civ6 Lua parity fixes and Windows portability invariants."""
+    import json
+    from pathlib import PurePosixPath, PureWindowsPath
+
+    from alpha_zero import civ6_local
+    from alpha_zero.bridge import gameinfo_capture
+    from alpha_zero.bridge.config import BridgeConfig
+    from alpha_zero.bridge.log_tailer import LogTailer
+    from alpha_zero.local import gameplay_config
+
+    assert civ6_local.Civ6LocalConfig is gameplay_config.Civ6LocalConfig
+    assert civ6_local.search_mode_refusal is gameplay_config.search_mode_refusal
+
+    win_shell = gameinfo_capture._for_a_shell(
+        PureWindowsPath(r"C:\ProgramData\%TEMP%\gameinfo.json"), windows=True
+    )
+    assert win_shell.startswith("'") and win_shell.endswith("'")
+    posix_shell = gameinfo_capture._for_a_shell(PurePosixPath("/tmp/two words/snap.json"))
+    assert posix_shell == '"/tmp/two words/snap.json"'
+
+    cfg = BridgeConfig.from_live_env(comm_dir=tmp_path)
+    assert cfg.comm_dir == tmp_path
+    tailer = LogTailer(log_path=tmp_path / "Lua.log")
+    tailer._backlog_state = {"turn_id": 4, "player_id": 0}
+    tailer._handle_heartbeat('{"turn": 4}')
+    assert tailer.current_state() == {"turn_id": 4, "player_id": 0}
+    assert tailer.stats["backlog_states_used"] == 1
+
+    if importlib.util.find_spec("lupa") is None:
+        if h.lua_required():
+            pytest.fail(f"{h.REQUIRE_ENV}=1 but lupa is not installed")
+        h.import_lua51()
+        raise AssertionError("unreachable: import_lua51 skips or fails without lupa")
+
+    # 1. LLP64-safe integer formatting + -0.0 normalization
+    rt = h.load_mod()
+    for big_int in (2**31, -(2**31), 2**32, 2**53 - 1):
+        encoded = rt.eval(f"AlphaZeroJson.Encode({big_int})")
+        assert json.loads(encoded[0] if isinstance(encoded, tuple) else encoded) == big_int
+    neg_zero = rt.eval("AlphaZeroJson.Encode(-0.0)")
+    assert (neg_zero[0] if isinstance(neg_zero, tuple) else neg_zero) == "0"
+
+    # 2. Sole end-turn blocker authority (LF-H1): UI.CanEndTurn() == true cannot override blocker
+    rt.execute(
+        "Civ6Stub.canEndTurn = true\n"
+        "Civ6Stub.notifications[0] = { { id = 1, blocking = EndTurnBlockingTypes.ENDTURN_BLOCKING_PRODUCTION, dismissed = false } }\n"
+    )
+    ok_end, err_end, _ = h.execute(rt, {"action_type": "end_turn"})
+    assert (ok_end, err_end) == (False, "END_TURN_BLOCKED")
+
+    # 3. GetCurrentProductionTypeHash fallback & short YieldTypes keys & locked production refusal
+    rt_live = h.load_mod(
+        setup=(
+            "local bq = Players[0]:GetCities():FindID(301):GetBuildQueue()\n"
+            "bq.CurrentlyBuilding = function() return nil end\n"
+            "Civ6Stub.city(301).building = 'UNIT_WARRIOR'\n"
+            "Civ6Stub.cities[301].canProduce = { UNIT_WARRIOR = 'now', BUILDING_GRANARY = 'locked' }\n"
+            "YieldTypes = { FOOD = 0, PRODUCTION = 1, GOLD = 2, SCIENCE = 3, CULTURE = 4, FAITH = 5 }\n"
+            "Map.GetPlot(1, 1).GetYield = function(_, y) return y + 5 end\n"
+        )
+    )
+    exported = h.export_state(rt_live)
+    assert exported["cities"][0]["current_production"] == "UNIT_WARRIOR"
+    tile_1_1 = next(t for t in exported["map"]["tiles"] if (t["x"], t["y"]) == (1, 1))
+    assert tile_1_1["yields"] == {
+        "food": 5,
+        "production": 6,
+        "gold": 7,
+        "science": 8,
+        "culture": 9,
+        "faith": 10,
+    }
+    produce_offers = [a for a in exported["legal_actions"] if a["action"] == "produce"]
+    assert produce_offers and produce_offers[0]["items"] == ["UNIT_WARRIOR"]
+    ok_locked, err_locked, _ = h.execute(
+        rt_live, {"action_type": "city_produce", "city_id": 301, "item_id": "BUILDING_GRANARY"}
+    )
+    assert (ok_locked, err_locked) == (False, "OPERATION_REFUSED")
