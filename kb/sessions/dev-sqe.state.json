@@ -1,18 +1,19 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-22T01:30:00Z",
-  "current_focus": "Game-mechanics program: the live command layer. Merged: #160, #161. Open PRs: #162 (GM-B6a translator), GM-B6b (the seam) on claude/gm-b6b-search-seam. The --mcts refusal stays. Nothing has run in a real game.",
+  "last_timestamp": "2026-11-22T04:30:00Z",
+  "current_focus": "Game-mechanics program: the live bridge. Open PRs: #162 (GM-B6a), #163 (GM-B6b). Built, no PR: GM-B8a (claude/gm-b8a-visible-others), GM-B8b (claude/gm-b8b-search-opponent). Nothing has run in a real game.",
   "resume_pointers": {
-    "current_task": "GM-B6b is built and reviewed. Nothing of GM-B6 merges before the maintainer's live sitting. Not scheduled: lifting the refusal (trained checkpoint, live check, registered 600-game comparison after A1); GM-B8 needs the maintainer's yes.",
+    "current_task": "GM-B8a is built and reviewed on its branch (no PR: both slots are taken until the live sitting). Next: GM-B8b (the simulator's elimination rule) on top of GM-B6b and GM-B8a.",
     "blocked_on": [
-      "maintainer: the live sitting (docs/LIVE_CIV6.md), then merge #162 and the GM-B6b PR; a yes or no on GM-B8",
+      "maintainer: merge #158 (GM-B7a), then #159 (GM-B7b); the two GM-B7c PRs open as slots free",
       "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
       "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
       "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
     ],
     "next_steps": [
-      "A fallback that picks 'the first one' depends on an order nobody chose: name the order and test with more than one candidate. A mock has every attribute: detect a protocol on the class, not with hasattr",
+      "A default in a classifier is a claim: 'minor' and 'at peace' were what the code said when it knew nothing. Read the owner's own UI code for every call before planning; two names the plan relied on did not exist there",
       "Check what the producer actually sends before trusting a fixture: the search tests seeded enemy units the real exporter never exports by default (GM-B8)",
+      "A fallback that picks 'the first one' depends on an order nobody chose: name the order and test with more than one candidate. A mock has every attribute: detect a protocol on the class, not with hasattr",
       "An event that is cleared before it is waited on loses whatever set it first: hand out by sequence number. And a fallback that makes an old value look current needs a check that the old value is still in force, not only that something is alive",
       "Run the real loop against the real mod code before reviewing it: the stand-in as a GameBridge (tests/fixtures/lua_bridge.py) found a spin no reading had (research re-chosen after every choice)",
       "A veto applied after the policy's choice costs a choice: filter the offers before asking",
@@ -27,6 +28,7 @@
     ]
   },
   "context_files": [
+    "kb/handoffs/20261122-devsqe-to-prepr-gm-b8a-visible-others.md",
     "kb/handoffs/20261122-devsqe-to-prepr-gm-b6b-search-seam.md",
     "kb/handoffs/20261121-devsqe-to-prepr-gm-b7b-exporter-offers.md",
     "kb/handoffs/20261121-devsqe-to-prepr-gm-b7a-command-executor.md",

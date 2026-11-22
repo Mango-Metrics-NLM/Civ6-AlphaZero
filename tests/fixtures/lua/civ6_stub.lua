@@ -205,6 +205,9 @@ local function makeUnit(spec)
     function unit:GetRange() return spec.range or 0 end
     function unit:GetAttacksRemaining() return spec.attacks or 0 end
     function unit:IsCivilian() return spec.unitType == 0 end
+    -- The game's UI skips a unit that is dead or about to die (GM-B8a).
+    function unit:IsDead() return spec.dead == true end
+    function unit:IsDelayedDeath() return spec.delayedDeath == true end
     function unit:GetExperience()
         local exp = {}
         function exp:GetPromotions() return {} end
@@ -334,6 +337,8 @@ local function makeCity(spec)
     function city:GetBuildQueue() return queue end
     return city
 end
+-- Used by civ6_stub_others.lua (GM-B8a), which adds the other players.
+Civ6Stub.makeCity = makeCity
 
 -- ----------------------------------------------------------------------------
 -- Players. Player 0 has researched TECH_POTTERY (index 0) and CIVIC_CODE_OF_LAWS
@@ -448,6 +453,7 @@ local function makePlayer(id)
     return player
 end
 
+Civ6Stub.makePlayer = makePlayer
 Players = {
     [0] = makePlayer(0),
     [1] = makePlayer(1),

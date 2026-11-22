@@ -40,6 +40,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
+from alpha_zero.bridge.other_players import dict_entries, optional_bool
+
 logger = logging.getLogger(__name__)
 
 
@@ -919,9 +921,7 @@ def _optional_text(value: Any) -> str | None:
 
 def _optional_number(value: Any) -> float | None:
     """A JSON number as float; anything else (bool included) as None."""
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
+    return None if isinstance(value, bool) or not isinstance(value, (int, float)) else float(value)
 
 
 def _optional_int(value: Any) -> int | None:
@@ -1143,11 +1143,7 @@ class LegalAction:
     item_names: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for JSON serialization.
-
-        Returns:
-            Dictionary representation of legal action.
-        """
+        """Dictionary representation of the legal action, for JSON."""
         result: dict[str, Any] = {"action_type": self.action_type}
         if self.unit_id is not None:
             result["unit_id"] = self.unit_id
@@ -1343,10 +1339,11 @@ class GameStateData:
     winner_id: int | None = None
     #: Shape version the mod wrote; 1 for a payload without the key.
     schema_version: int = LEGACY_STATE_SCHEMA_VERSION
-    #: Name of the game's end-turn blocking type (for example
-    #: ``"ENDTURN_BLOCKING_RESEARCH"``), or None when nothing blocks the turn.
-    end_turn_blocking: str | None = None
+    end_turn_blocking: str | None = None  #: blocking type name, None when nothing blocks
     end_turn_blocking_message: str | None = None
+    #: Other players exported? (None: older mod); what each is (``other_players.py``).
+    observes_others: bool | None = None
+    other_players: list[dict[str, Any]] = field(default_factory=list)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GameStateData:
@@ -1466,6 +1463,8 @@ class GameStateData:
             schema_version=_optional_int(data.get("schema_version")) or LEGACY_STATE_SCHEMA_VERSION,
             end_turn_blocking=_optional_text(data.get("end_turn_blocking")),
             end_turn_blocking_message=_optional_text(data.get("end_turn_blocking_message")),
+            observes_others=optional_bool(data.get("observes_others")),
+            other_players=dict_entries(data.get("other_players")),
         )
 
 

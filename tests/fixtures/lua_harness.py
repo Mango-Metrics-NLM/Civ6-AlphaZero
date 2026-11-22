@@ -31,6 +31,8 @@ BUNDLE = REPO_ROOT / "mod" / "AlphaZeroAI" / "Scripts" / "AlphaZeroMain.lua"
 STUB = Path(__file__).resolve().parent / "lua" / "civ6_stub.lua"
 #: Unit, city and combat requests for the stand-in game, loaded right after it.
 STUB_COMMANDS = Path(__file__).resolve().parent / "lua" / "civ6_stub_commands.lua"
+#: The other players, what the local player sees, and diplomacy (GM-B8a), loaded last.
+STUB_OTHERS = Path(__file__).resolve().parent / "lua" / "civ6_stub_others.lua"
 REQUIRE_ENV = "CIV6AZ_REQUIRE_LUA"
 
 #: Run before anything else: take away what the game's sandbox does not have, and
@@ -95,6 +97,7 @@ def load_mod(*, stub: bool = True, setup: str | None = None) -> Any:
     if stub:
         runtime.execute(STUB.read_text(encoding="utf-8"))
         runtime.execute(STUB_COMMANDS.read_text(encoding="utf-8"))
+        runtime.execute(STUB_OTHERS.read_text(encoding="utf-8"))
     if setup:
         runtime.execute(setup)
     runtime.execute(BUNDLE.read_text(encoding="utf-8"))
