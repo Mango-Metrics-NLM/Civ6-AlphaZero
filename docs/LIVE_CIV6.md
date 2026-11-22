@@ -473,6 +473,16 @@ the log line "Turn N is stalled" names the blocker it could not answer.
 
 ## Known limitations
 
+- **The search mode is still refused, and would see nobody else.** GM-B6a added the translation from
+  the search's simulator action to an offered live command (`alpha_zero/bridge/search_translator.py`),
+  and GM-B6b lets the agent loop run a policy that answers with a command
+  (`alpha_zero/bridge/command_policy.py`), proven end to end against the stand-in game only.
+  `--mode civ6 --mcts` is refused all the same: no trained checkpoint exists and nothing of this
+  has run in a real game. A research or production choice, which the search's simulator cannot
+  express, is answered by a fixed rule (the first offered command that may still be sent), not by
+  the search. Separately, with the mod's default settings
+  (`OBSERVE_ALL_PLAYERS` off) only your own units and cities are exported, so the search's
+  simulator never contains another player (GM-B8, a mod change).
 - **Turn-cycle stall (LF-H1 root cause identified 2026-11-21).** Calling `ACTION_ENDTURN`
   while a turn-blocking notification is active deactivates the local player seat (`TURN_ACTIVE`
   becomes `false`) without advancing the turn counter. Because the live game's `UI.CanEndTurn()`
