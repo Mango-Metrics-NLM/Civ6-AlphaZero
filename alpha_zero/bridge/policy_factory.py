@@ -152,6 +152,32 @@ class SearchPolicy:
     trained: bool
 
 
+def _simulator_shape(board_size: int, max_turns: int) -> tuple[int, int, int]:
+    """(spatial channels, vector size, action count) of the simulator at this size."""
+    from alpha_zero.envs.microciv import MicroCivEnv
+
+    env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
+    observation = env.get_observation()
+    return (
+        int(observation["spatial"].shape[0]),
+        int(observation["vector"].shape[0]),
+        int(env.action_space.n),
+    )
+
+
+def _require_simulator_shape(network: Any, board: int, horizon: int, *, source: str) -> None:
+    """Refuse a network the search cannot evaluate the simulator with."""
+    config = network.config
+    have = (int(config.spatial_channels), int(config.vector_dim), int(config.action_space_size))
+    want = _simulator_shape(board, horizon)
+    if have != want:
+        raise ValueError(
+            f"{source} is not a simulator network: it takes {have[0]} channels and a "
+            f"{have[1]}-value vector and answers {have[2]} actions; the search's simulator at "
+            f"board {board} gives {want[0]} channels and {want[1]} values and has {want[2]} actions"
+        )
+
+
 def _checkpoint_network(path: Path, device: str) -> tuple[Any, int, int]:
     """(network, board size, horizon) of a training checkpoint."""
     from alpha_zero.core.checkpoint_utils import safe_torch_load
@@ -179,9 +205,8 @@ def _checkpoint_network(path: Path, device: str) -> tuple[Any, int, int]:
     )
     state = extract_state_dict(checkpoint) if isinstance(checkpoint, dict) else checkpoint
     network.load_state_dict(state)
-    board = metadata.get("board_size") if isinstance(metadata, dict) else None
-    if not isinstance(board, int) or isinstance(board, bool) or board <= 0:
-        board = int(network.config.spatial_size)
+    board = int(network.config.spatial_size)
+    _require_simulator_shape(network, board, horizon, source=str(path))
     return network, board, horizon
 
 
@@ -226,13 +251,19 @@ def build_search_policy(
                 "the search needs a checkpoint; an untrained network must be asked for "
                 "with allow_untrained=True"
             )
-        if board_size is None or max_turns is None:
-            raise ValueError("an untrained search network needs board_size and max_turns")
+        if board_size is None or max_turns is None or board_size <= 0 or max_turns <= 0:
+            raise ValueError(
+                "an untrained search network needs a positive board_size and max_turns"
+            )
         from alpha_zero.core.civ6_network import MicroCivNetwork
-        from alpha_zero.envs.microciv import MicroCivEnv
 
-        actions = MicroCivEnv(board_size=board_size, max_turns=max_turns).action_space.n
-        network = MicroCivNetwork(board_size=board_size, action_space_size=int(actions))
+        channels, vector, actions = _simulator_shape(board_size, max_turns)
+        network = MicroCivNetwork(
+            board_size=board_size,
+            action_space_size=actions,
+            spatial_channels=channels,
+            vector_dim=vector,
+        )
         board, horizon, trained = int(board_size), int(max_turns), False
     network.to(resolved).eval()
     config = GumbelMCTSConfig(

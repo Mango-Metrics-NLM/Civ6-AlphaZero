@@ -53,7 +53,7 @@ from alpha_zero.bridge.health_checker import (
     CircuitBreakerOpenError,
     GameBridgeHealthChecker,
 )
-from alpha_zero.bridge.offer_filter import sendable, vetoed
+from alpha_zero.bridge.offer_filter import first_to_unblock, sendable, vetoed
 from alpha_zero.bridge.protocol import (
     END_TURN_BLOCKED,
     AckMessage,
@@ -63,7 +63,7 @@ from alpha_zero.bridge.protocol import (
     create_end_turn_command,
 )
 from alpha_zero.bridge.state_converter import GameNotStartedError, StateConverter
-from alpha_zero.bridge.turn_ledger import LedgerLimits, TurnLedger, is_end_turn
+from alpha_zero.bridge.turn_ledger import LedgerLimits, TurnLedger
 from alpha_zero.bridge.utils import extract_scalar_value
 
 logger = logging.getLogger(__name__)
@@ -682,11 +682,8 @@ class BridgeAgentLoop:
         # While the game blocks the end of turn, anything that may still be
         # sent beats an end_turn that will be refused (and answers a choice the
         # search's simulator cannot express, such as research).
-        if self._ledger.end_turn_withheld():
-            for command in ready.values():
-                if not is_end_turn(command):
-                    return cast(LuaCommand, command)
-        return end_turn
+        command = first_to_unblock(ready.values()) if self._ledger.end_turn_withheld() else None
+        return end_turn if command is None else cast(LuaCommand, command)
 
     async def _ask_command_policy(
         self, state: GameStateData, converted_state: dict[str, Any], unblocking_only: bool

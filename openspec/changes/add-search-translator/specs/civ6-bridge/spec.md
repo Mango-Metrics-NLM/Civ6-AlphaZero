@@ -48,7 +48,8 @@ another command may still be sent. `civ6_local --mode civ6 --mcts` SHALL remain 
 #### Scenario: The search cannot answer a research blocker
 
 - **WHEN** the game blocks the end of turn on a research choice and the search names nothing
-- **THEN** the loop sends the offered research command, and the turn can then be ended
+- **THEN** the loop sends the offered research command in preference to any unit action
+  nobody chose, and the turn can then be ended
 
 #### Scenario: The policy raises
 
@@ -58,7 +59,8 @@ another command may still be sent. `civ6_local --mode civ6 --mcts` SHALL remain 
 ### Requirement: The search's network comes from the checkpoint's own record
 
 `build_search_policy` SHALL build a network of the simulator's shape at the board and
-horizon the checkpoint records, and MUST refuse a checkpoint that records no horizon. An
+horizon the checkpoint records, MUST refuse a checkpoint that records no horizon, and MUST
+refuse a network that is not of the simulator's shape (the full-game network is not). An
 untrained network SHALL be built only on an explicit request.
 
 #### Scenario: A checkpoint without a recorded horizon

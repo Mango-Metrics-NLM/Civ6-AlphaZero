@@ -14,7 +14,7 @@
 - [x] 2.3 `BridgeAgentLoop` asks a command policy through it; fallbacks and failures counted
 - [x] 2.4 `bridge/policy_factory.py`: the builders moved out of `civ6_local.py`; `build_search_policy`
 - [x] 2.5 Un-mocked end-to-end test through the stand-in game; the `--mcts` refusal stays
-- [x] 2.6 Independent review (`sdlc-architect`) and its findings fixed with tests
+- [x] 2.6 Independent review (`sdlc-architect`); three findings fixed with tests (`tests/unit/test_bridge_search_seam_review.py`)
 
 ## 3. Not in this change
 - [ ] 3.1 Lifting the `--mcts` refusal (needs a trained checkpoint, a live check and a registered comparison against a random policy: 600 games in three arms, after A1)

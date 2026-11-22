@@ -44,11 +44,16 @@ class CommandPolicy(Protocol):
 def is_command_policy(policy: Any) -> bool:
     """Whether ``policy`` answers with a command.
 
-    Read from the policy's class, and it has to be a coroutine function: a
-    mock answers "yes" to any attribute, and a mocked index policy must not be
-    taken for a command policy.
+    ``select_command`` has to be a coroutine function defined on the policy's
+    class or set on the instance itself: a mock answers "yes" to any attribute,
+    and a mocked index policy must not be taken for a command policy. A wrapper
+    that only forwards attributes (``__getattr__``) is therefore not one; it
+    has to define ``select_command``.
     """
-    return inspect.iscoroutinefunction(getattr(type(policy), "select_command", None))
+    own = getattr(type(policy), "select_command", None)
+    if own is None:
+        own = getattr(policy, "__dict__", {}).get("select_command")
+    return inspect.iscoroutinefunction(own)
 
 
 def allowed_by(ledger: TurnLedger, unblocking_only: bool) -> Callable[[dict[str, Any]], bool]:
