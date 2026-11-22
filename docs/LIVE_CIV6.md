@@ -1,14 +1,18 @@
 # Playing a live Civilization VI game (demo-grade)
 
-> **Status: demo-grade.** The bridge can reach a running, unmodified
-> Civilization VI and read the game state back. What has actually been verified
-> against a real game (2026-07-12) is **four autonomous turns, all `END_TURN`,
-> driven by a randomly initialised network**. No unit or city command has been
-> seen to work. Eight of them were rewritten from the game's own UI scripts in
-> GM-B7a (`kb/specs/20261120-live-command-layer-plan.md`) and have not been run
-> in a real game; the rest are still written from memory. Nothing here is
-> evidence that the agent plays Civilization VI well. The open issues are listed
-> under *Known limitations*.
+> **Status: demo-grade.** The bridge reaches a running, unmodified
+> Civilization VI over FireTuner (`127.0.0.1:4318`) and reads schema-2 game states back.
+> Live verification on 2026-11-21 verified FireTuner `LSQ:`/`CMD:` connectivity,
+> 6-table `AZ_GAMEINFO` extraction + rules import (`import-gameinfo`), schema-2 exports,
+> `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city`, and
+> `city_produce` (`UNIT_WARRIOR`) acknowledgements against a live Turn 1–7 session, and
+> fixed five live Lua engine discrepancies (LLP64 JSON integer formatting, sole
+> `NotificationManager`/`GetEndTurnBlocker` end-turn guard, two-step `CanProduce` unlock
+> check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys). Four
+> autonomous `END_TURN`s ran on 2026-07-12; a fresh Turn 1 multi-turn soak on the rebuilt
+> bundle remains open, and combat (`unit_attack`, `unit_ranged_attack`), builder/citizen/buy,
+> and trained-policy play are not yet live-verified. Nothing here is evidence that the agent
+> plays Civilization VI well. Open issues are listed under *Known limitations*.
 
 This page is a how-to for an outside reader with a Windows machine and a Steam
 copy of the game. The engineering history (why the file transport was replaced,
@@ -25,7 +29,8 @@ the wire-protocol notes, the per-module design) lives in
 | File transport (legacy) | `alpha_zero/bridge/tuner_bridge.py` | Writes `commands.json` for a FireTuner GUI relay panel. The Lua sandbox has no `io` library, so the game cannot read the file itself; this path needs the FireTuner application open. Kept as the default for compatibility; the socket path is the one that was verified headless. |
 | Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (the greedy network; the search over a snapshot-seeded `MicroCivEnv` exists but is refused on a live game, see "Known limitations"), sends one command per turn. |
 | Entry point | `python -m alpha_zero.civ6_local --mode civ6` | Wires the above together; `--dry-run` validates the configuration without a game. |
-| Mod installer | `scripts/install_civ6_mod.py` | Copies the mod into the game's `Mods` directory (OneDrive-safe). |
+| Mod installer | `scripts/install_civ6_mod.py` | Copies the mod into the game's `Mods` directory (OneDrive-safe in-place overwrite) and verifies SHA-256 install parity (`--check`). |
+| Live command probe | `scripts/live_command_check.py` | Torch-free CLI sending one command and comparing pre/post states via `state_diff.py` (`--verbose` prints endpoint and timing diagnostics). |
 | Bundle generator | `scripts/build_lua_bundle.py` | Builds `Scripts/AlphaZeroMain.lua`, the one Lua file the game loads, from the module files beside it. |
 
 ## Prerequisites
@@ -96,8 +101,12 @@ Commands:
   setter (with the row index).
 - `end_turn` asks the game what blocks the turn the way its action panel does
   (`NotificationManager.GetFirstEndTurnBlocking`; a scan of the notification list where that
-  call is missing) and answers `END_TURN_BLOCKED` while something does, unless
-  `UI.CanEndTurn()` says the turn can end.
+  call is missing) and answers `END_TURN_BLOCKED` while something does. `UI.CanEndTurn()` is
+  not allowed to override a listed blocker because the live UI returns `true` for
+  `UI.CanEndTurn()` even when active blockers exist.
+- Successful `AZ_ACK` replies omit `error_code` and `error_message` cleanly instead of leaking
+  errors from unrelated prior/skipped fields, and `JsonEncoder.lua` encodes integers with
+  `%.0f` (and `-0.0` as `"0"`) to prevent 32-bit C `long` truncation on Windows Win64 builds.
 
 Each game call added for this is guarded, so a call that does not exist in the game's Lua
 context costs one field, not the export.
@@ -201,11 +210,9 @@ refuses, with a one-line reason:
 bridge slots for the real trees ("Research slots" above).
 
 The snapshot is the user's own game data: it is never committed, and a test fails if a
-file shaped like one is tracked. Like the rest of this page, the export has run only
-against the hand-written stand-in for the game. In particular, whether the game's tables
-have exactly these column names in the current version is unverified; a column the game
-does not have is left out of the rows, and the capture command then says what the
-importer misses.
+file shaped like one is tracked. On 2026-11-21 a live Steam session exported all six
+`GameInfo` tables cleanly and imported them into a calibrated rule-set YAML via
+`alpha_zero.rules import-gameinfo`.
 
 ### Live checklist for the maintainer (GM-B2)
 
@@ -353,6 +360,7 @@ frames the game takes to carry a request out.
 
    ```bash
    python scripts/install_civ6_mod.py                 # default Steam Mods dir
+   python scripts/install_civ6_mod.py --check         # verify installed SHA-256 parity
    python scripts/install_civ6_mod.py --mod-dir PATH  # custom Mods dir
    ```
 
@@ -390,6 +398,7 @@ answer and what the next state shows, so each checklist item is one command and 
 python scripts/live_command_check.py --action end_turn
 python scripts/live_command_check.py --action research_tech --item TECH_MINING
 python scripts/live_command_check.py --action unit_move --unit-id 65536 --x 10 --y 7
+python scripts/live_command_check.py --action end_turn --verbose   # debug logs to stderr
 ```
 
 It connects as the agent does (the same environment variables, below). Exit 0: accepted and the
@@ -464,18 +473,19 @@ the log line "Turn N is stalled" names the blocker it could not answer.
 
 ## Known limitations
 
-- **Turn-cycle stall.** After a handful of automated end-turns the game's own
-  turn cycle stalls: the local player's `TURN_ACTIVE` flag reads `false` with
-  no popup blocking it, and no headless way to force-advance the turn from
-  that state has been found. Commands are still delivered and acknowledged
-  while this happens, so it is a game-side automation limbo rather than a
-  transport fault. The likely fix is mod-side ("unit needs orders" handling);
-  it has not been attempted. **Open.**
-- **Only `END_TURN` has been observed live.** The channel bug that forced the
-  agent to fall back to `END_TURN` every turn (an 84-channel observation
-  collapsed to one channel) was fixed in v1.8.0, so the agent now runs its
-  actual policy over the demo action space — but a session in which it issues
-  and executes other actions has not been demonstrated against a real game.
+- **Turn-cycle stall (LF-H1 root cause identified 2026-11-21).** Calling `ACTION_ENDTURN`
+  while a turn-blocking notification is active deactivates the local player seat (`TURN_ACTIVE`
+  becomes `false`) without advancing the turn counter. Because the live game's `UI.CanEndTurn()`
+  returns `true` even when blockers exist, the old `ActionExecutor.lua` override allowed bad
+  `end_turn` calls through. That override was removed so `NotificationManager` /
+  `GetEndTurnBlocker` is the sole authority; a sustained fresh Turn 1 run on the rebuilt bundle
+  is still needed to confirm no other blocker path stalls the cycle.
+- **Partial live command coverage.** Live 2026-11-21 verification exercised schema-2 export,
+  6-table `GameInfo` capture, `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`,
+  `unit_found_city`, and `city_produce` (`UNIT_WARRIOR`) with live fixes for two-step
+  `CanProduce`, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys.
+  `unit_attack`, `unit_ranged_attack`, `unit_build`, `unit_promote`, `city_buy`, `city_citizen`,
+  and a fresh-game `BridgeAgentLoop` multi-turn soak remain open.
 - **Random weights.** No checkpoint trained on the full-game encoder exists.
   The MicroCiv checkpoints are not usable here, and the project's own training
   evidence is not yet a learning signal (see the Validation column in

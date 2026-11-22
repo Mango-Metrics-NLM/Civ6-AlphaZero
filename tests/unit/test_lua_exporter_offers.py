@@ -728,3 +728,19 @@ class TestReviewFindings:
         )
         assert check(runtime, {"action_type": "unit_skip", "unit_id": 102})[:2] == (True, None)
         assert runtime.eval("#Civ6Stub.unitRequests") == 0
+
+    def test_a_locked_item_is_omitted_from_produce_offers(self) -> None:
+        """Items that fail CanProduce(hash, true) even when (hash, false, true) is true."""
+        runtime = load(
+            "Civ6Stub.cities[301].canProduce = { UNIT_WARRIOR = 'now', BUILDING_GRANARY = 'locked' }\n"
+        )
+        action = produce_action(h.export_state(runtime))
+        assert action is not None
+        assert action["items"] == ["UNIT_WARRIOR"]
+        assert (
+            check(
+                runtime,
+                {"action_type": "city_produce", "city_id": 301, "item_id": "BUILDING_GRANARY"},
+            )[0]
+            is False
+        )

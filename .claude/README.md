@@ -14,7 +14,7 @@ caveats in *Threat model* below.
 | `settings.local.json` | gitignored | Personal overrides (tokens, machine-specific paths). Never committed. |
 | `hooks/*.sh` | committed | The five hook scripts registered in `settings.json`, `readonly_shell_guard.sh` and `tests_only_write_guard.sh` (attached by role subagents), plus the shared `_resolve_python.sh` helper. |
 | `agents/sdlc-*.md` | committed | The eight SDLC role subagents (product-owner, scrum-master, architect, ml-scientist, ai-engineer, developer, qa-sdet, release-manager). Validated by `scripts/validate_claude_agents.py`. |
-| `skills/*/SKILL.md` | committed | Eleven skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`, `a1-reregister` (the section 7.1 re-registration procedure; gate: `make verify-registration`). Each has frontmatter validated by `scripts/validate_skills.py`. |
+| `skills/*/SKILL.md` | committed | Thirteen skills: the three KB handoffs (`planning-handoff`, `dev-sqe-handoff`, `pre-pr-handoff`), `openspec-propose` / `openspec-archive`, `doc-sync`, `debt-audit`, `negative-control`, `verify`, `release`, `a1-reregister` (the section 7.1 re-registration procedure; gate: `make verify-registration`), `live-civ6-verify` (Lua bundle, Steam mod SHA-256 parity, live command probes, GameInfo capture), and `gpu-verify` (dual-GPU CUDA determinism and run-card device preflight). Each has frontmatter validated by `scripts/validate_skills.py`. |
 
 `.agents/skills/` (a sibling directory, three entries) is **validated but never
 loaded**: `validate_skills.py` scans it, the PostToolUse hook routes it, and

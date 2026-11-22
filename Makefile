@@ -99,6 +99,8 @@ help:
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
 	@echo "  make validate          Run governance validators (6 validators + Lua bundle sync)"
 	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
+	@echo "  make check-mod-install Verify installed Steam Civ6 mod matches repo SHA-256"
+	@echo "  make test-lua          Run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -365,6 +367,14 @@ test:
 .PHONY: check-lua-bundle
 check-lua-bundle:
 	$(PYTHON) scripts/build_lua_bundle.py --check
+
+.PHONY: check-mod-install
+check-mod-install:
+	$(PYTHON) scripts/install_civ6_mod.py --check
+
+.PHONY: test-lua
+test-lua:
+	CIV6AZ_REQUIRE_LUA=1 $(PYTHON) -m pytest tests/unit/test_lua_*.py -v --tb=short
 
 .PHONY: validate
 validate:

@@ -4,8 +4,7 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v2.0.0, 2026-11-20 (`rules` kernel added and `bridge` updated for GM-B0..GM-B5 research wiring, GameInfo capture, and `--mcts` refusal;
-  module set unchanged since `alpha_zero/rules/` landed in GM-K1)
+- **As of:** v2.0.0, 2026-11-21 (`local/gameplay_config.py` extracted from `civ6_local.py`, `bridge/config.py` live transport helpers unified, and Lua mod live-Civ6 parity fixes landed)
 - **Submodule count:** 31
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
@@ -26,7 +25,7 @@ or removed.
 | `cloud` | 28 | `gcp/` Vertex AI orchestration and the deployed self-play / training / arena workers |
 | `orchestrator` | 10 | `TrainingOrchestrator`, scheduler, checkpointer, RAG integration, strategy advisor |
 | `pbt` | 10 | Population-based training: population manager, mutation, fitness, MuZero hyperparams |
-| `local` | 6 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, optionally with a pinned torch build, and the running-pinned preflight (`pinned_env.py`); fail-closed GCP isolation (`isolation.py`); the device check that refuses a card whose GPUs the pinned environment cannot provide (`devices.py`); the run-card model and loader (`card.py`); and the run-card driver that prices, pins, probes and runs a `configs/run_cards/` card (`run_card.py`) |
+| `local` | 7 | Local-first pipeline: pinned source (`git archive`) and non-editable pinned venv for a run, optionally with a pinned torch build, and the running-pinned preflight (`pinned_env.py`); fail-closed GCP isolation (`isolation.py`); the device check that refuses a card whose GPUs the pinned environment cannot provide (`devices.py`); the run-card model and loader (`card.py`); the run-card driver (`run_card.py`); and the extracted local gameplay config (`gameplay_config.py`, re-exported by `civ6_local.py`) |
 | `bridge` | 23 | Civ6 Lua mod bridge: file IPC, headless FireTuner socket transport (states handed out by sequence number), the agent loop with its per-turn ledger (`turn_ledger.py`, `offer_filter.py`, settings in `agent_loop_config.py`), state differences for the live check tool (`state_diff.py`), research slot registry (`tech_registry.py`), production slots by position (`production_slots.py`), GameInfo snapshot capture (`gameinfo_capture.py`), and simulator proxy / `--mcts` refusal (`microciv_proxy.py`, `mcts_policy.py`) |
 | `distributed` | 8 | Process-based distributed training: actor, learner, coordinator, shared storage |
 | `optimizations` | 7 | Training optimization strategies + Optuna hyperparameter search |

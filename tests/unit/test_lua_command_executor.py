@@ -517,10 +517,26 @@ class TestProduction:
     def test_the_strict_check_is_asked_with_the_hash(self) -> None:
         game = c.load(c.CHECK_LOG)
         run(game, produce("UNIT_WARRIOR"))
-        assert game.eval("#Civ6Stub.produceChecks") >= 1
-        entry = game.eval("Civ6Stub.produceChecks[1]")
-        assert entry["ref"] == c.row_hash(game, "Units", "UnitType", "UNIT_WARRIOR")
-        assert entry["loose"] is False and entry["strict"] is True
+        checks = list(game.eval("Civ6Stub.produceChecks").values())
+        want_hash = c.row_hash(game, "Units", "UnitType", "UNIT_WARRIOR")
+        assert len(checks) >= 2
+        assert any(
+            k["ref"] == want_hash and k["loose"] is True and k["strict"] is None for k in checks
+        )
+        assert any(
+            k["ref"] == want_hash and k["loose"] is False and k["strict"] is True for k in checks
+        )
+
+    def test_an_unresearched_item_passing_only_exclusion_check_is_refused(self) -> None:
+        game = c.load(
+            "Civ6Stub.city(301).building = 'UNIT_WARRIOR'\n"
+            "Civ6Stub.cities[301].canProduce = { BUILDING_GRANARY = 'locked' }\n"
+        )
+        success, code, _ = run(game, produce("BUILDING_GRANARY", "building"))
+        assert (success, code) == (False, "OPERATION_REFUSED")
+        assert nothing_requested(game)
+        c.frame(game)
+        assert building(game) == "UNIT_WARRIOR"
 
     def test_a_building_by_name_uses_the_building_parameter(self) -> None:
         game = c.load()
@@ -693,3 +709,17 @@ class TestProductionNeedsAClearYes:
         assert nothing_requested(game)
         c.frame(game)
         assert building(game) is None
+
+    def test_strict_check_nil_reports_game_could_not_be_asked(self) -> None:
+        setup = (
+            "Players[0]:GetCities():FindID(301):GetBuildQueue().CanProduce = "
+            "function(_, _hash, loose, strictFlag) "
+            "if loose == true then return true end "
+            "if loose == false and strictFlag == true then return nil end "
+            "return nil end\n"
+        )
+        game = c.load(setup)
+        success, code, message = run(game, produce("UNIT_WARRIOR"))
+        assert (success, code) == (False, "OPERATION_REFUSED")
+        assert "(the game could not be asked)" in message
+        assert nothing_requested(game)

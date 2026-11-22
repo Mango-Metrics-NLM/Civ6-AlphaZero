@@ -28,7 +28,7 @@ import zlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Any
 
 from alpha_zero.bridge import tech_registry
@@ -392,17 +392,19 @@ def _publish(temporary: Path, destination: Path) -> None:
             raise
 
 
-#: Characters no shell treats specially (the set ``shlex.quote`` leaves alone).
-_SHELL_PLAIN = re.compile(r"[A-Za-z0-9@%+=:,./\\_-]*")
+#: Characters no shell treats specially (``%`` excluded so Windows cmd ``%VAR%`` never passes unquoted).
+_SHELL_PLAIN = re.compile(r"[A-Za-z0-9@+=:,./\\_-]*")
+_WINDOWS_EXPAND_CHARS = frozenset("$`%")
 
 
-def _for_a_shell(path: Path, *, windows: bool | None = None) -> str:
+def _for_a_shell(path: PurePath, *, windows: bool | None = None) -> str:
     """``path`` as it can be pasted into a command line on this platform.
 
-    Unchanged when it holds nothing a shell treats specially; in double quotes when
-    whitespace is all that is special about it. Anything else (``$``, a quote, ``;``)
-    is quoted for a POSIX shell with ``shlex.quote``, where double quotes would still
-    expand it, and put in double quotes on Windows, where a file name cannot hold one.
+    Unchanged when it holds nothing a shell treats specially; in double quotes
+    when only whitespace (or Windows non-expanding meta characters like ``&``)
+    appears; single-quoted for POSIX shells via ``shlex.quote`` when other
+    characters appear; and single-quoted for PowerShell when ``$``, backtick, or
+    ``%`` appears on Windows.
     """
     text = str(path)
     if _SHELL_PLAIN.fullmatch(text):
@@ -410,7 +412,12 @@ def _for_a_shell(path: Path, *, windows: bool | None = None) -> str:
     if windows is None:
         windows = os.name == "nt"
     only_whitespace = all(c.isspace() or _SHELL_PLAIN.fullmatch(c) for c in text)
-    if windows or only_whitespace:
+    if windows:
+        if any(c in _WINDOWS_EXPAND_CHARS for c in text):
+            escaped = text.replace("'", "''")
+            return f"'{escaped}'"
+        return f'"{text}"'
+    if only_whitespace:
         return f'"{text}"'
     return shlex.quote(text)
 

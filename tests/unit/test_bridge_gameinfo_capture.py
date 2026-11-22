@@ -62,7 +62,20 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _files(path: Path) -> list[str]:
-    return sorted(str(p.relative_to(path)) for p in path.rglob("*") if p.is_file())
+    return sorted(p.relative_to(path).as_posix() for p in path.rglob("*") if p.is_file())
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    """Create a directory symlink, falling back to an NTFS junction when Windows lacks privilege."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if sys.platform == "win32" and getattr(exc, "winerror", None) == 1314:
+            import _winapi
+
+            _winapi.CreateJunction(str(target), str(link))
+            return
+        raise
 
 
 def _single(document: dict[str, Any], prefix: str = "") -> str:
@@ -288,10 +301,10 @@ class TestWriteSnapshot:
         data = tmp_path / "data"
         data.mkdir()
         if where == "root":
-            (tmp_path / "link").symlink_to(checkout, target_is_directory=True)
+            _link_dir(tmp_path / "link", checkout)
             monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "link"))
         else:
-            (data / "gameinfo").symlink_to(checkout, target_is_directory=True)
+            _link_dir(data / "gameinfo", checkout)
             monkeypatch.setenv(DATA_ROOT_ENV, str(data))
         with pytest.raises(gc.GameInfoCaptureError):
             gc.write_snapshot(DOCUMENT, name="probe")

@@ -330,3 +330,19 @@ class TestABatchCannotCrossTheCap:
         assert c.acks(game)[-1]["error_code"] != "COMMAND_CAP_REACHED"
         exchange(game, [PRODUCE_WARRIOR, PRODUCE_WARRIOR], 3)  # 5 + 2 > 6
         assert c.acks(game)[-1]["error_code"] == "COMMAND_CAP_REACHED"
+
+
+class TestAckErrorFields:
+    """Successful AZ_ACK must not populate error_code / error_message."""
+
+    def test_successful_command_omits_error_code_while_failure_sets_it(self, turn: Any) -> None:
+        exchange(turn, [SKIP], 1)
+        ok_ack = c.acks(turn)[-1]
+        assert ok_ack["success"] is True
+        assert "error_code" not in ok_ack
+        assert "error_message" not in ok_ack
+
+        exchange(turn, [ENEMY_MOVE], 2)
+        err_ack = c.acks(turn)[-1]
+        assert err_ack["success"] is False
+        assert err_ack["error_code"] == "EXECUTION_ERROR"

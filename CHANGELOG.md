@@ -11,6 +11,17 @@ Local-first operation and the dev/qa/main release model (plan:
 [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)).
 The A1 learning run is registered, not run: no verdict exists yet.
 
+### Added
+- **Reusable operational verification skills & Makefile targets (`.claude/skills/`, `Makefile`, `scripts/`):**
+  - Added `.claude/skills/live-civ6-verify/SKILL.md` (Lua bundle check, `lupa` Lua 5.1 parity tests, Steam mod install & SHA-256 verification, live command probes, `GameInfo` capture) and `.claude/skills/gpu-verify/SKILL.md` (pinned dual-GPU CUDA determinism & run-card preflight workflow), updating `.claude/README.md` (`13` skills) and enterprise governance tests (`tests/governance/test_skill_frontmatter_contract.py`).
+  - Added `scripts/install_civ6_mod.py --check` (`verify_mod_installation` with `--verbose` per-file SHA-256 diagnostics) and `Makefile` targets `check-mod-install` and `test-lua`.
+  - Added `alpha_zero/local/gameplay_config.py` (extracted from `alpha_zero/civ6_local.py`) and `BridgeConfig.from_live_env()` + public `get_default_comm_dir()` / `get_default_civ6_log_path()` helpers in `alpha_zero/bridge/config.py`.
+  - Added `-v` / `--verbose` stderr diagnostics to `scripts/live_command_check.py`, eliminated its transitive `torch`/`numpy` cold-import via `alpha_zero.bridge.config`, and expanded `tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py` with un-mocked live-Civ6 Lua parity and Windows portability invariants.
+
+### Changed (pre-PR decomposition & hygiene)
+- **God-file decomposition (`alpha_zero/civ6_local.py` -> `alpha_zero/local/gameplay_config.py`):** lowered `files_over_1000_lines` (`24 -> 23`) while preserving 100% backwards-compatible re-exports in `alpha_zero/civ6_local.py` and removing hardcoded demo action-space / transport literals (`DEFAULT_DEMO_*`, `DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`).
+- **Pre-PR repo hygiene (`.gitignore`, `.dockerignore`, `.gitleaks.toml`, `.pre-commit-config.yaml`):** ignored runtime `gameinfo.json` and generated `bandit-report.json` / `bandit-medium-report.json` across git, Docker context, and gitleaks path allowlists; expanded `.pre-commit-config.yaml`'s `check-doc-sync` `files:` filter to cover `ROADMAP.md`, `PROJECT_CHARTER.md`, `SUPPORT.md`, `SECURITY.md`, and `GOVERNANCE.md`.
+
 ### Changed (BREAKING)
 - `evaluate_against_random` (`alpha_zero/training_civ6.py`) returns the full `ScoreSummary` from `evaluation/scoring.py` instead of the float `wins / games`, which scored every draw as a loss. `evaluate_win_rate_against_random` is the deprecated float shim: it returns the old value and emits a `DeprecationWarning`.
 - Game runners refuse a worst case over 1,000 games (`alpha_zero/utils/game_budget.py`): every runner except the distributed coordinator prices itself after resolving its CLI, preset, YAML and environment, and exits 2 over the cap. A bare `python -m alpha_zero.training_civ6` prices at 10,200 and is refused; `--dry_run` prices at 8. `--max_games` can only lower the cap; `--approval_ref <issue>` raises it and is recorded, not verified. `scripts/run_civ6_ai.py`'s hard-coded 100 x 100 games is now 10 x 10. The coordinator's own `--max_games` stays unpriced (distributed coordination is confirm-first; the PreToolUse guard asks on it).
@@ -83,6 +94,19 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - Each converter logs its mode at start-up (the rule set, the start of its fingerprint, the slot counts, or "no research registry"); the action converter refuses a state whose research was numbered by a different registry; the first lost item is warned about by name; `research_registry=False` builds a converter with no registry without asking the environment.
 - Not run in a real game. No network has been trained with these slots, and the action space has fewer research actions (73 technologies, 56 civics) than the current game has; what does not fit is counted, not dropped silently. With the small built-in rule set the registry mode offers almost no research, so it is for a network trained with that rule set, not for a random-weights session.
 
+### Fixed
+- **Live Civilization VI mod & bridge parity (2026-11-21 live session against Steam Civ 6):**
+  - `mod/AlphaZeroAI/Scripts/JsonEncoder.lua`: replaced 32-bit C `long` `%d` integer truncation under Windows Win64 LLP64 with `%.0f` (plus normalized `-0.0` -> `"0"`), preventing corrupted large `Hash` values above `2^31 - 1`.
+  - `mod/AlphaZeroAI/Scripts/ActionExecutor.lua`: removed the `UI.CanEndTurn()` override in `executeEndTurn` so `NotificationManager` / `GetEndTurnBlocker` is the sole end-turn blocking authority (fixing `LF-H1`, where `ACTION_ENDTURN` during an active blocker deactivated `TURN_ACTIVE` without advancing turns), added two-step `CanProduce(hash, true)` + `CanProduce(hash, false, true)` validation to reject unresearched buildings, and fixed the `(the game could not be asked)` refusal check + debug logging when `(hash, false, true)` returns `nil`.
+  - `mod/AlphaZeroAI/Scripts/StateExporter.lua`: added `typeNameByHash()` / `getCurrentProductionName()` fallback to `GetCurrentProductionTypeHash()` when `CurrentlyBuilding()` returns `nil` (plus `Log.Debug` traces), and added `resolveYieldIndex()` / `readPlotYield()` supporting live `YieldTypes` short keys (`FOOD`..`FAITH`) and `GameInfo.Yields` fallback even when `YieldTypes` is `nil`.
+  - `mod/AlphaZeroAI/Scripts/Main.lua`: fixed successful `AZ_ACK` construction so `error_code` and `error_message` are omitted on success instead of leaking a prior field.
+  - Regenerated `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua` and re-installed with SHA-256 verification.
+- **Windows portability & logging fixes (`alpha_zero/bridge/`, `alpha_zero/civ6_local.py`, `tests/`):**
+  - `alpha_zero/bridge/gameinfo_capture.py`: excluded `%` from `_SHELL_PLAIN` and single-quoted `$`/`%`/backtick paths on Windows in `_for_a_shell(PurePath)`.
+  - `alpha_zero/bridge/log_tailer.py`: replaced chained comparison with explicit `backlog is not None` narrowing (`mypy` clean) and lowered `except_pass_handlers` (`18 -> 17`).
+  - `alpha_zero/civ6_local.py`: fixed `setup_logging()` to explicitly update root logger level so subsequent `config.log_level` settings take effect, and corrected the `--bridge-ipc-dir` help text default.
+  - `tests/unit/test_bridge_gameinfo_capture{,_review,_review2,_review3}.py`: fixed all 28 Windows path/symlink/binary-newline test portability issues (`.as_posix()`, NTFS junction fallback on `WinError 1314`, binary writes, `PurePosixPath`).
+
 ### Fixed — live bridge
 - The turn ledger tells apart diplomacy and citizen commands that differ only in their operands, reopens only the idle city on a production blocker, and does not count a fallback `end_turn` that never went out as blocked.
 - **The agent loop remembers what the game did with this turn's commands (GM-B7c-2, `alpha_zero/bridge/turn_ledger.py`).** A refused command is not sent again in the same game turn; research and each city's production are chosen once per turn (the game never offers the item in progress, so a deterministic policy changed its mind after every choice); a choice the converter rejects is re-selected instead of ending the turn; a blocked `end_turn` is not chosen again while something else is offered; past 100 commands in a turn only `end_turn` is sent; a turn that can neither be ended nor unblocked is a declared stall (exit code 3, or `CIV6AZ_AGENT_ON_STALL=wait`). New `CIV6AZ_AGENT_MAX_GAME_TURNS` stops after N game turns; `CIV6AZ_AGENT_MAX_TURNS` still counts loop steps. The loop's settings moved to `alpha_zero/bridge/agent_loop_config.py` (re-exported).
@@ -154,6 +178,17 @@ The A1 learning run is registered, not run: no verdict exists yet.
 The first tagged release. It is a major version because four changes below break
 out-of-repo callers. The dated narrative behind every bullet (880 lines) is archived
 in [`docs/archive/changelog-2.0.0-detail.md`](docs/archive/changelog-2.0.0-detail.md).
+
+### Added
+- **Reusable operational verification skills & Makefile targets (`.claude/skills/`, `Makefile`, `scripts/`):**
+  - Added `.claude/skills/live-civ6-verify/SKILL.md` (Lua bundle check, `lupa` Lua 5.1 parity tests, Steam mod install & SHA-256 verification, live command probes, `GameInfo` capture) and `.claude/skills/gpu-verify/SKILL.md` (pinned dual-GPU CUDA determinism & run-card preflight workflow), updating `.claude/README.md` (`13` skills) and enterprise governance tests (`tests/governance/test_skill_frontmatter_contract.py`).
+  - Added `scripts/install_civ6_mod.py --check` (`verify_mod_installation` with `--verbose` per-file SHA-256 diagnostics) and `Makefile` targets `check-mod-install` and `test-lua`.
+  - Added `alpha_zero/local/gameplay_config.py` (extracted from `alpha_zero/civ6_local.py`) and `BridgeConfig.from_live_env()` + public `get_default_comm_dir()` / `get_default_civ6_log_path()` helpers in `alpha_zero/bridge/config.py`.
+  - Added `-v` / `--verbose` stderr diagnostics to `scripts/live_command_check.py`, eliminated its transitive `torch`/`numpy` cold-import via `alpha_zero.bridge.config`, and expanded `tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py` with un-mocked live-Civ6 Lua parity and Windows portability invariants.
+
+### Changed (pre-PR decomposition & hygiene)
+- **God-file decomposition (`alpha_zero/civ6_local.py` -> `alpha_zero/local/gameplay_config.py`):** lowered `files_over_1000_lines` (`24 -> 23`) while preserving 100% backwards-compatible re-exports in `alpha_zero/civ6_local.py` and removing hardcoded demo action-space / transport literals (`DEFAULT_DEMO_*`, `DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`).
+- **Pre-PR repo hygiene (`.gitignore`, `.dockerignore`, `.gitleaks.toml`, `.pre-commit-config.yaml`):** ignored runtime `gameinfo.json` and generated `bandit-report.json` / `bandit-medium-report.json` across git, Docker context, and gitleaks path allowlists; expanded `.pre-commit-config.yaml`'s `check-doc-sync` `files:` filter to cover `ROADMAP.md`, `PROJECT_CHARTER.md`, `SUPPORT.md`, `SECURITY.md`, and `GOVERNANCE.md`.
 
 ### Changed (BREAKING)
 - Checkpoints load safely by default (`weights_only=True`); unsafe loading is an explicit opt-in (`CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`).
