@@ -10,7 +10,12 @@
 - [x] 1.7 Independent review (`sdlc-architect`); four findings fixed with tests (`tests/unit/test_lua_other_players_review.py`)
 - [x] 1.8 Docs: `docs/LIVE_CIV6.md`, `CHANGELOG.md`, `CLAUDE.md`, gap register
 
-## 2. Not in this change
-- [ ] 2.1 GM-B8b: the simulator with an opponent (winning by elimination of what is visible is not a win); decision record
-- [ ] 2.2 Turning `OBSERVE_ALL_PLAYERS` on by default (after the maintainer's live sitting)
-- [ ] 2.3 A last-seen memory of cities now in fog; resources the player's technology does not reveal
+## 2. GM-B8b: the search with an opponent
+- [x] 2.1 Tests from a written contract (`sdlc-qa-sdet`); they found the same win coming back at the turn limit
+- [x] 2.2 `BridgeMCTSEnv`: the acting player never wins by elimination, nor at the turn limit over an opponent with nothing left in sight
+- [x] 2.3 Decision record: what of the other players was seeded, lines of play with a win taken back
+- [x] 2.4 Independent review (`sdlc-ml-scientist`); its findings fixed with tests (mutual kill, the limit without an enemy city in sight, stale info, the with-and-without measurement)
+
+## 3. Not in this change
+- [ ] 3.1 Turning `OBSERVE_ALL_PLAYERS` on by default (after the maintainer's live sitting)
+- [ ] 3.2 A last-seen memory of cities now in fog; resources the player's technology does not reveal

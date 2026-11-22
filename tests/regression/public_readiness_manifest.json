@@ -22,8 +22,7 @@
   "project_id_baseline_count": 7,
   "project_id_allowlist": {
     "CHANGELOG.md": "History is not rewritten (plan 2.4); the changelog records the deployments as they were.",
-    "kb/specs/20260902-tech-debt-hardening.md": "kb/ is left alone by decision (plan 2.4): append-only workflow history.",
-    "kb/summaries/dev-sqe.md": "kb/ is left alone by decision (plan 2.4): append-only workflow history."
+    "kb/specs/20260902-tech-debt-hardening.md": "kb/ is left alone by decision (plan 2.4): append-only workflow history."
   },
   "binary_allowlist": {},
   "user_path_allowlist": {

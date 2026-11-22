@@ -1,9 +1,9 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-22T04:30:00Z",
-  "current_focus": "Game-mechanics program: the live bridge. Merged: #162 (GM-B6a), #163 (GM-B6b). Open: the GM-B8a PR (claude/gm-b8a-visible-others) and the GM-B8b PR (claude/gm-b8b-search-opponent). Nothing has run in a real game.",
+  "last_timestamp": "2026-11-22T05:30:00Z",
+  "current_focus": "Game-mechanics program: the live bridge. Merged: #162 (GM-B6a), #163 (GM-B6b). Open: #164 (GM-B8a) and the GM-B8b PR (claude/gm-b8b-search-opponent, contains #164). Nothing has run in a real game.",
   "resume_pointers": {
-    "current_task": "GM-B8a is built and reviewed on its branch (no PR: both slots are taken until the live sitting). Next: GM-B8b (the simulator's elimination rule) on top of GM-B6b and GM-B8a.",
+    "current_task": "GM-B8a and GM-B8b are built and reviewed on their branches (no PRs: both slots are taken until the live sitting). Nothing further is scheduled; the maintainer's live sitting is the next real step.",
     "blocked_on": [
       "maintainer: merge #158 (GM-B7a), then #159 (GM-B7b); the two GM-B7c PRs open as slots free",
       "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
@@ -11,6 +11,7 @@
       "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
     ],
     "next_steps": [
+      "Measure a rule with and without it on the same inputs; a single count says nothing. And check what the consumer actually reads: the search ignores step rewards, so a reward test proves nothing about the search",
       "A default in a classifier is a claim: 'minor' and 'at peace' were what the code said when it knew nothing. Read the owner's own UI code for every call before planning; two names the plan relied on did not exist there",
       "Check what the producer actually sends before trusting a fixture: the search tests seeded enemy units the real exporter never exports by default (GM-B8)",
       "A fallback that picks 'the first one' depends on an order nobody chose: name the order and test with more than one candidate. A mock has every attribute: detect a protocol on the class, not with hasattr",
@@ -28,6 +29,7 @@
     ]
   },
   "context_files": [
+    "kb/handoffs/20261122-devsqe-to-prepr-gm-b8b-search-opponent.md",
     "kb/handoffs/20261122-devsqe-to-prepr-gm-b8a-visible-others.md",
     "kb/handoffs/20261122-devsqe-to-prepr-gm-b6b-search-seam.md",
     "kb/handoffs/20261121-devsqe-to-prepr-gm-b7b-exporter-offers.md",

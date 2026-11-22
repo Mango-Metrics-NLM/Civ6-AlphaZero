@@ -179,8 +179,10 @@ class TestNoVisibleEnemy:
         _, _, terminated, _, _ = env.step(SIM_END_TURN)
         assert terminated is False  # one city each side survives; nothing was eliminated
 
-    def test_an_eliminated_visible_enemy_still_terminates(self) -> None:
-        # Enemy warrior with 1 health next to ours: the attack kills it and the game is won.
+    def test_an_eliminated_visible_enemy_does_not_terminate(self) -> None:
+        """Corrected in GM-B8b: this used to pin the OLD rule (killing the last visible enemy
+        unit ended the game with a win). The acting player never wins by elimination before the
+        turn limit now: the simulator knows only what the player can see."""
         state = make_state(
             size=16,
             units=[
@@ -195,17 +197,20 @@ class TestNoVisibleEnemy:
         )
         assert env.get_valid_actions()[attack] > 0
         _, reward, terminated, _, info = env.step(attack)
-        assert terminated is True
-        assert info["winner"] == 0
-        assert reward >= REWARDS.WIN_REWARD
-        assert env.env.done is True
+        assert terminated is False
+        assert info["winner"] is None
+        assert reward < REWARDS.WIN_REWARD
+        assert env.env.done is False
+        assert env.elimination_suppressed == 1
 
     def test_a_clone_keeps_the_flag_and_the_behaviour(self) -> None:
         clone = _lone_warrior(enemy=False).clone()
         assert clone.proxy_stats["no_visible_enemy"] == 1
         assert clone.step(SIM_END_TURN)[2] is False
 
-    def test_a_visible_enemy_that_is_eliminated_in_a_clone_still_terminates(self) -> None:
+    def test_a_visible_enemy_that_is_eliminated_in_a_clone_does_not_terminate(self) -> None:
+        """Corrected in GM-B8b: the OLD rule said a clone's kill of the last visible enemy ends
+        the game; the new rule holds on every clone."""
         state = make_state(
             size=16,
             units=[unit(2, "UNIT_WARRIOR", 0, 5, 5), unit(3, "UNIT_WARRIOR", 1, 6, 5, health=1)],
@@ -214,7 +219,9 @@ class TestNoVisibleEnemy:
         attack = env.env.action_space_handler.encode_action(
             {"type": "attack", "unit_idx": 0, "direction": (1, 0)}
         )
-        assert env.clone().step(attack)[2] is True
+        _, reward, terminated, _, _ = env.clone().step(attack)
+        assert terminated is False
+        assert reward < REWARDS.WIN_REWARD
 
 
 class TestBusyCity:

@@ -62,3 +62,22 @@ foreign occupant the player cannot see.
 
 - **WHEN** the only foreign unit on a plot in range is one the player cannot see
 - **THEN** no attack on that plot is offered, and one sent anyway is refused
+
+### Requirement: Killing what is visible is not winning the game
+
+The live search's simulator holds only what the player can see. It MUST NOT let the
+acting player win by elimination, and MUST NOT pay a win at the turn limit unless an
+enemy city is in the simulator. The acting player with no unit and no city left SHALL
+have lost, also when its last unit removed the last visible enemy. Each decision's record SHALL say what of the other
+players was seeded and on how many lines of play a win was taken back.
+
+#### Scenario: A lone hostile unit next to a warrior
+
+- **WHEN** the acting player's attack removes the only enemy unit in the simulator and the enemy has no city there
+- **THEN** the simulated game goes on, the move pays the per-kill reward and no win reward, and no win is paid at the turn limit either
+
+#### Scenario: The acting player loses everything
+
+- **WHEN** the acting player's last unit is removed and it holds no city
+- **THEN** the simulated game ends as a loss
+
