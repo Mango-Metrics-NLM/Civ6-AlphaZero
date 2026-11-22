@@ -20,7 +20,7 @@ The A1 learning run is registered, not run: no verdict exists yet.
 
 ### Changed (pre-PR decomposition & hygiene)
 - **God-file decomposition (`alpha_zero/civ6_local.py` -> `alpha_zero/local/gameplay_config.py`):** lowered `files_over_1000_lines` (`24 -> 23`) while preserving 100% backwards-compatible re-exports in `alpha_zero/civ6_local.py` and removing hardcoded demo action-space / transport literals (`DEFAULT_DEMO_*`, `DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`).
-- **Pre-PR repo hygiene (`.gitignore`, `.dockerignore`, `.gitleaks.toml`, `.pre-commit-config.yaml`):** ignored runtime `gameinfo.json` and generated `bandit-report.json` / `bandit-medium-report.json` across git, Docker context, and gitleaks path allowlists; expanded `.pre-commit-config.yaml`'s `check-doc-sync` `files:` filter to cover `ROADMAP.md`, `PROJECT_CHARTER.md`, `SUPPORT.md`, `SECURITY.md`, and `GOVERNANCE.md`.
+- **Pre-PR repo hygiene (`.gitignore`, `.dockerignore`, `.gitleaks.toml`, `.pre-commit-config.yaml`):** ignored runtime `gameinfo.json` and generated `bandit-report.json` / `bandit-medium-report.json` across git, Docker context, and gitleaks path allowlists; expanded `.pre-commit-config.yaml`'s `check-doc-sync` `files:` filter (retaining `CLAUDE.md`) to cover `ROADMAP.md`, `PROJECT_CHARTER.md`, `SUPPORT.md`, `SECURITY.md`, `GOVERNANCE.md`, `.github/workflows/ci.yml`, `.claude/skills/`, and package `__init__.py` modules.
 
 ### Changed (BREAKING)
 - `evaluate_against_random` (`alpha_zero/training_civ6.py`) returns the full `ScoreSummary` from `evaluation/scoring.py` instead of the float `wins / games`, which scored every draw as a loss. `evaluate_win_rate_against_random` is the deprecated float shim: it returns the old value and emits a `DeprecationWarning`.
@@ -182,17 +182,6 @@ The A1 learning run is registered, not run: no verdict exists yet.
 The first tagged release. It is a major version because four changes below break
 out-of-repo callers. The dated narrative behind every bullet (880 lines) is archived
 in [`docs/archive/changelog-2.0.0-detail.md`](docs/archive/changelog-2.0.0-detail.md).
-
-### Added
-- **Reusable operational verification skills & Makefile targets (`.claude/skills/`, `Makefile`, `scripts/`):**
-  - Added `.claude/skills/live-civ6-verify/SKILL.md` (Lua bundle check, `lupa` Lua 5.1 parity tests, Steam mod install & SHA-256 verification, live command probes, `GameInfo` capture) and `.claude/skills/gpu-verify/SKILL.md` (pinned dual-GPU CUDA determinism & run-card preflight workflow), updating `.claude/README.md` (`13` skills) and enterprise governance tests (`tests/governance/test_skill_frontmatter_contract.py`).
-  - Added `scripts/install_civ6_mod.py --check` (`verify_mod_installation` with `--verbose` per-file SHA-256 diagnostics) and `Makefile` targets `check-mod-install` and `test-lua`.
-  - Added `alpha_zero/local/gameplay_config.py` (extracted from `alpha_zero/civ6_local.py`) and `BridgeConfig.from_live_env()` + public `get_default_comm_dir()` / `get_default_civ6_log_path()` helpers in `alpha_zero/bridge/config.py`.
-  - Added `-v` / `--verbose` stderr diagnostics to `scripts/live_command_check.py`, eliminated its transitive `torch`/`numpy` cold-import via `alpha_zero.bridge.config`, and expanded `tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py` with un-mocked live-Civ6 Lua parity and Windows portability invariants.
-
-### Changed (pre-PR decomposition & hygiene)
-- **God-file decomposition (`alpha_zero/civ6_local.py` -> `alpha_zero/local/gameplay_config.py`):** lowered `files_over_1000_lines` (`24 -> 23`) while preserving 100% backwards-compatible re-exports in `alpha_zero/civ6_local.py` and removing hardcoded demo action-space / transport literals (`DEFAULT_DEMO_*`, `DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`).
-- **Pre-PR repo hygiene (`.gitignore`, `.dockerignore`, `.gitleaks.toml`, `.pre-commit-config.yaml`):** ignored runtime `gameinfo.json` and generated `bandit-report.json` / `bandit-medium-report.json` across git, Docker context, and gitleaks path allowlists; expanded `.pre-commit-config.yaml`'s `check-doc-sync` `files:` filter to cover `ROADMAP.md`, `PROJECT_CHARTER.md`, `SUPPORT.md`, `SECURITY.md`, and `GOVERNANCE.md`.
 
 ### Changed (BREAKING)
 - Checkpoints load safely by default (`weights_only=True`); unsafe loading is an explicit opt-in (`CIV6AZ_ALLOW_UNSAFE_CHECKPOINT`).

@@ -94,7 +94,7 @@ repos:
         name: check doc sync
         entry: python scripts/check_doc_sync.py
         language: system
-        files: ^(README\.md|ROADMAP\.md|PROJECT_CHARTER\.md|CONTRIBUTING\.md|CHANGELOG\.md|SUPPORT\.md|SECURITY\.md|GOVERNANCE\.md|CITATION\.cff|docs/|pyproject\.toml|alpha_zero/__init__\.py)
+        files: ^(README\.md|CLAUDE\.md|ROADMAP\.md|PROJECT_CHARTER\.md|CONTRIBUTING\.md|CHANGELOG\.md|SUPPORT\.md|SECURITY\.md|GOVERNANCE\.md|CITATION\.cff|docs/|\.github/workflows/ci\.yml|\.claude/skills/|pyproject\.toml|alpha_zero/(__init__|[^/]+/__init__)\.py)
         pass_filenames: false
       - id: check-lua-bundle
         name: check Civ6 Lua bundle sync

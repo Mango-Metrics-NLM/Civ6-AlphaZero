@@ -136,3 +136,42 @@ class TestBridgeConfigLiveEnv:
         )
         comm_dir = get_default_comm_dir()
         assert comm_dir.name in ("AlphaZeroAI", ".civ6_alphazero")
+
+    def test_resolve_live_paths_precedence_and_ignores_bridge_comm_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cli_ipc = tmp_path / "cli_ipc"
+        env_ipc = tmp_path / "env_ipc"
+        cli_log = tmp_path / "cli_Lua.log"
+        env_log = tmp_path / "env_Lua.log"
+        monkeypatch.setenv("CIV6_BRIDGE_COMM_DIR", str(tmp_path / "ignored_comm_dir"))
+        monkeypatch.delenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", raising=False)
+        monkeypatch.delenv("CIV6AZ_LOCAL_LOG_PATH", raising=False)
+
+        assert gc.resolve_live_bridge_ipc_dir() != tmp_path / "ignored_comm_dir"
+        monkeypatch.setenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", str(env_ipc))
+        monkeypatch.setenv("CIV6AZ_LOCAL_LOG_PATH", str(env_log))
+        assert gc.resolve_live_bridge_ipc_dir() == env_ipc
+        assert gc.resolve_live_civ6_log_path() == env_log
+        assert gc.resolve_live_bridge_ipc_dir(cli_ipc) == cli_ipc
+        assert gc.resolve_live_civ6_log_path(cli_log) == cli_log
+
+    def test_from_env_preserves_raw_posix_path_and_blank_live_env_falls_back(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", "/custom/ipc")
+        monkeypatch.setenv("CIV6AZ_LOCAL_LOG_PATH", "/custom/Lua.log")
+        cfg = gc.Civ6LocalConfig.from_env()
+        assert cfg.bridge_ipc_dir == "/custom/ipc"
+        assert cfg.civ6_log_path == "/custom/Lua.log"
+
+        monkeypatch.setenv("CIV6_BRIDGE_TRANSPORT", "   ")
+        monkeypatch.setenv("CIV6_BRIDGE_TUNER_HOST", "")
+        monkeypatch.setenv("CIV6_BRIDGE_TUNER_PORT", " ")
+        live_cfg = BridgeConfig.from_live_env(comm_dir=tmp_path)
+        assert live_cfg.command_transport == DEFAULT_COMMAND_TRANSPORT
+        assert live_cfg.tuner_host == DEFAULT_TUNER_HOST
+        assert live_cfg.tuner_port == DEFAULT_TUNER_PORT
+
+        with pytest.raises(ValueError, match="tuner_host"):
+            BridgeConfig(comm_dir=tmp_path, tuner_host="   ")

@@ -229,6 +229,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         return 1
 
     try:
+        import alpha_zero.bridge.config as bridge_config_mod
         from alpha_zero.bridge.action_converter import ActionConverter
         from alpha_zero.bridge.agent_loop import (
             AgentLoopConfig,
@@ -253,17 +254,20 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
             log_level=config.log_level,
         )
     else:
+        # Mocked BridgeConfig in isolated unit tests skips from_live_env.
         bridge_cfg = BridgeConfig(
             comm_dir=Path(config.bridge_ipc_dir),
             log_level=config.log_level,
-            command_transport=os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower(),
-            tuner_host=os.getenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.1"),
-            tuner_port=int(os.getenv("CIV6_BRIDGE_TUNER_PORT", "4318")),
         )
+    default_transport = (
+        bridge_config_mod.DEFAULT_COMMAND_TRANSPORT
+        if isinstance(getattr(bridge_config_mod, "DEFAULT_COMMAND_TRANSPORT", None), str)
+        else "file"
+    )
     transport = (
         bridge_cfg.command_transport
         if isinstance(getattr(bridge_cfg, "command_transport", None), str)
-        else os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower()
+        else (os.getenv("CIV6_BRIDGE_TRANSPORT", "").strip().lower() or default_transport)
     )
     bridge_cfg.ensure_comm_dir()
 

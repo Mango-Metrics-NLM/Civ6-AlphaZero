@@ -436,3 +436,17 @@ class TestLightweightImportsAndPaths:
         assert any("Configured LiveBridge:" in rec.message for rec in caplog.records)
         assert any("Waiting for initial game state" in rec.message for rec in caplog.records)
         assert "no state from the game within" in captured.out
+
+    def test_build_bridge_matches_civ6_local_when_only_civ6_bridge_comm_dir_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from alpha_zero.local.gameplay_config import Civ6LocalConfig
+
+        unrelated_comm_dir = tmp_path / "other_comm_dir"
+        monkeypatch.delenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", raising=False)
+        monkeypatch.setenv("CIV6_BRIDGE_COMM_DIR", str(unrelated_comm_dir))
+        args = argparse.Namespace(ipc_dir=None, log_path=None)
+        bridge = lcc._build_bridge(args)
+        local_cfg = Civ6LocalConfig.from_env()
+        assert bridge._config.comm_dir == Path(local_cfg.bridge_ipc_dir)
+        assert bridge._config.comm_dir != unrelated_comm_dir

@@ -48,6 +48,12 @@ python scripts/install_civ6_mod.py --check --verbose
 Uses OneDrive-safe in-place overwrite with SHA-256 verification and stale-file cleanup.
 You can also run `make check-mod-install` for the read-only parity gate.
 
+**Reload requirement:** Updating and SHA-256-verifying the files on disk does **not**
+reload Lua scripts already cached in a running Civilization VI UI context. Whenever you
+install or update the mod before running live probes, start a fresh single-player game
+(or restart Civ6 and load a fresh Turn 1 game) with `AlphaZeroAI` enabled so the game
+loads the updated bundle.
+
 ### 3. Validate bridge configuration without touching a live game
 
 ```bash

@@ -49,8 +49,27 @@ __all__ = [
     "Civ6LocalConfig",
     "_get_default_bridge_ipc_dir",
     "_get_default_civ6_log_path",
+    "resolve_live_bridge_ipc_dir",
+    "resolve_live_civ6_log_path",
     "search_mode_refusal",
 ]
+
+
+def _resolve_bridge_default(func_name: str, fallback: Path) -> Path:
+    """Resolve a path helper from ``alpha_zero.bridge.config`` or return ``fallback``."""
+    try:
+        from alpha_zero.bridge import config as bridge_config
+
+        fn = getattr(bridge_config, func_name)
+        resolved = fn()
+        if isinstance(resolved, Path):
+            logger.debug("Resolved %s: %s", func_name, resolved)
+            return resolved
+    except (ImportError, AttributeError) as exc:
+        logger.debug(
+            "Bridge config unavailable for %s (%s); using fallback: %s", func_name, exc, fallback
+        )
+    return fallback
 
 
 def _get_default_bridge_ipc_dir() -> Path:
@@ -61,16 +80,10 @@ def _get_default_bridge_ipc_dir() -> Path:
     Falls back to ``%TEMP%/civ6az_bridge`` when the bridge package is not
     importable (e.g., during unit tests that stub out the bridge layer).
     """
-    try:
-        from alpha_zero.bridge.config import get_default_comm_dir
-
-        resolved = get_default_comm_dir()
-        logger.debug("Resolved bridge IPC directory: %s", resolved)
-        return resolved
-    except Exception:
-        fallback = Path(tempfile.gettempdir()) / "civ6az_bridge"
-        logger.debug("Using fallback bridge IPC directory: %s", fallback)
-        return fallback
+    return _resolve_bridge_default(
+        "get_default_comm_dir",
+        Path(tempfile.gettempdir()) / "civ6az_bridge",
+    )
 
 
 def _get_default_civ6_log_path() -> Path:
@@ -79,22 +92,51 @@ def _get_default_civ6_log_path() -> Path:
     Delegates to :func:`alpha_zero.bridge.config.get_default_civ6_log_path`
     so CLI callers do not duplicate the default layout or import torch.
     """
-    try:
-        from alpha_zero.bridge.config import get_default_civ6_log_path
+    return _resolve_bridge_default(
+        "get_default_civ6_log_path",
+        Path(tempfile.gettempdir()) / "civ6az_bridge" / "Lua.log",
+    )
 
-        resolved = get_default_civ6_log_path()
-        logger.debug("Resolved Civ6 log path: %s", resolved)
+
+def resolve_live_bridge_ipc_dir(override: str | Path | None = None) -> Path:
+    """Resolve the live Civ6 bridge IPC directory using agent precedence.
+
+    Precedence matches :meth:`Civ6LocalConfig.from_env`:
+    explicit ``override`` -> ``CIV6AZ_LOCAL_BRIDGE_IPC_DIR`` -> default comm dir.
+    Ignores unrelated ``CIV6_BRIDGE_COMM_DIR`` so probes and ``civ6_local``
+    always agree on the active IPC directory without importing ``torch`` or ``numpy``.
+    """
+    if override is not None and str(override).strip():
+        resolved = Path(override)
+        logger.debug("Resolved live bridge IPC directory from override: %s", resolved)
         return resolved
-    except Exception:
-        fallback = (
-            Path(os.getenv("LOCALAPPDATA", ""))
-            / "Firaxis Games"
-            / "Sid Meier's Civilization VI"
-            / "Logs"
-            / "Lua.log"
+    env_dir = os.environ.get(f"{ENV_PREFIX}BRIDGE_IPC_DIR", "").strip()
+    if env_dir:
+        resolved = Path(env_dir)
+        logger.debug(
+            "Resolved live bridge IPC directory from %sBRIDGE_IPC_DIR: %s",
+            ENV_PREFIX,
+            resolved,
         )
-        logger.debug("Using fallback Civ6 log path: %s", fallback)
-        return fallback
+        return resolved
+    return _get_default_bridge_ipc_dir()
+
+
+def resolve_live_civ6_log_path(override: str | Path | None = None) -> Path:
+    """Resolve the live Civ6 ``Lua.log`` path using agent precedence.
+
+    Precedence: explicit ``override`` -> ``CIV6AZ_LOCAL_LOG_PATH`` -> default log path.
+    """
+    if override is not None and str(override).strip():
+        resolved = Path(override)
+        logger.debug("Resolved live Civ6 log path from override: %s", resolved)
+        return resolved
+    env_log = os.environ.get(f"{ENV_PREFIX}LOG_PATH", "").strip()
+    if env_log:
+        resolved = Path(env_log)
+        logger.debug("Resolved live Civ6 log path from %sLOG_PATH: %s", ENV_PREFIX, resolved)
+        return resolved
+    return _get_default_civ6_log_path()
 
 
 @dataclass
@@ -222,9 +264,11 @@ class Civ6LocalConfig:
             kwargs["web_host"] = v
         if (v := _get("WEB_PORT")) is not None:
             kwargs["web_port"] = int(v)
-        if (v := _get("BRIDGE_IPC_DIR")) is not None:
+        # Keep raw string verbatim (without Path normalization) for backwards
+        # compatibility when callers pass POSIX-style paths on Windows.
+        if (v := _get("BRIDGE_IPC_DIR")) is not None and v.strip():
             kwargs["bridge_ipc_dir"] = v
-        if (v := _get("LOG_PATH")) is not None:
+        if (v := _get("LOG_PATH")) is not None and v.strip():
             kwargs["civ6_log_path"] = v
         if (v := _get("LOG_LEVEL")) is not None:
             kwargs["log_level"] = v

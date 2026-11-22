@@ -25,7 +25,6 @@ import argparse
 import asyncio
 import json
 import logging
-import os
 import sys
 import time
 from collections.abc import Callable
@@ -199,26 +198,22 @@ async def run_check(
 def _build_bridge(args: argparse.Namespace) -> Any:
     """A ``LiveBridge`` configured as ``civ6_local.run_civ6_bridge`` configures it.
 
-    Resolves IPC and log defaults directly from ``alpha_zero.bridge.config``
-    so this lightweight CLI avoids importing ``torch`` or ``numpy``.
+    Shares live IPC and ``Lua.log`` precedence with
+    :mod:`alpha_zero.local.gameplay_config` (``--ipc-dir`` ->
+    ``CIV6AZ_LOCAL_BRIDGE_IPC_DIR`` -> default comm dir) so this lightweight
+    CLI always targets the same IPC directory as ``civ6_local`` without
+    importing ``torch`` or ``numpy``.
     """
-    from alpha_zero.bridge.config import (
-        BridgeConfig,
-        get_default_civ6_log_path,
-        get_default_comm_dir,
-    )
+    from alpha_zero.bridge.config import BridgeConfig
     from alpha_zero.bridge.live_bridge import LiveBridge
+    from alpha_zero.local.gameplay_config import (
+        resolve_live_bridge_ipc_dir,
+        resolve_live_civ6_log_path,
+    )
 
-    ipc_dir = (
-        args.ipc_dir
-        or os.getenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR")
-        or os.getenv("CIV6_BRIDGE_COMM_DIR")
-        or str(get_default_comm_dir())
-    )
-    log_path = (
-        args.log_path or os.getenv("CIV6AZ_LOCAL_LOG_PATH") or str(get_default_civ6_log_path())
-    )
-    bridge_cfg = BridgeConfig.from_live_env(comm_dir=Path(ipc_dir))
+    ipc_dir = resolve_live_bridge_ipc_dir(args.ipc_dir)
+    log_path = resolve_live_civ6_log_path(args.log_path)
+    bridge_cfg = BridgeConfig.from_live_env(comm_dir=ipc_dir)
     bridge_cfg.ensure_comm_dir()
     logger.debug(
         "Configured LiveBridge: comm_dir=%s log_path=%s transport=%s endpoint=%s:%d",
@@ -228,7 +223,7 @@ def _build_bridge(args: argparse.Namespace) -> Any:
         bridge_cfg.tuner_host,
         bridge_cfg.tuner_port,
     )
-    return LiveBridge(bridge_cfg, log_path=Path(log_path))
+    return LiveBridge(bridge_cfg, log_path=log_path)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -179,6 +179,9 @@ class BridgeConfig:
             raise ValueError("max_actions_per_second must be non-negative")
         if self.command_transport not in VALID_COMMAND_TRANSPORTS:
             raise ValueError("command_transport must be 'file' or 'socket'")
+        if not isinstance(self.tuner_host, str) or not self.tuner_host.strip():
+            raise ValueError("tuner_host must be a non-empty string")
+        self.tuner_host = self.tuner_host.strip()
         if not 1 <= self.tuner_port <= 65535:
             raise ValueError("tuner_port must be between 1 and 65535")
 
@@ -204,9 +207,12 @@ class BridgeConfig:
             if comm_dir is not None
             else Path(os.environ.get("CIV6_BRIDGE_COMM_DIR") or get_default_comm_dir())
         )
-        transport = os.getenv("CIV6_BRIDGE_TRANSPORT", DEFAULT_COMMAND_TRANSPORT).lower()
-        tuner_host = os.getenv("CIV6_BRIDGE_TUNER_HOST", DEFAULT_TUNER_HOST)
-        tuner_port = int(os.getenv("CIV6_BRIDGE_TUNER_PORT", str(DEFAULT_TUNER_PORT)))
+        transport = (
+            os.environ.get("CIV6_BRIDGE_TRANSPORT", "").strip().lower() or DEFAULT_COMMAND_TRANSPORT
+        )
+        tuner_host = os.environ.get("CIV6_BRIDGE_TUNER_HOST", "").strip() or DEFAULT_TUNER_HOST
+        port_raw = os.environ.get("CIV6_BRIDGE_TUNER_PORT", "").strip()
+        tuner_port = int(port_raw) if port_raw else DEFAULT_TUNER_PORT
         kwargs: dict[str, Any] = {
             "comm_dir": resolved_dir,
             "command_transport": transport,

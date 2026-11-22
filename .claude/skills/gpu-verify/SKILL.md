@@ -34,24 +34,35 @@ On Windows PowerShell, set `$env:CUDA_DEVICE_ORDER="PCI_BUS_ID"`,
 
 ## Steps
 
-### 1. Run GPU determinism and E2E AQA suites
+### 1. Run developer-side GPU determinism and E2E AQA suites
 
 ```bash
 pytest tests/regression/test_cuda_determinism_regression.py tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py -v
 ```
 
-Verifies two-process seeded training/arena reproduction on every visible GPU,
-cross-GPU checkpoint save/load parity, finite gradients, and legal-action mask zeroing.
+Runs **in-process** developer-side checks on every visible GPU (repeating seeded
+training/arena within the same Python process, cross-GPU checkpoint save/load parity,
+finite gradients, and legal-action mask zeroing). These developer checks catch
+kernel and plumbing regressions quickly, but they do not establish bit-exact
+reproduction across independent process starts.
 
-### 2. Check cross-process determinism script and run-card pricing
+### 2. Run cross-process determinism verification and run-card preflights
 
 ```bash
-python scripts/check_determinism.py --help
-python scripts/run_card.py configs/run_cards/smoke.yaml --price_only
+python -m scripts.check_determinism --train-device cuda:0 --arena-device cuda:1 --out determinism.json
+python scripts/run_card.py configs/run_cards/smoke.yaml --probe
+python scripts/run_card.py configs/run_cards/t0b.yaml --price_only
 ```
 
-Use `--price_only` or `--probe` to verify device preflights and the 1,000-game cap
-without claiming a single-use `runs/<card_id>` evidence directory.
+- `scripts/check_determinism.py` runs each repeat in its own subprocess under the
+  inherited CUDA/cuBLAS environment (the registered cross-process gate for A1 is
+  T0b's `determinism` step inside the card's pinned environment).
+- `--probe` rehearses pin, preflight, and GPU device verification in a throwaway
+  `probe-<card_id>-<stamp>` directory without claiming the single-use `runs/<card_id>`
+  directory (use `--probe` on `configs/run_cards/t0b.yaml` once its `sha` is filled with a
+  merged commit).
+- `--price_only` inspects the game budget and exits immediately after pricing without
+  building the pinned environment or probing any GPU device.
 
 ## Guardrails
 

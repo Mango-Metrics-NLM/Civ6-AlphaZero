@@ -15,7 +15,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsIndex
 
 from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
 from alpha_zero.utils.device import resolve_device, resolve_device_str
@@ -158,10 +158,13 @@ def _simulator_shape(board_size: int, max_turns: int) -> tuple[int, int, int]:
 
     env = MicroCivEnv(board_size=board_size, max_turns=max_turns)
     observation = env.get_observation()
+    action_count = env.action_space.n
+    if not isinstance(action_count, SupportsIndex):
+        raise TypeError(f"Expected integer action space size, got {type(action_count).__name__}")
     return (
         int(observation["spatial"].shape[0]),
         int(observation["vector"].shape[0]),
-        int(env.action_space.n),
+        int(action_count),
     )
 
 
