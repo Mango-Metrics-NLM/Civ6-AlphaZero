@@ -671,113 +671,21 @@ def _build_bridge_policy(config: Civ6LocalConfig, network: Any) -> Any:
     """The policy the bridge agent loop runs: the search, or the greedy network.
 
     ``run_civ6_bridge`` never gets here with ``use_mcts`` set: it refuses that
-    first (:func:`search_mode_refusal`). The search branch stays because it is
-    the wiring the refusal is about, and the test that shows why
-    (``tests/unit/test_bridge_search_mode_wiring.py``) builds the policy
-    through it.
-
-    Args:
-        config: Local gameplay config; ``use_mcts`` selects the search.
-        network: The network :func:`_build_network_for_bridge` built.
-
-    Returns:
-        A ``PolicyEngine`` for ``BridgeAgentLoop``.
+    first (:func:`search_mode_refusal`). The body lives in
+    ``alpha_zero.bridge.policy_factory``.
     """
-    if config.use_mcts:
-        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
-        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
+    from alpha_zero.bridge.policy_factory import build_bridge_policy
 
-        gumbel_cfg = GumbelMCTSConfig(
-            num_simulations=config.num_simulations,
-            num_sampled_actions=min(config.num_simulations, 16),
-        )
-        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
-        return Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
-
-    from alpha_zero.bridge.agent_loop import GreedyNetworkPolicy
-
-    logger.info("Bridge using GreedyNetworkPolicy")
-    return GreedyNetworkPolicy(network=network, device=config.device)
+    return build_bridge_policy(config, network, log=logger)
 
 
 def _build_network_for_bridge(
     config: Civ6LocalConfig, action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
 ) -> Any:
-    """Construct (and optionally load) the policy network for the bridge.
+    """Construct (and optionally load) the policy network for the bridge."""
+    from alpha_zero.bridge.policy_factory import build_network_for_bridge
 
-    Extracted for testability and to keep ``run_civ6_bridge`` focused on
-    composition. Returns a ``MicroCivNetwork`` instance.
-    """
-    from alpha_zero.core.checkpoint_utils import safe_torch_load
-    from alpha_zero.core.civ6_network import MicroCivNetwork
-    from alpha_zero.envs.civ6_encoder import EncoderConfig
-
-    device = resolve_device(config.device)
-    # MicroCivNetwork picks the right value head (scalar vs N-player) based
-    # on num_players; the bridge currently targets 2-player real Civ6.
-    #
-    # StateConverter (used by BridgeAgentLoop) encodes states through the
-    # full Civ6StateEncoder, which emits EncoderConfig's spatial_channels=84
-    # / vector_dim=512 tensors - NOT MicroCivNetwork's own 13-channel/64-dim
-    # "MicroCiv default". Passing these explicitly here (rather than
-    # changing MicroCivNetwork's defaults, which are still used elsewhere
-    # e.g. the microciv/web training modes) keeps the bridge network's
-    # input dims matched to what StateConverter.convert_and_encode actually
-    # produces.
-    encoder_defaults = EncoderConfig()
-    network = MicroCivNetwork(
-        board_size=config.board_size,
-        num_players=config.num_players,
-        action_space_size=action_space_size,
-        spatial_channels=encoder_defaults.spatial_channels,
-        vector_dim=encoder_defaults.vector_dim,
-    ).to(device)
-
-    if config.checkpoint_path:
-        try:
-            from alpha_zero.storage.config import StorageConfig
-            from alpha_zero.storage.factory import create_storage_backend
-
-            ckpt_path = Path(config.checkpoint_path)
-            # Two supported layouts:
-            # 1. Direct .pt file - safe torch.load (weights_only=True; legacy
-            #    pickles need CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1)
-            # 2. Storage base dir containing models/champion/model.pt - use
-            #    LocalStorageBackend so metadata + future GCS storage work.
-            if ckpt_path.is_file():
-                state_dict = safe_torch_load(ckpt_path, map_location=device)
-                if isinstance(state_dict, dict) and "model_state_dict" in state_dict:
-                    state_dict = state_dict["model_state_dict"]
-                network.load_state_dict(state_dict)
-                logger.info("Loaded checkpoint from file: %s", ckpt_path)
-            elif ckpt_path.is_dir():
-                storage = create_storage_backend(StorageConfig.for_local(str(ckpt_path)))
-                state_dict, metadata = storage.load_champion(map_location=device)
-                network.load_state_dict(state_dict)
-                logger.info(
-                    "Loaded champion v%d from storage: %s",
-                    metadata.version,
-                    ckpt_path,
-                )
-            else:
-                logger.warning(
-                    "Checkpoint path %s does not exist - using synthetic weights",
-                    ckpt_path,
-                )
-        except Exception as exc:
-            logger.warning(
-                "Failed to load checkpoint %s: %s - falling back to synthetic weights",
-                config.checkpoint_path,
-                exc,
-            )
-    else:
-        logger.warning(
-            "No --checkpoint supplied; bridge will run with synthetic weights "
-            "(agent will play poorly). Pass --checkpoint <path> to load a real "
-            "trained model."
-        )
-
-    return network
+    return build_network_for_bridge(config, action_space_size, log=logger)
 
 
 def run_web(config: Civ6LocalConfig) -> int:

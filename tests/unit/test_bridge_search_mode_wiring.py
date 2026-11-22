@@ -134,7 +134,7 @@ class TestPolicyAsWired:
         assert "84 channels" in message
         assert "13 channels" in message
 
-    def test_loop_sends_only_a_fallback_end_turn(self, live: _Live) -> None:
+    def test_loop_sends_only_an_end_turn(self, live: _Live) -> None:
         state = _state()
         converted = live.state_converter.convert(state)
         mask = live.action_converter.generate_action_mask(state.legal_actions, converted)
@@ -152,14 +152,17 @@ class TestPolicyAsWired:
         rc = asyncio.run(loop.run())
 
         assert rc == loop.EXIT_OK
+        # Since GM-B6b the loop asks this policy for a command; the search still
+        # fails on the full-game network, which is now counted, and the turn is
+        # ended through the ordinary send path instead of the blind fallback.
         sent = bridge.acked + bridge.fallback
         assert len(sent) == 1
-        assert bridge.acked == [], "the policy's own choice was never sent"
-        assert [c.action_type for c in bridge.fallback[0].commands] == ["end_turn"]
+        assert [c.action_type for c in sent[0].commands] == ["end_turn"]
         stats = loop.stats()
         assert stats["last_error"] is not None
         assert "84 channels" in stats["last_error"]
-        assert stats["fallback_end_turns"] == 1
+        assert stats["search_failures"] == 1
+        assert stats["search_decisions"] == 1
 
 
 class TestShapesThatCannotMeet:

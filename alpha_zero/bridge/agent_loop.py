@@ -43,6 +43,7 @@ from alpha_zero.bridge.action_converter import (
 from alpha_zero.bridge.agent_loop_config import ENV_PREFIX as ENV_PREFIX
 from alpha_zero.bridge.agent_loop_config import AgentLoopConfig as AgentLoopConfig
 from alpha_zero.bridge.agent_loop_config import DisconnectStrategy as DisconnectStrategy
+from alpha_zero.bridge.command_policy import choose, diagnostics_of, is_command_policy
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,
@@ -290,6 +291,10 @@ class _SessionStats:
     commands_sent: int = 0
     reselections: int = 0
     stalled_turns: int = 0
+    # A command policy (GM-B6b): times asked, named nothing, raised.
+    search_decisions: int = 0
+    search_fallbacks: int = 0
+    search_failures: int = 0
     turn_latencies_ms: list[float] = field(default_factory=list)
     last_error: str | None = None
 
@@ -314,6 +319,9 @@ class _SessionStats:
             "commands_sent": self.commands_sent,
             "reselections": self.reselections,
             "stalled_turns": self.stalled_turns,
+            "search_decisions": self.search_decisions,
+            "search_fallbacks": self.search_fallbacks,
+            "search_failures": self.search_failures,
             "mean_turn_latency_ms": mean,
             "p95_turn_latency_ms": p95,
             "last_error": self.last_error,
@@ -593,6 +601,9 @@ class BridgeAgentLoop:
         mask, ready = sendable(self._ledger, convert, legal_mask, unblocking_only)
         if not np.any(mask):
             return end_turn
+        if is_command_policy(self.policy):
+            chosen = await self._ask_command_policy(state, converted_state, unblocking_only)
+            return chosen if chosen is not None else self._unanswered(ready, end_turn)
 
         for attempt in range(self.config.max_reselections + 1):
             # Networks consume spatial + vector + action_mask; the converter
@@ -664,14 +675,42 @@ class BridgeAgentLoop:
             mask = mask.copy()
             mask[action_idx] = 0
 
-        # The policy could not name something sendable. While the game blocks
-        # the end of turn, anything that may still be sent beats an end_turn
-        # that will be refused.
+        return self._unanswered(ready, end_turn)
+
+    def _unanswered(self, ready: dict[int, Any], end_turn: LuaCommand) -> LuaCommand:
+        """What goes out when the policy named nothing sendable."""
+        # While the game blocks the end of turn, anything that may still be
+        # sent beats an end_turn that will be refused (and answers a choice the
+        # search's simulator cannot express, such as research).
         if self._ledger.end_turn_withheld():
             for command in ready.values():
                 if not is_end_turn(command):
                     return cast(LuaCommand, command)
         return end_turn
+
+    async def _ask_command_policy(
+        self, state: GameStateData, converted_state: dict[str, Any], unblocking_only: bool
+    ) -> LuaCommand | None:
+        """Ask a policy that answers with a command; None when it named nothing."""
+        choice = await choose(
+            self.policy,
+            self._ledger,
+            converted_state,
+            unblocking_only=unblocking_only,
+            turn_id=state.turn_id,
+        )
+        self._stats.search_decisions += 1
+        if choice.failed:
+            self._stats.search_failures += 1
+            self._stats.last_error = choice.reason
+        elif choice.command is None:
+            self._stats.search_fallbacks += 1
+        logger.debug(
+            "Turn %s: command policy: %s (%s)", state.turn_id, choice.record, choice.reason
+        )
+        if self.eval_harness:
+            self.eval_harness.on_turn_end(state.turn_id, diagnostics_of(choice))
+        return choice.command
 
     async def _send_and_account(self, state: GameStateData, lua_command: LuaCommand) -> None:
         """Send one command, read the mod's answer and record what it was."""
