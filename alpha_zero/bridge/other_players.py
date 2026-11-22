@@ -37,6 +37,9 @@ UNKNOWN = "unknown"
 
 #: Kinds that are hostile whatever the diplomacy says.
 _ALWAYS_HOSTILE = frozenset({"barbarian", "free"})
+#: Kinds for which "not at war" settles it. A kind the mod could not determine
+#: might be a barbarian, so "not at war" does not make it peaceful.
+_KNOWN_PEACEFUL_KINDS = frozenset({"major", "minor"})
 
 
 def is_hostile(entry: Any) -> bool:
@@ -49,7 +52,11 @@ def is_hostile(entry: Any) -> bool:
 def _relation(entry: Any) -> str:
     if is_hostile(entry):
         return HOSTILE
-    if isinstance(entry, Mapping) and entry.get("at_war") is False:
+    if (
+        isinstance(entry, Mapping)
+        and entry.get("at_war") is False
+        and entry.get("kind") in _KNOWN_PEACEFUL_KINDS
+    ):
         return NOT_HOSTILE
     return UNKNOWN
 

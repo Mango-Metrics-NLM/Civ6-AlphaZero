@@ -160,11 +160,14 @@ class TestOtherPlayersList:
         assert o.others(o.state_of(setup))[63]["kind"] == "barbarian"
 
     def test_at_war_and_met_come_from_the_game(self) -> None:
-        peace = o.others(o.state_of(o.MINOR_UNIT))
+        # The stand-in keeps ONE record of war and peace, the combat check's: a pair is at
+        # war unless it was set at peace.
+        both_peace = "Civ6Stub.setPeace(0, 1, true)\nCiv6Stub.setPeace(0, 10, true)\n"
+        peace = o.others(o.state_of(o.MINOR_UNIT + both_peace))
         assert peace[1]["at_war"] is False
         assert peace[1]["met"] is False
         assert peace[10]["at_war"] is False
-        setup = o.MINOR_UNIT + "Civ6Stub.setWar(0, 1, true)\nCiv6Stub.setMet(0, 10, true)\n"
+        setup = o.MINOR_UNIT + "Civ6Stub.setPeace(0, 10, true)\nCiv6Stub.setMet(0, 10, true)\n"
         war = o.others(o.state_of(setup))
         assert (war[1]["at_war"], war[1]["met"]) == (True, False)
         assert (war[10]["at_war"], war[10]["met"]) == (False, True)
@@ -202,7 +205,7 @@ class TestOtherPlayersList:
             "Players[0].GetDiplomacy = function(self) local d = ask(self)\n"
             f"d.{method} = nil return d end end\n"
         )
-        entry = o.others(o.state_of(setup))[1]
+        entry = o.others(o.state_of("Civ6Stub.setPeace(0, 1, true)\n" + setup))[1]
         assert absent not in entry
         assert entry[present] is False
 

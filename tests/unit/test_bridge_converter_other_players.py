@@ -199,11 +199,11 @@ class TestAStateTheStandInExports:
         ).convert(state)
 
     def test_it_converts_without_error_and_a_player_not_at_war_is_left_out(self) -> None:
-        converted = self._convert("")
+        converted = self._convert("Civ6Stub.setPeace(0, 1, true)\n")
         assert _ids(converted["units"]) == [101, 102, 212]
         assert converted["_others"]["observes_others"] is True
         assert converted["_others"]["hostile_units"] == 1
-        # The default enemy warrior 201 (player 1): a major with no war declared.
+        # The enemy warrior 201 (player 1): a major the player is at peace with.
         assert converted["_others"]["left_out_not_hostile"] == 1
 
     def test_a_player_at_war_is_on_the_enemy_side(self) -> None:

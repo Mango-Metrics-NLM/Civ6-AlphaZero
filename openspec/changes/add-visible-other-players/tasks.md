@@ -7,7 +7,7 @@
 - [x] 1.4 `StateExporter.lua`: players, unit and city visibility, `other_players`, tiles
 - [x] 1.5 `ActionExecutor.lua`: attack targets the player sees
 - [x] 1.6 `protocol.py`, `other_players.py`, `StateConverter`
-- [ ] 1.7 Independent review (`sdlc-architect`) and its findings fixed with tests
+- [x] 1.7 Independent review (`sdlc-architect`); four findings fixed with tests (`tests/unit/test_lua_other_players_review.py`)
 - [x] 1.8 Docs: `docs/LIVE_CIV6.md`, `CHANGELOG.md`, `CLAUDE.md`, gap register
 
 ## 2. Not in this change

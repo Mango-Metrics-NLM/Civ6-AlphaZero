@@ -332,20 +332,26 @@ end
 -- What another player is to this one: { id, kind, at_war, met }. at_war and
 -- met are left out when the game cannot be asked (unknown, never "at peace").
 local function describeOtherPlayer(playerId, otherId)
-    local entry = { id = otherId, kind = "minor" }
+    local entry = { id = otherId, kind = "unknown" }
     local other = Players and Players[otherId]
-    local function is(method)
+    -- true / false as the game answers; nil when the method raises or gives
+    -- no boolean. IsFreeCities does not exist without the expansions, which
+    -- is an answer (no), not a failure.
+    local function is(method, absentMeans)
+        if other and other[method] == nil then return absentMeans end
         local ok, value = pcall(function() return other[method](other) end)
-        return ok and value == true
+        if ok and type(value) == "boolean" then return value end
+        return nil
     end
-    if other then
-        if is("IsBarbarian") then
-            entry.kind = "barbarian"
-        elseif is("IsFreeCities") then
-            entry.kind = "free"
-        elseif is("IsMajor") then
-            entry.kind = "major"
-        end
+    local barbarian, free, major = is("IsBarbarian"), is("IsFreeCities", false), is("IsMajor")
+    if barbarian == true then
+        entry.kind = "barbarian"
+    elseif free == true then
+        entry.kind = "free"
+    elseif major == true and barbarian == false then
+        entry.kind = "major"
+    elseif major == false and barbarian == false and free == false then
+        entry.kind = "minor"
     end
     if entry.kind == "barbarian" then
         entry.at_war = true
@@ -510,7 +516,7 @@ local function exportUnits(playerId)
         local player = Players[pid]
         local okUnits, playerUnits = pcall(function() return player and player:GetUnits() end)
         if okUnits and playerUnits then
-            do
+            local function walk()
                 for i, unit in playerUnits:Members() do
                     local x, y = unit:GetX(), unit:GetY()
                     local own = (pid == playerId)
@@ -598,6 +604,9 @@ local function exportUnits(playerId)
                     end
                 end
             end
+            -- Somebody else's unit that cannot be read must not cost the
+            -- player its own: only the own walk may fail the export.
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 
@@ -620,7 +629,7 @@ local function exportCities(playerId)
         local player = Players[pid]
         local okCities, playerCities = pcall(function() return player and player:GetCities() end)
         if okCities and playerCities then
-            do
+            local function walk()
                 for i, city in playerCities:Members() do
                     local x, y = city:GetX(), city:GetY()
                     local own = (pid == playerId)
@@ -704,6 +713,7 @@ local function exportCities(playerId)
                     end
                 end
             end
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 

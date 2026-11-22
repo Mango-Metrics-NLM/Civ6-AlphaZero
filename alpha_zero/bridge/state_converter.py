@@ -359,7 +359,7 @@ class StateConverter:
             # configured, the normalised names (which it skips) when not.
             "technologies": technologies,
             "civics": civics,
-            "victory_progress": self._extract_victory_progress(state),
+            "victory_progress": self._extract_victory_progress(shown),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             # Which registry numbered the research above (None: none), so the

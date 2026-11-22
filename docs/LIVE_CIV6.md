@@ -481,6 +481,10 @@ For the checklist:
     tile is not exported; note where a spy inside a city shows up, if at all.
 25. A tile you explored and left: it is still in the map with its terrain, and has no `owner_id`.
 26. Time one export with the setting on, in the middle of a game.
+27. With a unit you cannot see standing next to one of yours (hard to arrange; a submarine
+    beside a land unit on the coast will do): is a `move` onto its tile offered? The mod asks
+    the game's own check, which knows the unit is there, so a missing offer gives it away. If
+    you send the move anyway, the answer must say only that it was refused.
 
 ### Environment variables
 

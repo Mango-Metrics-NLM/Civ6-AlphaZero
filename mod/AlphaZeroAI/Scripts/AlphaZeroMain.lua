@@ -1925,20 +1925,26 @@ end
 -- What another player is to this one: { id, kind, at_war, met }. at_war and
 -- met are left out when the game cannot be asked (unknown, never "at peace").
 local function describeOtherPlayer(playerId, otherId)
-    local entry = { id = otherId, kind = "minor" }
+    local entry = { id = otherId, kind = "unknown" }
     local other = Players and Players[otherId]
-    local function is(method)
+    -- true / false as the game answers; nil when the method raises or gives
+    -- no boolean. IsFreeCities does not exist without the expansions, which
+    -- is an answer (no), not a failure.
+    local function is(method, absentMeans)
+        if other and other[method] == nil then return absentMeans end
         local ok, value = pcall(function() return other[method](other) end)
-        return ok and value == true
+        if ok and type(value) == "boolean" then return value end
+        return nil
     end
-    if other then
-        if is("IsBarbarian") then
-            entry.kind = "barbarian"
-        elseif is("IsFreeCities") then
-            entry.kind = "free"
-        elseif is("IsMajor") then
-            entry.kind = "major"
-        end
+    local barbarian, free, major = is("IsBarbarian"), is("IsFreeCities", false), is("IsMajor")
+    if barbarian == true then
+        entry.kind = "barbarian"
+    elseif free == true then
+        entry.kind = "free"
+    elseif major == true and barbarian == false then
+        entry.kind = "major"
+    elseif major == false and barbarian == false and free == false then
+        entry.kind = "minor"
     end
     if entry.kind == "barbarian" then
         entry.at_war = true
@@ -2103,7 +2109,7 @@ local function exportUnits(playerId)
         local player = Players[pid]
         local okUnits, playerUnits = pcall(function() return player and player:GetUnits() end)
         if okUnits and playerUnits then
-            do
+            local function walk()
                 for i, unit in playerUnits:Members() do
                     local x, y = unit:GetX(), unit:GetY()
                     local own = (pid == playerId)
@@ -2191,6 +2197,9 @@ local function exportUnits(playerId)
                     end
                 end
             end
+            -- Somebody else's unit that cannot be read must not cost the
+            -- player its own: only the own walk may fail the export.
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 
@@ -2213,7 +2222,7 @@ local function exportCities(playerId)
         local player = Players[pid]
         local okCities, playerCities = pcall(function() return player and player:GetCities() end)
         if okCities and playerCities then
-            do
+            local function walk()
                 for i, city in playerCities:Members() do
                     local x, y = city:GetX(), city:GetY()
                     local own = (pid == playerId)
@@ -2297,6 +2306,7 @@ local function exportCities(playerId)
                     end
                 end
             end
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 
@@ -3358,9 +3368,18 @@ local function executeUnitMove(playerId, command)
 
     -- As the game's own move routine does, ask about war only for a plot the
     -- player can see: a move into the fog is a move toward it, not onto it.
+    -- A refusal must not describe something the player cannot see: when
+    -- nothing of anybody else's is in sight on the plot, the answer says only
+    -- that the move was refused, not that the tile is held or by whom.
+    local unseen = not hasForeignOccupant(playerId, plot, target.x, target.y)
+    local function refusedBlind()
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Move to (%d,%d) refused", target.x, target.y)
+    end
     if plotIsVisible(playerId, target.x, target.y) then
         local warCode, warMessage = warRefusal(unit, target.x, target.y)
         if warCode then
+            if unseen and warCode == ERROR_CODES.WOULD_START_WAR then return refusedBlind() end
             return false, warCode, warMessage
         end
     end
@@ -3368,6 +3387,7 @@ local function executeUnitMove(playerId, command)
     local ok, code, message = requestUnitAction(
         unit, "UNITOPERATION_MOVE_TO", targetParams(target, "NONE"), "Move")
     if not ok then
+        if unseen and code == ERROR_CODES.OPERATION_REFUSED then return refusedBlind() end
         return false, code, message
     end
     return true, nil, string.format("Move of unit %d to (%d,%d) requested", unitId, target.x, target.y)

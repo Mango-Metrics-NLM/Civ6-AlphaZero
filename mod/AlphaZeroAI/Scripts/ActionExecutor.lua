@@ -397,9 +397,18 @@ local function executeUnitMove(playerId, command)
 
     -- As the game's own move routine does, ask about war only for a plot the
     -- player can see: a move into the fog is a move toward it, not onto it.
+    -- A refusal must not describe something the player cannot see: when
+    -- nothing of anybody else's is in sight on the plot, the answer says only
+    -- that the move was refused, not that the tile is held or by whom.
+    local unseen = not hasForeignOccupant(playerId, plot, target.x, target.y)
+    local function refusedBlind()
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Move to (%d,%d) refused", target.x, target.y)
+    end
     if plotIsVisible(playerId, target.x, target.y) then
         local warCode, warMessage = warRefusal(unit, target.x, target.y)
         if warCode then
+            if unseen and warCode == ERROR_CODES.WOULD_START_WAR then return refusedBlind() end
             return false, warCode, warMessage
         end
     end
@@ -407,6 +416,7 @@ local function executeUnitMove(playerId, command)
     local ok, code, message = requestUnitAction(
         unit, "UNITOPERATION_MOVE_TO", targetParams(target, "NONE"), "Move")
     if not ok then
+        if unseen and code == ERROR_CODES.OPERATION_REFUSED then return refusedBlind() end
         return false, code, message
     end
     return true, nil, string.format("Move of unit %d to (%d,%d) requested", unitId, target.x, target.y)

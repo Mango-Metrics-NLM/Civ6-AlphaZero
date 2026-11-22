@@ -21,15 +21,10 @@
 -- extra unit or city. Players: 0 (local), 1 (a second major, as before), 10 (a
 -- city-state: IsMajor false) and 63 (barbarians: IsBarbarian true).
 --
--- Diplomacy: a pair with no record answers FALSE to IsAtWarWith and HasMet.
--- The combat stand-in (civ6_stub_commands.lua) keeps its OWN rule, untouched: a
--- move or attack changes a war state only for a pair that was set at peace with
--- Civ6Stub.setPeace. So for a pair with no record CombatManager treats the
--- players as "not at peace" while IsAtWarWith answers false: the two are not
--- one model for an unset pair. They agree once a test sets the pair:
--- Civ6Stub.setWar(a, b, true) records the war AND clears any peace record;
--- Civ6Stub.setPeace(a, b, true) clears the war record; Civ6Stub.setPeace(a, b,
--- false) (which an attack that starts a war calls) records a war.
+-- Diplomacy: war and peace are the combat stand-in's one record
+-- (Civ6Stub.setPeace): a pair is at war unless set at peace, so IsAtWarWith and
+-- CombatManager.IsAttackChangeWarState never disagree. HasMet answers false
+-- for a pair with no record.
 --
 -- Test hooks (all on Civ6Stub):
 --   hideTile(x, y [, p])           not visible, not revealed
@@ -187,22 +182,18 @@ local function key(a, b)
     return a .. ":" .. b
 end
 
-local setPeaceBefore = Civ6Stub.setPeace
-function Civ6Stub.setPeace(a, b, atPeace)
-    setPeaceBefore(a, b, atPeace)
-    Civ6Stub.war[key(a, b)] = (not atPeace) and true or nil
-end
-function Civ6Stub.setWar(a, b, atWar)
-    Civ6Stub.war[key(a, b)] = atWar and true or nil
-    if atWar then setPeaceBefore(a, b, false) end
-end
+-- ONE record for war and peace, the combat stand-in's (Civ6Stub.atPeace): a
+-- pair is at war unless it was set at peace, for IsAtWarWith exactly as for
+-- CombatManager.IsAttackChangeWarState. Two models would let the mod be
+-- offered an attack on a unit of a player it is told it is at peace with.
+function Civ6Stub.setWar(a, b, atWar) Civ6Stub.setPeace(a, b, not atWar) end
 function Civ6Stub.setMet(a, b, met) Civ6Stub.met[key(a, b)] = met and true or nil end
 
 for _, id in ipairs(IDS) do
     Players[id].GetDiplomacy = function(self)
         local d = {}
         function d:IsAtWarWith(other)
-            return other ~= id and Civ6Stub.war[key(id, other)] == true
+            return other ~= id and Civ6Stub.atPeace[key(id, other)] ~= true
         end
         function d:HasMet(other)
             return other ~= id and Civ6Stub.met[key(id, other)] == true
