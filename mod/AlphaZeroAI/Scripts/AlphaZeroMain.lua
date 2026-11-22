@@ -1874,6 +1874,7 @@ local function otherPlayerIds(playerId)
         end
     end)
     if not listed then
+        if Log then Log.Info("Game.GetPlayers could not be asked; walking the player ids") end
         ids, seen = {}, {}
         pcall(function()
             for id = 0, GameDefines.MAX_PLAYERS - 1 do

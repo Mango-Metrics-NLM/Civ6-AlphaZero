@@ -446,6 +446,42 @@ For the checklist: 8. With `CIV6AZ_AGENT_MAX_TURNS=0 CIV6AZ_AGENT_MAX_GAME_TURNS
 greedy agent: it should end ten turns by itself and stop with exit code 0. If it stops with 3,
 the log line "Turn N is stalled" names the blocker it could not answer.
 
+### Other players (GM-B8a)
+
+By default the mod exports only your own units and cities. With `OBSERVE_ALL_PLAYERS = true`
+(in `mod/AlphaZeroAI/Scripts/Config.lua`, then rebuild the bundle and reinstall the mod) it also
+exports what you currently see of everyone else:
+
+- a unit only when the game reports both its tile and the unit itself as visible to you, with
+  its type, position, damage and strengths, and without its moves, attacks or promotions;
+- a city only while its tile is visible now, with name, position and population;
+- `other_players`: for each owner that appears, `kind` (`major`, `minor`, `barbarian`, `free`),
+  `at_war` and `met`. `at_war` is left out when the game could not be asked.
+
+The state always says which mode produced it (`observes_others`). On the Python side only
+hostile owners (at war, barbarians, free cities) are put on the enemy side; a neutral unit is
+left out and counted (`_others` in the converted state).
+
+Whatever the setting, a tile you do not see now is exported without its owner, improvement,
+resource and yields, and an attack is only offered on something you can see.
+
+**It is off by default because none of it has run in a real game.** The calls were taken from
+the game's own UI code; the items below are what only a live game can show.
+
+For the checklist:
+
+21. Turn `OBSERVE_ALL_PLAYERS` on and read one state with a barbarian scout in sight: the scout
+    is in `units` with `owner` 63, and `other_players` has an entry with `kind` `barbarian`.
+    Move away until it is in the fog: it is gone from the next state.
+22. With a city-state and another major in sight: each has an entry with the right `kind`, and
+    `at_war` matches the diplomacy screen (false for someone you are at peace with).
+23. Read `Lua.log` for a line about `Game.GetPlayers`: if the call does not exist, the mod falls
+    back to walking the player ids, and says so.
+24. A unit you know to be hidden from you (a submarine out of sight range, a spy) on a visible
+    tile is not exported; note where a spy inside a city shows up, if at all.
+25. A tile you explored and left: it is still in the map with its terrain, and has no `owner_id`.
+26. Time one export with the setting on, in the middle of a game.
+
 ### Environment variables
 
 | Variable | Default | Meaning |
