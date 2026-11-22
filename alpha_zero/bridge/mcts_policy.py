@@ -248,14 +248,17 @@ class BridgeMCTSEnv(EnvironmentProtocol):
 
         self.env.done = False
 
-        # With nobody else in the seeded state the simulator sees one
-        # surviving player and would call the game won on the first step;
-        # ``step`` does not let it end for that reason. With the mod's default
-        # settings this is EVERY live state, not only an opening: the mod
-        # exports the acting player's own units and cities unless
-        # OBSERVE_ALL_PLAYERS is on, so the search plans on a board with no
-        # other player on it (registered as a gap; it needs a mod change).
+        # The simulator knows only what the player can see. It calls a game
+        # won once one side has no units and no cities left, so with nobody
+        # else seeded it would be won on the first step, and with one visible
+        # scout it would be won by killing the scout. Neither is the game:
+        # ``step`` never lets the acting player win by elimination (GM-B8b).
+        # Its own elimination stays a loss; its own units are all known.
         me = self.env.current_player
+        self._root_player = me
+        # Shared by every clone, so the count covers the whole search.
+        self._search_counts: dict[str, int] = {"elimination_suppressed": 0}
+        self._win_taken_back = False  # on this line of play (copied by clone)
         self._no_visible_enemy = not any(u.player != me for u in self.env.units) and not any(
             c.player != me for c in self.env.cities
         )
@@ -392,6 +395,9 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         new_env.proxy_stats = dict(self.proxy_stats)
         new_env._root_mask = self._root_mask
         new_env._no_visible_enemy = self._no_visible_enemy
+        new_env._root_player = self._root_player
+        new_env._search_counts = self._search_counts
+        new_env._win_taken_back = self._win_taken_back
         return new_env
 
     def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
@@ -412,25 +418,50 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         was_done = self.env.done
         obs, reward, terminated, truncated, info = self.env.step(action)
         reward = float(reward)
-        if (
-            self._no_visible_enemy
-            and terminated
-            and not was_done
-            and not truncated
-            and self.env.turn < self.env.max_turns
-        ):
-            # Ended only because nobody else is in sight: not a win, and not a
-            # loss for whoever is to move next. The simulator applied one or
-            # the other by comparing its winner with the mover after the step.
-            if self.env.winner == self.env.current_player:
-                reward -= float(REWARDS.WIN_REWARD)
-            elif self.env.winner is not None:
-                reward += float(REWARDS.WIN_REWARD)
+        if not terminated or was_done:
+            return obs, reward, terminated, truncated, info
+
+        at_the_limit = bool(truncated) or self.env.turn >= self.env.max_turns
+        root_won = self.env.winner == self._root_player
+        if not at_the_limit and (self._no_visible_enemy or root_won):
+            # Ended because nobody the player can see is left: not a win, and
+            # the game goes on.
+            reward = self._without_the_win(reward)
             self.env.done = False
-            self.env.winner = None
             terminated = False
             obs, info = self.env.get_observation(), self.env.get_info()
+        elif at_the_limit and root_won and self._nobody_else_left():
+            # The turn limit ends the game, but "more cities than an opponent
+            # with nothing in sight" is the same fake win, only later.
+            reward = self._without_the_win(reward)
         return obs, reward, terminated, truncated, info
+
+    def _nobody_else_left(self) -> bool:
+        me = self._root_player
+        return not any(u.player != me for u in self.env.units) and not any(
+            c.player != me for c in self.env.cities
+        )
+
+    def _without_the_win(self, reward: float) -> float:
+        """Take back the win or loss the simulator just applied, and forget its winner.
+
+        The simulator applied one or the other by comparing its winner with
+        whoever is to move after the step. Counted once per line of play.
+        """
+        if self.env.winner == self.env.current_player:
+            reward -= float(REWARDS.WIN_REWARD)
+        elif self.env.winner is not None:
+            reward += float(REWARDS.WIN_REWARD)
+        self.env.winner = None
+        if not self._win_taken_back:
+            self._win_taken_back = True
+            self._search_counts["elimination_suppressed"] += 1
+        return reward
+
+    @property
+    def elimination_suppressed(self) -> int:
+        """Lines of play, over this env and its clones, on which a win over nothing visible was taken back."""
+        return self._search_counts["elimination_suppressed"]
 
     def get_observation(self) -> dict[str, np.ndarray]:
         obs = self.env.get_observation()
@@ -457,6 +488,14 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     @property
     def turn(self) -> int:
         return self.env.turn
+
+
+def _others_of(converted_state: dict[str, Any]) -> dict[str, int] | None:
+    """The converter's count of other players' units and cities, as plain ints."""
+    others = converted_state.get("_others")
+    if not isinstance(others, dict):
+        return None
+    return {str(key): int(value) for key, value in others.items()}
 
 
 class Civ6MctsPolicy:
@@ -584,6 +623,10 @@ class Civ6MctsPolicy:
             "root_value": 0.0,
             "search": {"root_evals": 0, "sim_evals": 0},
             "proxy": {key: int(value) for key, value in env.proxy_stats.items()},
+            # What of the other players went into the simulator (GM-B8): None
+            # for a state from a mod that says nothing about them.
+            "others": _others_of(converted_state),
+            "elimination_suppressed": 0,
             "seed": seed,
             "fallback": None,
         }
@@ -604,6 +647,7 @@ class Civ6MctsPolicy:
         policy_probs, root_value = await asyncio.to_thread(mcts.search, env)
         stats = mcts.last_search_stats
         record["root_value"] = float(root_value)
+        record["elimination_suppressed"] = int(env.elimination_suppressed)
         record["search"] = {"root_evals": int(stats.root_evals), "sim_evals": int(stats.sim_evals)}
 
         probs = np.asarray(policy_probs, dtype=np.float64)
