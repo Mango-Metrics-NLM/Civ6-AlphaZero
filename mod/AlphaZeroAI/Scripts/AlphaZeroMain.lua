@@ -1851,18 +1851,109 @@ local function getHexTilesInRange(cx, cy, range)
     return tiles
 end
 
--- Get observable player IDs (own player + optionally all others)
+-- Whether other players are exported at all (OBSERVE_ALL_PLAYERS).
+local function observesOthers()
+    return (AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")) == true
+end
+
+-- The ids of the other living players, as the game's own UI finds them:
+-- Game.GetPlayers{Alive = true}, else every id below GameDefines.MAX_PLAYERS
+-- that has a living player. Barbarians and city-states have high ids, so a
+-- count is never used as an id. Nobody when neither can be asked.
+local function otherPlayerIds(playerId)
+    local ids, seen = {}, {}
+    local function add(id)
+        if type(id) == "number" and id ~= playerId and not seen[id] then
+            seen[id] = true
+            table.insert(ids, id)
+        end
+    end
+    local listed = pcall(function()
+        for _, player in ipairs(Game.GetPlayers({ Alive = true })) do
+            add(player:GetID())
+        end
+    end)
+    if not listed then
+        ids, seen = {}, {}
+        pcall(function()
+            for id = 0, GameDefines.MAX_PLAYERS - 1 do
+                local player = Players[id]
+                if player and player:IsAlive() then add(id) end
+            end
+        end)
+    end
+    table.sort(ids)
+    return ids
+end
+
+-- Get observable player IDs (own player first, then the others when observed)
 local function getObservablePlayerIds(playerId)
     local playerIds = {playerId}
-    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
-    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            if i ~= playerId then
-                table.insert(playerIds, i)
-            end
+    if observesOthers() then
+        for _, id in ipairs(otherPlayerIds(playerId)) do
+            table.insert(playerIds, id)
         end
     end
     return playerIds
+end
+
+-- The player's visibility table, or nil when the game cannot be asked.
+local function visibilityOf(playerId)
+    local ok, visibility = pcall(function()
+        return PlayersVisibility and PlayersVisibility[playerId]
+    end)
+    return ok and visibility or nil
+end
+
+-- Whether the player sees the tile now. False when the game cannot say.
+local function seesTile(visibility, x, y)
+    if not visibility then return false end
+    local ok, visible = pcall(function() return visibility:IsVisible(x, y) end)
+    return ok and visible == true
+end
+
+-- Whether the player sees this unit: its tile and the unit itself, as the
+-- game's UI asks (a stealth unit on a visible tile is not seen). False when
+-- either cannot be asked.
+local function seesUnit(visibility, unit, x, y)
+    if not seesTile(visibility, x, y) then return false end
+    local ok, visible = pcall(function() return visibility:IsUnitVisible(unit) end)
+    return ok and visible == true
+end
+
+-- What another player is to this one: { id, kind, at_war, met }. at_war and
+-- met are left out when the game cannot be asked (unknown, never "at peace").
+local function describeOtherPlayer(playerId, otherId)
+    local entry = { id = otherId, kind = "minor" }
+    local other = Players and Players[otherId]
+    local function is(method)
+        local ok, value = pcall(function() return other[method](other) end)
+        return ok and value == true
+    end
+    if other then
+        if is("IsBarbarian") then
+            entry.kind = "barbarian"
+        elseif is("IsFreeCities") then
+            entry.kind = "free"
+        elseif is("IsMajor") then
+            entry.kind = "major"
+        end
+    end
+    if entry.kind == "barbarian" then
+        entry.at_war = true
+    end
+    pcall(function()
+        local diplomacy = Players[playerId]:GetDiplomacy()
+        local okWar, atWar = pcall(function() return diplomacy:IsAtWarWith(otherId) end)
+        if okWar and type(atWar) == "boolean" and entry.at_war == nil then
+            entry.at_war = atWar
+        end
+        local okMet, met = pcall(function() return diplomacy:HasMet(otherId) end)
+        if okMet and type(met) == "boolean" then
+            entry.met = met
+        end
+    end)
+    return entry
 end
 
 -- Whether the executor would carry this command out now. The executor's
@@ -1916,11 +2007,7 @@ local function exportMap(playerId)
     local tileCount = 0
     local includeFog = AlphaZeroConfig and AlphaZeroConfig.Get("INCLUDE_FOG_OF_WAR")
 
-    local visibilityPlayer = Players and Players[playerId]
-    local playerVisibility = nil
-    if visibilityPlayer and PlayersVisibility then
-        playerVisibility = PlayersVisibility[playerId]
-    end
+    local playerVisibility = visibilityOf(playerId)
 
     for x = 0, mapData.width - 1 do
         for y = 0, mapData.height - 1 do
@@ -1930,12 +2017,14 @@ local function exportMap(playerId)
 
             local plot = Map.GetPlot(x, y)
             if plot then
-                local isVisible = true
-                local isRevealed = true
-
+                -- Nothing is visible when the game cannot be asked.
+                local isVisible = seesTile(playerVisibility, x, y)
+                local isRevealed = false
                 if playerVisibility then
-                    isVisible = playerVisibility:IsVisible(x, y)
-                    isRevealed = playerVisibility:IsRevealed(x, y)
+                    local okRevealed, revealed = pcall(function()
+                        return playerVisibility:IsRevealed(x, y)
+                    end)
+                    isRevealed = okRevealed and revealed == true
                 end
 
                 if isRevealed or not includeFog then
@@ -1944,13 +2033,17 @@ local function exportMap(playerId)
                         y = y,
                         terrain = getTerrainTypeName(plot:GetTerrainType()),
                         features = {},
-                        resource = getResourceTypeName(plot:GetResourceType()),
-                        improvement = getImprovementTypeName(plot:GetImprovementType()),
-                        owner_id = plot:GetOwner(),
                         is_visible = isVisible,
                         is_revealed = isRevealed,
                         yields = {},
                     }
+                    -- Who owns a tile, what is built on it and what it holds
+                    -- are facts of now: only for a tile the player sees now.
+                    if isVisible then
+                        tile.resource = getResourceTypeName(plot:GetResourceType())
+                        tile.improvement = getImprovementTypeName(plot:GetImprovementType())
+                        tile.owner_id = plot:GetOwner()
+                    end
 
                     -- Add features
                     local featureType = plot:GetFeatureType()
@@ -2002,24 +2095,47 @@ local function exportUnits(playerId)
         return units
     end
 
-    local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
+    local playerVisibility = visibilityOf(playerId)
     local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
-        if player then
-            local playerUnits = player:GetUnits()
-            if playerUnits then
+        local okUnits, playerUnits = pcall(function() return player and player:GetUnits() end)
+        if okUnits and playerUnits then
+            do
                 for i, unit in playerUnits:Members() do
                     local x, y = unit:GetX(), unit:GetY()
+                    local own = (pid == playerId)
 
-                    -- Check visibility for non-own units
-                    local canSee = (pid == playerId)
-                    if not canSee and playerVisibility then
-                        canSee = playerVisibility:IsVisible(x, y)
+                    -- Another player's unit only when this player sees it.
+                    local canSee = own
+                    if not own then
+                        canSee = x ~= -9999
+                            and safeCall(unit, "IsDead") ~= true
+                            and safeCall(unit, "IsDelayedDeath") ~= true
+                            and seesUnit(playerVisibility, unit, x, y)
                     end
 
-                    if canSee then
+                    if canSee and not own then
+                        -- Only what the game shows of somebody else's unit:
+                        -- no moves left, attacks left or promotions.
+                        local typeInfo = getUnitTypeInfo(unit:GetUnitType())
+                        local dmg = safeCall(unit, "GetDamage") or 0
+                        table.insert(units, {
+                            id = unit:GetID(),
+                            type_name = typeInfo.type_name,
+                            owner = pid,
+                            x = x,
+                            y = y,
+                            hp = 100 - dmg,
+                            max_hp = 100,
+                            damage = dmg,
+                            combat_strength = safeCall(unit, "GetCombat") or 0,
+                            ranged_strength = safeCall(unit, "GetRangedCombat") or 0,
+                            range = safeCall(unit, "GetRange") or 0,
+                            is_civilian = typeInfo.is_civilian,
+                        })
+                    elseif canSee then
                         local typeInfo = getUnitTypeInfo(unit:GetUnitType())
 
                         -- Wrap unit data construction in pcall — some methods
@@ -2089,24 +2205,38 @@ local function exportCities(playerId)
         return cities
     end
 
-    local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
+    local playerVisibility = visibilityOf(playerId)
     local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
-        if player then
-            local playerCities = player:GetCities()
-            if playerCities then
+        local okCities, playerCities = pcall(function() return player and player:GetCities() end)
+        if okCities and playerCities then
+            do
                 for i, city in playerCities:Members() do
                     local x, y = city:GetX(), city:GetY()
+                    local own = (pid == playerId)
 
-                    -- Check visibility
-                    local canSee = (pid == playerId)
-                    if not canSee and playerVisibility then
-                        canSee = playerVisibility:IsRevealed(x, y)
-                    end
+                    -- Another player's city only while its tile is seen now:
+                    -- a city seen once and now in fog would give away who
+                    -- holds it today.
+                    local canSee = own or seesTile(playerVisibility, x, y)
 
-                    if canSee then
+                    if canSee and not own then
+                        local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
+                        table.insert(cities, {
+                            id = city:GetID(),
+                            name = safeCall(city, "GetName") or "Unknown",
+                            owner = pid,
+                            x = x,
+                            y = y,
+                            population = safeCall(city, "GetPopulation") or 1,
+                            is_capital = (ok_cap and is_cap) or false,
+                            buildings = {},
+                            districts = {},
+                            available_production = {},
+                        })
+                    elseif canSee then
                         -- pcall wrappers for city methods that may not exist in all contexts
                         local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
                         local ok_str, str_val = pcall(function() return city:GetStrengthValue() end)
@@ -2603,6 +2733,28 @@ function AlphaZeroStateExporter.ExportState(playerId)
 
     ok, result = pcall(exportCities, playerId)
     state.cities = ok and result or {}
+
+    -- Who the other owners in this state are to the player (GM-B8a).
+    state.observes_others = observesOthers()
+    state.other_players = {}
+    pcall(function()
+        local owners, seen = {}, {}
+        local function note(list)
+            for _, item in ipairs(list) do
+                local owner = item.owner
+                if type(owner) == "number" and owner ~= playerId and not seen[owner] then
+                    seen[owner] = true
+                    table.insert(owners, owner)
+                end
+            end
+        end
+        note(state.units)
+        note(state.cities)
+        table.sort(owners)
+        for _, owner in ipairs(owners) do
+            table.insert(state.other_players, describeOtherPlayer(playerId, owner))
+        end
+    end)
 
     ok, result = pcall(exportPlayer, playerId)
     state.player = ok and result or {id = playerId}
@@ -3128,19 +3280,34 @@ local function targetParams(target, modifierName)
     return params
 end
 
--- Whether another player's unit or city stands on the plot.
+-- Whether the player sees something of another player's on the plot: a unit
+-- the game says this player sees (its tile and the unit itself, so not a
+-- stealth unit), or a city on a tile seen now. An occupant the player cannot
+-- see is no target: offering an attack on it would give it away. When the
+-- game cannot be asked about visibility, nothing is seen.
 local function hasForeignOccupant(playerId, plot, x, y)
+    local visibility = nil
+    pcall(function() visibility = PlayersVisibility and PlayersVisibility[playerId] end)
+    local plotSeen = false
+    pcall(function() plotSeen = visibility:IsVisible(x, y) == true end)
+    if not plotSeen then return false end
+
+    local function seen(unit)
+        local ok, visible = pcall(function() return visibility:IsUnitVisible(unit) end)
+        return ok and visible == true
+    end
+
     local found = false
     pcall(function()
         local units = Units and Units.GetUnitsInPlot and Units.GetUnitsInPlot(plot)
         if type(units) ~= "table" then return end
         if units.Members then
             for _, unit in units:Members() do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         else
             for _, unit in ipairs(units) do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         end
     end)

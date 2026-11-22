@@ -320,19 +320,34 @@ local function targetParams(target, modifierName)
     return params
 end
 
--- Whether another player's unit or city stands on the plot.
+-- Whether the player sees something of another player's on the plot: a unit
+-- the game says this player sees (its tile and the unit itself, so not a
+-- stealth unit), or a city on a tile seen now. An occupant the player cannot
+-- see is no target: offering an attack on it would give it away. When the
+-- game cannot be asked about visibility, nothing is seen.
 local function hasForeignOccupant(playerId, plot, x, y)
+    local visibility = nil
+    pcall(function() visibility = PlayersVisibility and PlayersVisibility[playerId] end)
+    local plotSeen = false
+    pcall(function() plotSeen = visibility:IsVisible(x, y) == true end)
+    if not plotSeen then return false end
+
+    local function seen(unit)
+        local ok, visible = pcall(function() return visibility:IsUnitVisible(unit) end)
+        return ok and visible == true
+    end
+
     local found = false
     pcall(function()
         local units = Units and Units.GetUnitsInPlot and Units.GetUnitsInPlot(plot)
         if type(units) ~= "table" then return end
         if units.Members then
             for _, unit in units:Members() do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         else
             for _, unit in ipairs(units) do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         end
     end)

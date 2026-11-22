@@ -31,6 +31,7 @@ from typing import Any, Literal
 import torch
 
 from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_config
+from alpha_zero.bridge.other_players import shown_to_the_agent
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
@@ -314,20 +315,18 @@ class StateConverter:
         else:
             state = civ6_state
 
-        # Validate map size before scaling
         if state.map_data.width <= 0 or state.map_data.height <= 0:
             raise GameNotStartedError(
                 f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
                 "Map dimensions must be positive."
             )
 
-        # Set up coordinate scaling
         self._setup_scaling(state.map_data.width, state.map_data.height)
 
-        # Convert each component
         terrain = self._convert_terrain(state)
-        units = self._convert_units(state)
-        cities = self._convert_cities(state)
+        shown, others = shown_to_the_agent(state)
+        units = self._convert_units(shown)
+        cities = self._convert_cities(shown)
         visibility = self._convert_visibility(state)
 
         # Build player info
@@ -373,6 +372,7 @@ class StateConverter:
             # the game's own map; the two differ on any map that is scaled.
             "_board_size": self.board_size,
             "_player_id": state.player_id,
+            "_others": others,
             # Pass-through reference to the original GameStateData so downstream
             # callers (e.g. agent_loop._build_observation) can re-encode without
             # re-running convert() on a dict that no longer has the raw schema.
