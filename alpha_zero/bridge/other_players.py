@@ -18,7 +18,7 @@ from collections.abc import Mapping
 from dataclasses import replace
 from typing import Any
 
-__all__ = ["is_hostile", "owner_relations", "partition", "shown_to_the_agent"]
+__all__ = ["is_hostile", "owner_relations", "partition", "renumbered", "shown_to_the_agent"]
 
 
 def optional_bool(value: Any) -> bool | None:
@@ -29,6 +29,26 @@ def optional_bool(value: Any) -> bool | None:
 def dict_entries(value: Any) -> list[dict[str, Any]]:
     """The dictionaries of a list; anything else (an empty Lua table sent as ``{}``) is none."""
     return [entry for entry in value if isinstance(entry, dict)] if isinstance(value, list) else []
+
+
+def renumbered(items: list[Any], keys: tuple[str, ...], mapping: Mapping[int, int]) -> list[Any]:
+    """Copies of ``items`` with the player id under each of ``keys`` renumbered by ``mapping``.
+
+    An id the mapping does not know, and an item that is not a dictionary, are
+    kept as they are. Used when a state's player ids are made contiguous: every
+    place that names a player has to be renumbered together, or an owner and
+    its ``other_players`` entry no longer meet.
+    """
+    result: list[Any] = []
+    for item in items:
+        if isinstance(item, dict):
+            item = dict(item)
+            for key in keys:
+                value = item.get(key)
+                if isinstance(value, int) and not isinstance(value, bool) and value in mapping:
+                    item[key] = mapping[value]
+        result.append(item)
+    return result
 
 
 HOSTILE = "hostile"
