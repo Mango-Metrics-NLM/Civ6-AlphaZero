@@ -168,3 +168,107 @@ class TestTheCounterCountsLinesNotSteps:
         later = env.clone()
         later.step(END_TURN)
         assert env.elimination_suppressed == 1
+
+
+def _mutual(extra_own: list[Any] | None = None) -> GameStateData:
+    """Own and enemy one-health warriors side by side: an attack kills both."""
+    return make_state(
+        size=16,
+        units=[
+            unit(2, "UNIT_WARRIOR", 0, 5, 5, health=1),
+            unit(3, "UNIT_WARRIOR", 1, 6, 5, health=1),
+            *(extra_own or []),
+        ],
+    )
+
+
+def _enemy_attack(env: BridgeMCTSEnv) -> int:
+    return int(
+        env.env.action_space_handler.encode_action(
+            {"type": "attack", "unit_idx": 0, "direction": (-1, 0)}
+        )
+    )
+
+
+class TestTheLossIsPaid:
+    """Review (Copilot, PR #165): a mutual kill was declared a loss but paid nothing."""
+
+    def test_the_acting_player_s_own_attack(self) -> None:
+        env = _env(_mutual())
+        _, reward, terminated, _, _ = env.step(_attack(env))
+        assert not any(u.player == 0 for u in env.env.units), "the attacker survived"
+        assert terminated is True and env.env.winner == 1
+        # The acting player is still to move after its own attack: it is paid the loss.
+        assert env.env.current_player == 0
+        assert reward <= -WIN / 2
+
+    def test_the_enemy_s_attack(self) -> None:
+        env = _env(_mutual())
+        env.step(END_TURN)
+        assert env.env.current_player == 1
+        _, reward, terminated, _, _ = env.step(_enemy_attack(env))
+        if any(u.player == 0 for u in env.env.units) or any(u.player == 1 for u in env.env.units):
+            pytest.fail("the enemy attack did not kill both units: adjust the scenario")
+        assert terminated is True and env.env.winner == 1
+        # The enemy is to move after its own attack: it is paid the win.
+        assert env.env.current_player == 1
+        assert reward >= WIN / 2
+
+    def test_control_a_loss_the_simulator_already_paid_is_not_paid_twice(self) -> None:
+        """The enemy kills the acting player's last unit and survives: the simulator's own
+        loss, untouched."""
+        state = make_state(
+            size=16,
+            units=[
+                unit(2, "UNIT_WARRIOR", 0, 5, 5, health=1),
+                unit(3, "UNIT_WARRIOR", 1, 6, 5),
+            ],
+        )
+        env = _env(state)
+        env.step(END_TURN)
+        _, reward, terminated, _, _ = env.step(_enemy_attack(env))
+        if any(u.player == 0 for u in env.env.units):
+            pytest.fail("the enemy attack did not kill the unit: adjust the scenario")
+        assert terminated is True and env.env.winner == 1
+        assert reward < 2 * WIN
+
+
+class TestUnitsTheSimulatorLeftOutAreStillAlive:
+    """Review (Copilot, PR #165): an own scout has no stand-in in the simulator, so losing
+    every own piece IN the simulator is not losing the game while the scout lives."""
+
+    def test_a_mutual_kill_with_an_own_scout_alive_is_not_a_loss(self) -> None:
+        env = _env(_mutual([unit(8, "UNIT_SCOUT", 0, 1, 1)]))
+        assert env.proxy_stats["own_units_not_represented"] == 1
+        _, reward, terminated, _, info = env.step(_attack(env))
+        assert not any(u.player == 0 for u in env.env.units), "the attacker survived"
+        assert terminated is False
+        assert env.env.winner is None and info["winner"] is None
+        assert abs(reward) < WIN
+
+    def test_the_enemy_killing_the_last_simulated_unit_is_not_a_loss_either(self) -> None:
+        state = make_state(
+            size=16,
+            units=[
+                unit(2, "UNIT_WARRIOR", 0, 5, 5, health=1),
+                unit(8, "UNIT_SCOUT", 0, 1, 1),
+                unit(3, "UNIT_WARRIOR", 1, 6, 5),
+            ],
+        )
+        env = _env(state)
+        env.step(END_TURN)
+        _, _, terminated, _, _ = env.step(_enemy_attack(env))
+        if any(u.player == 0 for u in env.env.units):
+            pytest.fail("the enemy attack did not kill the unit: adjust the scenario")
+        assert terminated is False and env.env.winner is None
+
+    def test_a_clone_keeps_the_count(self) -> None:
+        env = _env(_mutual([unit(8, "UNIT_SCOUT", 0, 1, 1)])).clone()
+        _, _, terminated, _, _ = env.step(_attack(env))
+        assert terminated is False
+
+    def test_an_enemy_unit_left_out_does_not_count_as_own(self) -> None:
+        env = _env(_mutual([unit(8, "UNIT_SCOUT", 1, 1, 1)]))
+        assert env.proxy_stats["own_units_not_represented"] == 0
+        _, _, terminated, _, _ = env.step(_attack(env))
+        assert terminated is True and env.env.winner == 1

@@ -191,6 +191,8 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         # told from a warrior.
         raw_types = raw_unit_types(converted_state)
         units_not_represented = 0
+        own_units_not_represented = 0
+        acting_player = converted_state.get("current_player", 0)
         self.env.units = []
         for u_dict in converted_state.get("units", []):
             unit_class = simulator_unit_class(
@@ -199,6 +201,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             )
             if unit_class is None:
                 units_not_represented += 1
+                own_units_not_represented += int(u_dict.get("player") == acting_player)
                 continue
             self.env.units.append(
                 Unit(
@@ -259,6 +262,10 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         # Shared by every clone, so the count covers the whole search.
         self._search_counts: dict[str, int] = {"elimination_suppressed": 0}
         self._win_taken_back = False  # on this line of play (copied by clone)
+        # Own units the simulator has no stand-in for (a scout, a builder) are
+        # still the player's: with any of them alive, losing every piece IN the
+        # simulator is not losing the game.
+        self._own_left_out = own_units_not_represented
         self._no_visible_enemy = not any(u.player != me for u in self.env.units) and not any(
             c.player != me for c in self.env.cities
         )
@@ -266,6 +273,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         self.proxy_stats: dict[str, int] = {
             "units": len(self.env.units),
             "units_not_represented": units_not_represented,
+            "own_units_not_represented": own_units_not_represented,
             "impassable_tiles": impassable_tiles,
             "busy_cities": busy_cities,
             "no_visible_enemy": int(self._no_visible_enemy),
@@ -399,6 +407,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         new_env._root_player = self._root_player
         new_env._search_counts = self._search_counts
         new_env._win_taken_back = self._win_taken_back
+        new_env._own_left_out = self._own_left_out
         return new_env
 
     def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
@@ -423,14 +432,27 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             return obs, reward, terminated, truncated, info
 
         me = self._root_player
+        at_the_limit = bool(truncated) or self.env.turn >= self.env.max_turns
+        if not self._has_pieces(me) and self._own_left_out:
+            # Nothing of the player's is left in the simulator, but units it
+            # has no stand-in for are still alive in the game: not a loss.
+            reward = self._without_the_win(reward, count=False)
+            if not at_the_limit:
+                self.env.done = False
+                terminated = False
+            return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
         if not self._has_pieces(me):
             # The acting player has nothing left: a loss, also when its last
-            # unit took the last visible enemy with it (the simulator calls
-            # that a draw).
-            self.env.winner = next(p for p in range(self.env.num_players) if p != me)
+            # unit took the last visible enemy with it. The simulator calls
+            # that a draw and pays nothing, so the loss is paid here, to
+            # whoever is to move after the step, as the simulator would.
+            if self.env.winner is None:
+                enemy = next(p for p in range(self.env.num_players) if p != me)
+                self.env.winner = enemy
+                win = float(REWARDS.WIN_REWARD)
+                reward += win if self.env.current_player == enemy else -win
             return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
 
-        at_the_limit = bool(truncated) or self.env.turn >= self.env.max_turns
         root_won = self.env.winner == me
         if not at_the_limit and (self._no_visible_enemy or root_won):
             # Ended because nobody the player can see is left: not a win, and
@@ -452,7 +474,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     def _enemy_city_in_sight(self) -> bool:
         return any(c.player != self._root_player for c in self.env.cities)
 
-    def _without_the_win(self, reward: float) -> float:
+    def _without_the_win(self, reward: float, *, count: bool = True) -> float:
         """Take back the win or loss the simulator just applied, and forget its winner.
 
         The simulator applied one or the other by comparing its winner with
@@ -466,7 +488,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         elif self.env.winner is not None:
             reward += float(REWARDS.WIN_REWARD)
         self.env.winner = None
-        if not self._win_taken_back:
+        if count and not self._win_taken_back:
             self._win_taken_back = True
             self._search_counts["elimination_suppressed"] += 1
         return reward
