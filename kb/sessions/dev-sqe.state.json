@@ -1,7 +1,7 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
   "last_timestamp": "2026-11-22T05:30:00Z",
-  "current_focus": "Game-mechanics program: the live bridge. Open PRs: #162 (GM-B6a), #163 (GM-B6b). Built, no PR: GM-B8a (claude/gm-b8a-visible-others), GM-B8b (claude/gm-b8b-search-opponent). Nothing has run in a real game.",
+  "current_focus": "Game-mechanics program: the live bridge. Merged: #162 (GM-B6a), #163 (GM-B6b). Open: #164 (GM-B8a) and the GM-B8b PR (claude/gm-b8b-search-opponent, contains #164). Nothing has run in a real game.",
   "resume_pointers": {
     "current_task": "GM-B8a and GM-B8b are built and reviewed on their branches (no PRs: both slots are taken until the live sitting). Nothing further is scheduled; the maintainer's live sitting is the next real step.",
     "blocked_on": [
