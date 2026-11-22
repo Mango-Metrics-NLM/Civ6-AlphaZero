@@ -415,6 +415,37 @@ One more item for the checklist, the reason for this tool's transport fix:
    command was discarded whenever it reached the log together with the command's answer, and the
    agent then waited out its timeout while the mod gave the turn up.
 
+### What the agent remembers inside a game turn (GM-B7c-2)
+
+The agent sends several commands per game turn and gets a new state after each. Within one game
+turn it now keeps a ledger (`alpha_zero/bridge/turn_ledger.py`):
+
+- a command the mod refused is not sent again that turn;
+- research (technology, civic) and each city's production are chosen once per turn. The game
+  never offers the item already in progress, so without this the agent changed its mind after
+  every choice until the cap;
+- a command that was accepted but whose expected effect is not in the next state is tried once
+  more and then left alone. This reads what the mod exports: `unit_skip` and `unit_fortify` show
+  no change there, so they are tried twice per turn. It is a suspicion, not a verdict, until the
+  number of frames a request takes has been measured live;
+- after the game blocks `end_turn`, the agent does not choose `end_turn` again while anything
+  else is offered and the state has not changed;
+- a choice the converter rejects is chosen again, not answered by ending the turn;
+- what the ledger rules out is removed from the offers before the policy is asked;
+- past the cap, commands that can answer a blocker (research, production, skip, fortify, sleep)
+  still go out while the game blocks `end_turn`, up to twice the cap;
+- research or a city's production may be chosen again in the same turn when the game asks again
+  (a boost finished the research; the state shows nothing in progress);
+- three blocked `end_turn` answers in a row with no change in between is a stall: see
+  `CIV6AZ_AGENT_ON_STALL` below.
+
+The session statistics name each: `commands_sent`, `refused_commands`, `no_effect_commands`,
+`reselections`, `blocked_end_turns`, `stalled_turns`, `game_turns_played`.
+
+For the checklist: 8. With `CIV6AZ_AGENT_MAX_TURNS=0 CIV6AZ_AGENT_MAX_GAME_TURNS=10`, start the
+greedy agent: it should end ten turns by itself and stop with exit code 0. If it stops with 3,
+the log line "Turn N is stalled" names the blocker it could not answer.
+
 ### Environment variables
 
 | Variable | Default | Meaning |
@@ -422,6 +453,10 @@ One more item for the checklist, the reason for this tool's transport fix:
 | `CIV6_BRIDGE_TRANSPORT` | `file` | `socket` for the headless FireTuner path (recommended); `file` needs the FireTuner GUI relay. |
 | `CIV6_BRIDGE_TUNER_HOST` / `CIV6_BRIDGE_TUNER_PORT` | `127.0.0.1` / `4318` | Where the game's FireTuner listener is. |
 | `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to send one `END_TURN` at start-up to un-stall an idle game (socket transport only). |
+| `CIV6AZ_AGENT_MAX_GAME_TURNS` | `0` | Stop after this many finished game turns (0: no limit). `CIV6AZ_AGENT_MAX_TURNS` (default 500) counts loop steps, one per command, not game turns; set it to `0` when using this. There is no command-line flag for either. |
+| `CIV6AZ_AGENT_MAX_COMMANDS_PER_TURN` | `100` | Past this many commands in one game turn the agent sends only `end_turn` (the mod's own cap is 200). |
+| `CIV6AZ_AGENT_MAX_RESELECTIONS` | `8` | How often per step the policy is asked again after a choice that cannot be sent. |
+| `CIV6AZ_AGENT_ON_STALL` | `exit` | When the game keeps blocking the end of turn and nothing the agent sends changes that: `exit` stops with exit code 3; `wait` sends nothing more in that turn and waits (up to `CIV6AZ_AGENT_STALL_WAIT_S`, default 300) for you to end it by hand. The agent never forces the turn. |
 | `CIV6AZ_LOCAL_LOG_PATH` | auto | Path to the game's `Lua.log` if it is not in the default location. |
 | `CIV6AZ_LOCAL_USE_EVAL_HARNESS` | `0` | Same as `--eval-harness`. |
 | `CIV6AZ_BRIDGE_RULESET` | unset | The game rule set whose technology order gives the encoder slots and research actions: a built-in id (`science-v1-draft`) or the path of a rule-set file. Unset: see "Research slots" below. A value that cannot be loaded stops the start-up. |
