@@ -53,7 +53,7 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _files(path: Path) -> list[str]:
-    return sorted(str(p.relative_to(path)) for p in path.rglob("*") if p.is_file())
+    return sorted(p.relative_to(path).as_posix() for p in path.rglob("*") if p.is_file())
 
 
 def _run(gc: ModuleType, *argv: str) -> int:
@@ -372,7 +372,8 @@ class TestPublishWithoutHardLinks:
         def appear() -> None:
             if state["armed"] and not state["appeared"]:
                 state["appeared"] = True
-                fd = real_open(target, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0)
+                fd = real_open(target, flags)
                 os.write(fd, b"COMPETITOR\n")
                 os.close(fd)
 

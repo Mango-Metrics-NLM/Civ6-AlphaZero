@@ -553,11 +553,13 @@ class TestEndTurn:
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_CIVIC")
         assert h.stub_calls(runtime) == []
 
-    def test_a_listed_blocker_with_can_end_turn_true_is_requested(self, runtime: Any) -> None:
+    def test_a_listed_blocker_is_refused_even_when_can_end_turn_is_true(self, runtime: Any) -> None:
         _notify(runtime, RESEARCH_BLOCKER)
         runtime.execute("Civ6Stub.canEndTurn = true")
-        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
-        assert h.stub_calls(runtime) == ["UI.RequestAction"]
+        success, code, message = h.execute(runtime, END_TURN)
+        assert (success, code) == (False, "END_TURN_BLOCKED")
+        assert message.startswith("End turn blocked: ENDTURN_BLOCKING_RESEARCH")
+        assert h.stub_calls(runtime) == []
 
     def test_a_dismissed_blocker_does_not_block(self, runtime: Any) -> None:
         _notify(runtime, RESEARCH_BLOCKER.replace("dismissed = false", "dismissed = true"))

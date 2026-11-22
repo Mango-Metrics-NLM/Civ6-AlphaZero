@@ -102,8 +102,10 @@ class TestNoTrainingImports:
             " for r in roots))\n"
             "print('LOADED', bad)\n"
         )
+        # Use -E -P instead of -I so environment/cwd isolation holds without
+        # disabling user site-packages (Windows --user installs of numpy/yaml).
         done = subprocess.run(
-            [sys.executable, "-I", "-c", code], capture_output=True, text=True, timeout=100
+            [sys.executable, "-E", "-P", "-c", code], capture_output=True, text=True, timeout=100
         )
         assert done.returncode == 0, done.stderr[-2000:]
         assert done.stdout.strip().splitlines()[-1] == "LOADED []"
