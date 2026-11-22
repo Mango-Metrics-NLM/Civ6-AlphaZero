@@ -680,9 +680,17 @@ class TestReviewFindings:
         c.frame(game)
         assert (units(game, 102, "x"), units(game, 102, "y")) == (0, 1)
 
-    def test_an_attack_always_asks_about_war_even_in_fog(self) -> None:
+    def test_an_attack_into_fog_has_no_target(self) -> None:
+        """Since GM-B8a an occupant the player cannot see is no target, so the attack is
+        refused before the war question is reached (it used to answer WOULD_START_WAR,
+        which gave the hidden unit away)."""
         fog = "PlayersVisibility = { [0] = { IsVisible = function() return false end } }\n" + PEACE
         game = c.load(fog)
+        assert run(game, attack())[:2] == (False, "INVALID_TARGET")
+        assert nothing_requested(game)
+
+    def test_an_attack_on_a_seen_target_still_asks_about_war(self) -> None:
+        game = c.load(PEACE)
         assert run(game, attack())[:2] == (False, "WOULD_START_WAR")
         assert nothing_requested(game)
 

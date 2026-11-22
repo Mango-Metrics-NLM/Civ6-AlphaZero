@@ -315,19 +315,34 @@ local function targetParams(target, modifierName)
     return params
 end
 
--- Whether another player's unit or city stands on the plot.
+-- Whether the player sees something of another player's on the plot: a unit
+-- the game says this player sees (its tile and the unit itself, so not a
+-- stealth unit), or a city on a tile seen now. An occupant the player cannot
+-- see is no target: offering an attack on it would give it away. When the
+-- game cannot be asked about visibility, nothing is seen.
 local function hasForeignOccupant(playerId, plot, x, y)
+    local visibility = nil
+    pcall(function() visibility = PlayersVisibility and PlayersVisibility[playerId] end)
+    local plotSeen = false
+    pcall(function() plotSeen = visibility:IsVisible(x, y) == true end)
+    if not plotSeen then return false end
+
+    local function seen(unit)
+        local ok, visible = pcall(function() return visibility:IsUnitVisible(unit) end)
+        return ok and visible == true
+    end
+
     local found = false
     pcall(function()
         local units = Units and Units.GetUnitsInPlot and Units.GetUnitsInPlot(plot)
         if type(units) ~= "table" then return end
         if units.Members then
             for _, unit in units:Members() do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         else
             for _, unit in ipairs(units) do
-                if unit:GetOwner() ~= playerId then found = true end
+                if unit:GetOwner() ~= playerId and seen(unit) then found = true end
             end
         end
     end)
@@ -377,9 +392,18 @@ local function executeUnitMove(playerId, command)
 
     -- As the game's own move routine does, ask about war only for a plot the
     -- player can see: a move into the fog is a move toward it, not onto it.
+    -- A refusal must not describe something the player cannot see: when
+    -- nothing of anybody else's is in sight on the plot, the answer says only
+    -- that the move was refused, not that the tile is held or by whom.
+    local unseen = not hasForeignOccupant(playerId, plot, target.x, target.y)
+    local function refusedBlind()
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Move to (%d,%d) refused", target.x, target.y)
+    end
     if plotIsVisible(playerId, target.x, target.y) then
         local warCode, warMessage = warRefusal(unit, target.x, target.y)
         if warCode then
+            if unseen and warCode == ERROR_CODES.WOULD_START_WAR then return refusedBlind() end
             return false, warCode, warMessage
         end
     end
@@ -387,6 +411,7 @@ local function executeUnitMove(playerId, command)
     local ok, code, message = requestUnitAction(
         unit, "UNITOPERATION_MOVE_TO", targetParams(target, "NONE"), "Move")
     if not ok then
+        if unseen and code == ERROR_CODES.OPERATION_REFUSED then return refusedBlind() end
         return false, code, message
     end
     return true, nil, string.format("Move of unit %d to (%d,%d) requested", unitId, target.x, target.y)

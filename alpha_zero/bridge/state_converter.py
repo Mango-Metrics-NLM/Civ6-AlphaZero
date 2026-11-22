@@ -31,6 +31,7 @@ from typing import Any, Literal
 import torch
 
 from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_config
+from alpha_zero.bridge.other_players import renumbered, shown_to_the_agent
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
@@ -314,20 +315,18 @@ class StateConverter:
         else:
             state = civ6_state
 
-        # Validate map size before scaling
         if state.map_data.width <= 0 or state.map_data.height <= 0:
             raise GameNotStartedError(
                 f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
                 "Map dimensions must be positive."
             )
 
-        # Set up coordinate scaling
         self._setup_scaling(state.map_data.width, state.map_data.height)
 
-        # Convert each component
         terrain = self._convert_terrain(state)
-        units = self._convert_units(state)
-        cities = self._convert_cities(state)
+        shown, others = shown_to_the_agent(state)
+        units = self._convert_units(shown)
+        cities = self._convert_cities(shown)
         visibility = self._convert_visibility(state)
 
         # Build player info
@@ -360,7 +359,7 @@ class StateConverter:
             # configured, the normalised names (which it skips) when not.
             "technologies": technologies,
             "civics": civics,
-            "victory_progress": self._extract_victory_progress(state),
+            "victory_progress": self._extract_victory_progress(shown),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
             # Which registry numbered the research above (None: none), so the
@@ -373,6 +372,7 @@ class StateConverter:
             # the game's own map; the two differ on any map that is scaled.
             "_board_size": self.board_size,
             "_player_id": state.player_id,
+            "_others": others,
             # Pass-through reference to the original GameStateData so downstream
             # callers (e.g. agent_loop._build_observation) can re-encode without
             # re-running convert() on a dict that no longer has the raw schema.
@@ -1073,42 +1073,18 @@ class StateConverter:
         Returns:
             A new state dictionary with remapped IDs.
         """
-        import copy as _copy
+        remapped = dict(raw_state)
 
-        remapped = _copy.copy(raw_state)
-
-        # Remap players
-        if "players" in remapped:
-            new_players = []
-            for p in remapped["players"]:
-                p_copy = dict(p)
-                old_id = p_copy.get("id")
-                if old_id is not None and old_id in player_mapping:
-                    p_copy["id"] = player_mapping[old_id]
-                new_players.append(p_copy)
-            remapped["players"] = new_players
-
-        # Remap unit owner_id
-        if "units" in remapped:
-            new_units = []
-            for u in remapped["units"]:
-                u_copy = dict(u)
-                old_owner = u_copy.get("owner_id")
-                if old_owner is not None and old_owner in player_mapping:
-                    u_copy["owner_id"] = player_mapping[old_owner]
-                new_units.append(u_copy)
-            remapped["units"] = new_units
-
-        # Remap city owner_id
-        if "cities" in remapped:
-            new_cities = []
-            for c in remapped["cities"]:
-                c_copy = dict(c)
-                old_owner = c_copy.get("owner_id")
-                if old_owner is not None and old_owner in player_mapping:
-                    c_copy["owner_id"] = player_mapping[old_owner]
-                new_cities.append(c_copy)
-            remapped["cities"] = new_cities
+        # Players and other_players are keyed by ``id``; units and cities name
+        # their owner as ``owner`` (the mod) or ``owner_id``.
+        for section, keys in (
+            ("players", ("id",)),
+            ("other_players", ("id",)),
+            ("units", ("owner", "owner_id")),
+            ("cities", ("owner", "owner_id")),
+        ):
+            if isinstance(remapped.get(section), list):
+                remapped[section] = renumbered(remapped[section], keys, player_mapping)
 
         # Remap top-level player_id if present
         if "player_id" in remapped:

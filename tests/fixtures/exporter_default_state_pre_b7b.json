@@ -264,6 +264,8 @@
   ],
   "width": 4
  },
+ "observes_others": false,
+ "other_players": [],
  "player": {
   "civic_status": {
    "boost_triggered": false,

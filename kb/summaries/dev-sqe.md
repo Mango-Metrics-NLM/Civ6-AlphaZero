@@ -1,5 +1,12 @@
 # DEV-SQE Log
 
+## 2026-11-22 - GM-B8a: what the player can see of other players (branch `claude/gm-b8a-visible-others`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Gap B8a, approved by the maintainer on 2026-11-22 after a four-role review of the plan. OpenSpec `add-visible-other-players`. `OBSERVE_ALL_PLAYERS` stays off by default.
+- **Files Changed:** `mod/AlphaZeroAI/Scripts/StateExporter.lua`, `ActionExecutor.lua`, `AlphaZeroMain.lua` (generated), `alpha_zero/bridge/other_players.py` (new), `protocol.py`, `state_converter.py`, the stand-in (`tests/fixtures/lua/civ6_stub_others.lua`, new), six new test files, two existing tests corrected, docs, OpenSpec, gap register.
+- **Tests:** 170 new tests; Lua, bridge, script and regression suites pass apart from seven sandbox-only failures; governance passes; 23 planted defects each caught; bundle in sync; play-path diff empty. `make verify` not run; no CI (no PR). **Nothing run against a real game.**
+- **Found before any code (plan review):** with an opponent seeded the search would read killing the last visible enemy as winning (GM-B8b); two call names the game's UI code does not contain. **Found by the code review:** one unreadable foreign unit emptied the whole unit list; a refused move named a hidden unit's owner; an unknown kind came out as `minor`.
+
 ## 2026-11-22 - GM-B6b: the agent loop runs a policy that answers with a command (branch `claude/gm-b6b-search-seam`)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-B6b of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `add-search-translator`, tasks 2.x), started on the maintainer's word after #160 and #161 merged. The `--mcts` refusal stays.
@@ -183,13 +190,3 @@
 - **Recorded, not buried:** `distributed/cloud_coordinator` is plan row B14, a CONFIRM-FIRST item, and was removed under the Tier A authorization. Technical justification holds (Tier A left it unimportable); the process did not.
 - **Verified:** ruff, ruff format (880 files), mypy (328 files), unit 9,921, integration+cloud 1,426, regression/security/sanity/smoke/inference/scripts/e2e 431, governance 98, global coverage 89.84% vs 85%, cloud floor 59.7% vs 58%, gitleaks 0 findings over 543 commits, five validators clean.
 - **Next:** maintainer items unchanged (key rotation, close #72/#69/#49/#32, Dependabot, Tier B rows, WS5/WS3.2/WS6/WS7). Measured gaps for the next scope: preemption/cost-monitor lost their last importers with the legacy workers, 8 files still hardcode 376, `hrmtrain` in 56 files outside the package, 296 unlinted `np.random` calls, `mypy --strict` 164 errors, 20 of 29 subpackages untyped.
-
-## 2026-09-02 - Tech-debt plan, Core scope implemented
-- **Session:** session_01EcSsbbTYiSkmZsMVyipm7G
-- **Focus:** Execute the Core scope of `kb/specs/20260902-tech-debt-hardening.md` v2 across five commits on `claude/tech-debt-hardening-plan-xrn9sp` (PR #116).
-- **Shipped:** WS-M (`measure_debt.py` + debt ratchet against a committed baseline); WS4.6 (least-privilege workflows, SHA-pinned release action, `--strict-markers`, and a push guard that now resolves the real default branch — it had only ever compared against the literal `main`, and a bash precedence bug meant a commit while on main was never denied); WS3.1 (the live `action_space_size` default was 381 against an environment width of 376, in `NetworkConfig`, `civ6_local`, `MuZeroConfig` and the N-player head); WS4.1-4.2 (both checkpoint loaders silently retried failed safe loads with `weights_only=False`; opt-in now explicit, single unsafe call in the new leaf module `utils/safe_load.py`); WS2 (Tier A: 44 modules / 21,903 lines with no live importer, plus the four Dockerfiles, `docker-compose.yml` and `setup.py` that only served them); WS1 (`alpha_zero.cloud` measured against a 58% floor in the `cloud-tests` job, plus an omit-list ratchet test).
-- **Verified:** global coverage 89.84% (gate 85%), 11,445 tests pass; unit 9,921, integration 580, cloud 846, regression 125, governance 91, scripts+e2e 239; ruff, ruff format, mypy (328 files) and all four governance validators clean. Every new gate shipped with a recorded negative control.
-- **Gotchas found:** deleting dead code that *was* tested lowers reported coverage (34 dead modules sat inside the measurement), so a floor must be measured after deletion; `coverage json` without `--rcfile` re-applies pyproject's omit list and reports "No data to report", making a floor check look green; local suites need `OMP_NUM_THREADS=2` or two tests wedge on the OpenMP spin-wait.
-- **Next:** Pre-PR review. Outstanding for the maintainer: the GCS champion-lineage inventory before the safe-load default reaches production, Tier B's fourteen rows, and WS5/WS3.2/WS6/WS7.
-
-# DEV-SQE Session Log
