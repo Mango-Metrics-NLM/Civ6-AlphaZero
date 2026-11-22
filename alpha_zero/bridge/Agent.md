@@ -58,6 +58,9 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | `health_checker.py` | GameBridgeHealthChecker with circuit breaker, monitoring loop |
 | `mcts_policy.py` | BridgeMCTSEnv (a `MicroCivEnv` seeded from a converted live state) and Civ6MctsPolicy (Gumbel search over it). The search's network and actions are the simulator's; `civ6_local` refuses `--mcts` in `civ6` mode until a translator to live commands exists (GM-B6) |
 | `production_slots.py` | Which action slot stands for which production item a city was offered: the item's position among the offered items of its kind, the same in every process; the command built from a slot carries the item's type name. |
+| `command_policy.py` | `CommandPolicy` (a policy that answers with a command), the turn ledger as its veto, a seed per decision, and `choose`, the one place the agent loop asks such a policy |
+| `offers.py` | `is_offered`: whether a command is among the offers of a state; the loop checks a command policy's answer with it before sending |
+| `policy_factory.py` | The policy and network builders `civ6_local` uses, and `build_search_policy`: the search with a simulator-shaped network at the board and horizon a checkpoint records |
 | `microciv_proxy.py` | How a live state is stood in for inside MicroCiv: unit categories onto its three unit types (or left out), tiles onto its three terrain types (mountains, water and ice onto the impassable one). Standard library only; adds no simulator rule |
 
 ---

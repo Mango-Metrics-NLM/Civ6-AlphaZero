@@ -1,5 +1,12 @@
 # DEV-SQE Log
 
+## 2026-11-22 - GM-B6b: the agent loop runs a policy that answers with a command (branch `claude/gm-b6b-search-seam`)
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Task:** Slice GM-B6b of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `add-search-translator`, tasks 2.x), started on the maintainer's word after #160 and #161 merged. The `--mcts` refusal stays.
+- **Files Changed:** `alpha_zero/bridge/command_policy.py` (new), `alpha_zero/bridge/policy_factory.py` (new), `alpha_zero/bridge/agent_loop.py`, `alpha_zero/bridge/offer_filter.py`, `alpha_zero/civ6_local.py` (builders moved out), six new test files and two fixtures, `tests/unit/test_bridge_search_mode_wiring.py` (one test corrected), docs, OpenSpec.
+- **Tests:** 137 new tests; bridge, Lua, script and regression suites pass apart from seven sandbox-only failures; governance passes; 17 planted defects each caught; `ruff check .` and single-file mypy clean; play-path diff empty. `make verify` not run. **Nothing run against a real game.**
+- **Found by the independent review:** the fallback for a blocked turn sent the first offered command by action index, a unit action nobody chose, before the research; `build_search_policy` accepted the full-game network and called it trained.
+
 ## 2026-11-21 - GM-B6a: the search's answer becomes an offered command (branch `claude/gm-b6a-search-translator`)
 - **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
 - **Task:** Slice GM-B6a of `kb/specs/20261120-live-command-layer-plan.md` (OpenSpec `add-search-translator`), approved by the maintainer on 2026-11-21 to be written on a branch before the live sitting. Also: review findings on #160 (truncated log, pieces before start, text ids) and #161 (ledger key operands, idle city only, failed fallback sends), fixed and answered.
@@ -186,18 +193,3 @@
 - **Next:** Pre-PR review. Outstanding for the maintainer: the GCS champion-lineage inventory before the safe-load default reaches production, Tier B's fourteen rows, and WS5/WS3.2/WS6/WS7.
 
 # DEV-SQE Session Log
-
-## 2026-08-30 - Review found the gates did not gate; all 13 findings fixed (PR #115)
-
-- **Session:** session_0161DvFczCzPQqumjKqYdrXy
-- **Task:** Remediate a review of the governance commit. 11 comments plus 2 suppressed; I verified each against the repo before touching anything. **All 13 were correct.**
-- **The headline defect is a category, not an instance.** Four findings were the same failure: something described as a gate that gates nothing. `tests/regression/` was referenced by **no** CI job and **no** make target — the ten hygiene invariants I had just added, and the pre-existing `test_hex_encoder_regression.py`, had never gated a pull request. I reported "10 passed" as evidence they were guarded; the tests passed when invoked by hand and would never have run again. Siblings: `validate_agents --path <missing>` exited 0 (the PostToolUse hook calls `--path`, so a stale path read as validated), the catch-all allowlist test matched four literal spellings and missed `^.*$`, and the A5 requirement claimed "every importable package" against a validator checking 29 of 44 — `alpha_zero/core/mcts/`, created by this same PR, had no doc and the gate passed.
-- **Four more where a gate was weaker than claimed:** the layering test walked only `tree.body`, so a function-local `from .base import` could reintroduce the removed dependency invisibly; `GITLEAKS_BIN` defaulted to whatever was on `PATH`, defeating the pin two lines above it; the installer always fetched `linux_x64` against CLAUDE.md §2.1's cross-platform requirement, so `make verify` on macOS or ARM installed an unrunnable binary; and `.gitleaks.toml` path-allowlisted `docs/archive/` — 25 tracked files, not a build artifact. Removing that exemption changed nothing, so it was pure unnecessary risk.
-- **Two missing test suites, both for bugs I had just fixed.** The block-scalar parser closed a *vacuous-validation* bug with no regression test; reconstructing the old parser shows `description: >` returned the literal `">"` for both a populated and an **empty** scalar, so the non-empty check passed in both. And `_point_at` patched only `SKILLS_DIR`, so every tmp-tree governance test had been silently scanning the repo's real `.agents/skills/`.
-- **Recorded as a decision, because the pattern will recur:** prove a new gate fails when the thing it guards is broken, *and* prove something actually invokes it. CLAUDE.md §5.2.
-- **Handoff correction:** the earlier handoff of the same date is immutable (K7), so a superseding document states what was actually true rather than editing it.
-- **Files Changed:** 12 code/config/doc + 3 KB
-- **Tests Added:** A0 path handling (2), block-scalar folded/literal/empty (3), `.agents/skills/` + S5 (4), behavioural allowlist (2)
-- **Tests:** coverage **89.29%** (gate 85) with 12,365 passed / 0 failed; governance **73** (was 64); regression 38; ruff clean over 937; mypy clean over 367; gitleaks 0 across tree and 528-commit lineage
-- **Status:** complete — 9 of 11 round-2 threads resolved, 3 round-1 threads left open by intent
-- **Next:** confirm CI on `f4cea7a` (the regression step and the coverage-suite addition have never run in CI); then the `PLR0915` burndown

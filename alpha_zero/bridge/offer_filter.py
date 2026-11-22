@@ -9,14 +9,35 @@ before the policy is asked, so its choices are not spent on them.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 
 import numpy as np
 
 from alpha_zero.bridge.turn_ledger import UNBLOCKING_ACTIONS, TurnLedger, action_of, is_end_turn
 
-__all__ = ["sendable", "vetoed"]
+__all__ = ["first_to_unblock", "sendable", "vetoed"]
+
+_RESEARCH_ACTIONS = ("research_tech", "research_civic")
+
+
+def first_to_unblock(commands: Iterable[Any]) -> Any | None:
+    """The command to send while the game blocks the end of turn and the policy named nothing.
+
+    A research choice first, then anything else that can answer a blocker
+    (``UNBLOCKING_ACTIONS``), then whatever else may still be sent; never
+    ``end_turn``. A unit action nobody chose is the last resort, not the first.
+    """
+    others = [command for command in commands if not is_end_turn(command)]
+    for wanted in (
+        lambda action: action in _RESEARCH_ACTIONS,
+        lambda action: action in UNBLOCKING_ACTIONS,
+        lambda action: True,
+    ):
+        for command in others:
+            if wanted(action_of(command)):
+                return command
+    return None
 
 
 def vetoed(ledger: TurnLedger, command: Any, unblocking_only: bool, others: bool) -> bool:
