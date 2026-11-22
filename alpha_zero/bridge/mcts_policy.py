@@ -32,6 +32,7 @@ from alpha_zero.core.civ6_mcts import POLICY_TARGET_ONE_HOT, GumbelMCTS, GumbelM
 from alpha_zero.core.protocols import EnvironmentProtocol
 from alpha_zero.envs.microciv import City, MicroCivEnv, Tile, Unit
 from alpha_zero.utils.constants import GAME, REWARDS
+from alpha_zero.utils.seeding import derive_seed
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,8 @@ _END_TURN_COMMAND: dict[str, Any] = {"action_type": "end_turn"}
 
 #: Turns the simulation is always left before its turn limit.
 _DEFAULT_MIN_LOOKAHEAD: int = 10
+#: Seed stream of the simulator's own draws, kept apart from the search's.
+_SIMULATOR_SEED_STREAM = "bridge_search_simulator"
 
 #: What a city that is already building is seeded with. The simulator only
 #: needs it to be "not None"; the item itself is not the live one.
@@ -130,6 +133,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         converted_state: dict[str, Any],
         max_turns: int = _DEFAULT_MAX_TURNS,
         min_lookahead: int = _DEFAULT_MIN_LOOKAHEAD,
+        seed: int | None = None,
     ) -> None:
         self._converted_state = converted_state
         self._root_mask: np.ndarray | None = None
@@ -144,7 +148,12 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             players.add(c.get("player", 0))
         num_players = max(_MIN_CIV_PLAYERS, min(_MAX_CIV_PLAYERS, max(players) + 1))
 
-        self.env = MicroCivEnv(board_size=board_size, max_turns=max_turns, num_players=num_players)
+        # The simulator draws by itself (a settler founding a city on its
+        # own), so a seeded decision has to seed it too, or two searches of
+        # one state with one seed can still differ.
+        self.env = MicroCivEnv(
+            board_size=board_size, max_turns=max_turns, num_players=num_players, seed=seed
+        )
 
         live_turn = converted_state.get("turn", 0)
         live_turn = live_turn if isinstance(live_turn, int) and live_turn > 0 else 0
@@ -323,6 +332,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         *,
         max_turns: int = _DEFAULT_MAX_TURNS,
         min_lookahead: int = _DEFAULT_MIN_LOOKAHEAD,
+        seed: int | None = None,
     ) -> BridgeMCTSEnv:
         """Named constructor for clarity at call sites.
 
@@ -330,7 +340,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         but is the preferred form when the caller already has
         ``StateConverter.convert()`` output.
         """
-        return cls(converted_state, max_turns=max_turns, min_lookahead=min_lookahead)
+        return cls(converted_state, max_turns=max_turns, min_lookahead=min_lookahead, seed=seed)
 
     # ------------------------------------------------------------------
     # What the translator needs (GM-B6a)
@@ -549,7 +559,12 @@ class Civ6MctsPolicy:
         """
         if converted_state is None:
             raise ValueError("Civ6MctsPolicy requires converted_state to seed the simulation env.")
-        env = BridgeMCTSEnv.from_bridge_state(converted_state, max_turns=self.max_turns)
+        seed = int(decision_seed) if decision_seed is not None else self.config.seed
+        env = BridgeMCTSEnv.from_bridge_state(
+            converted_state,
+            max_turns=self.max_turns,
+            seed=derive_seed(seed, _SIMULATOR_SEED_STREAM),
+        )
         translator = SearchTranslator(
             converted_state, env.own_unit_ids(), env.own_city_ids(), allowed=allowed
         )
@@ -569,7 +584,7 @@ class Civ6MctsPolicy:
             "root_value": 0.0,
             "search": {"root_evals": 0, "sim_evals": 0},
             "proxy": {key: int(value) for key, value in env.proxy_stats.items()},
-            "seed": decision_seed if decision_seed is not None else self.config.seed,
+            "seed": seed,
             "fallback": None,
         }
         if not commands:
@@ -581,7 +596,6 @@ class Civ6MctsPolicy:
         # unvisited one included, so its largest entry can be an action the
         # search never looked at. One search object per call: the shared one
         # holds an RNG and counters, and this runs in a worker thread.
-        seed = int(decision_seed) if decision_seed is not None else self.config.seed
         mcts = GumbelMCTS(
             network=self.network,
             config=replace(self.config, seed=seed, policy_target=POLICY_TARGET_ONE_HOT),
