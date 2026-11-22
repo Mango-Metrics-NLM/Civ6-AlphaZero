@@ -272,3 +272,92 @@ class TestUnitsTheSimulatorLeftOutAreStillAlive:
         assert env.proxy_stats["own_units_not_represented"] == 0
         _, _, terminated, _, _ = env.step(_attack(env))
         assert terminated is True and env.env.winner == 1
+
+
+class TestTheLimitKeepsWhatIsKnown:
+    """Review round two (Copilot, PR #165): with only an own scout left out, no own city and
+    an enemy city in sight, the turn limit's 0-1 count was cleared to a draw. The left-out
+    unit prevents a false elimination; it does not erase a known count."""
+
+    def _state(self, enemy_city: bool) -> GameStateData:
+        return make_state(
+            size=16,
+            units=[unit(8, "UNIT_SCOUT", 0, 1, 1)],
+            cities=[city(9, 1, 12, 12)] if enemy_city else [],
+        )
+
+    def test_a_visible_enemy_city_still_decides_the_limit(self) -> None:
+        env = _env(self._state(enemy_city=True), max_turns=6, min_lookahead=3)
+        assert env.proxy_stats["own_units_not_represented"] == 1
+        _play_to_the_limit(env)
+        assert env.env.done is True
+        assert env.env.winner == 1
+
+    def test_control_without_an_enemy_city_nothing_is_decided(self) -> None:
+        env = _env(self._state(enemy_city=False), max_turns=6, min_lookahead=3)
+        final, _ = _play_to_the_limit(env)
+        assert env.env.winner is None
+        assert abs(final) < WIN
+
+
+def _three_sided(own_health: int) -> BridgeMCTSEnv:
+    """The acting player's one warrior beside an enemy; a third side elsewhere."""
+    converted = convert(
+        make_state(
+            size=16,
+            units=[
+                unit(2, "UNIT_WARRIOR", 0, 5, 5, health=own_health),
+                unit(3, "UNIT_WARRIOR", 1, 6, 5),
+                unit(4, "UNIT_WARRIOR", 1, 12, 12),
+            ],
+        ),
+        16,
+    )
+    third = next(u for u in converted["units"] if u["_id"] == 4)
+    third["player"] = 2
+    return BridgeMCTSEnv(converted)
+
+
+class TestMoreThanTwoSides:
+    """Review round two (Copilot, PR #165): with three sides the simulator plays on among
+    the others after the acting player's last piece is gone, so the search valued a lost
+    position with the network instead of seeing the loss."""
+
+    def test_the_simulator_has_three_sides(self) -> None:
+        env = _three_sided(own_health=100)
+        assert env.env.num_players == 3
+
+    def test_losing_the_last_piece_ends_the_game_as_a_loss(self) -> None:
+        env = _three_sided(own_health=1)
+        env.step(END_TURN)
+        assert env.env.current_player == 1
+        _, reward, terminated, _, info = env.step(_enemy_attack(env))
+        assert not any(u.player == 0 for u in env.env.units), "the unit survived the attack"
+        assert terminated is True and env.env.done is True
+        assert env.env.winner not in (None, 0)
+        assert info["winner"] == env.env.winner
+        assert reward >= WIN / 2, "the enemy, to move after its attack, is paid the win"
+
+    def test_control_while_a_piece_is_left_the_game_goes_on(self) -> None:
+        env = _three_sided(own_health=100)
+        env.step(END_TURN)
+        _, _, terminated, _, _ = env.step(_enemy_attack(env))
+        assert any(u.player == 0 for u in env.env.units)
+        assert terminated is False and env.env.winner is None
+
+    def test_a_three_sided_state_seeded_with_nothing_of_the_player_s_is_not_ended_at_once(
+        self,
+    ) -> None:
+        """The rule ends the game when the player LOSES its last piece, not when it never
+        had one in the simulator (then there is nothing to lose there)."""
+        converted = convert(
+            make_state(
+                size=16,
+                units=[unit(3, "UNIT_WARRIOR", 1, 6, 5), unit(4, "UNIT_WARRIOR", 1, 12, 12)],
+            ),
+            16,
+        )
+        next(u for u in converted["units"] if u["_id"] == 4)["player"] = 2
+        env = BridgeMCTSEnv(converted)
+        _, _, terminated, _, _ = env.step(END_TURN)
+        assert terminated is False

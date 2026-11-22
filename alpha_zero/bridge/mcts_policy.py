@@ -266,6 +266,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         # still the player's: with any of them alive, losing every piece IN the
         # simulator is not losing the game.
         self._own_left_out = own_units_not_represented
+        self._seeded_with_pieces = self._has_pieces(me)
         self._no_visible_enemy = not any(u.player != me for u in self.env.units) and not any(
             c.player != me for c in self.env.cities
         )
@@ -408,6 +409,7 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         new_env._search_counts = self._search_counts
         new_env._win_taken_back = self._win_taken_back
         new_env._own_left_out = self._own_left_out
+        new_env._seeded_with_pieces = self._seeded_with_pieces
         return new_env
 
     def reset(self, seed: int | None = None) -> dict[str, np.ndarray]:
@@ -428,18 +430,33 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         was_done = self.env.done
         obs, reward, terminated, truncated, info = self.env.step(action)
         reward = float(reward)
-        if not terminated or was_done:
+        me = self._root_player
+        win = float(REWARDS.WIN_REWARD)
+        if was_done:
+            return obs, reward, terminated, truncated, info
+        if not terminated:
+            if self._lost_everything(me):
+                # With more than two sides the simulator plays on among the
+                # others after the acting player is gone. For the player the
+                # game is over: end it here as its loss.
+                self.env.done = True
+                self.env.winner = next(p for p in range(self.env.num_players) if p != me)
+                reward += -win if self.env.current_player == me else win
+                return self.env.get_observation(), reward, True, truncated, self.env.get_info()
             return obs, reward, terminated, truncated, info
 
-        me = self._root_player
         at_the_limit = bool(truncated) or self.env.turn >= self.env.max_turns
         if not self._has_pieces(me) and self._own_left_out:
             # Nothing of the player's is left in the simulator, but units it
-            # has no stand-in for are still alive in the game: not a loss.
-            reward = self._without_the_win(reward, count=False)
+            # has no stand-in for are still alive in the game: not an
+            # elimination. At the turn limit the simulator's own count stands
+            # when an enemy city is in sight (no cities against one is known).
             if not at_the_limit:
+                reward = self._without_the_win(reward, count=False)
                 self.env.done = False
                 terminated = False
+            elif not self._enemy_city_in_sight():
+                reward = self._without_the_win(reward, count=False)
             return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
         if not self._has_pieces(me):
             # The acting player has nothing left: a loss, also when its last
@@ -447,10 +464,8 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             # that a draw and pays nothing, so the loss is paid here, to
             # whoever is to move after the step, as the simulator would.
             if self.env.winner is None:
-                enemy = next(p for p in range(self.env.num_players) if p != me)
-                self.env.winner = enemy
-                win = float(REWARDS.WIN_REWARD)
-                reward += win if self.env.current_player == enemy else -win
+                self.env.winner = next(p for p in range(self.env.num_players) if p != me)
+                reward += -win if self.env.current_player == me else win
             return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
 
         root_won = self.env.winner == me
@@ -465,6 +480,10 @@ class BridgeMCTSEnv(EnvironmentProtocol):
             # whose cities are not in sight" is the same fake win, only later.
             reward = self._without_the_win(reward)
         return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
+
+    def _lost_everything(self, player: int) -> bool:
+        """The player had pieces in the simulator, has none now, and none were left out."""
+        return self._seeded_with_pieces and not self._own_left_out and not self._has_pieces(player)
 
     def _has_pieces(self, player: int) -> bool:
         return any(u.player == player for u in self.env.units) or any(
