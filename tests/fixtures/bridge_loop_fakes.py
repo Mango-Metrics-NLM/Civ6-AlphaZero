@@ -20,7 +20,7 @@ import numpy as np
 
 from alpha_zero.bridge.action_converter import InvalidActionError
 from alpha_zero.bridge.agent_loop import AgentLoopConfig, BridgeAgentLoop
-from alpha_zero.bridge.protocol import AckMessage, LuaCommand
+from alpha_zero.bridge.protocol import AckMessage, LegalAction, LuaCommand
 
 SIZE = 8
 END = {"action_type": "end_turn"}
@@ -32,13 +32,24 @@ TABLE: dict[int, dict[str, Any]] = {0: END, 1: SKIP_1, 2: SKIP_2, 3: MOVE_1, 4: 
 ALL = tuple(TABLE)
 
 
+def offers() -> list[LegalAction]:
+    """The game's offers for every command in ``TABLE``: the loop sends nothing else."""
+    return [
+        LegalAction("end_turn"),
+        LegalAction("skip", unit_id=1),
+        LegalAction("skip", unit_id=2),
+        LegalAction("move", unit_id=1, targets=[(0, 1)]),
+        LegalAction("research_tech", items=[2], item_names=["TECH_WRITING"]),
+    ]
+
+
 def game_state(turn: int = 5, *, over: bool = False) -> SimpleNamespace:
     return SimpleNamespace(
         turn_id=turn,
         player_id=0,
         is_game_over=over,
         winner_id=None,
-        legal_actions=[],
+        legal_actions=offers(),
         end_turn_blocking=None,
     )
 

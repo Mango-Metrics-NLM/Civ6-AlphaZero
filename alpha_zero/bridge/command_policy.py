@@ -13,11 +13,12 @@ from __future__ import annotations
 
 import inspect
 import logging
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from alpha_zero.bridge.offer_filter import vetoed
+from alpha_zero.bridge.offers import is_offered
 from alpha_zero.bridge.protocol import LuaCommand
 from alpha_zero.bridge.turn_ledger import TurnLedger
 from alpha_zero.utils.seeding import derive_seed
@@ -100,8 +101,13 @@ async def choose(
     *,
     unblocking_only: bool,
     turn_id: Any,
+    offers: Iterable[Any] | None = None,
 ) -> Choice:
-    """Ask a command policy for this state's command. Never raises."""
+    """Ask a command policy for this state's command. Never raises.
+
+    ``offers`` is the state's legal actions; when given, an answer that is not
+    among them names nothing (the policy's own word is not enough).
+    """
     allowed = allowed_by(ledger, unblocking_only)
     seed = decision_seed(_base_seed(policy), turn_id, ledger.commands_this_turn)
     try:
@@ -119,6 +125,8 @@ async def choose(
         lua_command = LuaCommand.from_dict(command)
     except Exception as exc:
         return Choice(None, record, reason=f"not a command: {exc}")
+    if offers is not None and not is_offered(command, offers):
+        return Choice(None, record, reason="not offered in this state")
     try:
         if not allowed(command):
             return Choice(None, record, reason="ruled out for this turn")

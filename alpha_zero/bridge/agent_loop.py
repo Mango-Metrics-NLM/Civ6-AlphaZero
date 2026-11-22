@@ -695,6 +695,7 @@ class BridgeAgentLoop:
             converted_state,
             unblocking_only=unblocking_only,
             turn_id=state.turn_id,
+            offers=state.legal_actions,
         )
         self._stats.search_decisions += 1
         if choice.failed:
