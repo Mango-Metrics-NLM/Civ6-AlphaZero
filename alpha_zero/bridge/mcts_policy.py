@@ -385,7 +385,8 @@ class BridgeMCTSEnv(EnvironmentProtocol):
     def clone(self) -> BridgeMCTSEnv:
         """Deep-copy this env for MCTS tree expansion.
 
-        The cloned instance shares *no* mutable state with the original. It
+        The clone shares no game state with the original (only the search's
+        one counter of wins taken back, which is meant to cover every clone). It
         copies the simulator as it stands and does not seed again from the
         converted state: this runs once per simulation.
         """
@@ -421,32 +422,44 @@ class BridgeMCTSEnv(EnvironmentProtocol):
         if not terminated or was_done:
             return obs, reward, terminated, truncated, info
 
+        me = self._root_player
+        if not self._has_pieces(me):
+            # The acting player has nothing left: a loss, also when its last
+            # unit took the last visible enemy with it (the simulator calls
+            # that a draw).
+            self.env.winner = next(p for p in range(self.env.num_players) if p != me)
+            return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
+
         at_the_limit = bool(truncated) or self.env.turn >= self.env.max_turns
-        root_won = self.env.winner == self._root_player
+        root_won = self.env.winner == me
         if not at_the_limit and (self._no_visible_enemy or root_won):
             # Ended because nobody the player can see is left: not a win, and
             # the game goes on.
             reward = self._without_the_win(reward)
             self.env.done = False
             terminated = False
-            obs, info = self.env.get_observation(), self.env.get_info()
-        elif at_the_limit and root_won and self._nobody_else_left():
+        elif at_the_limit and root_won and not self._enemy_city_in_sight():
             # The turn limit ends the game, but "more cities than an opponent
-            # with nothing in sight" is the same fake win, only later.
+            # whose cities are not in sight" is the same fake win, only later.
             reward = self._without_the_win(reward)
-        return obs, reward, terminated, truncated, info
+        return self.env.get_observation(), reward, terminated, truncated, self.env.get_info()
 
-    def _nobody_else_left(self) -> bool:
-        me = self._root_player
-        return not any(u.player != me for u in self.env.units) and not any(
-            c.player != me for c in self.env.cities
+    def _has_pieces(self, player: int) -> bool:
+        return any(u.player == player for u in self.env.units) or any(
+            c.player == player for c in self.env.cities
         )
+
+    def _enemy_city_in_sight(self) -> bool:
+        return any(c.player != self._root_player for c in self.env.cities)
 
     def _without_the_win(self, reward: float) -> float:
         """Take back the win or loss the simulator just applied, and forget its winner.
 
         The simulator applied one or the other by comparing its winner with
         whoever is to move after the step. Counted once per line of play.
+        The Gumbel search reads only the winner at a terminal, not the step
+        rewards, so for it the cleared winner is what matters; the reward is
+        corrected for any caller that does read it.
         """
         if self.env.winner == self.env.current_player:
             reward -= float(REWARDS.WIN_REWARD)

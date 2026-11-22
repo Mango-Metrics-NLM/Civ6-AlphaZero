@@ -87,15 +87,63 @@ class TestNoWinAtTheLimitOverNothingVisible:
         _play_to_the_limit(env)
         assert env.env.winner == 1
 
-    def test_control_more_cities_than_a_visible_enemy_is_still_a_win(self) -> None:
+    def test_more_cities_than_an_enemy_whose_cities_are_not_in_sight_is_no_win(self) -> None:
+        """Review (`sdlc-ml-scientist`): one enemy unit in sight and no enemy city is the common
+        case under fog (the capital is out of sight), and "1 city to 0" was still a full win."""
         state = make_state(
             size=16,
             units=[unit(2, "UNIT_WARRIOR", 0, 5, 5), unit(3, "UNIT_WARRIOR", 1, 12, 12)],
             cities=[city(8, 0, 2, 2)],
         )
         env = _env(state, max_turns=6, min_lookahead=3)
+        final, rewards = _play_to_the_limit(env)
+        assert env.env.winner is None
+        assert abs(final) < WIN, rewards
+
+    def test_control_more_cities_than_an_enemy_city_in_sight_is_still_a_win(self) -> None:
+        state = make_state(
+            size=16,
+            units=[unit(2, "UNIT_WARRIOR", 0, 5, 5)],
+            cities=[city(8, 0, 2, 2), city(7, 0, 4, 9), city(9, 1, 12, 12)],
+        )
+        env = _env(state, max_turns=6, min_lookahead=3)
         _play_to_the_limit(env)
-        assert env.env.winner == 0, "an enemy with a unit in sight and fewer cities has lost"
+        assert env.env.winner == 0
+
+    def test_the_returned_info_agrees_with_the_simulator(self) -> None:
+        """Review: the limit branch cleared the winner but returned the info read before."""
+        env = _env(
+            _state(enemy_unit=True, own_city=True, enemy_city=False), max_turns=6, min_lookahead=3
+        )
+        env.step(_attack(env))
+        info: dict[str, Any] = {}
+        for _ in range(60):
+            _, _, terminated, truncated, info = env.step(END_TURN)
+            if terminated or truncated:
+                break
+        assert info["winner"] is None
+        assert env.get_info()["winner"] is None
+
+
+class TestLosingEverythingIsALoss:
+    def test_a_last_unit_that_takes_the_last_visible_enemy_with_it_has_lost(self) -> None:
+        """Review: the simulator calls a mutual kill of both last pieces a draw; for the
+        player, whose pieces are all known, it is the end."""
+        state = make_state(
+            size=16,
+            units=[
+                unit(2, "UNIT_WARRIOR", 0, 5, 5, health=1),
+                unit(3, "UNIT_WARRIOR", 1, 6, 5, health=1),
+            ],
+        )
+        env = _env(state)
+        _, _, terminated, _, info = env.step(_attack(env))
+        if any(u.player == 0 for u in env.env.units):
+            pytest.fail("the scenario did not kill the attacker: adjust the healths")
+        assert terminated is True
+        assert env.env.winner == 1
+        assert info["winner"] == 1
+        assert env.elimination_suppressed == 0
 
 
 class TestTheCounterCountsLinesNotSteps:

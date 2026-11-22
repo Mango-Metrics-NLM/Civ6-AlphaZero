@@ -462,6 +462,16 @@ The state always says which mode produced it (`observes_others`). On the Python 
 hostile owners (at war, barbarians, free cities) are put on the enemy side; a neutral unit is
 left out and counted (`_others` in the converted state).
 
+The search (still refused on a live game) plays in a simulator that holds only what you can
+see. Its rules call a game won when one side has nothing left, which there would mean "nothing
+in sight is left", so the bridge never lets the acting player win that way, nor at the
+simulator's turn limit unless an enemy city is in sight (GM-B8b). The search can therefore
+lose in the simulator but not win there: its judgement is the network's estimate of a board
+that shows only what you see. A network trained where the number of cities decides a game
+will read "no enemy city in sight" as nearly won; only training changes that. With an
+untrained network all of this proves wiring, not judgement. Two hostile players are one side in the simulator, and a scout
+(a unit type the simulator has no stand-in for) is not in it at all.
+
 Whatever the setting, a tile you do not see now is exported without its owner, improvement,
 resource and yields, and an attack is only offered on something you can see.
 

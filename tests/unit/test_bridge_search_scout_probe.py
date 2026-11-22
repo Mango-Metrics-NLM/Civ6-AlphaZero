@@ -105,3 +105,38 @@ def test_print_how_often_the_attack_is_chosen(
             f"\n[GM-B8b probe] suppressed per search: min {min(suppressed)} max {max(suppressed)}"
         )
     assert len(suppressed) == 2 * len(POSITIONS) * len(SEEDS)
+
+
+def _raw_step(self: BridgeMCTSEnv, action: int) -> Any:
+    """``BridgeMCTSEnv.step`` without the GM-B8b rules: the simulator's own verdict."""
+    self._root_mask = None
+    return self.env.step(action)
+
+
+def test_with_the_rule_the_kill_stops_looking_like_a_win(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Review (`sdlc-ml-scientist`): a count of how often the attack is chosen says nothing by
+    itself; the same roots, seeds and network WITH and WITHOUT the rule do. Without it the
+    attack's child is a won game, so the root looks far better and the attack is chosen more.
+    """
+    import torch
+
+    def measure() -> tuple[int, float]:
+        torch.manual_seed(0)
+        network = MicroCivNetwork(board_size=16, action_space_size=376)
+        config = GumbelMCTSConfig(num_simulations=12, num_sampled_actions=8)
+        search = Civ6MctsPolicy(network, config, device="cpu", max_turns=30)
+        attacks, values = 0, []
+        for own in POSITIONS:
+            for seed in SEEDS:
+                command, record = _run(search, _state(own, with_moves=False), seed)
+                attacks += int(command["action_type"] == "unit_attack")
+                values.append(float(record["root_value"]))
+        return attacks, sum(values) / len(values)
+
+    with_rule = measure()
+    monkeypatch.setattr(BridgeMCTSEnv, "step", _raw_step)
+    without_rule = measure()
+
+    assert without_rule[1] > with_rule[1] + 0.2, (with_rule, without_rule)
+    assert without_rule[0] > with_rule[0], (with_rule, without_rule)
+    assert abs(with_rule[1]) < 0.2, "with the rule the root is not judged won"
