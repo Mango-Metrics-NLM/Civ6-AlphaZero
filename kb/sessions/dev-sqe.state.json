@@ -1,16 +1,17 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-21T19:05:00Z",
-  "current_focus": "Game-mechanics program: the live command layer (GM-B7), task plan kb/specs/20261120-live-command-layer-plan.md. Open PRs: #158 (GM-B7a), #159 (GM-B7b). Built, no PR yet: GM-B7c-1 on claude/gm-b7c1-transport-states and GM-B7c-2 on claude/gm-b7c2-turn-ledger. Nothing has run in a real game.",
+  "last_timestamp": "2026-11-21T23:55:00Z",
+  "current_focus": "Game-mechanics program: the live command layer. Open PRs: #160 (GM-B7c-1 transport), #161 (GM-B7c-2 loop). Built, no PR: GM-B6a on claude/gm-b6a-search-translator. Nothing has run in a real game.",
   "resume_pointers": {
-    "current_task": "GM-B7a/b/c are built and reviewed. Open the GM-B7c-1 PR when #158 merges and the GM-B7c-2 PR when #159 merges (two PRs open at most). Then the maintainer's live sitting, then GM-B6a/b.",
+    "current_task": "GM-B6a is built and reviewed on its branch (no PR until a slot frees; nothing of GM-B6 merges before the live sitting). Next: GM-B6b after #161 merges; GM-B8 (mod exports other players' visible units) needs the maintainer's yes.",
     "blocked_on": [
-      "maintainer: merge #158 (GM-B7a), then #159 (GM-B7b); the two GM-B7c PRs open as slots free",
+      "maintainer: merge #160, then #161; then the live sitting (docs/LIVE_CIV6.md); a yes or no on GM-B8",
       "maintainer: the live sitting, 20 items in docs/LIVE_CIV6.md (nothing was run against a real game); no GM-B6 code merges before it",
       "maintainer: re-run tests/unit/test_lua_json_encoder.py and the bridge/Lua sweep on Windows; 14 path/CRLF/symlink failures there need their output to be fixed",
       "maintainer: the v2.1 items of the 2026-11-15 state are unchanged (T0b on the GPU machine, cut-over, civ6az-agent, W&B key revocation)"
     ],
     "next_steps": [
+      "Check what the producer actually sends before trusting a fixture: the search tests seeded enemy units the real exporter never exports by default (GM-B8)",
       "An event that is cleared before it is waited on loses whatever set it first: hand out by sequence number. And a fallback that makes an old value look current needs a check that the old value is still in force, not only that something is alive",
       "Run the real loop against the real mod code before reviewing it: the stand-in as a GameBridge (tests/fixtures/lua_bridge.py) found a spin no reading had (research re-chosen after every choice)",
       "A veto applied after the policy's choice costs a choice: filter the offers before asking",
