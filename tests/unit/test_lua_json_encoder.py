@@ -130,3 +130,25 @@ class TestControlCharactersAreSpelledOut:
         encoded = result[0] if isinstance(result, tuple) else result
         assert isinstance(encoded, str) and encoded.startswith('"\\')
         assert json.loads(encoded) == chr(byte)
+
+
+class TestNumberEncoding:
+    """Safe integers must not overflow 32-bit C long (LLP64 %d) on Windows."""
+
+    @pytest.mark.parametrize(
+        "value",
+        [0, -1, 1, 2**31 - 1, 2**31, -(2**31), 2**32, 2**53 - 1, -(2**53 - 1)],
+    )
+    def test_safe_integers_round_trip_without_32bit_overflow(
+        self, runtime: Any, value: int
+    ) -> None:
+        encoded = runtime.eval(f"AlphaZeroJson.Encode({value})")
+        text = encoded[0] if isinstance(encoded, tuple) else encoded
+        assert isinstance(text, str)
+        assert json.loads(text) == value
+        assert "." not in text and "e" not in text.lower()
+
+    def test_negative_zero_encodes_as_plain_zero(self, runtime: Any) -> None:
+        encoded = runtime.eval("AlphaZeroJson.Encode(-0.0)")
+        text = encoded[0] if isinstance(encoded, tuple) else encoded
+        assert text == "0"

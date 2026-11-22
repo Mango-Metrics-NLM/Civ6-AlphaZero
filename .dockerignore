@@ -138,9 +138,14 @@ eval_results/
 
 # Civ6 mod source and superpowers docs (not needed in container image)
 mod/
+gameinfo.json
 docs/superpowers/
 release-staging*/
 dataset-export/
+
+# Security scan outputs (not needed in container image)
+bandit-report.json
+bandit-medium-report.json
 
 # Repository governance and agent harness — never needed at runtime, and they
 # invalidate the Docker layer cache on every doc or KB edit.

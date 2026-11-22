@@ -35,7 +35,7 @@ than rounding up.
 | Evaluation and promotion | Score-rate statistics with ternary intervals are the single source of truth; the deployed promotion default still cannot promote at the measured 73.5% draw rate | [`docs/EVALUATION.md`](docs/EVALUATION.md), [`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md) |
 | Reproducibility | A seed determines the whole local run; every search owns its RNG | [`docs/evidence/seeded_probe_reproducibility/`](docs/evidence/seeded_probe_reproducibility/README.md) |
 | Cloud pipeline (Vertex AI) | Built and exercised; outputs predate the fixes; Python self-play worker API seeded (`seed=`), CLI `--seed` not yet exposed; costs money | [`docs/GCP_INFRA.md`](docs/GCP_INFRA.md) |
-| Live Civilization VI bridge | Demo-grade: only end-of-turn commands have been seen to arrive (four, on random weights, 2026-07-12); eight unit and city commands were rewritten from the game's UI code (GM-B7a) and have not been run in a real game; turn-cycle stall open. Rules kernel (`alpha_zero/rules/`) + schema-2 Lua exporter / `lupa` harness / research wiring / GameInfo capture / `--mcts` refusal (GM-B0..B5) landed off the play path (`tests/unit/test_lua_harness.py`, unverified in a live game; live search translator GM-B6 open) | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
+| Live Civilization VI bridge | Demo-grade: FireTuner socket transport, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live with five Win64/Civ6 Lua parity fixes (2026-11-21), building on four autonomous `END_TURN`s (2026-07-12); fresh Turn 1 soak on the rebuilt bundle and live combat/city commands remain open. Rules kernel (`alpha_zero/rules/`) + schema-2 Lua exporter / `lupa` harness / research wiring / `--mcts` refusal (GM-B0..B5) live off the play path (search translator GM-B6 open) | [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md) |
 | MuZero, N-player, PBT, fog of war, hierarchical planning | Built; unvalidated by any committed artifact | [`docs/MODULE_REFERENCE.md`](docs/MODULE_REFERENCE.md) |
 | Hex-crystalline encoder | Published on the Hub; its head-to-head result is superseded (pre-fix, seed overlap) | [`docs/model_cards/hexcrystal_encoder.md`](docs/model_cards/hexcrystal_encoder.md) |
 | Hugging Face Spaces, transformer/MuZero Hub repos, Elo dataset | Scaffold / planned, not published | `spaces/`, [`docs/HF_PUBLISHING.md`](docs/HF_PUBLISHING.md) |
@@ -200,14 +200,16 @@ confirmation (charter non-goal NG-7). Setup and troubleshooting:
 ## Live Civilization VI
 
 The bridge drives a running Civilization VI over the FireTuner socket through
-the `AlphaZeroAI` mod. It is demo-grade: the only commands seen to arrive in a real game are four
-end-of-turn commands; eight unit and city commands were rewritten from the
-game's UI code (GM-B7a) and have not been run in a real game. Prerequisites, installation and known limitations:
+the `AlphaZeroAI` mod. It is demo-grade: FireTuner connectivity, 6-table
+`GameInfo` capture, `research_tech`, basic unit actions, and `city_produce`
+were exercised live on 2026-11-21 alongside five Lua parity fixes (`AlphaZeroMain.lua`
+rebuilt); a fresh Turn 1 multi-turn soak and combat/settler verification remain open.
+Prerequisites, installation and known limitations:
 [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md).
 
 ```bash
 python -m alpha_zero.civ6_local --mode civ6 --dry-run    # validate bridge config, no game needed
-python scripts/install_civ6_mod.py                       # install the mod
+python scripts/install_civ6_mod.py                       # install the mod (or --check to verify SHA-256)
 python -m alpha_zero.civ6_local --mode civ6              # drive the game with the greedy network policy
 # --mcts is refused in civ6 mode: the search has no translator to live commands yet (GM-B6)
 ```
@@ -217,6 +219,8 @@ python -m alpha_zero.civ6_local --mode civ6              # drive the game with t
 ```bash
 make install-lua         # install dev extras plus the lupa Lua 5.1 harness runtime
 make check-lua-bundle    # verify AlphaZeroMain.lua matches its Lua source modules
+make check-mod-install   # verify installed Steam mod files match repo SHA-256
+make test-lua            # run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1
 make verify-fast         # lint, types, regression and governance gates — the inner loop
 make verify              # every CI gate in one pass — run before opening a PR
 make test-all            # coverage, mirroring CI's coverage job (gate: 85%)

@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 from typing import Any
@@ -357,3 +358,95 @@ class TestRunCheckBacklog:
         code, lines = await _run(bridge, MOVE, use_backlog=True)
         assert code == 0
         assert "backlog" not in _text(lines)
+
+
+class TestLightweightImportsAndPaths:
+    def test_build_bridge_uses_env_and_cli_overrides(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        env_ipc = tmp_path / "env_ipc"
+        env_log = tmp_path / "env_Lua.log"
+        cli_ipc = tmp_path / "cli_ipc"
+        cli_log = tmp_path / "cli_Lua.log"
+        monkeypatch.setenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", str(env_ipc))
+        monkeypatch.setenv("CIV6AZ_LOCAL_LOG_PATH", str(env_log))
+        args = argparse.Namespace(ipc_dir=None, log_path=None)
+        bridge_env = lcc._build_bridge(args)
+        assert bridge_env._config.comm_dir == env_ipc
+        assert bridge_env._tailer._log_path == env_log
+
+        args_cli = argparse.Namespace(ipc_dir=str(cli_ipc), log_path=str(cli_log))
+        bridge_cli = lcc._build_bridge(args_cli)
+        assert bridge_cli._config.comm_dir == cli_ipc
+        assert bridge_cli._tailer._log_path == cli_log
+
+    def test_build_bridge_does_not_import_torch_or_numpy(self, tmp_path: Path) -> None:
+        import subprocess
+
+        code = (
+            "import argparse, sys\n"
+            "sys.path.insert(0, '.')\n"
+            "import scripts.live_command_check as lcc\n"
+            "args = argparse.Namespace(ipc_dir=sys.argv[1], log_path=sys.argv[2])\n"
+            "lcc._build_bridge(args)\n"
+            "heavy = sorted(m for m in sys.modules if m.split('.')[0] in ('torch', 'numpy'))\n"
+            "print(heavy)\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code, str(tmp_path / "ipc"), str(tmp_path / "Lua.log")],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "[]"
+
+    def test_build_bridge_uses_single_source_transport_env_vars(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("CIV6_BRIDGE_TRANSPORT", "socket")
+        monkeypatch.setenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.5")
+        monkeypatch.setenv("CIV6_BRIDGE_TUNER_PORT", "4321")
+        args = argparse.Namespace(ipc_dir=str(tmp_path / "ipc"), log_path=str(tmp_path / "Lua.log"))
+        bridge = lcc._build_bridge(args)
+        assert bridge._config.command_transport == "socket"
+        assert bridge._config.tuner_host == "127.0.0.5"
+        assert bridge._config.tuner_port == 4321
+
+    def test_verbose_flag_parses_and_emits_stderr_debug_logs(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        parser = lcc.create_parser()
+        assert parser.parse_args(["--action", "end_turn", "--verbose"]).verbose is True
+        log_file = tmp_path / "Lua.log"
+        log_file.write_text("", encoding="utf-8")
+        monkeypatch.setenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", str(tmp_path / "ipc"))
+        monkeypatch.setenv("CIV6AZ_LOCAL_LOG_PATH", str(log_file))
+        with caplog.at_level(logging.DEBUG):
+            logging.getLogger().setLevel(logging.WARNING)
+            rc = lcc.main(["--action", "end_turn", "--timeout", "0.05", "--verbose"])
+        captured = capsys.readouterr()
+        assert rc == lcc.EXIT_NO_CONTACT
+        assert any("Configured LiveBridge:" in rec.message for rec in caplog.records)
+        assert any("Waiting for initial game state" in rec.message for rec in caplog.records)
+        assert "no state from the game within" in captured.out
+
+    def test_build_bridge_matches_civ6_local_when_only_civ6_bridge_comm_dir_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from alpha_zero.local.gameplay_config import Civ6LocalConfig
+
+        unrelated_comm_dir = tmp_path / "other_comm_dir"
+        monkeypatch.delenv("CIV6AZ_LOCAL_BRIDGE_IPC_DIR", raising=False)
+        monkeypatch.setenv("CIV6_BRIDGE_COMM_DIR", str(unrelated_comm_dir))
+        args = argparse.Namespace(ipc_dir=None, log_path=None)
+        bridge = lcc._build_bridge(args)
+        local_cfg = Civ6LocalConfig.from_env()
+        assert bridge._config.comm_dir == Path(local_cfg.bridge_ipc_dir)
+        assert bridge._config.comm_dir != unrelated_comm_dir

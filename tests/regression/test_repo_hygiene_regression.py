@@ -29,6 +29,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -276,3 +277,36 @@ class TestSecretScanningConfig:
         assert not any(
             pat in entries for pat in ("alpha_zero/", "alpha_zero/rules/", "alpha_zero/rules/data/")
         ), ".dockerignore must not exclude packaged rules YAML data"
+
+
+class TestPreCommitDocSyncFilter:
+    """check-doc-sync hook files regex must cover every document check_doc_sync validates."""
+
+    def test_check_doc_sync_filter_covers_all_validated_targets(self) -> None:
+        config_path = REPO_ROOT / ".pre-commit-config.yaml"
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        hooks = [hook for repo in config.get("repos", []) for hook in repo.get("hooks", [])]
+        doc_hook = next(hook for hook in hooks if hook.get("id") == "check-doc-sync")
+        pattern = re.compile(doc_hook["files"])
+
+        for must_match in (
+            "README.md",
+            "CLAUDE.md",
+            "ROADMAP.md",
+            "PROJECT_CHARTER.md",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            "SUPPORT.md",
+            "SECURITY.md",
+            "GOVERNANCE.md",
+            "CITATION.cff",
+            "docs/MODULE_REFERENCE.md",
+            ".github/workflows/ci.yml",
+            ".claude/skills/gpu-verify/SKILL.md",
+            "pyproject.toml",
+            "alpha_zero/__init__.py",
+            "alpha_zero/local/__init__.py",
+        ):
+            assert pattern.search(must_match), f"check-doc-sync filter missed {must_match!r}"
+
+        assert not pattern.search("tests/unit/test_unrelated.py")

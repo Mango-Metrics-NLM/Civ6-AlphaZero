@@ -102,10 +102,12 @@ end
 
 -- End the current player's turn.
 -- The request is refused, and nothing is sent to the game, while a
--- notification blocks ending the turn (an unanswered research or production
--- choice, for example): the game would ignore the request and the caller would
--- wait for a turn that never comes. UI.CanEndTurn, where it exists, has the
--- last word: if the game says the turn can end, it is requested.
+-- notification blocks ending the turn (an unanswered research, production, or
+-- unit-orders choice): calling ACTION_ENDTURN while a blocker is active
+-- deactivates the player's turn without advancing the turn counter (LF-H1).
+-- UI.CanEndTurn only guards forced end-turn fallback and returns true even when
+-- blockers exist in the live UI, so NotificationManager / GetEndTurnBlocker
+-- is the sole end-turn blocking authority.
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
 
@@ -115,19 +117,12 @@ local function executeEndTurn(playerId, command)
     end
 
     if blocker then
-        local canEnd = false
-        if UI and UI.CanEndTurn then
-            local ok, answer = pcall(UI.CanEndTurn)
-            canEnd = ok and answer == true
+        local message = "End turn blocked: " .. tostring(blocker)
+        if blockerMessage then
+            message = message .. " (" .. tostring(blockerMessage) .. ")"
         end
-        if not canEnd then
-            local message = "End turn blocked: " .. tostring(blocker)
-            if blockerMessage then
-                message = message .. " (" .. tostring(blockerMessage) .. ")"
-            end
-            if Log then Log.Warn(message) end
-            return false, ERROR_CODES.END_TURN_BLOCKED, message
-        end
+        if Log then Log.Warn(message) end
+        return false, ERROR_CODES.END_TURN_BLOCKED, message
     end
 
     -- In Civ6, ending turn is handled through the UI
@@ -617,21 +612,35 @@ local function executeCityProduce(playerId, command)
             "Production unavailable: no CityManager in this Lua context"
     end
 
-    -- The strict form: "can this city start it now".
+    -- Ask both CanProduce(hash, true) (unlock/prereq eligibility) and
+    -- CanProduce(hash, false, true) (exclusion/start-now check), matching Civ6's
+    -- ProductionPanel.lua. Checking only (hash, false, true) returns true for
+    -- unresearched buildings (e.g. BUILDING_SEWER) and clears the city's queue.
+    local eligible = nil
     local allowed = nil
     pcall(function()
         local buildQueue = city:GetBuildQueue()
         if buildQueue and buildQueue.CanProduce then
-            allowed = buildQueue:CanProduce(row.Hash, false, true)
+            eligible = buildQueue:CanProduce(row.Hash, true)
+            if eligible == true then
+                allowed = buildQueue:CanProduce(row.Hash, false, true)
+            end
         end
     end)
-    -- Anything but a clear yes is a refusal, a game that cannot be asked
-    -- included: a request without it would be acknowledged as a success,
-    -- and this answer also decides what the exporter offers.
-    if allowed ~= true then
+    -- Anything but a clear yes from both checks is a refusal, a game that
+    -- cannot be asked included: a request without it would be acknowledged as
+    -- a success, and these checks also decide what the exporter offers.
+    local couldNotAsk = (eligible == nil) or (eligible == true and allowed == nil)
+    if eligible ~= true or allowed ~= true then
+        if Log and Log.Debug then
+            Log.Debug(string.format(
+                "City %d CanProduce(%s): eligible=%s allowed=%s",
+                cityId, tostring(typeName), tostring(eligible), tostring(allowed)
+            ))
+        end
         return false, ERROR_CODES.OPERATION_REFUSED,
             string.format("City %d cannot start %s now%s", cityId, typeName,
-                allowed == nil and " (the game could not be asked)" or "")
+                couldNotAsk and " (the game could not be asked)" or "")
     end
 
     local params = {}

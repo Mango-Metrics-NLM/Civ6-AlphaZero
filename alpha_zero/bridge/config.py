@@ -13,6 +13,7 @@ Usage:
 
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +21,26 @@ from typing import Any
 
 from alpha_zero.bridge.utils import parse_bool_env
 
-__all__ = ["MAP_SIZES", "BridgeConfig", "GameConstants", "MapSizeConfig", "get_map_config"]
+logger = logging.getLogger(__name__)
+
+DEFAULT_COMMAND_TRANSPORT: str = "file"
+VALID_COMMAND_TRANSPORTS: tuple[str, ...] = ("file", "socket")
+DEFAULT_TUNER_HOST: str = "127.0.0.1"
+DEFAULT_TUNER_PORT: int = 4318
+
+__all__ = [
+    "DEFAULT_COMMAND_TRANSPORT",
+    "DEFAULT_TUNER_HOST",
+    "DEFAULT_TUNER_PORT",
+    "MAP_SIZES",
+    "VALID_COMMAND_TRANSPORTS",
+    "BridgeConfig",
+    "GameConstants",
+    "MapSizeConfig",
+    "get_default_civ6_log_path",
+    "get_default_comm_dir",
+    "get_map_config",
+]
 
 
 @dataclass
@@ -32,7 +52,20 @@ class GameConstants:
     ITEM_HASH_RANGE: int = 200
 
 
-def _get_default_comm_dir() -> Path:
+def get_default_civ6_log_path() -> Path:
+    """Return the default path to Civilization VI's ``Lua.log`` file without importing torch."""
+    path = (
+        Path(os.getenv("LOCALAPPDATA", ""))
+        / "Firaxis Games"
+        / "Sid Meier's Civilization VI"
+        / "Logs"
+        / "Lua.log"
+    )
+    logger.debug("Resolved default Civ6 Lua.log path: %s", path)
+    return path
+
+
+def get_default_comm_dir() -> Path:
     """Get the default communication directory for Civ6.
 
     On Windows, this is typically:
@@ -57,11 +90,16 @@ def _get_default_comm_dir() -> Path:
             # Default to regular Documents, Civ6 may not be installed yet
             base = documents
 
-        return base / civ6_path / "AlphaZeroAI"
+        resolved = base / civ6_path / "AlphaZeroAI"
     else:
         # Linux/Mac - Civ6 typically uses ~/.local/share or similar
         # For now, use a generic path that can be overridden
-        return Path.home() / ".civ6_alphazero"
+        resolved = Path.home() / ".civ6_alphazero"
+    logger.debug("Resolved default Civ6 comm dir: %s", resolved)
+    return resolved
+
+
+_get_default_comm_dir = get_default_comm_dir
 
 
 @dataclass
@@ -99,7 +137,7 @@ class BridgeConfig:
         Implement retry logic in the calling code if needed.
     """
 
-    comm_dir: Path = field(default_factory=_get_default_comm_dir)
+    comm_dir: Path = field(default_factory=get_default_comm_dir)
     poll_interval_ms: int = 10
     command_timeout_ms: int = 5000
     heartbeat_timeout_s: float = 2.0
@@ -112,9 +150,9 @@ class BridgeConfig:
     max_actions_per_second: float = 1.0
     multiplayer_mode: bool = False
     player_id_mapping: dict[int, int] | None = None
-    command_transport: str = "file"
-    tuner_host: str = "127.0.0.1"
-    tuner_port: int = 4318
+    command_transport: str = DEFAULT_COMMAND_TRANSPORT
+    tuner_host: str = DEFAULT_TUNER_HOST
+    tuner_port: int = DEFAULT_TUNER_PORT
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
@@ -139,10 +177,58 @@ class BridgeConfig:
             raise ValueError("num_players must be between 2 and 12")
         if self.max_actions_per_second < 0.0:
             raise ValueError("max_actions_per_second must be non-negative")
-        if self.command_transport not in ("file", "socket"):
+        if self.command_transport not in VALID_COMMAND_TRANSPORTS:
             raise ValueError("command_transport must be 'file' or 'socket'")
+        if not isinstance(self.tuner_host, str) or not self.tuner_host.strip():
+            raise ValueError("tuner_host must be a non-empty string")
+        self.tuner_host = self.tuner_host.strip()
         if not 1 <= self.tuner_port <= 65535:
             raise ValueError("tuner_port must be between 1 and 65535")
+
+    @classmethod
+    def from_live_env(
+        cls,
+        *,
+        comm_dir: Path | str | None = None,
+        log_level: str | None = None,
+    ) -> BridgeConfig:
+        """Build a live-session ``BridgeConfig`` from transport environment variables.
+
+        Args:
+            comm_dir: Explicit IPC directory override (falls back to
+                ``CIV6_BRIDGE_COMM_DIR`` then :func:`get_default_comm_dir`).
+            log_level: Optional log level override.
+
+        Returns:
+            Validated :class:`BridgeConfig` with single-source transport defaults.
+        """
+        resolved_dir = (
+            Path(comm_dir)
+            if comm_dir is not None
+            else Path(os.environ.get("CIV6_BRIDGE_COMM_DIR") or get_default_comm_dir())
+        )
+        transport = (
+            os.environ.get("CIV6_BRIDGE_TRANSPORT", "").strip().lower() or DEFAULT_COMMAND_TRANSPORT
+        )
+        tuner_host = os.environ.get("CIV6_BRIDGE_TUNER_HOST", "").strip() or DEFAULT_TUNER_HOST
+        port_raw = os.environ.get("CIV6_BRIDGE_TUNER_PORT", "").strip()
+        tuner_port = int(port_raw) if port_raw else DEFAULT_TUNER_PORT
+        kwargs: dict[str, Any] = {
+            "comm_dir": resolved_dir,
+            "command_transport": transport,
+            "tuner_host": tuner_host,
+            "tuner_port": tuner_port,
+        }
+        if log_level is not None:
+            kwargs["log_level"] = log_level.upper()
+        logger.debug(
+            "Built live BridgeConfig: transport=%s host=%s port=%d comm_dir=%s",
+            transport,
+            tuner_host,
+            tuner_port,
+            resolved_dir,
+        )
+        return cls(**kwargs)
 
     @classmethod
     def from_env(cls) -> BridgeConfig:

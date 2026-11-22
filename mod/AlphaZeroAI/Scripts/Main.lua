@@ -415,12 +415,19 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #commands
     end
 
+    local ackErrorCode = nil
+    local ackErrorMessage = nil
+    if not results.success then
+        ackErrorCode = errorCode
+        ackErrorMessage = table.concat(results.errors, "; ")
+    end
+
     -- Write acknowledgment
     local ackSuccess = AlphaZeroFileIO.WriteAck(
         commandMessage.msg_id or 0,
         results.success,
-        results.success and nil or errorCode,
-        results.success and nil or table.concat(results.errors, "; "),
+        ackErrorCode,
+        ackErrorMessage,
         results.executed
     )
 

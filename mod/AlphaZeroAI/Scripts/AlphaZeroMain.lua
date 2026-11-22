@@ -616,9 +616,13 @@ local function encodeNumber(num)
         return "-1e308"
     end
 
-    -- Use integer format if whole number
+    -- Use integer format if whole number (%.0f avoids 32-bit C long truncation
+    -- of %d on Windows LLP64 for safe IEEE-754 integers >= 2^31).
     if math.floor(num) == num and math.abs(num) < 2^53 then
-        return string.format("%d", num)
+        if num == 0 then
+            return "0"
+        end
+        return string.format("%.0f", num)
     end
 
     return string.format("%.14g", num)
@@ -1757,6 +1761,100 @@ local function typeNameByIndex(tableName, typeField, index)
     return cache[index]
 end
 
+local productionHashCache = nil
+local PRODUCTION_HASH_TABLES = {
+    { "Units", "UnitType" },
+    { "Buildings", "BuildingType" },
+    { "Districts", "DistrictType" },
+    { "Projects", "ProjectType" },
+}
+
+-- Lazy hash-to-type lookup for city build queues when CurrentlyBuilding() returns nil
+-- (live InGame UI context exposes GetCurrentProductionTypeHash() instead).
+local function typeNameByHash(hash)
+    if type(hash) ~= "number" or hash == 0 then
+        return nil
+    end
+    if not productionHashCache then
+        local cache = {}
+        if GameInfo then
+            for _, entry in ipairs(PRODUCTION_HASH_TABLES) do
+                local gameTable = GameInfo[entry[1]]
+                if gameTable then
+                    pcall(function()
+                        for row in gameTable() do
+                            if row.Hash ~= nil and row[entry[2]] then
+                                cache[row.Hash] = row[entry[2]]
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+        if next(cache) ~= nil then
+            productionHashCache = cache
+        end
+    end
+    return productionHashCache and productionHashCache[hash] or nil
+end
+
+-- Resolve a city's active production item name across stub and live UI contexts.
+local function getCurrentProductionName(buildQueue)
+    local current = safeCall(buildQueue, "CurrentlyBuilding")
+    if type(current) == "string" and current ~= "" then
+        return current
+    end
+    local hash = safeCall(buildQueue, "GetCurrentProductionTypeHash")
+    if type(hash) == "number" and hash ~= 0 then
+        local resolved = typeNameByHash(hash)
+        if resolved then
+            if Log and Log.Debug then
+                Log.Debug("Resolved production hash %.0f -> %s", hash, resolved)
+            end
+            return resolved
+        end
+        if Log and Log.Debug then
+            Log.Debug("Unmapped production hash %.0f; falling back to PRODUCTION_HASH_", hash)
+        end
+        return "PRODUCTION_HASH_" .. string.format("%.0f", hash)
+    end
+    return nil
+end
+
+local gameInfoYieldCache = nil
+local function yieldIndexFromGameInfo(prefixedKey)
+    if not gameInfoYieldCache and GameInfo and GameInfo.Yields then
+        local cache = {}
+        pcall(function()
+            for row in GameInfo.Yields() do
+                if row.YieldType and row.Index ~= nil then
+                    cache[row.YieldType] = row.Index
+                end
+            end
+        end)
+        if next(cache) ~= nil then
+            gameInfoYieldCache = cache
+        end
+    end
+    return gameInfoYieldCache and gameInfoYieldCache[prefixedKey] or nil
+end
+
+-- Live Civ6 YieldTypes uses short keys (FOOD=0..FAITH=5), whereas unit stubs
+-- and XML types use YIELD_FOOD..YIELD_FAITH.
+local function resolveYieldIndex(shortKey, prefixedKey)
+    if YieldTypes then
+        if YieldTypes[shortKey] ~= nil then return YieldTypes[shortKey] end
+        if YieldTypes[prefixedKey] ~= nil then return YieldTypes[prefixedKey] end
+    end
+    return yieldIndexFromGameInfo(prefixedKey)
+end
+
+local function readPlotYield(plot, shortKey, prefixedKey)
+    local idx = resolveYieldIndex(shortKey, prefixedKey)
+    if idx == nil then return 0 end
+    return plot:GetYield(idx) or 0
+end
+
 -- Type names of the GameInfo rows for which owner:<hasMethod>(row.Index) is
 -- true, in GameInfo order (the techs a player has, the buildings in a city).
 local function collectOwnedTypes(tableName, typeField, owner, hasMethod)
@@ -1971,15 +2069,15 @@ local function exportMap(playerId)
                         table.insert(tile.features, "FEATURE_MOUNTAIN")
                     end
 
-                    -- Add yields if visible (with nil guard on YieldTypes)
-                    if isVisible and YieldTypes then
+                    -- Add yields if visible (with nil guard on YieldTypes / GameInfo.Yields)
+                    if isVisible and (YieldTypes or (GameInfo and GameInfo.Yields)) then
                         tile.yields = {
-                            food = plot:GetYield(YieldTypes.YIELD_FOOD or 0) or 0,
-                            production = plot:GetYield(YieldTypes.YIELD_PRODUCTION or 0) or 0,
-                            gold = plot:GetYield(YieldTypes.YIELD_GOLD or 0) or 0,
-                            science = plot:GetYield(YieldTypes.YIELD_SCIENCE or 0) or 0,
-                            culture = plot:GetYield(YieldTypes.YIELD_CULTURE or 0) or 0,
-                            faith = plot:GetYield(YieldTypes.YIELD_FAITH or 0) or 0,
+                            food = readPlotYield(plot, "FOOD", "YIELD_FOOD"),
+                            production = readPlotYield(plot, "PRODUCTION", "YIELD_PRODUCTION"),
+                            gold = readPlotYield(plot, "GOLD", "YIELD_GOLD"),
+                            science = readPlotYield(plot, "SCIENCE", "YIELD_SCIENCE"),
+                            culture = readPlotYield(plot, "CULTURE", "YIELD_CULTURE"),
+                            faith = readPlotYield(plot, "FAITH", "YIELD_FAITH"),
                         }
                     end
 
@@ -2153,8 +2251,8 @@ local function exportCities(playerId)
 
                             local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
                             if ok_bq and buildQueue then
-                                local ok_cb, currentProduction = pcall(function() return buildQueue:CurrentlyBuilding() end)
-                                if ok_cb and currentProduction then
+                                local currentProduction = getCurrentProductionName(buildQueue)
+                                if currentProduction then
                                     cityData.current_production = currentProduction
                                 end
                                 local ok_tl, turnsLeft = pcall(function() return buildQueue:GetTurnsLeft() end)
@@ -2440,8 +2538,8 @@ local function exportLegalActions(playerId)
         for _, city in playerCities:Members() do
             local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
             if ok_bq and buildQueue then
-                local ok_cb, currentlyBuilding = pcall(function() return buildQueue:CurrentlyBuilding() end)
-                local needsProduction = ok_cb and not currentlyBuilding
+                local currentlyBuilding = getCurrentProductionName(buildQueue)
+                local needsProduction = not currentlyBuilding
                 -- Always export available production for each city
                 local items = {}
                 local itemTypes = {}
@@ -2910,10 +3008,12 @@ end
 
 -- End the current player's turn.
 -- The request is refused, and nothing is sent to the game, while a
--- notification blocks ending the turn (an unanswered research or production
--- choice, for example): the game would ignore the request and the caller would
--- wait for a turn that never comes. UI.CanEndTurn, where it exists, has the
--- last word: if the game says the turn can end, it is requested.
+-- notification blocks ending the turn (an unanswered research, production, or
+-- unit-orders choice): calling ACTION_ENDTURN while a blocker is active
+-- deactivates the player's turn without advancing the turn counter (LF-H1).
+-- UI.CanEndTurn only guards forced end-turn fallback and returns true even when
+-- blockers exist in the live UI, so NotificationManager / GetEndTurnBlocker
+-- is the sole end-turn blocking authority.
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
 
@@ -2923,19 +3023,12 @@ local function executeEndTurn(playerId, command)
     end
 
     if blocker then
-        local canEnd = false
-        if UI and UI.CanEndTurn then
-            local ok, answer = pcall(UI.CanEndTurn)
-            canEnd = ok and answer == true
+        local message = "End turn blocked: " .. tostring(blocker)
+        if blockerMessage then
+            message = message .. " (" .. tostring(blockerMessage) .. ")"
         end
-        if not canEnd then
-            local message = "End turn blocked: " .. tostring(blocker)
-            if blockerMessage then
-                message = message .. " (" .. tostring(blockerMessage) .. ")"
-            end
-            if Log then Log.Warn(message) end
-            return false, ERROR_CODES.END_TURN_BLOCKED, message
-        end
+        if Log then Log.Warn(message) end
+        return false, ERROR_CODES.END_TURN_BLOCKED, message
     end
 
     -- In Civ6, ending turn is handled through the UI
@@ -3425,21 +3518,35 @@ local function executeCityProduce(playerId, command)
             "Production unavailable: no CityManager in this Lua context"
     end
 
-    -- The strict form: "can this city start it now".
+    -- Ask both CanProduce(hash, true) (unlock/prereq eligibility) and
+    -- CanProduce(hash, false, true) (exclusion/start-now check), matching Civ6's
+    -- ProductionPanel.lua. Checking only (hash, false, true) returns true for
+    -- unresearched buildings (e.g. BUILDING_SEWER) and clears the city's queue.
+    local eligible = nil
     local allowed = nil
     pcall(function()
         local buildQueue = city:GetBuildQueue()
         if buildQueue and buildQueue.CanProduce then
-            allowed = buildQueue:CanProduce(row.Hash, false, true)
+            eligible = buildQueue:CanProduce(row.Hash, true)
+            if eligible == true then
+                allowed = buildQueue:CanProduce(row.Hash, false, true)
+            end
         end
     end)
-    -- Anything but a clear yes is a refusal, a game that cannot be asked
-    -- included: a request without it would be acknowledged as a success,
-    -- and this answer also decides what the exporter offers.
-    if allowed ~= true then
+    -- Anything but a clear yes from both checks is a refusal, a game that
+    -- cannot be asked included: a request without it would be acknowledged as
+    -- a success, and these checks also decide what the exporter offers.
+    local couldNotAsk = (eligible == nil) or (eligible == true and allowed == nil)
+    if eligible ~= true or allowed ~= true then
+        if Log and Log.Debug then
+            Log.Debug(string.format(
+                "City %d CanProduce(%s): eligible=%s allowed=%s",
+                cityId, tostring(typeName), tostring(eligible), tostring(allowed)
+            ))
+        end
         return false, ERROR_CODES.OPERATION_REFUSED,
             string.format("City %d cannot start %s now%s", cityId, typeName,
-                allowed == nil and " (the game could not be asked)" or "")
+                couldNotAsk and " (the game could not be asked)" or "")
     end
 
     local params = {}
@@ -4561,12 +4668,19 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
         bridgeState.actionsThisTurn = bridgeState.actionsThisTurn + #commands
     end
 
+    local ackErrorCode = nil
+    local ackErrorMessage = nil
+    if not results.success then
+        ackErrorCode = errorCode
+        ackErrorMessage = table.concat(results.errors, "; ")
+    end
+
     -- Write acknowledgment
     local ackSuccess = AlphaZeroFileIO.WriteAck(
         commandMessage.msg_id or 0,
         results.success,
-        results.success and nil or errorCode,
-        results.success and nil or table.concat(results.errors, "; "),
+        ackErrorCode,
+        ackErrorMessage,
         results.executed
     )
 

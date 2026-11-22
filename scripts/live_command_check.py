@@ -24,8 +24,9 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
+import logging
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,8 @@ if str(_REPO_ROOT) not in sys.path:
 
 from alpha_zero.bridge.protocol import ActionType, CommandMessage, LuaCommand  # noqa: E402
 from alpha_zero.bridge.state_diff import changes, expected_effect  # noqa: E402
+
+logger = logging.getLogger("live_command_check")
 
 EXIT_EFFECT = 0
 EXIT_NO_EFFECT = 1
@@ -65,6 +68,12 @@ def create_parser() -> argparse.ArgumentParser:
         "--use-backlog",
         action="store_true",
         help="if no fresh state arrives, act on the last state already in Lua.log",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="emit diagnostic debug logs to stderr",
     )
     return parser
 
@@ -127,6 +136,10 @@ async def run_check(
     Returns:
         ``EXIT_EFFECT``, ``EXIT_NO_EFFECT`` or ``EXIT_NO_CONTACT``.
     """
+    started = time.monotonic()
+    logger.debug(
+        "Waiting for initial game state (timeout=%.1fs, use_backlog=%s)", timeout, use_backlog
+    )
     try:
         before = await bridge.wait_for_state(timeout=timeout, require_new=False)
     except Exception as exc:
@@ -148,6 +161,7 @@ async def run_check(
     except Exception as exc:
         out(f"no answer from the mod within {timeout:g}s ({exc})")
         return EXIT_NO_CONTACT
+    logger.debug("Raw ack received in %.3fs: %r", time.monotonic() - started, ack)
     success, code, text = _ack_fields(ack)
     out(f"answer: {'accepted' if success else 'REFUSED'}" + (f" [{code}] {text}" if code else ""))
     if not success:
@@ -166,6 +180,9 @@ async def run_check(
         return EXIT_NO_CONTACT
 
     lines = changes(before, after)
+    logger.debug(
+        "Post-command state turn=%s received in %.3fs", after.turn_id, time.monotonic() - started
+    )
     for line in lines:
         out(f"changed: {line}")
     if not lines:
@@ -179,26 +196,47 @@ async def run_check(
 
 
 def _build_bridge(args: argparse.Namespace) -> Any:
-    """A ``LiveBridge`` configured as ``civ6_local.run_civ6_bridge`` configures it."""
+    """A ``LiveBridge`` configured as ``civ6_local.run_civ6_bridge`` configures it.
+
+    Shares live IPC and ``Lua.log`` precedence with
+    :mod:`alpha_zero.local.gameplay_config` (``--ipc-dir`` ->
+    ``CIV6AZ_LOCAL_BRIDGE_IPC_DIR`` -> default comm dir) so this lightweight
+    CLI always targets the same IPC directory as ``civ6_local`` without
+    importing ``torch`` or ``numpy``.
+    """
     from alpha_zero.bridge.config import BridgeConfig
     from alpha_zero.bridge.live_bridge import LiveBridge
-    from alpha_zero.civ6_local import Civ6LocalConfig
-
-    local = Civ6LocalConfig.from_env()
-    bridge_cfg = BridgeConfig(
-        comm_dir=Path(args.ipc_dir or local.bridge_ipc_dir),
-        command_transport=os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower(),
-        tuner_host=os.getenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.1"),
-        tuner_port=int(os.getenv("CIV6_BRIDGE_TUNER_PORT", "4318")),
+    from alpha_zero.local.gameplay_config import (
+        resolve_live_bridge_ipc_dir,
+        resolve_live_civ6_log_path,
     )
+
+    ipc_dir = resolve_live_bridge_ipc_dir(args.ipc_dir)
+    log_path = resolve_live_civ6_log_path(args.log_path)
+    bridge_cfg = BridgeConfig.from_live_env(comm_dir=ipc_dir)
     bridge_cfg.ensure_comm_dir()
-    return LiveBridge(bridge_cfg, log_path=Path(args.log_path or local.civ6_log_path))
+    logger.debug(
+        "Configured LiveBridge: comm_dir=%s log_path=%s transport=%s endpoint=%s:%d",
+        bridge_cfg.comm_dir,
+        log_path,
+        bridge_cfg.command_transport,
+        bridge_cfg.tuner_host,
+        bridge_cfg.tuner_port,
+    )
+    return LiveBridge(bridge_cfg, log_path=log_path)
 
 
 def main(argv: list[str] | None = None) -> int:
     """Entry point."""
     parser = create_parser()
     args = parser.parse_args(argv)
+    if getattr(args, "verbose", False):
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+            stream=sys.stderr,
+        )
+        logging.getLogger().setLevel(logging.DEBUG)
     try:
         command = build_command(args)
         LuaCommand.from_dict(command)  # a command the protocol cannot express is a usage error

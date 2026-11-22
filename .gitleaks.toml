@@ -50,6 +50,7 @@ paths = [
     '''^\.coverage\.''',
     '''^coverage\.(xml|json)$''',
     '''^coverage-cloud\.json$''',
+    '''^bandit-(?:medium-)?report\.json$''',
     '''^mlruns/''',
     '''^mlartifacts/''',
     '''^mlflow\.db$''',

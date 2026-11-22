@@ -43,7 +43,20 @@ def root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def _files(path: Path) -> list[str]:
-    return sorted(str(p.relative_to(path)) for p in path.rglob("*") if p.is_file())
+    return sorted(p.relative_to(path).as_posix() for p in path.rglob("*") if p.is_file())
+
+
+def _link_dir(link: Path, target: Path) -> None:
+    """Create a directory symlink, falling back to an NTFS junction when Windows lacks privilege."""
+    try:
+        link.symlink_to(target, target_is_directory=True)
+    except OSError as exc:
+        if os.name == "nt" and getattr(exc, "winerror", None) == 1314:
+            import _winapi
+
+            _winapi.CreateJunction(str(target), str(link))
+            return
+        raise
 
 
 def _checkout(tmp_path: Path) -> Path:
@@ -93,7 +106,7 @@ class TestSymlinksIntoACheckout:
         self, gc: ModuleType, root: Path, tmp_path: Path
     ) -> None:
         checkout = _checkout(tmp_path)
-        (root / "gameinfo").symlink_to(checkout / "docs", target_is_directory=True)
+        _link_dir(root / "gameinfo", checkout / "docs")
         with pytest.raises(gc.GameInfoCaptureError):
             gc.write_snapshot(DOC, name="probe")
         assert _files(checkout) == []
@@ -102,7 +115,7 @@ class TestSymlinksIntoACheckout:
         self, gc: ModuleType, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         checkout = _checkout(tmp_path)
-        (tmp_path / "link").symlink_to(checkout / "docs", target_is_directory=True)
+        _link_dir(tmp_path / "link", checkout / "docs")
         monkeypatch.setenv(DATA_ROOT_ENV, str(tmp_path / "link"))
         with pytest.raises(gc.GameInfoCaptureError):
             gc.write_snapshot(DOC, name="probe")
@@ -116,7 +129,7 @@ class TestSymlinksIntoACheckout:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         checkout = _checkout(tmp_path)
-        (root / "gameinfo").symlink_to(checkout / "docs", target_is_directory=True)
+        _link_dir(root / "gameinfo", checkout / "docs")
         assert _run(gc, "--from-file", str(_source(tmp_path)), "--name", "probe") == 1
         _fail_one_line(capsys)
         assert _files(checkout) == []
@@ -473,7 +486,7 @@ class TestRepositoryTree:
         else:
             repo_probe.mkdir()
             data = tmp_path / "link"
-            data.symlink_to(repo_probe, target_is_directory=True)
+            _link_dir(data, repo_probe)
         monkeypatch.setenv(DATA_ROOT_ENV, str(data))
         with pytest.raises(gc.GameInfoCaptureError):
             gc.write_snapshot(DOC, name="probe")

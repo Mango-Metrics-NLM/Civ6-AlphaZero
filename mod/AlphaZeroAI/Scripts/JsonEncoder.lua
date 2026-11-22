@@ -65,9 +65,13 @@ local function encodeNumber(num)
         return "-1e308"
     end
 
-    -- Use integer format if whole number
+    -- Use integer format if whole number (%.0f avoids 32-bit C long truncation
+    -- of %d on Windows LLP64 for safe IEEE-754 integers >= 2^31).
     if math.floor(num) == num and math.abs(num) < 2^53 then
-        return string.format("%d", num)
+        if num == 0 then
+            return "0"
+        end
+        return string.format("%.0f", num)
     end
 
     return string.format("%.14g", num)
