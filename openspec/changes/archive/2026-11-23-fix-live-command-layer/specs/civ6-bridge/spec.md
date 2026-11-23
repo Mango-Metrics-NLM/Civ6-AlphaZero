@@ -26,8 +26,10 @@ refuses, MUST be answered as a failure that names the reason, and nothing is req
 
 ### Requirement: A move or an attack does not start a war
 
-Before a move or an attack the mod SHALL ask the game whether it would change the war state, and
-MUST refuse the command when the game says it would or when the game cannot be asked. This
+Before an attack, and before a move onto a tile the player can see, the mod SHALL ask the game
+whether it would change the war state, and MUST refuse the command when the game says it would
+or when the game cannot be asked. A move onto a tile the player cannot see is not asked about,
+as in the game's own move routine, so this requirement does not protect it. This
 requirement covers moves and attacks only. Two gaps are registered and not closed by it: an
 answer from the game in a form other than the expected list is read as "no change", and the
 separate declare-war command has no gate.
@@ -39,7 +41,7 @@ separate declare-war command has no gate.
 
 #### Scenario: The game cannot be asked
 
-- **WHEN** the game's war-state check is missing or raises
+- **WHEN** the game's war-state check is missing or raises, for an attack or a move onto a visible tile
 - **THEN** the move or attack is refused and nothing is requested
 
 ### Requirement: A production order names the item by the game's hash
@@ -89,7 +91,9 @@ would start a war; a city's production choices SHALL be asked by row hash.
 
 Within one game turn the agent loop SHALL NOT send a command the mod refused in that turn again,
 SHALL choose research and each city's production at most once unless the choice had no effect,
-SHALL send only `end_turn` after a fixed number of commands, and SHALL be able to stop after a
+SHALL send only `end_turn` after a fixed number of commands (except that, while the game blocks
+the end of turn, commands that can answer the blocker are still sent up to twice that number,
+so the limit cannot trap a blocked turn), and SHALL be able to stop after a
 configured number of game turns (`CIV6AZ_AGENT_MAX_GAME_TURNS`). A choice that cannot be sent
 MUST be re-selected, not answered by ending the turn. When the game keeps blocking the end of
 turn and nothing sent changes that, the loop SHALL declare a stall and stop sending, not spin.

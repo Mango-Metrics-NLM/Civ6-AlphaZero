@@ -38,7 +38,11 @@ an error that names the offending key.
 ### Requirement: Rule-set identity is a content hash
 
 `content_sha256()` SHALL hash the canonical JSON of the parsed rule set. The hash
-MUST be unchanged by CRLF line endings or key reordering, and MUST change when any value changes.
+MUST be unchanged by CRLF line endings or key reordering. The rule set's own `id` and any field
+at its default are left out of the hashed content, so renaming a draft when it is frozen keeps
+its hash and a new optional field does not move old pins. Declared order is kept, because
+registries index by it. The hash MUST change when any other value, or the order of a list,
+changes.
 
 #### Scenario: Line endings and key order
 
