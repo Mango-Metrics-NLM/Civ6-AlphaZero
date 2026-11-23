@@ -333,12 +333,14 @@ class TestAttack:
 class TestSkipFortifySleep:
     def test_skip_marks_the_unit_and_clears_the_end_of_turn_blocker(self) -> None:
         game = c.load("Civ6Stub.unit(101).moves = 0\nCiv6Stub.unitsNeedOrders = true")
-        assert game.eval("UI.CanEndTurn()") is False, "premise: the unit blocks the turn"
+        # The blocker is read the way the mod reads it (live, UI.CanEndTurn() says true anyway).
+        assert game.eval("NotificationManager.GetFirstEndTurnBlocking(0)") != 0, "premise"
+        assert h.export_state(game)["end_turn_blocking"] == "ENDTURN_BLOCKING_UNITS"
         assert run(game, unit_cmd("unit_skip"))[:2] == (True, None)
         c.frame(game)
         assert units(game, 102, "skipped") is True
-        assert game.eval("UI.CanEndTurn()") is True
         assert game.eval("NotificationManager.GetFirstEndTurnBlocking(0)") == 0
+        assert "end_turn_blocking" not in h.export_state(game)
         assert run(game, {"action_type": "end_turn"})[:2] == (True, None)
 
     def test_fortify_fortifies_and_a_second_fortify_is_refused(self) -> None:
@@ -492,12 +494,15 @@ class TestProduction:
         game = c.load(
             c.CHECK_LOG + PRODUCTION_BLOCKER + "Civ6Stub.city(301).building = 'BUILDING_GRANARY'"
         )
-        assert game.eval("UI.CanEndTurn()") is False, "premise"
+        # The blocker is read the way the mod reads it (live, UI.CanEndTurn() says true anyway).
+        assert game.eval("NotificationManager.GetFirstEndTurnBlocking(0)") != 0, "premise"
+        assert h.export_state(game)["end_turn_blocking"] == "ENDTURN_BLOCKING_PRODUCTION"
         success, code, message = run(game, produce("UNIT_WARRIOR"))
         assert (success, code) == (True, None), message
         c.frame(game)
         assert building(game) == "UNIT_WARRIOR"
-        assert game.eval("UI.CanEndTurn()") is True
+        assert game.eval("NotificationManager.GetFirstEndTurnBlocking(0)") == 0
+        assert "end_turn_blocking" not in h.export_state(game)
         assert c.dropped(game) == 0
 
     def test_the_request_has_the_hash_and_the_exclusive_insert_mode(self) -> None:

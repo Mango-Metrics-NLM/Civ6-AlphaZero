@@ -111,9 +111,27 @@ end
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
 
-    local blocker, blockerMessage = nil, nil
+    -- When the game cannot be asked what blocks the turn, the turn is treated
+    -- as blocked: nothing is sent.
+    local blocker, blockerMessage, unknown = nil, nil, true
     if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
-        blocker, blockerMessage = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+        blocker, blockerMessage, unknown = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    end
+    if unknown and not blocker then
+        blocker = "ENDTURN_BLOCKING_NOT_ASKABLE"
+        blockerMessage = "the game could not be asked what blocks the end of turn"
+    end
+
+    -- ACTION_ENDTURN ends the LOCAL player's turn, whoever was asked about
+    -- above. If the bridge's player is someone else, the blocker check was
+    -- made for the wrong player: refuse.
+    local okLocal, localId = pcall(function() return Game.GetLocalPlayer() end)
+    if okLocal and type(localId) == "number" and localId >= 0 and localId ~= playerId then
+        local message = string.format(
+            "End turn refused: the bridge plays player %s and the local player is %s",
+            tostring(playerId), tostring(localId))
+        if Log then Log.Warn(message) end
+        return false, ERROR_CODES.EXECUTION_FAILED, message
     end
 
     if blocker then
@@ -286,6 +304,8 @@ end
 -- Refuse anything that would put the player at war: nil when it would not,
 -- else an error code and message. When the game cannot be asked, the answer
 -- is a refusal too: the mod does not attack on a guess.
+local warAnswerReported = false
+
 local function warRefusal(unit, x, y)
     if not CombatManager or not CombatManager.IsAttackChangeWarState then
         return ERROR_CODES.EXECUTION_FAILED,
@@ -298,9 +318,28 @@ local function warRefusal(unit, x, y)
         return ERROR_CODES.EXECUTION_FAILED,
             "Asking the game whether this would start a war raised: " .. tostring(results)
     end
-    if type(results) == "table" and #results > 0 then
+    if results == nil then
+        return nil, nil
+    end
+    if type(results) ~= "table" then
+        -- The game's UI reads a list of players. Anything else is an answer
+        -- this code does not understand, and "not understood" is not "no war".
+        -- Said once per session with print, because the offer check runs with
+        -- the log off: otherwise an agent that is offered no move says nothing.
+        if not warAnswerReported then
+            warAnswerReported = true
+            print("[AlphaZero] WARN: IsAttackChangeWarState answered " .. type(results)
+                .. " (" .. tostring(results) .. "); moves and attacks are refused until this is understood")
+        end
+        return ERROR_CODES.EXECUTION_FAILED,
+            "The game's answer on whether this would start a war could not be read: "
+            .. tostring(results)
+    end
+    local _, first = next(results)
+    if first ~= nil then
         return ERROR_CODES.WOULD_START_WAR,
-            string.format("Refused: (%d,%d) would start a war with player %s", x, y, tostring(results[1]))
+            string.format("Refused: (%d,%d) would start a war with player %s", x, y,
+                tostring(results[1] or first))
     end
     return nil, nil
 end
@@ -1087,6 +1126,13 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
 end
 
 local function diplomacyDeclareWar(playerId, targetPlayerId)
+    -- Refused unless the setting allows it: nothing in this mod may start a
+    -- war by default (the same answer a move or an attack that would gets).
+    if not (AlphaZeroConfig and AlphaZeroConfig.Get("ALLOW_DECLARE_WAR") == true) then
+        return false, ERROR_CODES.WOULD_START_WAR,
+            string.format("Refused: declaring war on player %s is turned off (ALLOW_DECLARE_WAR)",
+                tostring(targetPlayerId))
+    end
     return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_DECLARE_WAR", "DECLARE_WAR")
 end
 

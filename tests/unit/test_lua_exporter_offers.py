@@ -79,8 +79,13 @@ def expected_moves(
     return {t for t in neighbours(x, y) if on_map(t) and t not in occupied and t not in blocked}
 
 
-def load(setup: str = "") -> Any:
-    return h.load_mod(setup=setup)
+def load(setup: str = "", *, observe: bool = False) -> Any:
+    """The mod in the stand-in. GM-B9: ``observe`` turns ``OBSERVE_ALL_PLAYERS`` on, the only
+    mode in which an ``attack`` or ``ranged_attack`` is offered (the state then shows the foe)."""
+    runtime = h.load_mod(setup=setup)
+    if observe:
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+    return runtime
 
 
 def check(runtime: Any, command: dict[str, Any], player_id: int = 0) -> tuple[Any, Any, Any]:
@@ -126,6 +131,7 @@ UNIT_COMMANDS = {
     "fortify": "unit_fortify",
     "found_city": "unit_found_city",
 }
+ATTACKS = ("attack", "ranged_attack")
 Offer = tuple[str, int, tuple[int, int] | None]
 
 
@@ -377,16 +383,31 @@ class TestOfferedUnitActionsAreAccepted:
         assert not refused, refused
         assert offered, "nothing offered; the check above is vacuous"
 
+    @pytest.mark.parametrize("observe", [False, True], ids=["flag off", "flag on"])
     @pytest.mark.parametrize("scenario", sorted(SCENARIOS))
-    def test_the_offer_is_exactly_the_accepted_set(self, scenario: str) -> None:
-        """E6. Fails on the current tree: ``Check`` does not exist."""
-        runtime = load(SCENARIOS[scenario])
+    def test_the_offer_is_exactly_the_accepted_set(self, scenario: str, observe: bool) -> None:
+        """E6. GM-B9 changed the rule: with ``OBSERVE_ALL_PLAYERS`` on the offer equals the
+        accepted set; with it off (the default) the offer equals the accepted set WITHOUT
+        ``attack`` and ``ranged_attack``, which the executor still accepts but the state gives
+        no foreign unit to aim at."""
+        runtime = load(SCENARIOS[scenario], observe=observe)
         state = h.export_state(runtime)
         accepted = {o for o in candidates(state) if check(runtime, command_for(*o))[0] is True}
+        expected = accepted if observe else {o for o in accepted if o[0] not in ATTACKS}
         offered = offered_unit_actions(state)
-        assert offered - accepted == set(), "offered but not accepted"
-        assert accepted - offered == set(), "accepted but not offered"
-        assert accepted, "nothing accepted; the equality is vacuous"
+        assert offered - expected == set(), "offered but not expected"
+        assert expected - offered == set(), "expected but not offered"
+        assert expected, "nothing expected; the equality is vacuous"
+
+    def test_with_the_flag_off_the_executor_accepts_attacks_the_exporter_does_not_offer(
+        self,
+    ) -> None:
+        """GM-B9: the one place the offer is smaller than the accepted set."""
+        runtime = load(c.ARCHER)
+        state = h.export_state(runtime)
+        accepted = {o for o in candidates(state) if check(runtime, command_for(*o))[0] is True}
+        assert {("attack", 102, (2, 0)), ("ranged_attack", 102, (2, 0))} <= accepted
+        assert not {o for o in offered_unit_actions(state) if o[0] in ATTACKS}
 
     def test_the_accepted_set_covers_every_kind_somewhere(self) -> None:
         """Fails on the current tree: ``Check`` does not exist. Non-vacuity for the reverse
@@ -411,13 +432,17 @@ class TestOfferedUnitActionsAreAccepted:
 
     def test_a_unit_with_no_moves_is_offered_nothing(self) -> None:
         """E6. Fails on the current tree: it is still offered an attack."""
-        state = h.export_state(load(SCENARIOS["warrior_without_moves"]))
+        state = h.export_state(
+            load(SCENARIOS["warrior_without_moves"], observe=True)
+        )  # GM-B9: flag on, or 'no attack' would hold whatever the mod does
         assert unit_actions(state, 102) == []
         assert unit_actions(state, 101), "control: the settler still has moves"
 
     def test_a_unit_with_no_attacks_is_offered_no_attack(self) -> None:
         """CONTROL: passes on the current tree."""
-        state = h.export_state(load(SCENARIOS["warrior_without_attacks"]))
+        state = h.export_state(
+            load(SCENARIOS["warrior_without_attacks"], observe=True)
+        )  # GM-B9: flag on, or 'no attack' would hold whatever the mod does
         assert unit_actions(state, 102) == ["fortify", "move", "skip"]
 
     def test_a_fortified_unit_is_not_offered_fortify_again(self) -> None:
@@ -426,7 +451,9 @@ class TestOfferedUnitActionsAreAccepted:
         assert actions(healthy, "fortify", unit_id=102), "control: a free warrior may fortify"
         state = h.export_state(load(SCENARIOS["fortified"]))
         assert actions(state, "fortify", unit_id=102) == []
-        assert unit_actions(state, 102) == ["attack", "move", "skip"]
+        assert unit_actions(state, 102) == ["move", "skip"]  # GM-B9: no attack with the flag off
+        seen = h.export_state(load(SCENARIOS["fortified"], observe=True))
+        assert unit_actions(seen, 102) == ["attack", "move", "skip"]
 
     def test_a_settler_is_not_offered_fortify(self) -> None:
         """CONTROL: passes on the current tree."""
@@ -451,37 +478,43 @@ class TestOfferedUnitActionsAreAccepted:
             assert actions(state, "found_city", unit_id=102) == [], scenario
 
     def test_attack_is_offered_while_at_war(self) -> None:
-        """CONTROL: passes on the current tree."""
-        state = h.export_state(load())
+        """CONTROL. GM-B9 changed the rule: offered with ``OBSERVE_ALL_PLAYERS`` on; with it off
+        (the default) no attack is offered although the executor would carry it out."""
+        state = h.export_state(load(observe=True))
         assert targets_of(state, "attack", 102) == {(2, 0)}
         assert actions(state, "ranged_attack") == []
+        hidden = h.export_state(load())
+        assert actions(hidden, "attack") == [] and actions(hidden, "ranged_attack") == []
+        assert check(load(), command_for("attack", 102, (2, 0)))[:2] == (True, None)
 
     def test_no_attack_is_offered_at_peace(self) -> None:
         """E6. Fails on the current tree: the exporter never asks whether it starts a war."""
-        war = h.export_state(load(c.ARCHER))
+        war = h.export_state(load(c.ARCHER, observe=True))
         assert actions(war, "attack") or actions(war, "ranged_attack"), "control: at war"
-        state = h.export_state(load(SCENARIOS["peace"]))
+        state = h.export_state(load(SCENARIOS["peace"], observe=True))  # GM-B9: flag on
         assert actions(state, "attack") == []
         assert actions(state, "ranged_attack") == []
         assert unit_actions(state, 102) == ["fortify", "move", "skip"]
 
     def test_a_melee_unit_is_offered_attack_not_ranged_attack(self) -> None:
-        """CONTROL: passes on the current tree (range 0)."""
-        state = h.export_state(load())
+        """CONTROL (range 0). GM-B9: run with ``OBSERVE_ALL_PLAYERS`` on, where attacks are offered."""
+        state = h.export_state(load(observe=True))
         assert actions(state, "attack", unit_id=102)
         assert actions(state, "ranged_attack", unit_id=102) == []
 
     def test_a_range_without_a_ranged_strength_is_not_a_ranged_attack(self) -> None:
         """E6. Fails on the current tree: it chooses by ``GetRange() > 1``, so this melee
         unit is offered a ranged attack (and no attack)."""
-        state = h.export_state(load(SCENARIOS["range_without_strength"]))
+        # GM-B9: flag on, the only mode in which attacks are offered.
+        state = h.export_state(load(SCENARIOS["range_without_strength"], observe=True))
         assert actions(state, "ranged_attack") == []
         assert targets_of(state, "attack", 102) == {(2, 0)}
 
     def test_a_ranged_unit_is_offered_a_ranged_attack_on_the_tiles_in_range(self) -> None:
         """E6. Fails on the current tree: the archer is offered a ranged attack only (the old
         exporter picks one kind by range), so it loses its melee attack."""
-        state = h.export_state(load(SCENARIOS["archer_two_enemies"]))
+        # GM-B9: flag on, the only mode in which attacks are offered.
+        state = h.export_state(load(SCENARIOS["archer_two_enemies"], observe=True))
         assert targets_of(state, "ranged_attack", 102) == {(2, 0), (3, 0)}
         assert targets_of(state, "attack", 102) == {(2, 0)}
 
@@ -490,7 +523,9 @@ class TestOfferedUnitActionsAreAccepted:
         has nothing to shoot at. Fails on the current tree: not offered (or offered by its own
         range arithmetic) differently from the stand-in; see the equality test for the rest."""
         setup = c.ARCHER + "Civ6Stub.unit(201).x, Civ6Stub.unit(201).y = 3, 1\n"
-        state = h.export_state(load(setup))
+        state = h.export_state(
+            load(setup, observe=True)
+        )  # GM-B9: flag on, or 'no attack' would hold whatever the mod does
         assert actions(state, "ranged_attack") == []
         assert actions(state, "attack") == []
         # ... and (0,0), the settler's tile, is in range of the archer but holds no foreigner.
@@ -499,7 +534,9 @@ class TestOfferedUnitActionsAreAccepted:
     def test_a_ranged_unit_with_no_attacks_left_shoots_nothing(self) -> None:
         """CONTROL: passes on the current tree."""
         setup = c.ARCHER + "Civ6Stub.unit(102).attacks = 0\n"
-        state = h.export_state(load(setup))
+        state = h.export_state(
+            load(setup, observe=True)
+        )  # GM-B9: flag on, or 'no attack' would hold whatever the mod does
         assert actions(state, "ranged_attack") == [] and actions(state, "attack") == []
 
 

@@ -137,61 +137,14 @@ class TestSchemaAndBlocker:
         assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_RESEARCH"
         assert "end_turn_blocking_message" not in state
 
-    def test_missing_notification_manager_means_no_blocker(self) -> None:
+    def test_missing_notification_manager_means_the_blocker_is_not_askable(self) -> None:
+        # GM-B9: the mod cannot ask what blocks, so it says so (was: "no blocker").
         runtime = h.load_mod(setup="NotificationManager = nil")
         _notify_ok = runtime.eval("Civ6Stub.notifications ~= nil")
         state = h.export_state(runtime)
         assert _notify_ok is True
         assert state["schema_version"] == 2
-        assert "end_turn_blocking" not in state
-
-
-class TestBlockerSource:
-    """The game's own query wins; the list scan is only the fallback."""
-
-    @pytest.mark.parametrize("answer", ["EndTurnBlockingTypes.NO_ENDTURN_BLOCKING", "nil", "0"])
-    def test_the_query_saying_nothing_blocks_wins_over_the_list(self, answer: str) -> None:
-        runtime = h.load_mod()
-        _notify(runtime, RESEARCH_BLOCKER)
-        runtime.execute(
-            f"NotificationManager.GetFirstEndTurnBlocking = function() return {answer} end"
-        )
-        state = h.export_state(runtime)
-        assert state["schema_version"] == 2
-        assert "end_turn_blocking" not in state
-        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
-
-    def test_the_query_naming_a_blocker_wins_over_an_empty_list(self) -> None:
-        runtime = h.load_mod()
-        runtime.execute(
-            "NotificationManager.GetFirstEndTurnBlocking ="
-            " function() return EndTurnBlockingTypes.ENDTURN_BLOCKING_UNITS end"
-            "\nCiv6Stub.canEndTurn = false"
-        )
-        state = h.export_state(runtime)
-        assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_UNITS"
-        assert "end_turn_blocking_message" not in state
-        success, code, message = h.execute(runtime, END_TURN)
-        assert (success, code) == (False, "END_TURN_BLOCKED")
-        assert message.startswith("End turn blocked: ENDTURN_BLOCKING_UNITS")
-
-    def test_the_message_comes_from_find_end_turn_blocking(self) -> None:
-        runtime = h.load_mod()
-        _notify(runtime, RESEARCH_BLOCKER)
-        runtime.execute(
-            "NotificationManager.FindEndTurnBlocking = function(b, p)"
-            " return { GetMessage = function() return 'from the query' end } end"
-        )
-        assert h.export_state(runtime)["end_turn_blocking_message"] == "from the query"
-
-    def test_a_raising_query_falls_back_to_the_list_scan(self) -> None:
-        runtime = h.load_mod(
-            setup="NotificationManager.GetFirstEndTurnBlocking = function() error('boom') end"
-        )
-        _notify(runtime, CIVIC_BLOCKER)
-        state = h.export_state(runtime)
-        assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_CIVIC"
-        assert state["end_turn_blocking_message"] == "Choose a civic"
+        assert state["end_turn_blocking"] == "ENDTURN_BLOCKING_NOT_ASKABLE"
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +454,10 @@ class TestResearchActions:
             "return t end", "t.CanResearch = function() error('boom') end return t end"
         )
         assert _actions(h.export_state(h.load_mod()), "research_tech"), "control: healthy offer"
-        state = h.export_state(h.load_mod(setup=setup))
+        runtime = h.load_mod(setup=setup)
+        # GM-B9: an attack is offered only with OBSERVE_ALL_PLAYERS on, so run with it on.
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+        state = h.export_state(runtime)
         names = [a["action"] for a in state["legal_actions"]]
         assert names[0] == "end_turn"
         assert "research_tech" not in names
@@ -513,7 +469,10 @@ class TestResearchActions:
             "\nGameInfo.CivicPrereqs = function() error('boom') end"
         )
         assert _actions(h.export_state(h.load_mod()), "research_civic"), "control: healthy offer"
-        state = h.export_state(h.load_mod(setup=setup))
+        runtime = h.load_mod(setup=setup)
+        # GM-B9: an attack is offered only with OBSERVE_ALL_PLAYERS on, so run with it on.
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+        state = h.export_state(runtime)
         names = [a["action"] for a in state["legal_actions"]]
         assert names[0] == "end_turn"
         assert "research_civic" not in names
@@ -545,6 +504,7 @@ class TestEndTurn:
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_RESEARCH")
         assert "Choose a technology" in message
         assert h.stub_calls(runtime) == []
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
     def test_blocked_without_a_message_still_names_the_blocker(self, runtime: Any) -> None:
         _notify(runtime, "{ id = 9, blocking = 4, dismissed = false }")
@@ -552,6 +512,7 @@ class TestEndTurn:
         assert (success, code) == (False, "END_TURN_BLOCKED")
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_CIVIC")
         assert h.stub_calls(runtime) == []
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
     def test_a_listed_blocker_is_refused_even_when_can_end_turn_is_true(self, runtime: Any) -> None:
         _notify(runtime, RESEARCH_BLOCKER)
@@ -560,16 +521,21 @@ class TestEndTurn:
         assert (success, code) == (False, "END_TURN_BLOCKED")
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_RESEARCH")
         assert h.stub_calls(runtime) == []
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
     def test_a_dismissed_blocker_does_not_block(self, runtime: Any) -> None:
         _notify(runtime, RESEARCH_BLOCKER.replace("dismissed = false", "dismissed = true"))
         assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
         assert h.stub_calls(runtime) == ["UI.RequestAction"]
 
-    def test_missing_notification_manager_is_not_blocked(self) -> None:
+    def test_missing_notification_manager_refuses_the_end_of_turn(self) -> None:
+        # GM-B9: the mod cannot ask what blocks, so nothing is requested (was: requested).
         runtime = h.load_mod(setup="NotificationManager = nil")
-        assert h.execute(runtime, END_TURN) == (True, None, "End turn requested")
-        assert h.stub_calls(runtime) == ["UI.RequestAction"]
+        success, code, message = h.execute(runtime, END_TURN)
+        assert (success, code) == (False, "END_TURN_BLOCKED")
+        assert "ENDTURN_BLOCKING_NOT_ASKABLE" in message
+        assert h.stub_calls(runtime) == []
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
     @pytest.mark.parametrize("setup", ["UI = nil", "UI.RequestAction = nil", "ActionTypes = nil"])
     def test_nothing_to_request_with_is_a_failure(self, setup: str) -> None:
@@ -858,6 +824,7 @@ class TestBlockedTurnScenario:
         success, code, _ = h.execute(runtime, END_TURN)
         assert (success, code) == (False, "END_TURN_BLOCKED")
         assert "UI.RequestAction" not in h.stub_calls(runtime)
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
 
 class TestSpecScenarioEdges:
@@ -883,6 +850,7 @@ class TestSpecScenarioEdges:
         assert (success, code) == (False, "END_TURN_BLOCKED")
         assert message.startswith("End turn blocked: ENDTURN_BLOCKING_RESEARCH")
         assert "UI.RequestAction" not in h.stub_calls(runtime)
+        assert runtime.eval("Civ6Stub.turnDeactivated") is False
 
 
 DECLARE_WAR = {"action_type": "diplomacy", "metadata": {"sub_action": 0, "target_player_id": 1}}
@@ -896,11 +864,18 @@ def _diplomacy(body: str) -> str:
     )
 
 
+def _load_allowing_war(setup: str) -> Any:
+    """GM-B9: declaring war is off by default; these tests are about what happens when it is on."""
+    runtime = h.load_mod(setup=setup)
+    runtime.execute('AlphaZeroConfig.Set("ALLOW_DECLARE_WAR", true)')
+    return runtime
+
+
 class TestDiplomacyFailureIsReported:
     """A piece the hand-edited bundle had lost (bundle-drift.md), brought back in GM-B2."""
 
     def test_a_raising_diplomacy_call_reports_its_error(self) -> None:
-        runtime = h.load_mod(setup=_diplomacy("error('war refused')"))
+        runtime = _load_allowing_war(setup=_diplomacy("error('war refused')"))
         success, code, message = h.execute(runtime, DECLARE_WAR)
         assert (success, code) == (False, "EXECUTION_FAILED")
         assert message.startswith("Diplomacy action DECLARE_WAR failed:")
@@ -910,25 +885,25 @@ class TestDiplomacyFailureIsReported:
         setup = _diplomacy("error('first path')") + (
             "\nUI.RequestDiplomacyMove = function() error('second path') end"
         )
-        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        success, code, message = h.execute(_load_allowing_war(setup=setup), DECLARE_WAR)
         assert (success, code) == (False, "EXECUTION_FAILED")
         assert "second path" in message
         assert "first path" not in message
 
     def test_the_ui_path_still_rescues_a_failed_first_path(self) -> None:
         setup = _diplomacy("error('first path')") + "\nUI.RequestDiplomacyMove = function() end"
-        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        success, code, message = h.execute(_load_allowing_war(setup=setup), DECLARE_WAR)
         assert (success, code) == (True, None)
         assert "requested via UI" in message
 
     def test_with_no_api_to_call_the_old_message_stays(self) -> None:
         setup = "Players[0].GetDiplomacy = function(self) return {} end"
-        success, code, message = h.execute(h.load_mod(setup=setup), DECLARE_WAR)
+        success, code, message = h.execute(_load_allowing_war(setup=setup), DECLARE_WAR)
         assert (success, code) == (False, "EXECUTION_FAILED")
         assert message == "No diplomacy API available for DECLARE_WAR"
 
     def test_a_working_call_succeeds(self) -> None:
-        success, code, message = h.execute(h.load_mod(setup=_diplomacy("")), DECLARE_WAR)
+        success, code, message = h.execute(_load_allowing_war(setup=_diplomacy("")), DECLARE_WAR)
         assert (success, code) == (True, None)
         assert message == "DECLARE_WAR against player 1"
 

@@ -53,6 +53,7 @@ local DEFAULT_CONFIG = {
     -- Player configuration
     AI_PLAYER_ID = nil,            -- Auto-detect first human player
     OBSERVE_ALL_PLAYERS = false,   -- Only observe AI player's visible tiles
+    ALLOW_DECLARE_WAR = false,     -- The declare-war command is refused unless this is true
 
     -- Map settings
     MAX_TILES_PER_STATE = 10000,   -- Limit tiles in state dump

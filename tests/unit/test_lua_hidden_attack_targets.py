@@ -40,8 +40,10 @@ def _nothing_requested(runtime: Any) -> bool:
 @pytest.mark.parametrize("observe", [False, True], ids=["flag off", "flag on"])
 class TestControl:
     def test_a_visible_occupant_is_offered_and_the_attack_goes_through(self, observe: bool) -> None:
+        # GM-B9 changed the rule: an attack is offered only with OBSERVE_ALL_PLAYERS on (the
+        # state shows the foe); with it off nothing is offered but the executor still attacks.
         runtime = _load(observe=observe)
-        assert TARGET in _offered(runtime)
+        assert (TARGET in _offered(runtime)) is observe
         for action in ACTIONS:
             assert _sent(runtime, action)[:2] == (True, None)
         c.frame(runtime)
@@ -56,7 +58,10 @@ class TestControl:
 )
 class TestHiddenOccupant:
     def test_it_is_not_offered(self, observe: bool, hide: str) -> None:
-        runtime = _load(hide + "\n", observe=observe)
+        # GM-B9: with the flag off nothing is offered whatever the mod does, so the assertion
+        # that depends on the mod runs with the flag on; the control shows it is offered unhidden.
+        assert TARGET in _offered(_load(observe=True))
+        runtime = _load(hide + "\n", observe=True)
         assert TARGET not in _offered(runtime)
 
     @pytest.mark.parametrize("action", ACTIONS)
@@ -75,15 +80,22 @@ class TestHiddenOccupant:
 class TestCities:
     def test_a_unit_hidden_inside_a_visible_foreign_city_is_still_attackable(self) -> None:
         # The city is a foreign occupant the player sees, whatever the unit's stealth.
-        runtime = _load(CITY_ON_TARGET + "Civ6Stub.hideUnit(201)\n")
+        # GM-B9 changed the rule: the offer needs OBSERVE_ALL_PLAYERS on; the executor does not.
+        setup = CITY_ON_TARGET + "Civ6Stub.hideUnit(201)\n"
+        runtime = _load(setup, observe=True)
         assert TARGET in _offered(runtime)
         assert _sent(runtime, "unit_attack")[:2] == (True, None)
+        quiet = _load(setup)
+        assert TARGET not in _offered(quiet)
+        assert _sent(quiet, "unit_attack")[:2] == (True, None)
 
     @pytest.mark.parametrize("hide", ["hideTile", "fogTile"])
     def test_a_city_on_a_tile_not_visible_now_does_not_make_it_a_target(self, hide: str) -> None:
         setup = CITY_ON_TARGET + f"Civ6Stub.hideUnit(201)\nCiv6Stub.{hide}(2, 0)\n"
-        runtime = _load(setup)
+        # GM-B9: flag on, or "not offered" would hold whatever the mod does with visibility.
+        runtime = _load(setup, observe=True)
         assert TARGET not in _offered(runtime)
+        assert TARGET in _offered(_load(CITY_ON_TARGET + "Civ6Stub.hideUnit(201)\n", observe=True))
         assert _sent(runtime, "unit_attack")[:2] == (False, "INVALID_TARGET")
         assert _nothing_requested(runtime)
 
@@ -100,7 +112,8 @@ class TestTheGameCannotSay:
         ids=["no table", "no entry", "no IsUnitVisible", "no IsVisible"],
     )
     def test_nothing_is_offered_and_an_attack_is_refused(self, lost: str) -> None:
-        runtime = _load(lost + "\n")
+        # GM-B9: flag on, or "not offered" would hold whatever the mod does with visibility.
+        runtime = _load(lost + "\n", observe=True)
         assert TARGET not in _offered(runtime)
         assert _sent(runtime, "unit_attack")[:2] == (False, "INVALID_TARGET")
         assert _nothing_requested(runtime)

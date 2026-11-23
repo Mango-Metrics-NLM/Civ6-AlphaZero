@@ -18,6 +18,15 @@ The A1 learning run is registered, not run: no verdict exists yet.
   - Added `alpha_zero/local/gameplay_config.py` (extracted from `alpha_zero/civ6_local.py`) and `BridgeConfig.from_live_env()` + public `get_default_comm_dir()` / `get_default_civ6_log_path()` helpers in `alpha_zero/bridge/config.py`.
   - Added `-v` / `--verbose` stderr diagnostics to `scripts/live_command_check.py`, eliminated its transitive `torch`/`numpy` cold-import via `alpha_zero.bridge.config`, and expanded `tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py` with un-mocked live-Civ6 Lua parity and Windows portability invariants.
 
+### Changed (the mod refuses where it cannot ask, GM-B9 and GM-B10, 2026-11-23)
+- **End of turn.** When the game cannot be asked what blocks the turn, `end_turn` answers `END_TURN_BLOCKED` naming `ENDTURN_BLOCKING_NOT_ASKABLE`, sends nothing, and the exported state carries that blocker. Before, "could not ask" read as "nothing blocks".
+- **War.** A war-check answer the mod does not understand refuses the move or attack; a keyed non-empty table counts as a war. The declare-war command is refused unless the new setting `ALLOW_DECLARE_WAR` is on (off by default).
+- **Offers.** With `OBSERVE_ALL_PLAYERS` off (the default) no attack or ranged attack is offered; one sent by hand is still carried out.
+- **Player id.** The bridge uses `Game.GetLocalPlayer()`, then the game's own player list; `PlayerManager.GetWasEverAliveCount` is no longer called.
+- **Tests.** The stand-in for the game now models, by default, what the live session of 2026-11-21 showed; the old readings are named overrides.
+- **Message.** The `--mcts` refusal no longer says the translator is missing.
+- Not run in a real game.
+
 ### Changed (bridge track close-out, 2026-11-23; docs, kb and OpenSpec only)
 - **One live-status table.** `docs/LIVE_CIV6.md` gains "Status at a glance": per capability, whether it is built, tested on the stand-in for the game, or seen in a real game (with date), and a status per checklist item. `README.md`, `ROADMAP.md` and `CLAUDE.md` link to it. Two checklist items that had been numbered 7 and 8 a second time are now 28 and 29.
 - **Corrected statements.** The reason `--mode civ6 --mcts` is refused is no longer "no translator" (it exists since GM-B6a) but: no trained checkpoint, no live run of the search path, no registered comparison. ROADMAP M3 reads "built; not validated". The turn-cycle stall (LF-H1) reads "leading cause seen once; the fix is unconfirmed". The refusal's message in the code still names the translator; it is corrected with the next bridge change.
