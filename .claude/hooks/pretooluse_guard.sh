@@ -30,6 +30,11 @@
 #   * an UNKNOWN game runner: shaped like one (`scripts/run_*.py`, a module
 #     named like a self-play/arena/training worker, ...) but not on the list of
 #     runners that price themselves.
+#   * a `git push` to origin of a commit that is already on a protected branch,
+#     when the destination has no remote-tracking ref or one that is fully
+#     merged into that same branch: usually the name of a branch whose PR was
+#     merged and deleted, pushed again by mistake. A convenience net, not a
+#     control: local refs only, and any failed git query means no ask.
 #   A deny anywhere in the command wins over an ask.
 #
 # Hook output schema (Claude Code hooks reference, PreToolUse decision control):
@@ -304,13 +309,123 @@ re_games_env='(^|[[:space:]])(NUM_GAMES|GAMES|GAMES_PER_WORKER)=([0-9]+)'
 re_runnerish='^(python[0-9.]*|py|make|bash|sh)(\.exe)?$|^(\./)?scripts/'
 
 # --- per-tool checks ---------------------------------------------------------
+# `git` in the directory the judged command named with -C (cwd when none).
+GIT_C=()
+gitq() {
+  git ${GIT_C[@]+"${GIT_C[@]}"} "$@" 2>/dev/null
+}
+
+# ASK before a push that would re-create a merged branch. $@ = `git push` args.
+#
+# A CONVENIENCE NET, not a control. Judged from local refs alone (no network),
+# in the directory the push runs in (`-C <dir>` included). It asks when, for
+# ONE protected branch P whose refs/remotes/origin/P exists locally (dev, qa,
+# main, the default branch, CIV6AZ_PROTECTED_BRANCHES; a name with no such ref
+# is skipped):
+#   * the pushed commit (the refspec's source; HEAD when none) is origin/P or
+#     an ancestor of it, so the push carries nothing new; AND
+#   * refs/remotes/origin/<dst> is absent (the push would create <dst>), or is
+#     itself origin/P or an ancestor of it. The second case is the stale ref:
+#     git does not prune by default, so after GitHub deletes a merged branch
+#     its tracking ref is still here and would otherwise hide the slip.
+# Any git query that fails means "no ask". It runs after every deny rule and
+# only ever adds an ask. Not covered, on purpose (both err toward allow): a
+# remote other than origin, and deletions.
+check_recreated_branch() {
+  local -a pos=()
+  local t skip=0
+  for t in "$@"; do
+    if [ "$skip" -eq 1 ]; then skip=0; continue; fi
+    case "$t" in
+      -d|--delete|--prune) return 0 ;;
+      -o|--push-option|--repo|--receive-pack|--exec) skip=1 ;;
+      -*) ;;
+      *) pos+=("$t") ;;
+    esac
+  done
+  if [ "${#pos[@]}" -ge 1 ] && [ "${pos[0]}" != "origin" ]; then
+    return 0
+  fi
+
+  resolve_branches
+  local def="$default_branch" cur
+  if [ "${#GIT_C[@]}" -gt 0 ] && [ -z "${CIV6AZ_DEFAULT_BRANCH:-}" ]; then
+    # `git -C <dir> push`: the default branch is that repository's, not the hook's.
+    def="$(gitq symbolic-ref --short refs/remotes/origin/HEAD)" || def=""
+    def="${def#origin/}"
+    [ -n "$def" ] || def="main"
+  fi
+  cur="$(gitq symbolic-ref --quiet --short HEAD)" || cur=""
+
+  # Protected branches that have a remote-tracking ref here, with their tips.
+  local -a pnames=() ptips=()
+  local b seen=" " tip
+  # Unquoted on purpose: $protected is a space-separated list (noglob is set).
+  for b in $def $protected; do
+    case "$seen" in *" $b "*) continue ;; esac
+    seen="${seen}${b} "
+    tip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${b}^{commit}")" || continue
+    [ -n "$tip" ] || continue
+    pnames+=("$b")
+    ptips+=("$tip")
+  done
+  [ "${#pnames[@]}" -gt 0 ] || return 0
+
+  local -a specs=()
+  if [ "${#pos[@]}" -ge 2 ]; then
+    specs=("${pos[@]:1}")
+  else
+    specs=(HEAD)
+  fi
+  local spec src dst sha dtip k hit what
+  for spec in "${specs[@]}"; do
+    case "$spec" in
+      *:*) src="${spec%%:*}"; dst="${spec##*:}" ;;
+      *) src="$spec"; dst="$spec" ;;
+    esac
+    [ -n "$src" ] || continue                  # `:dst` deletes
+    if [ "$dst" = "HEAD" ] || [ "$dst" = "@" ]; then dst="$cur"; fi
+    dst="${dst//\\/}"
+    dst="${dst#refs/heads/}"
+    case "$dst" in ""|refs/*) continue ;; esac
+    sha="$(gitq rev-parse --verify --quiet "${src}^{commit}")" || continue
+    [ -n "$sha" ] || continue
+    # Empty when origin/<dst> does not exist: the push would create it.
+    dtip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${dst}^{commit}")" || dtip=""
+    hit=""
+    k=0
+    while [ "$k" -lt "${#pnames[@]}" ]; do
+      if gitq merge-base --is-ancestor "$sha" "${ptips[$k]}" \
+         && { [ -z "$dtip" ] || gitq merge-base --is-ancestor "$dtip" "${ptips[$k]}"; }; then
+        hit="${pnames[$k]}"
+        break
+      fi
+      k=$((k + 1))
+    done
+    [ -n "$hit" ] || continue
+    if [ "$hit" = "$def" ]; then what="the default branch (${hit})"; else what="the protected branch ${hit}"; fi
+    if [ -z "$dtip" ]; then
+      add_ask "git push would create ${dst} on origin from a commit that is already on ${what}, so it carries nothing new; ${dst} may be a branch whose PR was merged and deleted - confirm before re-creating it"
+    else
+      add_ask "git push sends ${dst} a commit that is already on ${what}, and the local origin/${dst} is fully merged into ${hit} too, so it may be a stale ref of a branch whose PR was merged and deleted (git fetch --prune would tell) - confirm before re-creating it"
+    fi
+  done
+  return 0
+}
+
 check_git() {
   # $@ = tokens after `git`
   local -a a=("$@")
   local i=0 n=${#a[@]} sub=""
+  GIT_C=()
   while [ "$i" -lt "$n" ]; do
     case "${a[$i]}" in
-      -C|-c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix) i=$((i + 2)) ;;
+      -C)
+        # Kept for check_recreated_branch, whose queries must run where the push does.
+        unquote "${a[$((i + 1))]:-}"
+        GIT_C+=(-C "$UQ")
+        i=$((i + 2)) ;;
+      -c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix) i=$((i + 2)) ;;
       -*) i=$((i + 1)) ;;
       *) unquote "${a[$i]}"; sub="$UQ"; i=$((i + 1)); break ;;
     esac
@@ -369,6 +484,8 @@ check_git() {
           ;;
       esac
     done
+    # Only reached when no deny rule above fired (deny exits).
+    check_recreated_branch ${args[@]+"${args[@]}"}
   fi
 
   if [ "$sub" = "tag" ]; then

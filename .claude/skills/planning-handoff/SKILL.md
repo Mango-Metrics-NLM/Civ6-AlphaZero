@@ -116,6 +116,10 @@ Update `kb/sessions/planning.state.json` with:
 }
 ```
 
+`next_steps` holds at most five short, non-empty strings (`scripts/validate_kb.py` K6
+fails on more). It is the list of what to do next, rewritten each session, not a log:
+drop finished steps, and put lessons in the summary or the ledger.
+
 ## Rules
 
 1. NEVER overwrite or truncate `kb/ledger/ledger.jsonl` — only append.
