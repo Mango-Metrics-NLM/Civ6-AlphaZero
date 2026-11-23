@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import time
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -29,10 +30,13 @@ from typing import Any, cast
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DROPPED_MISSING_PIECE",
+    "UNREADABLE_STATE",
     "AckTimeoutError",
     "LogTailer",
     "LogTailerError",
     "StateTimeoutError",
+    "iter_log_states",
 ]
 
 # --- Line prefix patterns ---
@@ -669,3 +673,95 @@ class LogTailer:
     def is_running(self) -> bool:
         """Whether the tailer is currently running."""
         return self._running
+
+
+#: Keys of the counts :func:`iter_log_states` keeps of states it did not yield.
+DROPPED_MISSING_PIECE = "states_dropped_missing_piece"
+UNREADABLE_STATE = "states_unreadable"
+_PIECE_HEADER_RE = re.compile(r"(\d+)/(\d+):")
+
+
+def iter_log_states(
+    log_path: Path | str, counts: dict[str, int] | None = None
+) -> Iterator[dict[str, Any]]:
+    """Every complete state in a ``Lua.log``, oldest first.
+
+    Offline reading for analysis: nothing is tailed and nothing waits. Lines go
+    through :class:`LogTailer`'s own parser, but a state sent in pieces is held
+    to a stricter rule than the live transport's, which joins whatever it has.
+    For a measurement an altered state is worse than a missing one, so a pieced
+    state is yielded only when its pieces are exactly ``1..n`` of its end line.
+    An export is given up, and counted, when:
+
+    * its end line arrives and a piece is missing, or the totals disagree;
+    * a piece arrives whose number is not above the previous piece's, or whose
+      total differs (the next export has begun: the old one lost its end line);
+    * a whole ``AZ_STATE`` line arrives, or the log ends, in the middle of it.
+
+    What this cannot see, because pieces carry no export id: an export that
+    loses its last pieces and its end line, followed by one with the same piece
+    count that loses exactly its first pieces up to the same number. Their
+    pieces still number ``1..n`` in order; the joined text is yielded only if
+    it also happens to parse.
+
+    A state whose JSON cannot be read is not yielded and is counted. Acks and
+    heartbeats are not read.
+
+    Args:
+        log_path: The log file.
+        counts: Optional dict, raised by one under ``DROPPED_MISSING_PIECE``
+            for each export given up and under ``UNREADABLE_STATE`` for each
+            state whose text did not parse.
+
+    Yields:
+        Each state as the mod wrote it (wrapped as ``{"state": {...}}`` or bare).
+
+    Raises:
+        OSError: If the file cannot be opened or read.
+    """
+    reader = LogTailer(Path(log_path), backlog_bytes=0)
+    last_piece: tuple[int, int] | None = None  # (number, total) of the piece before
+
+    def give_up(key: str = DROPPED_MISSING_PIECE) -> None:
+        reader._chunk_buffer.clear()
+        reader._chunk_total = 0
+        if counts is not None:
+            counts[key] = counts.get(key, 0) + 1
+
+    with open(log_path, encoding="utf-8", errors="surrogateescape") as handle:
+        for line in handle:
+            stripped = line.rstrip("\n\r")
+            content = _PREFIX_RE.sub("", stripped.lstrip())
+            if content.startswith(_CHUNK_PREFIX):
+                header = _PIECE_HEADER_RE.match(content[len(_CHUNK_PREFIX) :])
+                piece = (int(header.group(1)), int(header.group(2))) if header else None
+                if last_piece and (
+                    not piece or piece[0] <= last_piece[0] or piece[1:] != last_piece[1:]
+                ):
+                    give_up()
+                last_piece = piece
+                reader._parse_line(stripped)
+                continue
+            if not content.startswith((_STATE_PREFIX, _CHUNK_END_PREFIX)):
+                continue
+            pieced = content.startswith(_CHUNK_END_PREFIX)
+            if pieced:
+                total = content[len(_CHUNK_END_PREFIX) :].strip()
+                whole = total.isdigit() and set(reader._chunk_buffer) == set(
+                    range(1, int(total) + 1)
+                )
+                last_piece = None
+                if not whole or reader._chunk_total != int(total):
+                    give_up()
+                    continue
+            elif last_piece is not None:  # a whole state in the middle of a pieced one
+                give_up()
+                last_piece = None
+            before = reader.state_seq
+            reader._parse_line(stripped)
+            if reader.state_seq > before and reader.latest_state is not None:
+                yield reader.latest_state
+            else:
+                give_up(UNREADABLE_STATE)
+    if last_piece is not None:  # the log ends inside a pieced state
+        give_up()

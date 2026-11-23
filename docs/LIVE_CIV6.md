@@ -58,6 +58,22 @@ This table is the one place that says what state each part is in. `README.md`,
 decision made in the simulator is a good decision in the real game; how long one export
 takes in the middle of a game.
 
+**One measurement needs only your log, and no game played for it.** After a session of at
+least 40 turns that reaches turn 40 or later, run
+`python scripts/census_search_expressivity.py --log PATH/Lua.log --out DIR`
+with `--mod-version VERSION --played-by WHO`. Both are required for the result to count: they
+are your statement that the log is a real game's. It reads the first complete state of
+every turn and counts how much of what the game offered the search in the
+simulator could have said at all. The answer decides one thing, fixed beforehand in
+`kb/specs/20261123-expressivity-census-preregistration.md`: if at board 8 the search can
+express under 30% of the offered commands, or can use under half of the units that had
+something to do, work on search in the simulator stops until the simulator grows or the
+network is no longer tied to its board. A result above both lines is not a go. It says
+only that this does not rule the work out. The script refuses to write anything unless it
+could measure the state of at least 40 turns, 10 of them after turn 30. A state that lost a
+piece in the log, or that cannot be measured, does not count toward those numbers. Two games
+are better than one: give `--log` twice.
+
 ### Live checklist status
 
 The checklist items are written where their subject is explained (the numbers are stable;

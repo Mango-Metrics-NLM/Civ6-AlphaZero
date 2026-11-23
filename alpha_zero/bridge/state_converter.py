@@ -426,8 +426,6 @@ class StateConverter:
         Returns:
             Scaled (x, y) coordinates clamped to valid range.
         """
-        # Use round() for proper rounding instead of int() truncation
-        # This avoids systematic error where entities cluster toward origin
         scaled_x = round(x * self._scale_x)
         scaled_y = round(y * self._scale_y)
 
@@ -436,6 +434,8 @@ class StateConverter:
         scaled_y = max(0, min(self.board_size - 1, scaled_y))
 
         return (scaled_x, scaled_y)
+
+    cell_of = _scale_coords  #: Public name. Valid only after ``convert`` on the same map.
 
     def _convert_terrain(self, state: GameStateData) -> dict[tuple[int, int], dict]:
         """Convert terrain data with collision handling.
