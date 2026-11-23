@@ -22,6 +22,14 @@ The A1 learning run is registered, not run: no verdict exists yet.
 - **Expressivity census.** `scripts/census_search_expressivity.py` reads a real game's `Lua.log` and counts, at boards 8 and 16, how much of what the game offered the search-in-the-simulator could have said at all (four quantities and a stop rule, pre-registered in `kb/specs/20261123-expressivity-census-preregistration.md`). It plays no game. **No census number exists yet**: it needs a log of at least 40 measured turns, 10 after turn 30, with the mod version and who played recorded; on any other input the stop rule reads "not decided".
 - `alpha_zero/bridge/log_tailer.py::iter_log_states`: every complete state of a log, once, never one that lost a piece. `StateConverter.cell_of`: the board cell of a game tile.
 - **Three-arm asymmetry probe** (`tests/unit/test_bridge_search_asymmetry_probe.py`, slow, 2,430 searches, zero games): the result is **vacuous**. On none of its positions did a search line reach the loss of the player's last piece, so it does not say whether losing-only endings make the search avoid contact. Result, wording and why no follow-up is registered: `kb/specs/20261123-three-arm-probe-result.md`.
+### Changed (the mod refuses where it cannot ask, GM-B9 and GM-B10, 2026-11-23)
+- **End of turn.** When the game cannot be asked what blocks the turn, `end_turn` answers `END_TURN_BLOCKED` naming `ENDTURN_BLOCKING_NOT_ASKABLE`, sends nothing, and the exported state carries that blocker. Before, "could not ask" read as "nothing blocks".
+- **War.** A war-check answer the mod does not understand refuses the move or attack; a keyed non-empty table counts as a war. The declare-war command is refused unless the new setting `ALLOW_DECLARE_WAR` is on (off by default).
+- **Offers.** With `OBSERVE_ALL_PLAYERS` off (the default) no attack or ranged attack is offered; one sent by hand is still carried out.
+- **Player id.** The bridge uses `Game.GetLocalPlayer()`, then the game's own player list; `PlayerManager.GetWasEverAliveCount` is no longer called.
+- **Tests.** The stand-in for the game now models, by default, what the live session of 2026-11-21 showed; the old readings are named overrides.
+- **Message.** The `--mcts` refusal no longer says the translator is missing.
+- Not run in a real game.
 
 ### Changed (bridge track close-out, 2026-11-23; docs, kb and OpenSpec only)
 - **One live-status table.** `docs/LIVE_CIV6.md` gains "Status at a glance": per capability, whether it is built, tested on the stand-in for the game, or seen in a real game (with date), and a status per checklist item. `README.md`, `ROADMAP.md` and `CLAUDE.md` link to it. Two checklist items that had been numbered 7 and 8 a second time are now 28 and 29.

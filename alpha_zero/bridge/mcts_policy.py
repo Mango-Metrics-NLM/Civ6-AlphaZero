@@ -558,8 +558,8 @@ class Civ6MctsPolicy:
     The search runs in the MicroCiv simulator. ``network`` must take the
     simulator's observation (13 channels), and the action returned is an index
     in the simulator's action space, not in the live action space the bridge's
-    ``ActionConverter`` decodes. Until a translator exists (GM-B6) this policy
-    is not something ``BridgeAgentLoop`` can play a live game with.
+    ``ActionConverter`` decodes. ``select_command`` translates it into an offered
+    live command (GM-B6a); ``civ6_local`` still refuses the mode on a live game.
 
     Args:
         network: Neural network implementing the ``NetworkProtocol``.

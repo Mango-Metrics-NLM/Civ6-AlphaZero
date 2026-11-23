@@ -43,10 +43,10 @@ This table is the one place that says what state each part is in. `README.md`,
 | `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | answer seen, 2026-11-21 |
 | `city_produce` | yes | yes | answer seen for `UNIT_WARRIOR`, 2026-11-21 |
 | `unit_sleep` | yes | yes | no |
-| `unit_attack`, `unit_ranged_attack`, the war check | yes | yes | no |
+| `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | no |
 | `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | no | no; expect them not to work |
-| `end_turn` refused while the game reports a blocker | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run |
-| The five fixes from the live session (below) | yes | yes, but only in the tests written for them (the stand-in's defaults still model the old reading) | found live; the rebuilt mod has not been run since |
+| `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run. "Cannot be asked": no |
+| The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | found live; the rebuilt mod has not been run since |
 | A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | no |
 | Offered actions are what the mod will carry out (GM-B7b) | yes | yes | no |
 | The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | no. The four `END_TURN`s of 2026-07-12 predate all of the above |
@@ -96,6 +96,7 @@ the record of 2026-11-21 supports; the maintainer ticks an item when its effect 
 | 21 to 27 | other players (`OBSERVE_ALL_PLAYERS`) | open |
 | 28 | a state arrives within a second or two of a command | open |
 | 29 | ten turns end by themselves | open |
+| 30 | the bridge plays the right player | open |
 
 ## What exists
 
@@ -159,7 +160,7 @@ so a version 1 state still parses.
 | Where | Field | Meaning |
 |---|---|---|
 | top level | `schema_version` | `2` |
-| top level | `end_turn_blocking`, `end_turn_blocking_message` | Name of the `EndTurnBlockingTypes` value of the first notification that blocks ending the turn, and its message. Absent when nothing blocks. |
+| top level | `end_turn_blocking`, `end_turn_blocking_message` | Name of the `EndTurnBlockingTypes` value of the first notification that blocks ending the turn, and its message. Absent when nothing blocks. `ENDTURN_BLOCKING_NOT_ASKABLE` when the game could not be asked (GM-B9). |
 | `player` | `techs_researched`, `civics_researched` | Type names the player has (`HasTech`, `HasCivic`). |
 | `player` | `current_research`, `current_civic` | Type name in progress (the tech was a raw row index in version 1). Absent when none. |
 | `player` | `research_status`, `civic_status` | `{type, index, cost, progress, turns_left, boost_triggered}` for the one in progress. |
@@ -180,7 +181,12 @@ Commands:
   (`NotificationManager.GetFirstEndTurnBlocking`; a scan of the notification list where that
   call is missing) and answers `END_TURN_BLOCKED` while something does. `UI.CanEndTurn()` is
   not allowed to override a listed blocker because the live UI returns `true` for
-  `UI.CanEndTurn()` even when active blockers exist.
+  `UI.CanEndTurn()` even when active blockers exist. When the game cannot be asked at all
+  (no `NotificationManager`, or neither way of asking works) the answer is also
+  `END_TURN_BLOCKED`, naming `ENDTURN_BLOCKING_NOT_ASKABLE`, and the state carries that blocker
+  (GM-B9): an end of turn sent while a blocker is active deactivates the turn, so "could not
+  ask" is not "free to end". If you see this in a real game, the mod cannot end turns in that
+  Lua context and the agent stops with a declared stall; that is worth an issue.
 - Successful `AZ_ACK` replies omit `error_code` and `error_message` cleanly instead of leaking
   errors from unrelated prior/skipped fields, and `JsonEncoder.lua` encodes integers with
   `%.0f` (and `-0.0` as `"0"`) to prevent 32-bit C `long` truncation on Windows Win64 builds.
@@ -334,8 +340,14 @@ The eight now go the way the game's own UI sends them:
 - A move carries no attack modifier and is meant never to become an attack; an attack is its
   own command. That rests on the game's strict check refusing a move onto another player's
   unit, which the game's UI never asks and is therefore unverified (checklist item 12).
-  Neither is sent when the game says it would start a war (`WOULD_START_WAR`), or when the
-  game cannot be asked. A move into a tile the player cannot see is not asked about, as in
+  Neither is sent when the game says it would start a war (`WOULD_START_WAR`), when the
+  game cannot be asked, or when its answer is not in a form the mod understands (GM-B9).
+  The separate declare-war command is refused the same way unless `ALLOW_DECLARE_WAR = true`
+  (off by default). Without file access, the usual case, that means changing the default in
+  `Config.lua`, rebuilding the bundle and reinstalling the mod; with file access the override
+  file can set it too. Making peace and denouncing are not gated and have never run in a game.
+  `end_turn` is also refused when the bridge's player is not the game's local player, because
+  the game's end-of-turn request always ends the local player's turn. A move into a tile the player cannot see is not asked about, as in
   the game's own move routine.
 - `city_produce` takes a type name (`"UNIT_WARRIOR"`) or a row index, and sends the row's hash
   with the exclusive insert mode: the item replaces what the city was building. Districts,
@@ -349,22 +361,26 @@ The eight now go the way the game's own UI sends them:
   turn's start. After `MAX_COMMANDS_PER_TURN` commands (default 200) in a turn it accepts only
   `end_turn` and answers anything else with `COMMAND_CAP_REACHED`; a message that would carry
   the count past the cap is refused whole. One exception, so the cap
-  cannot trap a turn: while the game refuses to end the turn, commands that can answer the
+  cannot trap a turn: while the game refuses to end the turn, or cannot be asked what blocks it, commands that can answer the
   open choice (research, production, skip, fortify, sleep) are still carried out, up to twice
   the cap. When the window does run out, the mod stops listening and the turn stays open
   until someone ends it by hand, as before.
 
-**What the mod offers (GM-B7b).** The `legal_actions` of an exported state are now exactly
+**What the mod offers (GM-B7b, GM-B9).** The `legal_actions` of an exported state are
 what the executor's own check accepts at that moment
 (`AlphaZeroActionExecutor.Check`, the executor run without sending anything), so an offered
-action is one the mod will not refuse:
+action is one the mod will not refuse. One kind of accepted action is not offered: attacks
+while other players are not exported (third item below).
 
 - a unit's move targets are the game's own adjacent plots (`Map.GetAdjacentPlot`), minus
   what the game's check refuses (occupied tiles, impassable ones). The table of offsets the
   exporter used to carry was wrong for both row parities and is gone; where the game's
   adjacency call is missing no move is offered at all;
 - an attack is offered only where it would not start a war; a ranged attack only to a unit
-  the game lets start one;
+  the game lets start one. Since GM-B9 neither is offered at all while other players are
+  not exported (`OBSERVE_ALL_PLAYERS` off, the default): the agent is not shown what it would
+  attack. An attack you send by hand is still carried out, so checklist items 11, 12 and 14
+  work with the default settings;
 - a city's choices are asked by the row's hash, in the strict form, and exclude anything that
   needs a plot or can only be bought. They are listed by type name. When the game cannot be
   asked, nothing is listed.
@@ -413,7 +429,10 @@ Live checklist, continuing the one above:
     unit is offered a move, run one check in FireTuner and read its message:
     `AlphaZeroActionExecutor.Check(0, { action_type = "unit_move", unit_id = <id>, target = { x = .., y = .. } })`.
     The cause can be a missing adjacency call, a missing `CombatManager` (the mod refuses
-    every move it cannot ask about), a missing `UnitManager`, or no `UNITOPERATION_MOVE_TO` row.
+    every move it cannot ask about), a missing `UnitManager`, no `UNITOPERATION_MOVE_TO` row,
+    or a war-check answer the mod cannot read. For the last one `Lua.log` has one line
+    starting `[AlphaZero] WARN: IsAttackChangeWarState answered`: send it to us, because it
+    means every move and attack is being refused.
 18. Let the greedy agent run (`python -m alpha_zero.civ6_local --mode civ6`): a city with no
     production starts building something, and no command comes back `OPERATION_REFUSED`.
     On a map larger than the agent's board a chosen move target is scaled down and back and
@@ -530,6 +549,10 @@ turn it now keeps a ledger (`alpha_zero/bridge/turn_ledger.py`):
 The session statistics name each: `commands_sent`, `refused_commands`, `no_effect_commands`,
 `reselections`, `blocked_end_turns`, `stalled_turns`, `game_turns_played`.
 
+For the checklist: 30. After the game has loaded, `Lua.log` has a line `AI player <id>: ...`
+saying which player the bridge plays and how it found it (the game's local player, normally).
+If the id is not yours, every check asks about the wrong player: stop and tell us.
+
 For the checklist: 29. With `CIV6AZ_AGENT_MAX_TURNS=0 CIV6AZ_AGENT_MAX_GAME_TURNS=10`, start the
 greedy agent: it should end ten turns by itself and stop with exit code 0. If it stops with 3,
 the log line "Turn N is stalled" names the blocker it could not answer.
@@ -591,7 +614,7 @@ For the checklist:
 |----------|---------|---------|
 | `CIV6_BRIDGE_TRANSPORT` | `file` | `socket` for the headless FireTuner path (recommended); `file` needs the FireTuner GUI relay. |
 | `CIV6_BRIDGE_TUNER_HOST` / `CIV6_BRIDGE_TUNER_PORT` | `127.0.0.1` / `4318` | Where the game's FireTuner listener is. |
-| `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to send one `END_TURN` at start-up to un-stall an idle game (socket transport only). |
+| `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to send one `END_TURN` at start-up to un-stall an idle game (socket transport only). **It bypasses the mod's blocker check**: sent while a research, production or unit-orders choice is open, it is the very request that deactivates the turn (LF-H1). Use it only when nothing blocks the turn. |
 | `CIV6AZ_AGENT_MAX_GAME_TURNS` | `0` | Stop after this many finished game turns (0: no limit). `CIV6AZ_AGENT_MAX_TURNS` (default 500) counts loop steps, one per command, not game turns; set it to `0` when using this. There is no command-line flag for either. |
 | `CIV6AZ_AGENT_MAX_COMMANDS_PER_TURN` | `100` | Past this many commands in one game turn the agent sends only `end_turn` (the mod's own cap is 200). |
 | `CIV6AZ_AGENT_MAX_RESELECTIONS` | `8` | How often per step the policy is asked again after a choice that cannot be sent. |
@@ -669,9 +692,7 @@ For the checklist:
   now exists (GM-B6a), as do a factory that builds a network fitting the
   simulator from a checkpoint and an un-mocked end-to-end test against the
   stand-in (GM-B6b). The refusal stays for the three reasons in the first
-  item of this list. The refusal's own message in the code still names the
-  missing translator; that text is corrected with the next change to the
-  bridge code.
+  item of this list.
 - **What the search's simulator sees of a live state (GM-B5).** MicroCiv has
   three unit types and three terrain types, so a live state is stood in for
   (`alpha_zero/bridge/microciv_proxy.py`): melee and cavalry units are

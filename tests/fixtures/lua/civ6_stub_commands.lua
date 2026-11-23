@@ -509,8 +509,18 @@ end
 local canEndTurn = UI.CanEndTurn
 function UI.CanEndTurn()
     if Civ6Stub.canEndTurn ~= nil then return Civ6Stub.canEndTurn end
-    if unitNeedingOrders(Game.GetLocalPlayer()) then return false end
+    if Civ6Stub.canEndTurnHonoursBlockers and unitNeedingOrders(Civ6Stub.localPlayerId) then
+        return false
+    end
     return canEndTurn()
+end
+-- What the game does with ACTION_ENDTURN, whatever UI.CanEndTurn() says: a blocker
+-- (notification or unit needing orders) or a forced `canEndTurn = false` stops it.
+function Civ6Stub.endTurnBlocked()
+    local me = Civ6Stub.localPlayerId
+    return Civ6Stub.canEndTurn == false
+        or Civ6Stub.endTurnBlockedByNotification(me)
+        or unitNeedingOrders(me) ~= nil
 end
 
 -- ----------------------------------------------------------------------------
@@ -525,10 +535,19 @@ Civ6Stub.turnEnded = false
 function Game.GetCurrentGameTurn() return Civ6Stub.turn end
 
 local requestAction = UI.RequestAction
+-- The harm (LF-H1): ACTION_ENDTURN while a blocker is active does not end the turn, it
+-- DEACTIVATES the player's turn without advancing the counter. Civ6Stub.turnDeactivated
+-- records that, so a mod that wrongly sends the request is seen in game state, not only in
+-- the recorded calls.
+Civ6Stub.turnDeactivated = false
 function UI.RequestAction(action)
     requestAction(action)
-    if action == ActionTypes.ACTION_ENDTURN and UI.CanEndTurn() then
-        Civ6Stub.turnEnded = true
+    if action == ActionTypes.ACTION_ENDTURN then
+        if Civ6Stub.endTurnBlocked() then
+            Civ6Stub.turnDeactivated = true
+        else
+            Civ6Stub.turnEnded = true
+        end
     end
 end
 

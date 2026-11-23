@@ -23,8 +23,12 @@
 --   Civ6Stub.players[id].tech / .civic   research state per player
 --   Civ6Stub.cities[cityId]              buildings and districts of a city
 --   Civ6Stub.notifications[id]           notifications; none by default
---   Civ6Stub.canEndTurn                  nil: derived from the notifications;
---                                        true / false: forced answer
+--   Civ6Stub.canEndTurn                  nil: true, as live (GM-B10); true / false:
+--                                        forced answer. canEndTurnHonoursBlockers =
+--                                        true is the old reading (false while blocked)
+--   Civ6Stub.currentlyBuildingAnswers    true: CurrentlyBuilding() returns the item (old
+--                                        reading); default nil, as live
+--   Civ6Stub.useLongYieldKeys()          the old YIELD_* keys; default the short ones
 -- UI.RequestPlayerOperation records and queues: like the game's, it changes
 -- nothing by the time it returns. Civ6Stub.applyRequests() plays the "next
 -- frame": a queued research request takes effect only if its type parameter
@@ -119,10 +123,16 @@ GameInfo = {
     }),
 }
 
-YieldTypes = {
-    YIELD_FOOD = 0, YIELD_PRODUCTION = 1, YIELD_GOLD = 2,
-    YIELD_SCIENCE = 3, YIELD_CULTURE = 4, YIELD_FAITH = 5,
-}
+-- GM-B10: the live game's YieldTypes has the SHORT keys (live session, 2026-11-21).
+-- Civ6Stub.useLongYieldKeys() is the old reading (YIELD_FOOD ...), for a test that
+-- means the XML-style names.
+YieldTypes = { FOOD = 0, PRODUCTION = 1, GOLD = 2, SCIENCE = 3, CULTURE = 4, FAITH = 5 }
+function Civ6Stub.useLongYieldKeys()
+    YieldTypes = {
+        YIELD_FOOD = 0, YIELD_PRODUCTION = 1, YIELD_GOLD = 2,
+        YIELD_SCIENCE = 3, YIELD_CULTURE = 4, YIELD_FAITH = 5,
+    }
+end
 
 ActionTypes = { ACTION_ENDTURN = 7 }
 
@@ -311,7 +321,13 @@ local function makeCity(spec)
         end
         return collection(list)
     end
-    function queue:CurrentlyBuilding() return spec.building end
+    -- GM-B10: live, CurrentlyBuilding() answers nil and the current item is read
+    -- from GetCurrentProductionTypeHash(). Civ6Stub.currentlyBuildingAnswers = true
+    -- is the old reading: it returns the item's type name.
+    function queue:CurrentlyBuilding()
+        if Civ6Stub.currentlyBuildingAnswers then return spec.building end
+        return nil
+    end
     function queue:GetCurrentProductionTypeHash()
         if not spec.building then return 0 end
         for _, kind in ipairs({
@@ -405,6 +421,9 @@ Civ6Stub.cityRecords = {
 -- "now" passes the strict check, "later" only the loose one.
 Civ6Stub.defaultCanProduce = {
     UNIT_WARRIOR = "now", BUILDING_GRANARY = "now", DISTRICT_CAMPUS = "now", UNIT_SETTLER = "later",
+    -- GM-B10: an item not unlocked yet (its tech is not researched): the loose check
+    -- is true, the strict one false, as live. Every default city meets one.
+    UNIT_ARCHER = "locked",
 }
 local function makePlayer(id)
     local player = {}
@@ -492,7 +511,10 @@ function PlayerManager.GetWasEverAliveCount() return 2 end
 
 Game = {}
 function Game.GetCurrentGameTurn() return 12 end
-function Game.GetLocalPlayer() return 0 end
+-- The local player is a fact of the game, whatever Game.GetLocalPlayer does (a test may remove
+-- or break the call): ACTION_ENDTURN and UI.CanEndTurn use this field.
+Civ6Stub.localPlayerId = 0
+function Game.GetLocalPlayer() return Civ6Stub.localPlayerId end
 function Game.GetEras()
     local eras = {}
     function eras:GetCurrentEra() return 1 end
@@ -599,10 +621,21 @@ function Civ6Stub.applyRequests()
     Civ6Stub.pendingRequests = {}
     return applied
 end
+-- What the game itself would do with ACTION_ENDTURN: a blocker (a notification
+-- here; civ6_stub_commands.lua adds a unit needing orders) stops the turn from ending.
+function Civ6Stub.endTurnBlockedByNotification(player)
+    for _, notification in ipairs(Civ6Stub.notifications[player] or {}) do
+        if not notification.dismissed and (notification.blocking or 0) ~= 0 then return true end
+    end
+    return false
+end
+-- GM-B10: live, UI.CanEndTurn() answers true even while a blocker is active
+-- (live session, 2026-11-21). Civ6Stub.canEndTurnHonoursBlockers = true is the old
+-- reading: it answers false while blocked. Civ6Stub.canEndTurn true/false forces it.
 function UI.CanEndTurn()
     if Civ6Stub.canEndTurn ~= nil then return Civ6Stub.canEndTurn end
-    for _, notification in ipairs(Civ6Stub.notifications[Game.GetLocalPlayer()] or {}) do
-        if not notification.dismissed and (notification.blocking or 0) ~= 0 then return false end
+    if Civ6Stub.canEndTurnHonoursBlockers then
+        return not Civ6Stub.endTurnBlockedByNotification(Civ6Stub.localPlayerId)
     end
     return true
 end
