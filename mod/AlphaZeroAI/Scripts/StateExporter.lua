@@ -1062,12 +1062,19 @@ local function exportLegalActions(playerId)
                 table.insert(actions, { action = "found_city", unit_id = unitId })
             end
 
-            local attackTargets = acceptedTargets("unit_attack", neighbors)
+            -- An attack is offered only on what the same state shows. With
+            -- OBSERVE_ALL_PLAYERS off the state holds no foreign unit or city,
+            -- so no attack is offered; the executor still carries one out when
+            -- it is sent by hand.
+            local attackTargets = {}
+            if observesOthers() then
+                attackTargets = acceptedTargets("unit_attack", neighbors)
+            end
             if #attackTargets > 0 then
                 table.insert(actions, { action = "attack", unit_id = unitId, targets = attackTargets })
             end
             local range = unit:GetRange() or 0
-            if range >= 1 then
+            if range >= 1 and observesOthers() then
                 local rangedTargets = acceptedTargets("unit_ranged_attack", getHexTilesInRange(ux, uy, range))
                 if #rangedTargets > 0 then
                     table.insert(actions, { action = "ranged_attack", unit_id = unitId, targets = rangedTargets })
@@ -1148,19 +1155,27 @@ end
 -- The reason the player's turn cannot end, if any.
 -- Returns the name of the EndTurnBlockingTypes value (for example
 -- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
--- when nothing blocks or when this Lua context has no NotificationManager.
--- Asks the game the way its own action panel does (GetFirstEndTurnBlocking);
--- where that call is missing or fails, scans the notification list instead.
+-- when nothing blocks. Asks the game the way its own action panel does
+-- (GetFirstEndTurnBlocking); where that call is missing or fails, scans the
+-- notification list instead.
+-- The third value is true when the game could not be asked at all (no
+-- NotificationManager, or neither way of asking worked). "Could not ask" is
+-- not "nothing blocks": an end of turn sent while a blocker is active
+-- deactivates the turn (LF-H1), so the caller has to refuse.
+AlphaZeroStateExporter.UNKNOWN_BLOCKER = "ENDTURN_BLOCKING_NOT_ASKABLE"
+
 function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     if not NotificationManager then
-        return nil, nil
+        return nil, nil, true
     end
 
     if NotificationManager.GetFirstEndTurnBlocking then
         local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
-        if okFirst then
+        -- The game answers with a number (NO_ENDTURN_BLOCKING when nothing
+        -- blocks). Anything else is not an answer: the list is scanned.
+        if okFirst and type(blocking) == "number" then
             if not isBlocking(blocking) then
-                return nil, nil
+                return nil, nil, false
             end
             local message = nil
             if NotificationManager.FindEndTurnBlocking then
@@ -1169,10 +1184,12 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
                     message = notificationMessage(entry)
                 end
             end
-            return endTurnBlockingName(blocking), message
+            return endTurnBlockingName(blocking), message, false
         end
     end
 
+    -- Each entry is read under the same pcall: one that cannot be read makes
+    -- the whole scan a failure, not "this one does not block".
     local ok, blockerName, message = pcall(function()
         local list = NotificationManager.GetList(playerId)
         if not list then
@@ -1191,9 +1208,9 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     end)
 
     if ok then
-        return blockerName, message
+        return blockerName, message, false
     end
-    return nil, nil
+    return nil, nil, true
 end
 
 -- Export full game state for a player
@@ -1282,8 +1299,12 @@ function AlphaZeroStateExporter.ExportState(playerId)
 
     -- What stops the turn from ending, so the agent can clear it before it
     -- asks to end the turn. Absent when nothing does.
-    state.end_turn_blocking, state.end_turn_blocking_message =
-        AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    local blocking, blockingMessage, blockingUnknown = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    if blockingUnknown then
+        blocking = AlphaZeroStateExporter.UNKNOWN_BLOCKER
+        blockingMessage = "The game could not be asked what blocks the end of turn"
+    end
+    state.end_turn_blocking, state.end_turn_blocking_message = blocking, blockingMessage
 
     -- Check game end
     if Game then

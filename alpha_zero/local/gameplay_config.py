@@ -355,7 +355,8 @@ def search_mode_refusal(config: Civ6LocalConfig) -> str | None:
         return None
     return (
         f"--mcts is refused in civ6 mode ({SEARCH_MODE_GAP_ID}): the search plays in the "
-        "MicroCiv simulator and nothing translates its actions into live commands yet "
-        f"({SEARCH_TRANSLATOR_GAP_ID}). Run without --mcts (and without "
+        f"MicroCiv simulator. Its answers can be translated into live commands "
+        f"({SEARCH_TRANSLATOR_GAP_ID}), but no trained checkpoint exists and this path has "
+        "not run in a real game. Run without --mcts (and without "
         f"{ENV_PREFIX}USE_MCTS) to use the greedy network policy. See docs/LIVE_CIV6.md."
     )

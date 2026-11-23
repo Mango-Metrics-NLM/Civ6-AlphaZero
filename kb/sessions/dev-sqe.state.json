@@ -1,21 +1,21 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-23T08:00:00Z",
+  "last_timestamp": "2026-11-23T21:30:00Z",
   "current_focus": "Bridge close-out. All of GM-B0 to B8b is merged. A live session ran on 2026-11-21 (the maintainer's, #166): commands were acknowledged for turns 1 to 7; attacks, other players and a multi-turn run have not been seen live.",
   "resume_pointers": {
-    "current_task": "B9 with B10: the mod refuses where it cannot ask, and the stand-in's defaults become what the live session showed",
+    "current_task": "Zero-game measurements on claude/gm-b11-zero-game-measurements: the expressivity census and the three-arm probe",
     "blocked_on": [
       "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
       "Maintainer: the live checklist in docs/LIVE_CIV6.md; attacks and the war check first, after B9",
       "Maintainer: cut-over, civ6az-agent, W&B key revocation; deleting merged remote branches"
     ],
     "next_steps": [
-      "B9 + B10 in one PR, tests first, independent review, planted defects",
-      "Zero-game measurements: A1 readiness and run sheet; the B11 census; the three-arm probe",
+      "Open the measurements PR when a slot frees (two PRs open at most)",
       "Harness: negative-control restores from a backup; push guard asks on a merged branch"
     ]
   },
   "context_files": [
+    "kb/handoffs/20261123-devsqe-to-prepr-gm-b9-fail-closed.md",
     "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
     "docs/LIVE_CIV6.md",
     "kb/specs/20261119-game-mechanics-gap-register.md",

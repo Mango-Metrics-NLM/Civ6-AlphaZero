@@ -53,22 +53,48 @@ local registeredEvents = {}
 
 -- Find the AI player (first human player we'll control)
 local function findAIPlayer()
+    -- Which rule decided is logged: a wrong player here makes every later
+    -- check ask about the wrong player.
+    local function decided(id, how)
+        if Log then Log.Info("AI player %s: %s", tostring(id), how) end
+        return id
+    end
     local configuredId = AlphaZeroConfig and AlphaZeroConfig.Get("AI_PLAYER_ID")
     if configuredId then
-        return configuredId
+        return decided(configuredId, "configured (AI_PLAYER_ID)")
     end
 
-    -- Find first human player
-    if PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            local player = Players and Players[i]
-            if player and player:IsHuman() and player:IsAlive() then
-                return i
-            end
+    -- The local player, as the game's own UI asks for it.
+    local okLocal, localId = pcall(function() return Game.GetLocalPlayer() end)
+    if okLocal and type(localId) == "number" and localId >= 0 then
+        return decided(localId, "the game's local player")
+    end
+
+    -- Else the first living human among the players the game lists, falling
+    -- back to walking the ids. A count is never used as an id: barbarians and
+    -- city-states have high ids, and the human need not be among the first.
+    local found = nil
+    local function consider(id, player)
+        if found == nil and player and player:IsHuman() and player:IsAlive() then
+            found = id
         end
     end
+    local listed = pcall(function()
+        local players = Game.GetPlayers({ Alive = true })
+        table.sort(players, function(a, b) return a:GetID() < b:GetID() end)
+        for _, player in ipairs(players) do consider(player:GetID(), player) end
+    end)
+    if not listed then
+        found = nil
+        pcall(function()
+            for id = 0, GameDefines.MAX_PLAYERS - 1 do consider(id, Players[id]) end
+        end)
+    end
 
-    return 0  -- Fallback to player 0
+    if found ~= nil then
+        return decided(found, "the first living human player")
+    end
+    return decided(0, "fallback: no local player and no human found")
 end
 
 -- Initialize the bridge
@@ -393,8 +419,8 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
     if overCap and onlyUnblocking and projected <= 2 * cap then
         local blocker = nil
         if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
-            local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
-            blocker = ok and found or nil
+            local ok, found, _, unknown = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
+            blocker = ok and (found or unknown) or nil
         end
         if blocker then overCap = false end
     end

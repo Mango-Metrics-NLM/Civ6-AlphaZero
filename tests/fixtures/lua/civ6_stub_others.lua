@@ -202,3 +202,37 @@ for _, id in ipairs(IDS) do
     end
 end
 function Civ6Stub.removeDiplomacy(p) Players[p or LOCAL].GetDiplomacy = nil end
+
+-- ----------------------------------------------------------------------------
+-- Diplomatic actions the local player takes (GM-B9)
+-- ----------------------------------------------------------------------------
+-- Civ6Stub.modelDiplomacyActions() gives every player's GetDiplomacy() object a
+-- DoAction(action, target), and UI.RequestDiplomacyMove(action, target) for the
+-- older path, that CHANGE the stand-in's war record as the game would:
+--   DIPLOACTION_DECLARE_WAR   the pair is at war       (Civ6Stub.setPeace(a, b, false))
+--   DIPLOACTION_MAKE_PEACE    the pair is at peace     (Civ6Stub.setPeace(a, b, true))
+--   anything else (denounce)  recorded, no war change
+-- Civ6Stub.diplomacyCalls lists every call as { path, action, target }, so a test can say
+-- "nothing reached the game" and read the war state as well.
+Civ6Stub.diplomacyCalls = {}
+local function takeAction(path, me, action, target)
+    table.insert(Civ6Stub.diplomacyCalls, { path = path, action = action, target = target })
+    if action == "DIPLOACTION_DECLARE_WAR" then
+        Civ6Stub.setPeace(me, target, false)
+    elseif action == "DIPLOACTION_MAKE_PEACE" then
+        Civ6Stub.setPeace(me, target, true)
+    end
+end
+function Civ6Stub.modelDiplomacyActions()
+    for _, id in ipairs(IDS) do
+        local base = Players[id].GetDiplomacy
+        Players[id].GetDiplomacy = function(self)
+            local d = base(self)
+            function d:DoAction(action, target) takeAction("DoAction", id, action, target) end
+            return d
+        end
+    end
+    UI.RequestDiplomacyMove = function(action, target)
+        takeAction("RequestDiplomacyMove", LOCAL, action, target)
+    end
+end

@@ -61,6 +61,7 @@ local DEFAULT_CONFIG = {
     -- Player configuration
     AI_PLAYER_ID = nil,            -- Auto-detect first human player
     OBSERVE_ALL_PLAYERS = false,   -- Only observe AI player's visible tiles
+    ALLOW_DECLARE_WAR = false,     -- The declare-war command is refused unless this is true
 
     -- Map settings
     MAX_TILES_PER_STATE = 10000,   -- Limit tiles in state dump
@@ -2659,12 +2660,19 @@ local function exportLegalActions(playerId)
                 table.insert(actions, { action = "found_city", unit_id = unitId })
             end
 
-            local attackTargets = acceptedTargets("unit_attack", neighbors)
+            -- An attack is offered only on what the same state shows. With
+            -- OBSERVE_ALL_PLAYERS off the state holds no foreign unit or city,
+            -- so no attack is offered; the executor still carries one out when
+            -- it is sent by hand.
+            local attackTargets = {}
+            if observesOthers() then
+                attackTargets = acceptedTargets("unit_attack", neighbors)
+            end
             if #attackTargets > 0 then
                 table.insert(actions, { action = "attack", unit_id = unitId, targets = attackTargets })
             end
             local range = unit:GetRange() or 0
-            if range >= 1 then
+            if range >= 1 and observesOthers() then
                 local rangedTargets = acceptedTargets("unit_ranged_attack", getHexTilesInRange(ux, uy, range))
                 if #rangedTargets > 0 then
                     table.insert(actions, { action = "ranged_attack", unit_id = unitId, targets = rangedTargets })
@@ -2745,19 +2753,27 @@ end
 -- The reason the player's turn cannot end, if any.
 -- Returns the name of the EndTurnBlockingTypes value (for example
 -- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
--- when nothing blocks or when this Lua context has no NotificationManager.
--- Asks the game the way its own action panel does (GetFirstEndTurnBlocking);
--- where that call is missing or fails, scans the notification list instead.
+-- when nothing blocks. Asks the game the way its own action panel does
+-- (GetFirstEndTurnBlocking); where that call is missing or fails, scans the
+-- notification list instead.
+-- The third value is true when the game could not be asked at all (no
+-- NotificationManager, or neither way of asking worked). "Could not ask" is
+-- not "nothing blocks": an end of turn sent while a blocker is active
+-- deactivates the turn (LF-H1), so the caller has to refuse.
+AlphaZeroStateExporter.UNKNOWN_BLOCKER = "ENDTURN_BLOCKING_NOT_ASKABLE"
+
 function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     if not NotificationManager then
-        return nil, nil
+        return nil, nil, true
     end
 
     if NotificationManager.GetFirstEndTurnBlocking then
         local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
-        if okFirst then
+        -- The game answers with a number (NO_ENDTURN_BLOCKING when nothing
+        -- blocks). Anything else is not an answer: the list is scanned.
+        if okFirst and type(blocking) == "number" then
             if not isBlocking(blocking) then
-                return nil, nil
+                return nil, nil, false
             end
             local message = nil
             if NotificationManager.FindEndTurnBlocking then
@@ -2766,10 +2782,12 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
                     message = notificationMessage(entry)
                 end
             end
-            return endTurnBlockingName(blocking), message
+            return endTurnBlockingName(blocking), message, false
         end
     end
 
+    -- Each entry is read under the same pcall: one that cannot be read makes
+    -- the whole scan a failure, not "this one does not block".
     local ok, blockerName, message = pcall(function()
         local list = NotificationManager.GetList(playerId)
         if not list then
@@ -2788,9 +2806,9 @@ function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
     end)
 
     if ok then
-        return blockerName, message
+        return blockerName, message, false
     end
-    return nil, nil
+    return nil, nil, true
 end
 
 -- Export full game state for a player
@@ -2879,8 +2897,12 @@ function AlphaZeroStateExporter.ExportState(playerId)
 
     -- What stops the turn from ending, so the agent can clear it before it
     -- asks to end the turn. Absent when nothing does.
-    state.end_turn_blocking, state.end_turn_blocking_message =
-        AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    local blocking, blockingMessage, blockingUnknown = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    if blockingUnknown then
+        blocking = AlphaZeroStateExporter.UNKNOWN_BLOCKER
+        blockingMessage = "The game could not be asked what blocks the end of turn"
+    end
+    state.end_turn_blocking, state.end_turn_blocking_message = blocking, blockingMessage
 
     -- Check game end
     if Game then
@@ -3180,9 +3202,27 @@ end
 local function executeEndTurn(playerId, command)
     if Log then Log.Info("Executing: END_TURN") end
 
-    local blocker, blockerMessage = nil, nil
+    -- When the game cannot be asked what blocks the turn, the turn is treated
+    -- as blocked: nothing is sent.
+    local blocker, blockerMessage, unknown = nil, nil, true
     if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
-        blocker, blockerMessage = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+        blocker, blockerMessage, unknown = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    end
+    if unknown and not blocker then
+        blocker = "ENDTURN_BLOCKING_NOT_ASKABLE"
+        blockerMessage = "the game could not be asked what blocks the end of turn"
+    end
+
+    -- ACTION_ENDTURN ends the LOCAL player's turn, whoever was asked about
+    -- above. If the bridge's player is someone else, the blocker check was
+    -- made for the wrong player: refuse.
+    local okLocal, localId = pcall(function() return Game.GetLocalPlayer() end)
+    if okLocal and type(localId) == "number" and localId >= 0 and localId ~= playerId then
+        local message = string.format(
+            "End turn refused: the bridge plays player %s and the local player is %s",
+            tostring(playerId), tostring(localId))
+        if Log then Log.Warn(message) end
+        return false, ERROR_CODES.EXECUTION_FAILED, message
     end
 
     if blocker then
@@ -3355,6 +3395,8 @@ end
 -- Refuse anything that would put the player at war: nil when it would not,
 -- else an error code and message. When the game cannot be asked, the answer
 -- is a refusal too: the mod does not attack on a guess.
+local warAnswerReported = false
+
 local function warRefusal(unit, x, y)
     if not CombatManager or not CombatManager.IsAttackChangeWarState then
         return ERROR_CODES.EXECUTION_FAILED,
@@ -3367,9 +3409,28 @@ local function warRefusal(unit, x, y)
         return ERROR_CODES.EXECUTION_FAILED,
             "Asking the game whether this would start a war raised: " .. tostring(results)
     end
-    if type(results) == "table" and #results > 0 then
+    if results == nil then
+        return nil, nil
+    end
+    if type(results) ~= "table" then
+        -- The game's UI reads a list of players. Anything else is an answer
+        -- this code does not understand, and "not understood" is not "no war".
+        -- Said once per session with print, because the offer check runs with
+        -- the log off: otherwise an agent that is offered no move says nothing.
+        if not warAnswerReported then
+            warAnswerReported = true
+            print("[AlphaZero] WARN: IsAttackChangeWarState answered " .. type(results)
+                .. " (" .. tostring(results) .. "); moves and attacks are refused until this is understood")
+        end
+        return ERROR_CODES.EXECUTION_FAILED,
+            "The game's answer on whether this would start a war could not be read: "
+            .. tostring(results)
+    end
+    local _, first = next(results)
+    if first ~= nil then
         return ERROR_CODES.WOULD_START_WAR,
-            string.format("Refused: (%d,%d) would start a war with player %s", x, y, tostring(results[1]))
+            string.format("Refused: (%d,%d) would start a war with player %s", x, y,
+                tostring(results[1] or first))
     end
     return nil, nil
 end
@@ -4156,6 +4217,13 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
 end
 
 local function diplomacyDeclareWar(playerId, targetPlayerId)
+    -- Refused unless the setting allows it: nothing in this mod may start a
+    -- war by default (the same answer a move or an attack that would gets).
+    if not (AlphaZeroConfig and AlphaZeroConfig.Get("ALLOW_DECLARE_WAR") == true) then
+        return false, ERROR_CODES.WOULD_START_WAR,
+            string.format("Refused: declaring war on player %s is turned off (ALLOW_DECLARE_WAR)",
+                tostring(targetPlayerId))
+    end
     return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_DECLARE_WAR", "DECLARE_WAR")
 end
 
@@ -4494,22 +4562,48 @@ local registeredEvents = {}
 
 -- Find the AI player (first human player we'll control)
 local function findAIPlayer()
+    -- Which rule decided is logged: a wrong player here makes every later
+    -- check ask about the wrong player.
+    local function decided(id, how)
+        if Log then Log.Info("AI player %s: %s", tostring(id), how) end
+        return id
+    end
     local configuredId = AlphaZeroConfig and AlphaZeroConfig.Get("AI_PLAYER_ID")
     if configuredId then
-        return configuredId
+        return decided(configuredId, "configured (AI_PLAYER_ID)")
     end
 
-    -- Find first human player
-    if PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            local player = Players and Players[i]
-            if player and player:IsHuman() and player:IsAlive() then
-                return i
-            end
+    -- The local player, as the game's own UI asks for it.
+    local okLocal, localId = pcall(function() return Game.GetLocalPlayer() end)
+    if okLocal and type(localId) == "number" and localId >= 0 then
+        return decided(localId, "the game's local player")
+    end
+
+    -- Else the first living human among the players the game lists, falling
+    -- back to walking the ids. A count is never used as an id: barbarians and
+    -- city-states have high ids, and the human need not be among the first.
+    local found = nil
+    local function consider(id, player)
+        if found == nil and player and player:IsHuman() and player:IsAlive() then
+            found = id
         end
     end
+    local listed = pcall(function()
+        local players = Game.GetPlayers({ Alive = true })
+        table.sort(players, function(a, b) return a:GetID() < b:GetID() end)
+        for _, player in ipairs(players) do consider(player:GetID(), player) end
+    end)
+    if not listed then
+        found = nil
+        pcall(function()
+            for id = 0, GameDefines.MAX_PLAYERS - 1 do consider(id, Players[id]) end
+        end)
+    end
 
-    return 0  -- Fallback to player 0
+    if found ~= nil then
+        return decided(found, "the first living human player")
+    end
+    return decided(0, "fallback: no local player and no human found")
 end
 
 -- Initialize the bridge
@@ -4834,8 +4928,8 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
     if overCap and onlyUnblocking and projected <= 2 * cap then
         local blocker = nil
         if AlphaZeroStateExporter and AlphaZeroStateExporter.GetEndTurnBlocker then
-            local ok, found = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
-            blocker = ok and found or nil
+            local ok, found, _, unknown = pcall(AlphaZeroStateExporter.GetEndTurnBlocker, bridgeState.aiPlayerId)
+            blocker = ok and (found or unknown) or nil
         end
         if blocker then overCap = false end
     end

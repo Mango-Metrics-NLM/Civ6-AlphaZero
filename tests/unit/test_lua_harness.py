@@ -130,7 +130,8 @@ def check_era(state: dict[str, Any]) -> None:
 
 def check_legal_actions(state: dict[str, Any]) -> None:
     assert _actions_for(state, "found_city", unit_id=101)
-    assert _actions_for(state, "attack", unit_id=102)
+    # GM-B9: no attack is offered with OBSERVE_ALL_PLAYERS off (the default); a move stands in.
+    assert _actions_for(state, "move", unit_id=102)
     assert _actions_for(state, "produce", city_id=301)
 
 
@@ -404,16 +405,31 @@ class TestLegalActions:
         assert _action_names(state).count("end_turn") == 1
 
     def test_settler_actions(self, state: dict[str, Any]) -> None:
+        runtime = h.load_mod()
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+        state = h.export_state(runtime)  # GM-B9: flag on, or "no attack" is vacuous
+        assert _actions_for(state, "attack", unit_id=102), "control: attacks are offered"
         names = sorted(a["action"] for a in state["legal_actions"] if a.get("unit_id") == 101)
         assert names == ["found_city", "move", "skip"]
         assert not _actions_for(state, "fortify", unit_id=101)
         assert not _actions_for(state, "attack", unit_id=101)
 
     def test_warrior_actions(self, state: dict[str, Any]) -> None:
+        """GM-B9 changed the rule: with ``OBSERVE_ALL_PLAYERS`` off (the default) the state shows
+        no foreign unit, so no ``attack`` is offered; the flag-on test below has the attack."""
         names = sorted(a["action"] for a in state["legal_actions"] if a.get("unit_id") == 102)
-        assert names == ["attack", "fortify", "move", "skip"]
+        assert names == ["fortify", "move", "skip"]
         assert not _actions_for(state, "found_city", unit_id=102)
-        (attack,) = _actions_for(state, "attack", unit_id=102)
+        assert not _actions_for(state, "attack", unit_id=102)
+
+    def test_warrior_actions_with_all_players_observed(self) -> None:
+        """GM-B9: with the flag on the visible enemy at (2, 0) is offered as an attack."""
+        runtime = h.load_mod()
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+        seen = h.export_state(runtime)
+        names = sorted(a["action"] for a in seen["legal_actions"] if a.get("unit_id") == 102)
+        assert names == ["attack", "fortify", "move", "skip"]
+        (attack,) = _actions_for(seen, "attack", unit_id=102)
         assert [tuple(t) for t in attack["targets"]] == [(2, 0)]
 
     def test_enemy_units_have_no_actions(self, state: dict[str, Any]) -> None:
@@ -519,7 +535,11 @@ class TestWireCompatibility:
         assert parsed.is_game_over is False
         assert parsed.winner_id is None
 
-    def test_parsed_fields_match_the_export(self, state: dict[str, Any]) -> None:
+    def test_parsed_fields_match_the_export(self) -> None:
+        """GM-B9: run with ``OBSERVE_ALL_PLAYERS`` on, where attacks are offered."""
+        runtime = h.load_mod()
+        runtime.execute('AlphaZeroConfig.Set("OBSERVE_ALL_PLAYERS", true)')
+        state = h.export_state(runtime)
         parsed = GameStateData.from_dict(state)
         city = parsed.cities[0]
         assert (city.name, city.population, city.owner_id) == ("Stubville", 3, 0)
