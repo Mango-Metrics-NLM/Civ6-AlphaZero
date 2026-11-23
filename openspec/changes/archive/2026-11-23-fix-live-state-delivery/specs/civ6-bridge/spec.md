@@ -23,14 +23,19 @@ newer one before being read SHALL be counted.
 ### Requirement: A start in mid-turn can see the state already written
 
 At start the tailer SHALL keep the last complete state in the existing log and
-make it available only when a heartbeat read after start shows the mod is
-listening; a state read after start replaces it. Acks and heartbeats written
+make it available only when a heartbeat read after start, reporting the same game
+turn as that state, shows the mod is listening; a state read after start replaces it. Acks and heartbeats written
 before start MUST NOT be used.
 
 #### Scenario: Started while the mod waits for a command
 
-- **WHEN** the log already holds a complete state and a heartbeat is read after start
+- **WHEN** the log already holds a complete state and a heartbeat for the same game turn is read after start
 - **THEN** that state is handed out as the current one
+
+#### Scenario: A heartbeat for another turn
+
+- **WHEN** the log holds a state and the heartbeat read after start reports a different game turn
+- **THEN** that state is not handed out
 
 #### Scenario: Old heartbeat only
 

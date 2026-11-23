@@ -21,7 +21,7 @@ the A1 learning run of milestone v2.1, pre-registered in `docs/EVALUATION.md` se
 
 | What | When | Where it is written down | What it supports | What it does not |
 |---|---|---|---|---|
-| First live session against the real game, turns 1 to 7 | 2026-11-21 | PR #166's description and [`../LIVE_CIV6.md`](../LIVE_CIV6.md) | the socket connection, the schema-2 export and the GameInfo capture work; the game acknowledged `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` and a warrior build; five behaviours of the game differ from what the mod assumed | the effect of each command in the following state; that the five fixes work (the rebuilt mod has not been run); anything about attacks, other players, several turns in a row, or how well an agent plays. No log excerpt is committed |
+| First live session against the real game, turns 1 to 7 | 2026-11-21 | the maintainer's report of the session, summarised in [`../LIVE_CIV6.md`](../LIVE_CIV6.md); PR #166 records the code changes that followed, not the session itself | the socket connection, the schema-2 export and the GameInfo capture work; the game acknowledged `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` and a warrior build; five behaviours of the game differ from what the mod assumed | the effect of each command in the following state; that the five fixes work (the rebuilt mod has not been run); anything about attacks, other players, several turns in a row, or how well an agent plays. No log excerpt is committed |
 
 ## Never measured
 

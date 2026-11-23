@@ -5,6 +5,7 @@
 - **Focus:** After GM-B8b merged, the maintainer asked for an objective team review. Five roles (product owner, scrum master, architect, ML scientist, AI engineer) reviewed the whole track in parallel; the plan was rewritten from their findings and approved.
 - **Decisions:** Bridge features are frozen until A1 has run. One status table (`docs/LIVE_CIV6.md`, "Status at a glance") says built / tested on the stand-in / seen live; other documents link to it. "Answer seen" is kept apart from "effect seen". Six OpenSpec changes archived, the bridge ones with corrected requirements. Three new register rows: B9 (four fail-open paths in the mod), B10 (the stand-in's defaults model what the live session disproved), B11 (a zero-game census with a stop rule fixed beforehand).
 - **Output:** truth pass over README, ROADMAP, CLAUDE.md, LIVE_CIV6 and the evidence index; `openspec/specs/civ6-bridge`, `game-rules`, `training-reproducibility`; handoff `kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md`.
+- **Correction (review of PR #167):** the handoff's item 6 says the search "cannot win" in its simulator. More exactly: it cannot win by elimination; a win at the turn limit still stands when an enemy city is in sight. Handoff documents are immutable, so the correction is recorded here.
 - **Next:** DEV-SQE: B9 with B10, then the zero-game measurements. Maintainer: T0b, A1, A1-R; the live checklist, attacks and the war check first.
 
 ## 2026-11-19 - Game-mechanics gap closure (science, technology, full gameplay): program plan
