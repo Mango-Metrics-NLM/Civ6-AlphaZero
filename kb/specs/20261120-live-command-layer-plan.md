@@ -3,7 +3,7 @@
 Companion to [`20261119-game-mechanics-plan.md`](20261119-game-mechanics-plan.md) and its
 [gap register](20261119-game-mechanics-gap-register.md). Approved by the maintainer on
 2026-11-20 (answers: GM-B7 first and then GM-B6; the `--mcts` refusal stays; review findings in
-one follow-up PR first). Owner: architect. OpenSpec: `openspec/changes/fix-live-command-layer`
+one follow-up PR first). Owner: architect. OpenSpec: `openspec/changes/archive/2026-11-23-fix-live-command-layer`
 (GM-B7); GM-B6 gets its own change when it starts.
 
 ## Why

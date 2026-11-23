@@ -83,13 +83,20 @@ MUST refuse a choice the player already has or the game reports as closed.
 
 END_TURN SHALL report a blocked turn with the blocking type instead of returning
 success unconditionally, and MUST NOT send the request to the game while the turn
-is blocked. The Python agent loop MUST handle a blocked report without raising
-and count it.
+is blocked. The game's list of blockers is the only authority: the mod MUST NOT let
+`UI.CanEndTurn()` overrule a listed blocker, because the live game answers true while
+one is active (seen 2026-11-21). The Python agent loop MUST handle a blocked report
+without raising and count it.
 
 #### Scenario: Unanswered research choice
 
 - **WHEN** the stub blocks end-turn on a research choice and END_TURN is executed
 - **THEN** the acknowledgement reports blocked with the research blocking type, and the agent loop increments its blocked counter without an exception
+
+#### Scenario: The game says the turn can end while a blocker is listed
+
+- **WHEN** `UI.CanEndTurn()` answers true and the blocker list names a blocker
+- **THEN** END_TURN reports blocked and sends nothing
 
 ### Requirement: Wire changes are additive
 
@@ -172,22 +179,329 @@ hand for tests, holding no data captured from a game.
 - **WHEN** a file in the snapshot format is tracked at a path the allowlist does not name
 - **THEN** the hygiene test fails and names the path
 
-### Requirement: Live search mode refuses until an action translator exists
+### Requirement: Unit commands are requested the way the game's own UI requests them
+
+The mod SHALL resolve a unit action's operation by type name from the game's database, use that
+row's hash, and request it only after the game's strict check accepts it. A move MUST carry no
+attack modifier. A name the game's database does not have, or an operation the strict check
+refuses, MUST be answered as a failure that names the reason, and nothing is requested.
+
+#### Scenario: A unit moves
+
+- **WHEN** a `move` command names an own unit and a tile the game accepts
+- **THEN** the unit is on that tile after the game applies the request, and the answer is success
+
+#### Scenario: The game refuses
+
+- **WHEN** the strict check refuses the operation (no moves left, an impassable tile)
+- **THEN** the answer is a failure with the reason, and the game state does not change
+
+#### Scenario: An operation name the game does not have
+
+- **WHEN** the type name is not a row of the game's operation or command tables
+- **THEN** the answer is a failure naming it, not a success
+
+### Requirement: A move or an attack does not start a war
+
+Before a move or an attack the mod SHALL ask the game whether it would change the war state, and
+MUST refuse the command when the game says it would or when the game cannot be asked. This
+requirement covers moves and attacks only. Two gaps are registered and not closed by it: an
+answer from the game in a form other than the expected list is read as "no change", and the
+separate declare-war command has no gate.
+
+#### Scenario: An attack on a player at peace
+
+- **WHEN** an `attack` command targets a unit of a player the agent is at peace with
+- **THEN** the answer is a failure saying it would start a war, and nothing is requested
+
+#### Scenario: The game cannot be asked
+
+- **WHEN** the game's war-state check is missing or raises
+- **THEN** the move or attack is refused and nothing is requested
+
+### Requirement: A production order names the item by the game's hash
+
+A production command SHALL be sent with the database row's hash and the exclusive insert mode,
+whether the command names the item by type name or by row index. An item that needs a plot MUST
+be refused.
+
+#### Scenario: Build from a name
+
+- **WHEN** a production command names `UNIT_WARRIOR` for a city that can build it
+- **THEN** the city is building it after the request is applied, replacing what it was building
+
+#### Scenario: An item that needs placement
+
+- **WHEN** a production command names a district
+- **THEN** the answer is a failure saying placement is not supported
+
+### Requirement: The state after a command reflects the command
+
+After a command that did not end the turn, the mod SHALL export the next state on a later tick
+than the request, and SHALL keep listening for commands for a window measured from the last
+command handled, up to a fixed number of commands per turn.
+
+#### Scenario: A move is visible in the next state
+
+- **WHEN** a move is accepted
+- **THEN** the next exported state shows the unit on its new tile
+
+#### Scenario: A long turn
+
+- **WHEN** commands arrive for longer than the window, each within the window of the one before
+- **THEN** the mod is still listening
+
+### Requirement: Offered actions are ones the game accepts
+
+Every unit action the exporter offers SHALL be one the game's strict check accepts at export
+time; move targets MUST be the game's own adjacent plots; an attack MUST NOT be offered where it
+would start a war; a city's production choices SHALL be asked by row hash.
+
+#### Scenario: Move targets are neighbours
+
+- **WHEN** a unit stands on an even or an odd row
+- **THEN** every offered move target is exactly one step away
+
+### Requirement: The loop does not resend what the game refused
+
+Within one game turn the agent loop SHALL NOT send a command the mod refused in that turn again,
+SHALL choose research and each city's production at most once unless the choice had no effect,
+SHALL send only `end_turn` after a fixed number of commands, and SHALL be able to stop after a
+configured number of game turns (`CIV6AZ_AGENT_MAX_GAME_TURNS`). A choice that cannot be sent
+MUST be re-selected, not answered by ending the turn. When the game keeps blocking the end of
+turn and nothing sent changes that, the loop SHALL declare a stall and stop sending, not spin.
+
+#### Scenario: A refused command
+
+- **WHEN** the mod answers a command with a failure
+- **THEN** the same command is not sent again before the turn ends
+
+#### Scenario: A turn that cannot be ended
+
+- **WHEN** the game answers `end_turn` with a blocker three times running and the state does not change
+- **THEN** the loop reports a stalled turn and exits with code 3 (or, with `on_stall=wait`, sends nothing more in that turn)
+
+#### Scenario: A limit in game turns
+
+- **WHEN** `max_game_turns` is 3 and each turn takes several commands
+- **THEN** commands are sent in exactly three game turns
+
+### Requirement: The mod follows what the live game was seen to do
+
+Where the live session of 2026-11-21 showed the game behaving differently from the reading
+the mod was written from, the mod SHALL follow the game: a city's item counts as buildable
+only when both the loose and the strict form of the game's check accept it; a city's current
+build is read from its type hash when the game does not return the item itself; tile yields
+are read under the yield names the live game uses; and whole numbers are written to JSON
+without loss above 2^31. Each MUST have a test that fails on the earlier behaviour.
+
+#### Scenario: A building that is not unlocked yet
+
+- **WHEN** the game's loose check accepts a building and its strict check does not
+- **THEN** the building is not offered and a `city_produce` for it is refused
+
+#### Scenario: A large whole number
+
+- **WHEN** a value above 2^31 is exported
+- **THEN** the JSON carries every digit
+
+### Requirement: The log-tailing transport hands out every newest state once
+
+`LogTailer.wait_for_state` SHALL return the newest state that has not been handed
+out yet, without waiting when such a state has already been read, and MUST NOT
+return the same state twice. A state read in the same batch of log lines as the
+ack before it MUST still be returned to the next caller. States replaced by a
+newer one before being read SHALL be counted.
+
+#### Scenario: Ack and state arrive together
+
+- **WHEN** an ack line and the state line behind it are read in one batch, and the caller waits for the ack and then for a state
+- **THEN** the state is returned at once, not after a timeout
+
+#### Scenario: No newer state
+
+- **WHEN** a state has been handed out and no newer one has been read
+- **THEN** waiting for a state ends in a timeout, not in the same state again
+
+### Requirement: A start in mid-turn can see the state already written
+
+At start the tailer SHALL keep the last complete state in the existing log and
+make it available only when a heartbeat read after start shows the mod is
+listening; a state read after start replaces it. Acks and heartbeats written
+before start MUST NOT be used.
+
+#### Scenario: Started while the mod waits for a command
+
+- **WHEN** the log already holds a complete state and a heartbeat is read after start
+- **THEN** that state is handed out as the current one
+
+#### Scenario: Old heartbeat only
+
+- **WHEN** the log holds a state and a heartbeat written before start, and nothing is written after start
+- **THEN** no state is handed out and the heartbeat check stays false
+
+### Requirement: The search's answer is translated into an offered command
+
+`SearchTranslator.translate` SHALL return, for a simulator action, either a live command
+that the game offered in the current state or a reason, and MUST NOT raise. Units and
+cities SHALL be identified by live id, never by position in a list. A move MUST NOT be
+translated into an attack.
+
+#### Scenario: A unit the simulator left out comes first in the list
+
+- **WHEN** the live unit list holds a unit with no simulator stand-in before the acting unit
+- **THEN** the command names the acting unit's own live id
+
+#### Scenario: Nothing offered lies toward the destination
+
+- **WHEN** no offered move target is nearer the destination cell than the unit's own tile
+- **THEN** the action is reported as not translatable and is left out of the search's root
+
+### Requirement: The live search only weighs what can be played
+
+`Civ6MctsPolicy.select_command` SHALL restrict the root of its search to simulator actions
+that translate, SHALL act on the search's own halving winner, and SHALL return `end_turn`
+with a recorded reason when nothing translates. A seeded state with no other player in it
+MUST NOT be treated as a finished game.
+
+#### Scenario: Nobody else is in the seeded state
+
+- **WHEN** the live state holds only the acting player's units and cities
+- **THEN** a step in the simulator does not end the game and carries no win or loss reward
+
+#### Scenario: Same seed, same state
+
+- **WHEN** `select_command` is called twice with the same state and `decision_seed`
+- **THEN** the command and the record are identical
+
+### Requirement: The agent loop can run a policy that answers with a command
+
+`BridgeAgentLoop` SHALL ask a policy whose class defines `select_command` for a command,
+handing it the turn ledger as a veto and a seed derived from the game turn and the
+command's number in it, and SHALL send the answer through the same path as any other
+command. A policy that names nothing or raises MUST be counted (`search_fallbacks`,
+`search_failures`) and MUST NOT be answered with an `end_turn` the game is refusing while
+another command may still be sent. `civ6_local --mode civ6 --mcts` SHALL remain refused.
+
+#### Scenario: The search cannot answer a research blocker
+
+- **WHEN** the game blocks the end of turn on a research choice and the search names nothing
+- **THEN** the loop sends the offered research command in preference to any unit action
+  nobody chose, and the turn can then be ended
+
+#### Scenario: The policy raises
+
+- **WHEN** `select_command` raises
+- **THEN** the failure is counted, the loop goes on, and no command the ledger rules out is sent
+
+### Requirement: The search's network comes from the checkpoint's own record
+
+`build_search_policy` SHALL build a network of the simulator's shape at the board and
+horizon the checkpoint records, MUST refuse a checkpoint that records no horizon, and MUST
+refuse a network that is not of the simulator's shape (the full-game network is not). An
+untrained network SHALL be built only on an explicit request.
+
+#### Scenario: A checkpoint without a recorded horizon
+
+- **WHEN** the checkpoint's metadata has no `max_turns`
+- **THEN** `build_search_policy` raises and names the missing horizon
+
+### Requirement: Live search mode is refused at start-up
 
 `python -m alpha_zero.civ6_local --mode civ6 --mcts` SHALL exit non-zero at
-start-up, before any game connection, with a message naming the gap id registered
-for the bridge action translator. The search proxy MUST seed `MicroCivEnv` using
-only its existing rules, with no file under `alpha_zero/envs/` changed. An un-mocked test MUST
-record the current failure before the refusal lands. The refusal MUST stay until the
-search is also given a network and checkpoint matching the simulator's observation
-shape and an un-mocked end-to-end search test passes; a translator alone does not lift it.
+start-up, before any game connection, with a message naming a registered gap id.
+The search proxy MUST seed `MicroCivEnv` using only its existing rules, with no file
+under `alpha_zero/envs/` changed. The translator, a network built from a checkpoint's
+own record and an un-mocked end-to-end test against the stand-in exist; the refusal
+MUST stay until a trained simulator checkpoint is loaded, the search path has been
+seen working in a real game, and the registered comparison against a random policy
+has been run.
 
 #### Scenario: Starting live search
 
 - **WHEN** `civ6_local` starts with `--mode civ6 --mcts`
-- **THEN** it exits non-zero without connecting and the message names the translator gap id
+- **THEN** it exits non-zero without connecting and the message names a registered gap id
 
 #### Scenario: Dry run without search
 
 - **WHEN** `python -m alpha_zero.civ6_local --mode civ6 --dry-run` runs
 - **THEN** it exits 0 as before
+
+### Requirement: Other players are exported only as far as the player sees them
+
+With `OBSERVE_ALL_PLAYERS` on, the mod SHALL export another player's unit only when
+the game reports both its tile and the unit itself as visible to the local player,
+and another player's city only while its tile is visible now. A foreign unit MUST
+NOT carry its remaining moves, remaining attacks or promotions, and a foreign city
+MUST NOT carry its production. When the game cannot be asked about visibility,
+nothing of another player SHALL be exported. With the setting off, no other
+player's unit or city SHALL be exported.
+
+#### Scenario: A stealth unit on a visible tile
+
+- **WHEN** another player's unit stands on a tile the player sees but the game reports the unit as not visible
+- **THEN** the unit is not in the exported state
+
+#### Scenario: Barbarians and city-states
+
+- **WHEN** a barbarian unit (player id 63) and a city-state unit are in sight
+- **THEN** both are exported, whatever the number of major players
+
+#### Scenario: A city seen earlier
+
+- **WHEN** another player's city stands on a tile that was revealed but is not visible now
+- **THEN** the city is not in the exported state
+
+### Requirement: The state says what each other owner is to the player
+
+The state SHALL carry `observes_others` and, for every owner of an exported foreign
+unit or city, an `other_players` entry with `kind` (major, minor, barbarian, free)
+and `at_war`. `at_war` MUST be absent, not false, when the game cannot be asked.
+The Python converter SHALL put only hostile owners (at war, barbarian, free city)
+on the enemy side and SHALL count the units and cities it leaves out. A state that
+carries no `observes_others` SHALL be converted as before.
+
+#### Scenario: A city-state at war
+
+- **WHEN** a city-state the player is at war with has a unit in sight
+- **THEN** its entry has `kind` minor and `at_war` true, and the unit is on the enemy side
+
+#### Scenario: A neutral scout
+
+- **WHEN** a major the player is at peace with has a unit in sight
+- **THEN** the unit is not on the enemy side and is counted as left out
+
+### Requirement: Nothing the player cannot see now is given away
+
+A tile that is not visible now MUST NOT carry its owner, improvement, resource or
+yields. When the game cannot be asked about visibility, no tile SHALL be reported
+as visible. An attack MUST NOT be offered or carried out on a plot whose only
+foreign occupant the player cannot see.
+
+#### Scenario: A tile in fog
+
+- **WHEN** a tile was revealed earlier and is not visible now
+- **THEN** it is exported with its terrain and features and without owner, improvement, resource or yields
+
+#### Scenario: A hidden unit next to an archer
+
+- **WHEN** the only foreign unit on a plot in range is one the player cannot see
+- **THEN** no attack on that plot is offered, and one sent anyway is refused
+
+### Requirement: Killing what is visible is not winning the game
+
+The live search's simulator holds only what the player can see. It MUST NOT let the
+acting player win by elimination, and MUST NOT pay a win at the turn limit unless an
+enemy city is in the simulator. The acting player with no unit and no city left SHALL
+have lost, also when its last unit removed the last visible enemy. Each decision's record SHALL say what of the other
+players was seeded and on how many lines of play a win was taken back.
+
+#### Scenario: A lone hostile unit next to a warrior
+
+- **WHEN** the acting player's attack removes the only enemy unit in the simulator and the enemy has no city there
+- **THEN** the simulated game goes on, the move pays the per-kill reward and no win reward, and no win is paid at the turn limit either
+
+#### Scenario: The acting player loses everything
+
+- **WHEN** the acting player's last unit is removed and it holds no city
+- **THEN** the simulated game ends as a loss

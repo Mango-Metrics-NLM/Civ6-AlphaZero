@@ -21,5 +21,5 @@
 - [x] 3.3 The real loop run against the mod's Lua in the stand-in (`tests/fixtures/lua_bridge.py`)
 
 ## 4. Verification
-- [ ] 4.1 Empty play-path diff on every PR; debt ratchet; `build_lua_bundle.py --check`; Lua suites with `CIV6AZ_REQUIRE_LUA=1`
+- [x] 4.1 Empty play-path diff on every PR; debt ratchet; `build_lua_bundle.py --check`; Lua suites with `CIV6AZ_REQUIRE_LUA=1`
 - [ ] 4.2 Maintainer's live sitting: the checklist of `add-bridge-research-parity` (reinstall the mod, one research choice, one reported blocker, one snapshot), plus a unit moves, skip clears "unit needs orders", a build starts from a name and replaces, ticks until a request shows, ten turns end by themselves

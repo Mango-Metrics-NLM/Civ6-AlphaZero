@@ -39,3 +39,7 @@ without staling any evidence run. Later rungs build on it, each under its own ch
   deletion change.
 - Not in this change: a science system in the environment, the preset seam,
   per-file play-path pathspecs for the kernel. Each comes after v2.1.0 under its own change.
+
+## Archive note (2026-11-23)
+
+Merged with PRs #146 and #147 (GM-K1, GM-K2). Tasks 1.10 and 3.1 are ticked here: the play-path closure test and the debt ratchet pass on the default branch, and the CLAUDE.md rows exist. `make verify` cannot run in the agent's sandbox; CI is the record.

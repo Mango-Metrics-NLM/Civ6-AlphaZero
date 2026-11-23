@@ -19,7 +19,7 @@ about learning.
 |-------|------|-----------------|-----------------------|
 | M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
 | M2 | Scale & Observability | ✅ Delivered; ⏸ **Vertex/GCP path dormant** (frozen 2026-11-11) | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
-| M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery & live parity fixes landed, demo-grade.** Four `END_TURN`s on random weights (2026-07-12); FireTuner TCP, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live with five Lua fixes (2026-11-21); fresh Turn 1 soak open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
+| M3 | Live Game Bridge | ✅ Built; not validated | ⚠️ **Demo-grade; per-capability status in [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md#status-at-a-glance).** No trained policy has played, attacks have not run live, and the rebuilt mod has not had a multi-turn run. Four `END_TURN`s on random weights (2026-07-12); FireTuner TCP, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live with five Lua fixes (2026-11-21); fresh Turn 1 soak open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
 | M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
 | M5 | Full Civ6 Mastery | ⏳ Future | — |
 
@@ -42,11 +42,11 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
   reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
   and A1/A1-R run-card execution remains open until run on the maintainer's GPU machine.
-- `openspec/changes/add-game-rules-kernel`: GM-S0a (golden env fingerprint), GM-K1
+- `openspec/changes/archive/2026-11-23-add-game-rules-kernel`: GM-S0a (golden env fingerprint), GM-K1
   (`alpha_zero/rules/` kernel), and GM-K2 (`pace`, `import-gameinfo`) landed off the
-  play path (PRs #143, #146, #147; no training environment consumes it yet); pending
-  OpenSpec archive (plan `kb/specs/20261119-game-mechanics-plan.md`).
-- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py` snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153), followed by live Steam Civ 6 verification fixes for Win64 LLP64 integers, sole blocker authority, two-step `CanProduce`, `GetCurrentProductionTypeHash()`, short `YieldTypes` keys, `install_civ6_mod.py --check`, and `civ6_local.py` decomposition (`alpha_zero/local/gameplay_config.py`). Open: fresh Turn 1 multi-turn soak on the rebuilt bundle (`docs/LIVE_CIV6.md`) and the search-mode action translator (`GM-B6`, not scheduled).
+  play path (PRs #143, #146, #147; no training environment consumes it yet); archived
+  2026-11-23 into the `game-rules` and `training-reproducibility` baselines (plan `kb/specs/20261119-game-mechanics-plan.md`).
+- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py` snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153), followed by live Steam Civ 6 verification fixes for Win64 LLP64 integers, sole blocker authority, two-step `CanProduce`, `GetCurrentProductionTypeHash()`, short `YieldTypes` keys, `install_civ6_mod.py --check`, and `civ6_local.py` decomposition (`alpha_zero/local/gameplay_config.py`). Since then (PRs #158 to #165, 2026-11-21 and 22): the command layer rewritten from the game's UI code (GM-B7a to c), the search-to-command translator and its seam (GM-B6a, b), and the export of visible other players with the search's end-of-game rules (GM-B8a, b); their four OpenSpec changes were archived into `civ6-bridge` on 2026-11-23. **Bridge features are frozen until A1 has run**: the bridge now waits for a policy worth carrying. Open, all the maintainer's: the live checklist (`docs/LIVE_CIV6.md`, attacks and the war check first).
 
 ### Next — v2.1 "First validated learning run"
 
@@ -127,7 +127,7 @@ Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7
 
 ## M3 — Live Game Bridge
 
-A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–v1.8.0.)*
+A trained agent plays a real, unmodified Civilization VI. *(Bridge built: v1.7.0–v1.8.0 and the GM-B track; the goal itself is not met: no trained agent has played. Status: [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md#status-at-a-glance).)*
 
 - Lua mod + file-IPC bridge, `BridgeAgentLoop`, `BridgeMCTSEnv` (v1.7.0).
 - Headless FireTuner socket transport (`alpha_zero/bridge/tuner_socket_bridge.py`);
