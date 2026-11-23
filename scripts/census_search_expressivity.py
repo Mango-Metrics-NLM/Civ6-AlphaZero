@@ -56,6 +56,7 @@ from scripts.census_measures import (
     measure_state,
     median_interval_ranks,
     offered_commands,
+    parser_losses,
     stop_rule_verdict,
 )
 
@@ -79,6 +80,7 @@ __all__ = [
     "median_interval_ranks",
     "not_a_census_reason",
     "offered_commands",
+    "parser_losses",
     "registered_stop_rule",
     "render_summary",
     "stop_rule_verdict",
@@ -96,20 +98,29 @@ def _record(index: int, raw: dict[str, Any], boards: Sequence[int]) -> dict[str,
     """One sampled state's values on every board.
 
     A state that cannot be parsed or measured, or that is void on any board, is void on
-    every board (both boards then use the same states). It is never replaced.
+    every board (both boards then use the same states). So is a state the tolerant parser
+    had to repair by dropping part of it: what is left is not the state. It is never
+    replaced.
     """
     per_board: dict[str, dict[str, Any]] = {}
+    dropped: dict[str, int] = {}
     try:
         state = GameStateData.from_dict(raw)
-        per_board = {str(b): measure_state(state, b) for b in boards}
-        bad = [f"board {b}: {v.get('void_reason')}" for b, v in per_board.items() if v.get("void")]
-        reason = "; ".join(bad) or None
+        dropped = parser_losses(raw, state)
+        if dropped:
+            lost = ", ".join(f"{kind}: {n}" for kind, n in dropped.items())
+            reason: str | None = f"the parser dropped part of the state ({lost})"
+        else:
+            per_board = {str(b): measure_state(state, b) for b in boards}
+            bad = [f"board {b}: {v.get('void_reason')}" for b, v in per_board.items() if v["void"]]
+            reason = "; ".join(bad) or None
     except Exception as exc:
         reason = f"{type(exc).__name__}: {exc}"
     if reason is not None:
-        void = {"void": True, "void_reason": reason[:200]}
-        turn = raw.get("turn_id", raw.get("turn"))
-        return {"source": index, "turn": turn, "boards": {str(b): dict(void) for b in boards}}
+        void = {"void": True, "void_reason": reason[:300]}
+        record = {"source": index, "turn": raw.get("turn_id", raw.get("turn"))}
+        record["boards"] = {str(b): dict(void) for b in boards}
+        return {**record, "parser_dropped": dropped} if dropped else record
     tiles = state.map_data.tiles
     return {
         "source": index,
@@ -188,6 +199,7 @@ def describe_input(
         "sampling": "first complete state of each game turn, per source",
         "states_sampled": len(states),
         "states_void": len(states) - len(good),
+        "states_void_parser_dropped": sum("parser_dropped" in r for r in states),
         **{key: sum(s[key] for s in sources) for key in LOG_COUNTS},
         "turn_went_back": sum(s["turn_went_back"] for s in sources),
         "states_measured": len(good),
@@ -282,7 +294,8 @@ def render_summary(payload: Mapping[str, Any]) -> str:
     lines += [
         f"Input: {len(payload['sources'])} source(s), kind {info['input_kind']} ({real_log})",
         f"States: {info['states_sampled']} sampled ({info['sampling']}), {info['states_void']} "
-        f"void, {info['states_after_turn_30']} after turn {LATE_TURN}. Not sampled: "
+        f"void ({info['states_void_parser_dropped']} of them repaired by the parser, which "
+        f"dropped part of them), {info['states_after_turn_30']} after turn {LATE_TURN}. Not sampled: "
         f"{info[UNREADABLE_STATE]} unreadable, {info[DROPPED_MISSING_PIECE]} dropped for a "
         f"missing piece. Registered minimum ({MIN_STATES} states, {MIN_LATE_STATES} after turn "
         f"{LATE_TURN}): " + ("met" if info["meets_registered_minimum"] else "NOT met"),

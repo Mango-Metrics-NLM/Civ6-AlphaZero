@@ -123,6 +123,48 @@ def e4_left_out(left_out: int, units: Iterable[Mapping[str, Any]], player: Any) 
     return _share(int(left_out), sum(u.get("player") == player for u in units))
 
 
+def parser_losses(raw: Mapping[str, Any], state: GameStateData) -> dict[str, int]:
+    """What ``GameStateData.from_dict`` dropped from ``raw`` to make ``state``, by kind.
+
+    The live parser is tolerant on purpose: it leaves out an invalid tile, unit, city,
+    player, legal action, target or item and returns the rest. A census must not measure
+    what is left as if it were the state. Only kinds with a loss are returned; ``{}`` for
+    a state that was parsed whole. Targets and items are compared only inside legal
+    actions that survive parsing (one dropped whole is counted once, as a legal action).
+    """
+    from alpha_zero.bridge.protocol import LegalAction
+
+    def count(value: Any) -> int:
+        return len(value) if isinstance(value, list | tuple) else 0
+
+    raw_map = raw.get("map")
+    raw_tiles = raw_map.get("tiles") if isinstance(raw_map, Mapping) else None
+    summary = raw.get("player")  # with no players list the parser makes one from this
+    players = count(raw.get("players")) or int(isinstance(summary, Mapping) and bool(summary))
+    losses = {
+        "tiles": count(raw_tiles) - len(state.map_data.tiles),
+        "units": count(raw.get("units")) - len(state.units),
+        "cities": count(raw.get("cities")) - len(state.cities),
+        "players": players - len(state.players),
+        "legal_actions": count(raw.get("legal_actions")) - len(state.legal_actions),
+        "legal_action_targets": 0,
+        "legal_action_items": 0,
+    }
+    raw_actions = raw.get("legal_actions")
+    for action in raw_actions if isinstance(raw_actions, list | tuple) else []:
+        try:
+            parsed = LegalAction.from_dict(action)
+        except Exception:
+            parsed = None
+        if parsed is None:  # dropped whole: already counted under legal_actions
+            continue
+        losses["legal_action_targets"] += count(action.get("targets")) - len(parsed.targets)
+        items = action.get("items", action.get("item", []))  # the parser's own lookup
+        offered = 0 if items is None else len(items) if isinstance(items, list) else 1
+        losses["legal_action_items"] += offered - len(parsed.items)
+    return {kind: lost for kind, lost in losses.items() if lost > 0}
+
+
 def measure_state(state: GameStateData, board: int) -> dict[str, Any]:
     """E1..E4 of one state on one board; void when a translated command was not offered."""
     from alpha_zero.bridge.mcts_policy import BridgeMCTSEnv

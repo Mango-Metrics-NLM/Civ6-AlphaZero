@@ -205,6 +205,11 @@ choices the registration left open. None changes a definition or the stop rule.
     that says it is unregistered. The script cannot tell a real log from a synthetic one; the
     recorded fields are the attestation that it is real.
 11. The script refuses to run if the commit sha cannot be resolved.
+12. (Added 2026-11-23 after the automated review of PR #169, by the executor; it applies note 4
+    to a case nobody had listed.) The live state parser is tolerant: it drops an invalid tile,
+    unit, city, player, offered action, or a target or item inside an offered action, and
+    returns the rest. A sampled state from which the parser dropped anything is void on both
+    boards, with the kinds and counts recorded, and the number of such states is reported.
 
 ## Exploratory addendum (designed 2026-11-23, after the asymmetry probe came out vacuous)
 

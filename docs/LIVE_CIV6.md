@@ -71,7 +71,8 @@ something to do, work on search in the simulator stops until the simulator grows
 network is no longer tied to its board. A result above both lines is not a go. It says
 only that this does not rule the work out. The script refuses to write anything unless it
 could measure the state of at least 40 turns, 10 of them after turn 30. A state that lost a
-piece in the log, or that cannot be measured, does not count toward those numbers. Two games
+piece in the log, that the parser had to repair by dropping part of it, or that cannot be
+measured, does not count toward those numbers. Two games
 are better than one: give `--log` twice.
 
 ### Live checklist status
