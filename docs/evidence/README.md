@@ -16,3 +16,17 @@ produced. Contract: [`SCHEMA.md`](SCHEMA.md).
 
 No committed artifact measuring playing strength was generated on post-2026-09-04 code (`windows_baseline_20261111/` records a machine snapshot and a harness smoke only; `target_sharpness_probe/` measures search targets of untrained networks and plays no games). The first one is
 the A1 learning run of milestone v2.1, pre-registered in `docs/EVALUATION.md` section 7.1.
+
+## Recorded without a committed artifact
+
+| What | When | Where it is written down | What it supports | What it does not |
+|---|---|---|---|---|
+| First live session against the real game, turns 1 to 7 | 2026-11-21 | the maintainer's report of the session, summarised in [`../LIVE_CIV6.md`](../LIVE_CIV6.md); PR #166 records the code changes that followed, not the session itself | the socket connection, the schema-2 export and the GameInfo capture work; the game acknowledged `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` and a warrior build; five behaviours of the game differ from what the mod assumed | the effect of each command in the following state; that the five fixes work (the rebuilt mod has not been run); anything about attacks, other players, several turns in a row, or how well an agent plays. No log excerpt is committed |
+
+## Never measured
+
+- Playing strength on post-2026-09-04 code (A1 is the first, not yet run).
+- Anything about play in the real game: no trained policy has been loaded there.
+- Whether a decision made by the search in its MicroCiv stand-in for a live state is a good
+  decision in the real game, or how much of a real position that stand-in can express.
+- How long one state export takes in the middle of a game.

@@ -30,3 +30,7 @@ stays; that is GM-B6b.
   player. The search then plans on an empty board and never considers an attack.
 - Not verified in a real game. No trained checkpoint exists, so this proves plumbing,
   not playing strength.
+
+## Amended at archive (2026-11-23)
+
+The baseline requirement "Live search mode refuses until an action translator exists" is removed and replaced by "Live search mode is refused at start-up": the translator exists since this change, and the refusal now rests on a missing trained checkpoint, a missing live check and the registered comparison that has not run. Tasks 3.1 and 3.2 are archived open (3.2 was done by `add-visible-other-players`).

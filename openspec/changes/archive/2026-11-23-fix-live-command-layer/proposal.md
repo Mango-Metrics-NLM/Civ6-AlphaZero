@@ -36,3 +36,7 @@ the strongest lead on the live turn-cycle stall (LF-H1), unconfirmed until seen 
   game's own UI makes for a player's click.
 - Not verified in a real game. The maintainer's live sitting is a task of this change; it also
   carries the open live checklist of `add-bridge-research-parity`.
+
+## Amended at archive (2026-11-23)
+
+Three things in the delta were changed before it was folded into the baseline, so the baseline says what the code does. "No command starts a war" became "A move or an attack does not start a war", naming the two gaps it does not close. "A blocked end of turn is reported, not hidden" is modified: the blocker list is the only authority (the maintainer's live session, PR #166). "The mod follows what the live game was seen to do" is added for the other four findings of that session. Task 4.2, the maintainer's live sitting, is archived open; its items live in `docs/LIVE_CIV6.md`.

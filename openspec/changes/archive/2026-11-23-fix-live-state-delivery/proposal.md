@@ -38,3 +38,7 @@ changes no Lua.
 - No change to the mod, the wire format, the file-polling transport, or anything on
   the release play path.
 - Not verified in a real game.
+
+## Amended at archive (2026-11-23)
+
+Folded into the baseline unchanged. Task 2.2, the maintainer's live check, is archived open (`docs/LIVE_CIV6.md`, item 28).

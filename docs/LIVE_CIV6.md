@@ -20,6 +20,67 @@ the wire-protocol notes, the per-module design) lives in
 [`CHANGELOG.md`](../CHANGELOG.md) under `[1.8.0]` and in
 `alpha_zero/bridge/Agent.md`; the original plan is `kb/specs/20260402-full-civ6-local-gameplay.md`.
 
+## Status at a glance
+
+This table is the one place that says what state each part is in. `README.md`,
+`ROADMAP.md` and `CLAUDE.md` link here and do not restate it.
+
+- **Built**: the code is on the default branch.
+- **Stand-in**: tests run the mod's real Lua against a hand-written stand-in for the game
+  (`tests/fixtures/lua/`). That shows the mod and the Python side agree with each other and
+  with the game's UI code as we read it. It does not show that the game accepts it.
+- **Seen live**: observed against a running game, with the date. "Answer seen" means the mod
+  acknowledged the command in the session of 2026-11-21 (turns 1 to 7); the effect in the
+  following state was not recorded in this repository, and that session has no committed
+  artifact under `docs/evidence/`.
+
+| Capability | Built | Stand-in | Seen live |
+|---|---|---|---|
+| Socket connection, schema-2 state export | yes | yes | yes, 2026-11-21 |
+| GameInfo capture (six tables) and rules import | yes | yes | yes, 2026-11-21 |
+| `research_tech` | yes | yes | answer seen, 2026-11-21 |
+| `research_civic` | yes | yes | no |
+| `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | answer seen, 2026-11-21 |
+| `city_produce` | yes | yes | answer seen for `UNIT_WARRIOR`, 2026-11-21 |
+| `unit_sleep` | yes | yes | no |
+| `unit_attack`, `unit_ranged_attack`, the war check | yes | yes | no |
+| `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | no | no; expect them not to work |
+| `end_turn` refused while the game reports a blocker | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run |
+| The five fixes from the live session (below) | yes | yes, but only in the tests written for them (the stand-in's defaults still model the old reading) | found live; the rebuilt mod has not been run since |
+| A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | no |
+| Offered actions are what the mod will carry out (GM-B7b) | yes | yes | no |
+| The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | no. The four `END_TURN`s of 2026-07-12 predate all of the above |
+| Other players in the export (GM-B8a) | yes, off by default | yes | no |
+| Search in the simulator answering with live commands (GM-B6, GM-B8b) | yes, refused at start-up | yes | no |
+| A trained policy | no | n/a | no |
+
+**Never measured, live or otherwise:** how well any agent plays the real game; whether a
+decision made in the simulator is a good decision in the real game; how long one export
+takes in the middle of a game.
+
+### Live checklist status
+
+The checklist items are written where their subject is explained (the numbers are stable;
+items 28 and 29 were numbered 7 and 8 a second time before 2026-11-23). "Answer seen" is all
+the record of 2026-11-21 supports; the maintainer ticks an item when its effect was seen.
+
+| Items | About | Status |
+|---|---|---|
+| 1 | a schema-2 state with research and districts filled | export seen 2026-11-21; the named fields not recorded |
+| 2, 4 | `end_turn` blocked, then ending the turn | open (the blocker check changed after the session) |
+| 3 | `research_tech` takes effect and clears its blocker | answer seen 2026-11-21 |
+| 5 | fields that stay empty, calls that fail | five recorded and fixed (PR #166); open for the rest |
+| 6 | GameInfo capture | seen 2026-11-21 |
+| 7 | `unit_move` to a free neighbour | answer seen 2026-11-21 |
+| 8 | skip, fortify, sleep clear "unit needs orders" | answer seen for skip and fortify; sleep open |
+| 9 | `city_produce` replaces the current build | answer seen for a warrior; "replaces, not queues" open |
+| 10 | frames between a request and the state that shows it | open |
+| 11, 12 | no war is started; a move never becomes an attack; an attack fights | **open, and first in the next session**: a wrong answer here acts in the game |
+| 13 to 20 | far moves, ranged attack, wonders, refusal text, offers, greedy run, export time | open (`unit_found_city` in 14: answer seen) |
+| 21 to 27 | other players (`OBSERVE_ALL_PLAYERS`) | open |
+| 28 | a state arrives within a second or two of a command | open |
+| 29 | ten turns end by themselves | open |
+
 ## What exists
 
 | Piece | Where | What it does |
@@ -27,7 +88,7 @@ the wire-protocol notes, the per-module design) lives in
 | Lua mod `AlphaZeroAI` | `mod/AlphaZeroAI/` | Runs inside the game. Writes the game state out through `Lua.log`, polls `ExposedMembers.AlphaZeroCommand` for the next command, and acknowledges with `AZ_ACK`. |
 | Socket transport | `alpha_zero/bridge/tuner_socket_bridge.py` | Speaks the game's own FireTuner debug protocol over TCP (`127.0.0.1:4318`), finds the `GameCore_Tuner` Lua state and sets `ExposedMembers.AlphaZeroCommand` directly. No GUI, no relay panel, no file hop. |
 | File transport (legacy) | `alpha_zero/bridge/tuner_bridge.py` | Writes `commands.json` for a FireTuner GUI relay panel. The Lua sandbox has no `io` library, so the game cannot read the file itself; this path needs the FireTuner application open. Kept as the default for compatibility; the socket path is the one that was verified headless. |
-| Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (the greedy network; the search over a snapshot-seeded `MicroCivEnv` exists but is refused on a live game, see "Known limitations"), sends one command per turn. |
+| Agent loop | `alpha_zero/bridge/agent_loop.py` | Decodes state, runs the policy (the greedy network; the search over a snapshot-seeded `MicroCivEnv` exists but is refused on a live game, see "Known limitations"), sends commands until the turn ends, with a per-turn ledger of what was refused or had no effect. |
 | Entry point | `python -m alpha_zero.civ6_local --mode civ6` | Wires the above together; `--dry-run` validates the configuration without a game. |
 | Mod installer | `scripts/install_civ6_mod.py` | Copies the mod into the game's `Mods` directory (OneDrive-safe in-place overwrite) and verifies SHA-256 install parity (`--check`). |
 | Live command probe | `scripts/live_command_check.py` | Torch-free CLI sending one command and comparing pre/post states via `state_diff.py` (`--verbose` prints endpoint and timing diagnostics). |
@@ -111,8 +172,8 @@ Commands:
 Each game call added for this is guarded, so a call that does not exist in the game's Lua
 context costs one field, not the export.
 
-**Where the calls come from.** None was run against a game from this repository. They were
-read from two sources: the game's own UI Lua as redistributed in a public UI mod
+**Where the calls come from.** They were written before any ran against a game, from two
+sources (what has since been seen live is in "Status at a glance"): the game's own UI Lua as redistributed in a public UI mod
 ([CQUI Community Edition](https://github.com/Azurency/CQUI_Community-Edition), a 2018
 snapshot, so older than the current game), and [civ6-mcp](https://github.com/lmwilki/civ6-mcp)
 (MIT), which plays the real game over the same debug protocol. Where they disagreed the game's
@@ -302,9 +363,11 @@ they are now counted (`ActionConverter.production_stats`). Limit: a slot means "
 n-th offered item", not a fixed item, so it is enough for the greedy policy and not for a
 policy that is to learn what to build.
 
-All of this has run only against the hand-written stand-in for the game
+All of this was built against the hand-written stand-in for the game
 (`tests/fixtures/lua/civ6_stub_commands.lua`), which was written from the same reading of the
-game's UI code. It shows the mod does what that code does, not that the game accepts it.
+game's UI code: that shows the mod does what that code does, not that the game accepts it.
+The session of 2026-11-21 then saw the game acknowledge move, skip, fortify, found city and a
+warrior build; attacks and the war check have not run in a game ("Status at a glance").
 
 Live checklist, continuing the one above:
 
@@ -419,7 +482,7 @@ the export, not proof the game ignored the command.
 
 One more item for the checklist, the reason for this tool's transport fix:
 
-7. Send any command that does not end the turn. The line `changed: ...` (or `changed: nothing`)
+28. Send any command that does not end the turn. The line `changed: ...` (or `changed: nothing`)
    should appear within a second or two, not after 30. Before GM-B7c-1 the state that follows a
    command was discarded whenever it reached the log together with the command's answer, and the
    agent then waited out its timeout while the mod gave the turn up.
@@ -451,7 +514,7 @@ turn it now keeps a ledger (`alpha_zero/bridge/turn_ledger.py`):
 The session statistics name each: `commands_sent`, `refused_commands`, `no_effect_commands`,
 `reselections`, `blocked_end_turns`, `stalled_turns`, `game_turns_played`.
 
-For the checklist: 8. With `CIV6AZ_AGENT_MAX_TURNS=0 CIV6AZ_AGENT_MAX_GAME_TURNS=10`, start the
+For the checklist: 29. With `CIV6AZ_AGENT_MAX_TURNS=0 CIV6AZ_AGENT_MAX_GAME_TURNS=10`, start the
 greedy agent: it should end ten turns by itself and stop with exit code 0. If it stops with 3,
 the log line "Turn N is stalled" names the blocker it could not answer.
 
@@ -528,13 +591,14 @@ For the checklist:
   the search's simulator action to an offered live command (`alpha_zero/bridge/search_translator.py`),
   and GM-B6b lets the agent loop run a policy that answers with a command
   (`alpha_zero/bridge/command_policy.py`), proven end to end against the stand-in game only.
-  `--mode civ6 --mcts` is refused all the same: no trained checkpoint exists and nothing of this
-  has run in a real game. A research or production choice, which the search's simulator cannot
+  `--mode civ6 --mcts` is refused all the same: no trained checkpoint exists, the search path
+  has not run in a real game, and the registered comparison against a random policy has not
+  been run. A research or production choice, which the search's simulator cannot
   express, is answered by a fixed rule (the first offered command that may still be sent), not by
   the search. Separately, with the mod's default settings
   (`OBSERVE_ALL_PLAYERS` off) only your own units and cities are exported, so the search's
   simulator never contains another player (GM-B8, a mod change).
-- **Turn-cycle stall (LF-H1 root cause identified 2026-11-21).** Calling `ACTION_ENDTURN`
+- **Turn-cycle stall (LF-H1: leading cause seen once, 2026-11-21; the fix is unconfirmed).** Calling `ACTION_ENDTURN`
   while a turn-blocking notification is active deactivates the local player seat (`TURN_ACTIVE`
   becomes `false`) without advancing the turn counter. Because the live game's `UI.CanEndTurn()`
   returns `true` even when blockers exist, the old `ActionExecutor.lua` override allowed bad
@@ -567,8 +631,9 @@ For the checklist:
   the encoder's technology and civic positions are filled (see "Research
   slots" below). Still unused: city buildings and districts, the research
   status (cost, progress, boost), and the end-turn blocker as a network
-  input. **None of this has run in a real game:** the tests execute the mod's
-  Lua against `tests/fixtures/lua/civ6_stub.lua`, which is hand-written.
+  input. The tests execute the mod's Lua against
+  `tests/fixtures/lua/civ6_stub.lua`, which is hand-written; what has been seen
+  in a real game since is in "Status at a glance".
   Plan: `kb/specs/20261119-game-mechanics-plan.md`.
 - **`--mcts` search mode is refused (GM-B5 done 2026-11-20).**
   `python -m alpha_zero.civ6_local --mode civ6 --mcts` exits 1 at start-up,
@@ -584,11 +649,13 @@ For the checklist:
   and the bridge would read that number as one of its own (88,562 with the
   demo settings). Only `END_TURN` is the same number in both; a simulator
   move, which names a unit and a direction, is read by the bridge as a move
-  to some other tile. What is missing is a
-  translator from a simulator action to a live command (**GM-B6**, not
-  scheduled); the refusal stays until that exists, the search is given a
-  network and checkpoint that fit the simulator, and an un-mocked end-to-end
-  test passes.
+  to some other tile. That translator
+  now exists (GM-B6a), as do a factory that builds a network fitting the
+  simulator from a checkpoint and an un-mocked end-to-end test against the
+  stand-in (GM-B6b). The refusal stays for the three reasons in the first
+  item of this list. The refusal's own message in the code still names the
+  missing translator; that text is corrected with the next change to the
+  bridge code.
 - **What the search's simulator sees of a live state (GM-B5).** MicroCiv has
   three unit types and three terrain types, so a live state is stood in for
   (`alpha_zero/bridge/microciv_proxy.py`): melee and cavalry units are
@@ -615,7 +682,7 @@ For the checklist:
   now reported by the same numbering. A single-player game normally makes the human seat player 0,
   which is why this did not show in the sessions run so far.
 - **A blocked `END_TURN` is now reported, and the agent cannot clear every
-  blocker (GM-B2 done 2026-11-20, not yet seen live).** When a notification
+  blocker (GM-B2 done 2026-11-20; changed after the live session of 2026-11-21).** When a notification
   blocks ending the turn (an unanswered research or production choice, for
   example), `END_TURN` answers `END_TURN_BLOCKED` with the blocking type, sends
   nothing to the game, and the mod exports the state again with
@@ -625,16 +692,16 @@ For the checklist:
   agent can choose research since GM-B3, which is what clears a research or
   civic blocker; whether it does depends on the policy, and with random
   weights nothing steers it there. Limits: a blocker that is not cleared
-  repeats until the mod's command timeout (30 s from the start of the turn,
-  after which the mod goes quiet, as it did before); blockers with no action
+  repeats until the agent declares a stall (three blocked answers with no change,
+  GM-B7c-2) or the mod's command window closes (30 s after the last command); blockers with no action
   in the action space (a policy slot, a governor, a pantheon) cannot be
   cleared by the agent at all; and `end_turn` is still listed as a legal
   action while the turn is blocked (`end_turn_blocking` is the signal).
   `alpha_zero/envs/real_civ6_env.py` treats any failed command as an invalid
   action, so there a blocked `end_turn` costs the invalid-action penalty; that
-  file is on the release play path and is not changed before v2.1.0. Whether a
-  pending choice explains the turn-cycle stall above is still a hypothesis to
-  check in a live session, not a finding.
+  file is on the release play path and is not changed before v2.1.0. The live
+  session of 2026-11-21 found that an `end_turn` sent while a choice was
+  pending is what deactivated the turn (the stall item above).
 - **Every acknowledged command was followed by a second `end_turn` on the
   socket transport (fixed 2026-11-20, GM-B2).** `LiveBridge` returns the
   acknowledgement as a dict and the agent loop read it as an object; the error

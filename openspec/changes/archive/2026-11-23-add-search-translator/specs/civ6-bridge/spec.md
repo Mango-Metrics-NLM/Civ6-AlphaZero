@@ -67,3 +67,28 @@ untrained network SHALL be built only on an explicit request.
 
 - **WHEN** the checkpoint's metadata has no `max_turns`
 - **THEN** `build_search_policy` raises and names the missing horizon
+
+### Requirement: Live search mode is refused at start-up
+
+`python -m alpha_zero.civ6_local --mode civ6 --mcts` SHALL exit non-zero at
+start-up, before any game connection, with a message naming a registered gap id.
+The search proxy MUST seed `MicroCivEnv` using only its existing rules, with no file
+under `alpha_zero/envs/` changed. The translator, a network built from a checkpoint's
+own record and an un-mocked end-to-end test against the stand-in exist; the refusal
+MUST stay until a trained simulator checkpoint is loaded, the search path has been
+seen working in a real game, and the registered comparison against a random policy
+has been run.
+
+#### Scenario: Starting live search
+
+- **WHEN** `civ6_local` starts with `--mode civ6 --mcts`
+- **THEN** it exits non-zero without connecting and the message names a registered gap id
+
+#### Scenario: Dry run without search
+
+- **WHEN** `python -m alpha_zero.civ6_local --mode civ6 --dry-run` runs
+- **THEN** it exits 0 as before
+
+## REMOVED Requirements
+
+### Requirement: Live search mode refuses until an action translator exists

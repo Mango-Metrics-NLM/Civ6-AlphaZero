@@ -46,3 +46,7 @@ behaviour. A rule change can land without a bump, and nothing notices.
   and regenerate the fixture in the same change. A numpy upgrade that changes seeded
   draws is reported as a numpy move, not as an env change.
 - Affected specs: `training-reproducibility`.
+
+## Archive note (2026-11-23)
+
+Merged with PR #143 (GM-S0a). The task boxes were never ticked in the change's own PR; they are ticked here because the test, its fixture and its negative controls are on the default branch and run in CI's regression job.

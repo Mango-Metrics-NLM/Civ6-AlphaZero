@@ -24,15 +24,25 @@ refuses, MUST be answered as a failure that names the reason, and nothing is req
 - **WHEN** the type name is not a row of the game's operation or command tables
 - **THEN** the answer is a failure naming it, not a success
 
-### Requirement: No command starts a war
+### Requirement: A move or an attack does not start a war
 
-Before a move or an attack the mod SHALL ask the game whether it would change the war state, and
-MUST refuse the command when it would.
+Before an attack, and before a move onto a tile the player can see, the mod SHALL ask the game
+whether it would change the war state, and MUST refuse the command when the game says it would
+or when the game cannot be asked. A move onto a tile the player cannot see is not asked about,
+as in the game's own move routine, so this requirement does not protect it. This
+requirement covers moves and attacks only. Two gaps are registered and not closed by it: an
+answer from the game in a form other than the expected list is read as "no change", and the
+separate declare-war command has no gate.
 
 #### Scenario: An attack on a player at peace
 
 - **WHEN** an `attack` command targets a unit of a player the agent is at peace with
 - **THEN** the answer is a failure saying it would start a war, and nothing is requested
+
+#### Scenario: The game cannot be asked
+
+- **WHEN** the game's war-state check is missing or raises, for an attack or a move onto a visible tile
+- **THEN** the move or attack is refused and nothing is requested
 
 ### Requirement: A production order names the item by the game's hash
 
@@ -81,7 +91,9 @@ would start a war; a city's production choices SHALL be asked by row hash.
 
 Within one game turn the agent loop SHALL NOT send a command the mod refused in that turn again,
 SHALL choose research and each city's production at most once unless the choice had no effect,
-SHALL send only `end_turn` after a fixed number of commands, and SHALL be able to stop after a
+SHALL send only `end_turn` after a fixed number of commands (except that, while the game blocks
+the end of turn, commands that can answer the blocker are still sent up to twice that number,
+so the limit cannot trap a blocked turn), and SHALL be able to stop after a
 configured number of game turns (`CIV6AZ_AGENT_MAX_GAME_TURNS`). A choice that cannot be sent
 MUST be re-selected, not answered by ending the turn. When the game keeps blocking the end of
 turn and nothing sent changes that, the loop SHALL declare a stall and stop sending, not spin.
@@ -100,3 +112,43 @@ turn and nothing sent changes that, the loop SHALL declare a stall and stop send
 
 - **WHEN** `max_game_turns` is 3 and each turn takes several commands
 - **THEN** commands are sent in exactly three game turns
+
+### Requirement: The mod follows what the live game was seen to do
+
+Where the live session of 2026-11-21 showed the game behaving differently from the reading
+the mod was written from, the mod SHALL follow the game: a city's item counts as buildable
+only when both the loose and the strict form of the game's check accept it; a city's current
+build is read from its type hash when the game does not return the item itself; tile yields
+are read under the yield names the live game uses; and whole numbers are written to JSON
+without loss above 2^31. Each MUST have a test that fails on the earlier behaviour.
+
+#### Scenario: A building that is not unlocked yet
+
+- **WHEN** the game's loose check accepts a building and its strict check does not
+- **THEN** the building is not offered and a `city_produce` for it is refused
+
+#### Scenario: A large whole number
+
+- **WHEN** a value above 2^31 is exported
+- **THEN** the JSON carries every digit
+
+## MODIFIED Requirements
+
+### Requirement: A blocked end of turn is reported, not hidden
+
+END_TURN SHALL report a blocked turn with the blocking type instead of returning
+success unconditionally, and MUST NOT send the request to the game while the turn
+is blocked. The game's list of blockers is the only authority: the mod MUST NOT let
+`UI.CanEndTurn()` overrule a listed blocker, because the live game answers true while
+one is active (seen 2026-11-21). The Python agent loop MUST handle a blocked report
+without raising and count it.
+
+#### Scenario: Unanswered research choice
+
+- **WHEN** the stub blocks end-turn on a research choice and END_TURN is executed
+- **THEN** the acknowledgement reports blocked with the research blocking type, and the agent loop increments its blocked counter without an exception
+
+#### Scenario: The game says the turn can end while a blocker is listed
+
+- **WHEN** `UI.CanEndTurn()` answers true and the blocker list names a blocker
+- **THEN** END_TURN reports blocked and sends nothing

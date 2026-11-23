@@ -47,3 +47,7 @@ elimination rule) is GM-B8b, on top of the GM-B6 branches.
   the setting on.
 - Nothing on the release play path. Not verified in a real game: the calls are
   taken from the game's UI code, and the stand-in game models that reading.
+
+## Amended at archive (2026-11-23)
+
+Folded into the baseline unchanged. Tasks 3.1 and 3.2 are archived open: the setting stays off until checklist items 21 to 27 have been seen live.

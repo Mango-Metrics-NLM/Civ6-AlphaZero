@@ -1,6 +1,12 @@
-# game-rules -- deltas
+# game-rules Specification
 
-## ADDED Requirements
+## Purpose
+
+Game rule sets as hashed data in the leaf package `alpha_zero/rules/`: definitions, a
+validator, a registry, a pacing model and an importer for the game's own rule tables. No
+training environment uses the kernel yet; it stays outside the release play path.
+
+## Requirements
 
 ### Requirement: The rules kernel is a leaf outside the play path
 
@@ -38,7 +44,11 @@ an error that names the offending key.
 ### Requirement: Rule-set identity is a content hash
 
 `content_sha256()` SHALL hash the canonical JSON of the parsed rule set. The hash
-MUST be unchanged by CRLF line endings or key reordering, and MUST change when any value changes.
+MUST be unchanged by CRLF line endings or key reordering. The rule set's own `id` and any field
+at its default are left out of the hashed content, so renaming a draft when it is frozen keeps
+its hash and a new optional field does not move old pins. Declared order is kept, because
+registries index by it. The hash MUST change when any other value, or the order of a list,
+changes.
 
 #### Scenario: Line endings and key order
 

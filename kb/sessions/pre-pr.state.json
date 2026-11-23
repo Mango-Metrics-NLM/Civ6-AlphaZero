@@ -1,23 +1,23 @@
 {
   "context_files": [
-    "kb/specs/20261119-game-mechanics-plan.md",
-    "kb/pr-drafts/20261120-post-merge-gm-e2e-and-prepr-hardening.md",
-    "docs/architecture/C4_ARCHITECTURE.md",
-    "CHANGELOG.md",
-    "ROADMAP.md",
+    "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
+    "docs/LIVE_CIV6.md",
+    "kb/specs/20261119-game-mechanics-gap-register.md",
+    "openspec/specs/civ6-bridge/spec.md",
     "CLAUDE.md"
   ],
-  "current_focus": "PR opened on fix/post-merge-gm-full-e2e-gpu-aqa targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
-  "last_session_id": "20261120-pre-pr-post-merge-gm",
-  "last_timestamp": "2026-11-20T22:50:00Z",
+  "current_focus": "No PR is waiting. The post-merge AQA PR (#156) and the bridge PRs through #166 are merged.",
+  "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+  "last_timestamp": "2026-11-23T08:00:00Z",
   "resume_pointers": {
-    "blocked_on": [],
-    "current_task": "Monitor CI and maintainer review for fix/post-merge-gm-full-e2e-gpu-aqa PR targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
+    "blocked_on": [
+      "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
+      "Maintainer: the live checklist in docs/LIVE_CIV6.md; attacks and the war check first, after B9",
+      "Maintainer: cut-over, civ6az-agent, W&B key revocation; deleting merged remote branches"
+    ],
+    "current_task": "None",
     "next_steps": [
-      "Maintainer reviews PR targeting claude/civ6-alphazero-implementation-vMnun (976a2afd)",
-      "Follow-up PR for pre-existing upstream GM-B4 Windows portability issues (JsonEncoder.lua [%c] UTF-8 handling + test_bridge_gameinfo_capture*.py POSIX/CRLF/symlink guards)",
-      "Run live Civ6 FireTuner smoke checklist (docs/LIVE_CIV6.md) when game client is attached",
-      "Execute T0b / A1 run cards from a clean tagged commit when ready"
+      "Review the bridge close-out PR (docs, kb, OpenSpec only) when it opens"
     ]
   }
 }
