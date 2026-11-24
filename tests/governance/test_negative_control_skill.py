@@ -94,3 +94,18 @@ def test_backups_are_named_by_repository_path_not_base_name() -> None:
 
 def test_skill_says_to_stop_when_cmp_reports_a_difference() -> None:
     assert re.search(r"stop[^.\n]*(cmp|differ)", _text(), re.I)
+
+
+def test_the_restore_block_cannot_reach_pytest_when_copy_or_compare_fails() -> None:
+    """Review of PR #170: `cp; cmp && echo; pytest` ran the test on an unrestored file."""
+    blocks = re.findall(r"```bash\n(.*?)```", _text(), flags=re.S)
+    restore = [b for b in blocks if "cmp " in b and "pytest" in b]
+    assert restore, "the restore block (cp, cmp, pytest) is missing"
+    for block in restore:
+        joined = re.sub(r"\\\n\s*", " ", block)
+        commands = [line.strip() for line in joined.splitlines() if line.strip()]
+        line = next(c for c in commands if "pytest" in c)
+        assert re.search(r"\bcp\b.*&&.*\bcmp\b.*&&.*\bpytest\b", line), (
+            "cp, cmp and pytest must be one && chain, so a failed copy or compare stops it"
+        )
+        assert ";" not in line

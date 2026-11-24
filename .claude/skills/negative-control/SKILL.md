@@ -94,12 +94,14 @@ Copy the backup back, check that the file equals the backup, then run the test. 
 the literal absolute path printed in step 2 in place of `/abs/backup/dir`:
 
 ```bash
-cp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file>
-cmp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file> && echo restored
-pytest <test target> -q
+cp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file> \
+  && cmp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file> \
+  && echo restored \
+  && pytest <test target> -q
 ```
 
-Stop if `cmp` reports a difference (no `restored` line): the file is not restored, and
+The commands are one `&&` chain on purpose: if the copy or the comparison fails, the test
+does not run. Stop if `cmp` reports a difference (no `restored` line): the file is not restored, and
 nothing else should be run or edited until it equals the backup. A checksum of both
 files does the same job (`sha256sum`, or `shasum -a 256` on macOS), as does `diff`.
 Do the same for every generated file you backed up; restore it from its backup and do
