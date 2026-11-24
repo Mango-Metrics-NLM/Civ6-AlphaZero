@@ -353,6 +353,9 @@ def test_two_refspecs_one_merged_one_new_asks_naming_the_merged_one(repo: Path) 
     ],
 )
 def test_deleting_a_remote_branch_does_not_ask(repo: Path, command: str) -> None:
+    # A branch that exists on origin, with its remote-tracking ref (PR #171: an unqualified
+    # deletion needs one, since a local branch of that name does not prove it is a branch there).
+    _publish(repo, MERGED)
     assert _decide(repo, command) == (None, "")
 
 

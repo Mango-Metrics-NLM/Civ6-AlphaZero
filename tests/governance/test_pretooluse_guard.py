@@ -304,7 +304,6 @@ def test_protected_and_tag_pushes_are_denied(repo: Path, command: str) -> None:
         f"git push origin {FEATURE_BRANCH}",
         f"git push -u origin {FEATURE_BRANCH}",
         f"git push origin HEAD:{FEATURE_BRANCH}",
-        f"git push origin --delete {FEATURE_BRANCH}",
         "git fetch --tags origin",
         "git log --tags --oneline",
         "git push origin qa-notes",
@@ -312,6 +311,15 @@ def test_protected_and_tag_pushes_are_denied(repo: Path, command: str) -> None:
 )
 def test_ordinary_feature_branch_work_is_allowed(repo: Path, command: str) -> None:
     assert _run_guard(repo, command, SETTINGS_ENV) is None, command
+
+
+def test_deleting_a_feature_branch_on_origin_is_allowed(repo: Path) -> None:
+    # PR #171: an unqualified deletion needs the remote-tracking ref (git matches the name
+    # against every remote ref, so without one it may delete a tag; that case asks).
+    command = f"git push origin --delete {FEATURE_BRANCH}"
+    assert _decide(repo, command, SETTINGS_ENV)[0] == "ask"
+    _git(repo, "update-ref", f"refs/remotes/origin/{FEATURE_BRANCH}", "HEAD")
+    assert _decide(repo, command, SETTINGS_ENV) == (None, None)
 
 
 # --- git tag -----------------------------------------------------------------
