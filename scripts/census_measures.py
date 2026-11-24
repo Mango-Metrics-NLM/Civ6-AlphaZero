@@ -123,6 +123,27 @@ def e4_left_out(left_out: int, units: Iterable[Mapping[str, Any]], player: Any) 
     return _share(int(left_out), sum(u.get("player") == player for u in units))
 
 
+#: Top-level fields that, when present, must be lists (an absent one the parser defaults).
+LIST_FIELDS = ("units", "cities", "players", "legal_actions")
+
+
+def malformed_fields(raw: Mapping[str, Any]) -> list[str]:
+    """Fields of ``raw`` that are present with the wrong type, checked before parsing.
+
+    ``units``, ``cities``, ``players``, ``legal_actions`` and ``map.tiles`` must be lists
+    (``null`` included as wrong) and ``map`` an object. The parser would read a wrong one
+    as empty, which is a repair, not the state. An absent key is not malformed.
+    """
+    bad = [key for key in LIST_FIELDS if key in raw and not isinstance(raw[key], list)]
+    if "map" in raw:
+        raw_map = raw["map"]
+        if not isinstance(raw_map, Mapping):
+            bad.append("map")
+        elif "tiles" in raw_map and not isinstance(raw_map["tiles"], list):
+            bad.append("map.tiles")
+    return bad
+
+
 def parser_losses(raw: Mapping[str, Any], state: GameStateData) -> dict[str, int]:
     """What ``GameStateData.from_dict`` dropped from ``raw`` to make ``state``, by kind.
 

@@ -53,6 +53,7 @@ from scripts.census_measures import (
     e4_left_out,
     first_state_per_turn,
     loss_can_fire_by_band,
+    malformed_fields,
     measure_state,
     median_interval_ranks,
     offered_commands,
@@ -76,6 +77,7 @@ __all__ = [
     "first_state_per_turn",
     "loss_can_fire_by_band",
     "main",
+    "malformed_fields",
     "measure_state",
     "median_interval_ranks",
     "not_a_census_reason",
@@ -94,16 +96,27 @@ EXIT_OK, EXIT_MALFORMED, EXIT_REFUSED, EXIT_BELOW_MINIMUM = 0, 1, 2, 3
 LOG_COUNTS = (UNREADABLE_STATE, DROPPED_MISSING_PIECE)
 
 
+def _void_record(
+    index: int, raw: dict[str, Any], boards: Sequence[int], reason: str, dropped: dict[str, int]
+) -> dict[str, Any]:
+    void = {"void": True, "void_reason": reason[:300]}
+    record = {"source": index, "turn": raw.get("turn_id", raw.get("turn"))}
+    record["boards"] = {str(b): dict(void) for b in boards}
+    return {**record, "parser_dropped": dropped} if dropped else record
+
+
 def _record(index: int, raw: dict[str, Any], boards: Sequence[int]) -> dict[str, Any]:
     """One sampled state's values on every board.
 
     A state that cannot be parsed or measured, or that is void on any board, is void on
-    every board (both boards then use the same states). So is a state the tolerant parser
-    had to repair by dropping part of it: what is left is not the state. It is never
-    replaced.
+    every board (both boards then use the same states). So is a state with a field of the
+    wrong type (checked before the parser is asked), and one the tolerant parser had to
+    repair by dropping part of it: what is left is not the state. It is never replaced.
     """
     per_board: dict[str, dict[str, Any]] = {}
     dropped: dict[str, int] = {}
+    if malformed := malformed_fields(raw):  # never parsed: it would read them as empty
+        return _void_record(index, raw, boards, f"malformed field(s): {', '.join(malformed)}", {})
     try:
         state = GameStateData.from_dict(raw)
         dropped = parser_losses(raw, state)
@@ -117,10 +130,7 @@ def _record(index: int, raw: dict[str, Any], boards: Sequence[int]) -> dict[str,
     except Exception as exc:
         reason = f"{type(exc).__name__}: {exc}"
     if reason is not None:
-        void = {"void": True, "void_reason": reason[:300]}
-        record = {"source": index, "turn": raw.get("turn_id", raw.get("turn"))}
-        record["boards"] = {str(b): dict(void) for b in boards}
-        return {**record, "parser_dropped": dropped} if dropped else record
+        return _void_record(index, raw, boards, reason, dropped)
     tiles = state.map_data.tiles
     return {
         "source": index,
@@ -342,6 +352,26 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     return args
 
 
+def _given_twice(paths: Sequence[Path]) -> Path | None:
+    """The first file two inputs name, or None.
+
+    Paths are resolved (symbolic links followed); an existing file is also known by its
+    device and inode, so two hard links to one file are one file too.
+    """
+    seen: set[Any] = set()
+    for path in paths:
+        resolved = path.resolve()
+        try:
+            info = resolved.stat()
+            keys = {resolved, (info.st_dev, info.st_ino)} if info.st_ino else {resolved}
+        except OSError:  # missing: refused as missing right after this
+            keys = {resolved}
+        if keys & seen:
+            return resolved
+        seen |= keys
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
     args = _parse_args(raw)
@@ -356,6 +386,8 @@ def main(argv: list[str] | None = None) -> int:
         refusal = "give at least one --log or --states-json"
     elif min(boards) <= 0:
         refusal = "--boards must be positive"
+    elif twice := _given_twice([p for _, p in sources]):  # its turns would count twice
+        refusal = f"one file given more than once (--log/--states-json): {twice}"
     elif missing := [str(p) for _, p in sources if not p.is_file()]:
         refusal = f"no such file: {', '.join(missing)}"
     elif target.exists():

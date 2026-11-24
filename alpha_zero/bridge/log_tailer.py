@@ -678,7 +678,9 @@ class LogTailer:
 #: Keys of the counts :func:`iter_log_states` keeps of states it did not yield.
 DROPPED_MISSING_PIECE = "states_dropped_missing_piece"
 UNREADABLE_STATE = "states_unreadable"
-_PIECE_HEADER_RE = re.compile(r"(\d+)/(\d+):")
+#: Piece numbers and totals in the offline reader: ASCII, at most nine digits.
+_PIECE_HEADER_RE = re.compile(r"([0-9]{1,9})/([0-9]{1,9}):")
+_PIECE_NUMBER_RE = re.compile(r"[0-9]{1,9}")
 
 
 def iter_log_states(
@@ -704,14 +706,21 @@ def iter_log_states(
     pieces still number ``1..n`` in order; the joined text is yielded only if
     it also happens to parse.
 
-    A state whose JSON cannot be read is not yielded and is counted. Acks and
+    An end line's number is compared with the count of pieces held before
+    anything of its size is built, and piece numbers longer than nine digits are
+    not stored: a number in the log cannot make the reader allocate.
+
+    A state whose text is not a JSON object (``null``, ``[]``, ``3``, broken
+    JSON), or on which the live handler raises (``AttributeError`` or
+    ``TypeError``: it reads ``map`` and ``map.tiles`` without checking their
+    types), is not yielded, is counted, and the reading goes on. Acks and
     heartbeats are not read.
 
     Args:
         log_path: The log file.
         counts: Optional dict, raised by one under ``DROPPED_MISSING_PIECE``
             for each export given up and under ``UNREADABLE_STATE`` for each
-            state whose text did not parse.
+            state whose text was not a JSON object the live reader takes.
 
     Yields:
         Each state as the mod wrote it (wrapped as ``{"state": {...}}`` or bare).
@@ -728,6 +737,13 @@ def iter_log_states(
         if counts is not None:
             counts[key] = counts.get(key, 0) + 1
 
+    def is_object(text: str) -> bool:
+        # The live reader's own decoder (it re-joins a character split across pieces).
+        try:
+            return isinstance(reader._parse_json(text), dict)
+        except RecursionError:  # nested deeper than the decoder goes
+            return False
+
     with open(log_path, encoding="utf-8", errors="surrogateescape") as handle:
         for line in handle:
             stripped = line.rstrip("\n\r")
@@ -740,25 +756,43 @@ def iter_log_states(
                 ):
                     give_up()
                 last_piece = piece
-                reader._parse_line(stripped)
+                if piece is not None:  # a header the bounded pattern refuses is not stored
+                    reader._parse_line(stripped)
                 continue
             if not content.startswith((_STATE_PREFIX, _CHUNK_END_PREFIX)):
                 continue
-            pieced = content.startswith(_CHUNK_END_PREFIX)
-            if pieced:
+            if content.startswith(_CHUNK_END_PREFIX):
                 total = content[len(_CHUNK_END_PREFIX) :].strip()
-                whole = total.isdigit() and set(reader._chunk_buffer) == set(
-                    range(1, int(total) + 1)
-                )
+                held = reader._chunk_buffer
+                # The end line's number is checked against what is held before anything
+                # of its size is built: a number above the pieces held is a missing piece.
+                n = int(total) if _PIECE_NUMBER_RE.fullmatch(total) else -1
+                whole = n == len(held) == reader._chunk_total and set(held) == set(range(1, n + 1))
                 last_piece = None
-                if not whole or reader._chunk_total != int(total):
+                if not whole:
                     give_up()
                     continue
-            elif last_piece is not None:  # a whole state in the middle of a pieced one
-                give_up()
-                last_piece = None
+                payload = "".join(held[i] for i in range(1, n + 1))
+            else:
+                if last_piece is not None:  # a whole state in the middle of a pieced one
+                    give_up()
+                    last_piece = None
+                payload = content.strip()[len(_STATE_PREFIX) :]
+            # Offline only: a payload that is not a JSON object, or that the live
+            # handler raises on (it reads ``map`` and ``map.tiles`` without checking
+            # their types), is counted and the reading goes on. A whole line and a
+            # joined one go through the same handler, so they are judged alike.
+            reader._chunk_buffer.clear()
+            reader._chunk_total = 0
+            if not is_object(payload):
+                give_up(UNREADABLE_STATE)
+                continue
             before = reader.state_seq
-            reader._parse_line(stripped)
+            try:
+                reader._handle_state(payload)
+            except (AttributeError, TypeError):
+                give_up(UNREADABLE_STATE)
+                continue
             if reader.state_seq > before and reader.latest_state is not None:
                 yield reader.latest_state
             else:
