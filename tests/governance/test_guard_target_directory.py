@@ -108,11 +108,10 @@ def test_cd_into_a_protected_checkout_is_denied(world: World, joiner: str) -> No
     assert got.decision == "deny", got
 
 
-@pytest.mark.parametrize("joiner", ["&&", ";"])
-def test_cd_into_a_feature_checkout_is_allowed_from_a_protected_one(
-    world: World, joiner: str
-) -> None:
-    assert decide(world.p, f"cd {world.f} {joiner} git commit -m x") == ALLOWED
+def test_cd_into_a_feature_checkout_is_allowed_from_a_protected_one(world: World) -> None:
+    assert decide(world.p, f"cd {world.f} && git commit -m x") == ALLOWED
+    # After `;` a failed cd leaves the commit on main (PR #171 round 1): it asks.
+    assert decide(world.p, f"cd {world.f} ; git commit -m x").decision == "ask"
 
 
 def test_cd_chain_is_relative_to_the_previous_cd(world: World) -> None:

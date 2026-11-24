@@ -67,7 +67,12 @@ def test_deleting_an_unqualified_name_that_is_no_local_branch_is_not_allowed(
         "git push origin :refs/heads/feature-x",
     ],
 )
-def test_deleting_a_local_feature_branch_stays_allowed(world: World, command: str) -> None:
+def test_deleting_a_feature_branch_with_a_tracking_ref_stays_allowed(
+    world: World, command: str
+) -> None:
+    # PR #171: the unqualified forms need origin/feature-x here; a local branch alone asks
+    # (tests/governance/test_guard_copilot_threads.py), since origin may hold a TAG feature-x.
+    git(world.f, "push", "-q", "origin", "feature-x")
     assert decide(world.f, command).decision is None
 
 

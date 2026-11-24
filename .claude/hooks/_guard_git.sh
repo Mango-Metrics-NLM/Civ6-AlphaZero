@@ -3,99 +3,16 @@
 # readable; it is not a hook of its own and does nothing when run.
 #
 # An ACCIDENT NET, not a control: see the header of pretooluse_guard.sh.
-# Uses unquote, add_ask and deny from that file, and sets no options itself.
+# Uses unquote, add_ask, deny and $input from that file; sets no options itself.
 # shellcheck shell=bash
 
-# --- state carried from segment to segment ---------------------------------------
-# Set by the main loop of pretooluse_guard.sh as it meets `cd`, `export`,
-# `$env:` and git branch changes earlier in the same command:
-#   CD_C / CD_KNOWN       -- `-C <dir>` entries of every carried `cd`, and 0 once
-#                            a directory could not be followed;
-#   SH_GITDIR / SH_GITDIR_SET / SH_GITDIR_KNOWN -- GIT_DIR from `export` or
-#                            PowerShell's `$env:GIT_DIR`;
-#   SW_STATE / SW_BRANCH / SW_GITDIR -- the branch an earlier `git switch` or
-#                            `git checkout` moved to ("" none, known, unknown),
-#                            and the git directory it happened in ("" any).
-# Per git command, check_git computes:
-#   GIT_C        -- the git options that put a query where the command runs, in
-#                   the order git applies them (`-C` entries, then --git-dir=);
-#   TARGET_KNOWN -- 0 when a directory or git directory could not be followed.
-CD_C=()
-CD_KNOWN=1
-SH_GITDIR=""
-SH_GITDIR_SET=0
-SH_GITDIR_KNOWN=1
-SW_STATE=""
-SW_BRANCH=""
-SW_GITDIR=""
-GIT_C=()
-TARGET_KNOWN=1
-
-reset_carried_state() {
-  CD_C=()
-  CD_KNOWN=1
-  SH_GITDIR=""
-  SH_GITDIR_SET=0
-  SH_GITDIR_KNOWN=1
-  SW_STATE=""
-  SW_BRANCH=""
-  SW_GITDIR=""
-}
+# The carried state (CD_C, SH_GITDIR, SW_*, ALT_*, ...) and the functions that
+# change it are in _guard_state.sh, sourced first.
 
 gitq() {
+  if [ "$BASH_SUBSHELL" -eq 0 ]; then git_budget || return 1; fi
+  [ -z "$BUDGET_OUT" ] || return 1
   git ${GIT_C[@]+"${GIT_C[@]}"} "$@" 2>/dev/null
-}
-
-# A directory, git directory or branch name the guard can follow: no expansion
-# left to the shell. A variable, `~`, `%VAR%` or a glob means "unknown".
-re_dir_unknown='[$~%*?[`]'
-is_abs_dir() {
-  [[ $1 == /* ]] || [[ $1 == \\* ]] || [[ $1 =~ ^[A-Za-z]: ]]
-}
-
-# `cd <dir>` (bash, cmd, PowerShell's aliases). $1 = 1 to apply it, 0 to make
-# the directory unknown; the rest are the segment's tokens, program first,
-# redirections already removed.
-apply_cd() {
-  local how="$1"
-  shift
-  local -a a=("$@")
-  local t dir="" n=0 i=1
-  if [ "$how" -eq 0 ]; then CD_KNOWN=0; CD_C=(); return 0; fi
-  while [ "$i" -lt "${#a[@]}" ]; do
-    unquote "${a[$i]}"
-    t="$UQ"
-    i=$((i + 1))
-    case "$t" in
-      -L|-P|-e|-@|--|-path|-literalpath|/d) continue ;;
-    esac
-    n=$((n + 1))
-    dir="$t"
-  done
-  if [ "$n" -ne 1 ] || [ "$dir" = "-" ] || [[ $dir =~ $re_dir_unknown ]]; then
-    CD_KNOWN=0
-    CD_C=()
-  elif is_abs_dir "$dir"; then
-    CD_KNOWN=1
-    CD_C=(-C "$dir")
-  elif [ "$CD_KNOWN" -eq 1 ]; then
-    CD_C+=(-C "$dir")
-  fi
-}
-
-# GIT_DIR set for the rest of the command (`export GIT_DIR=...`,
-# `$env:GIT_DIR = ...`). $1 = 1 to apply, 0 for unknown; $2 = the value.
-# GIT_WORK_TREE and GIT_COMMON_DIR are not tracked: alone they do not change
-# which HEAD git reads.
-apply_shell_git_dir() {
-  SH_GITDIR_SET=1
-  unquote "$2"
-  SH_GITDIR="$UQ"
-  if [ "$1" -eq 0 ] || [ -z "$SH_GITDIR" ] || [[ $SH_GITDIR =~ $re_dir_unknown ]]; then
-    SH_GITDIR_KNOWN=0
-  else
-    SH_GITDIR_KNOWN=1
-  fi
 }
 
 # --- protected branches (resolved lazily: git is a process spawn) ------------
@@ -115,12 +32,12 @@ resolve_branches() {
   local key="${GIT_C[*]+${GIT_C[*]}}|"
   [ "$resolved_for" = "$key" ] && return 0
   resolved_for="$key"
-  repo_gitdir="$(gitq rev-parse --absolute-git-dir)" || repo_gitdir=""
-  branch="$(gitq symbolic-ref --quiet HEAD)" || branch=""
+  git_budget && repo_gitdir="$(gitq rev-parse --absolute-git-dir)" || repo_gitdir=""
+  git_budget && branch="$(gitq symbolic-ref --quiet HEAD)" || branch=""
   branch="${branch#refs/heads/}"
   default_branch="${CIV6AZ_DEFAULT_BRANCH:-}"
   if [ -z "$default_branch" ]; then
-    default_branch="$(gitq symbolic-ref --quiet refs/remotes/origin/HEAD)" || default_branch=""
+    git_budget && default_branch="$(gitq symbolic-ref --quiet refs/remotes/origin/HEAD)" || default_branch=""
     default_branch="${default_branch#refs/remotes/origin/}"
   fi
   [ -z "$default_branch" ] && default_branch="main"
@@ -199,7 +116,7 @@ check_recreated_branch() {
   for b in $def $protected; do
     case "$seen" in *" $b "*) continue ;; esac
     seen="${seen}${b} "
-    tip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${b}^{commit}")" || continue
+    git_budget && tip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${b}^{commit}")" || continue
     [ -n "$tip" ] || continue
     pnames+=("$b")
     ptips+=("$tip")
@@ -223,10 +140,10 @@ check_recreated_branch() {
     dst="${dst//\\/}"
     dst="${dst#refs/heads/}"
     case "$dst" in ""|refs/*) continue ;; esac
-    sha="$(gitq rev-parse --verify --quiet "${src}^{commit}")" || continue
+    git_budget && sha="$(gitq rev-parse --verify --quiet "${src}^{commit}")" || continue
     [ -n "$sha" ] || continue
     # Empty when origin/<dst> does not exist: the push would create it.
-    dtip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${dst}^{commit}")" || dtip=""
+    git_budget && dtip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${dst}^{commit}")" || dtip=""
     hit=""
     k=0
     while [ "$k" -lt "${#pnames[@]}" ]; do
@@ -269,7 +186,7 @@ TAG_TAIL="release tags are created by the maintainer's release script."
 # Source lookups that fail add nothing (the push itself would fail the same way).
 check_push_refspecs() {
   local -a pos=()
-  local t skip=0 spec src dst k=1 deleting=0 full
+  local t skip=0 spec src dst k=1 deleting=0 full remote
   for t in "$@"; do
     if [ "$skip" -eq 1 ]; then skip=0; continue; fi
     case "$t" in
@@ -296,24 +213,31 @@ check_push_refspecs() {
         refs/heads/?*) continue ;;
         refs/*) deny "Branching policy: git push deleting ${dst} on the remote is maintainer-only; only branches (refs/heads/...) may be deleted here." ;;
       esac
-      if [ "$TARGET_KNOWN" -eq 1 ] && gitq show-ref --verify --quiet "refs/heads/${dst}"; then
+      # git matches an unqualified name against every remote ref, so it may
+      # delete a remote TAG of that name; a LOCAL branch of that name proves
+      # nothing. Allowed only with a remote-tracking branch and no tag here.
+      remote="${pos[0]:-origin}"
+      if [ "$TARGET_KNOWN" -eq 1 ] \
+         && gitq show-ref --verify --quiet "refs/remotes/${remote}/${dst}" \
+         && ! gitq show-ref --verify --quiet "refs/tags/${dst}"; then
         continue
       fi
-      deny "Branching policy: git push deleting ${dst} on the remote may delete a TAG of that name (git matches an unqualified name against every remote ref), and ${dst} is not a local branch here; spell it refs/heads/${dst} to delete a branch."
+      add_ask "git push deleting ${dst} on ${remote} may delete a TAG of that name (git matches an unqualified name against every remote ref): there is no remote-tracking branch ${remote}/${dst} here, or a tag ${dst} exists; spell it refs/heads/${dst} to delete a branch, or confirm"
+      continue
     fi
     case "$src" in
       refs/tags/*) deny "${TAG_DENY} (${src}); ${TAG_TAIL}" ;;
       HEAD|@|refs/*) continue ;;
     esac
     [ "$TARGET_KNOWN" -eq 1 ] || continue
-    full="$(gitq rev-parse --symbolic-full-name "$src")" || full=""
+    git_budget && full="$(gitq rev-parse --symbolic-full-name "$src")" || full=""
     case "$full" in
       refs/tags/*) deny "${TAG_DENY} (${src} is ${full}); ${TAG_TAIL}" ;;
     esac
     if gitq show-ref --verify --quiet "refs/tags/${src}"; then
       deny "${TAG_DENY} (${src} is the tag refs/tags/${src} in this repository); ${TAG_TAIL}"
     fi
-    if [ "$(gitq cat-file -t "$src")" = "tag" ]; then
+    if git_budget && [ "$(gitq cat-file -t "$src")" = "tag" ]; then
       deny "${TAG_DENY} (${src} is a tag object); ${TAG_TAIL}"
     fi
   done
@@ -337,26 +261,50 @@ check_push_config() {
   CFG_BAD="${2} ${key}"
 }
 
+# The branch `-t <remote>/<b>` creates: <b>, for the longest remote of this
+# repository that prefixes it; "?" (unknown, so ask) when none does. Sets TB.
+track_name() {
+  local r="${1#refs/remotes/}" rem best="" remotes
+  TB="?"
+  [ "$TARGET_KNOWN" -eq 1 ] || return 0
+  git_budget && remotes="$(gitq remote)" || return 0
+  # Unquoted on purpose: one remote per line (noglob is set).
+  for rem in $remotes; do
+    case "$r" in
+      "$rem"/?*) if [ "${#rem}" -gt "${#best}" ]; then best="$rem"; fi ;;
+    esac
+  done
+  if [ -n "$best" ]; then TB="${r#"$best"/}"; fi
+}
+
 # Record a branch change made by `git switch` / `git checkout` earlier in the
 # command. $1 = the subcommand; the rest its (unquoted) arguments. A path
-# checkout (`checkout -- file`, `checkout .`, `checkout <commit>`) changes no
-# branch; `switch -` / `checkout -` / `@{-1}` / a variable make it unknown.
+# checkout (`checkout -- file`, `checkout .`, `checkout <tree-ish> <path>`,
+# `checkout <commit>`) changes no branch, nor does `--help`; `switch -` /
+# `checkout -` / `@{-1}` / a variable make it unknown. `-t`/`--track` without
+# a name creates the remote branch's name (`origin/main` -> `main`).
 note_branch_change() {
   local sub="$1"
   shift
-  local t name="" create="" want_value=0 detach=0 paths=0 pos=""
+  local t name="" create="" want_value=0 detach=0 paths=0 pos="" npos=0 track=0 dd=0
   for t in "$@"; do
     if [ "$want_value" -eq 1 ]; then create="$t"; want_value=0; continue; fi
+    # After `--` a checkout's words are paths; a trailing `--` alone is not.
+    if [ "$dd" -eq 1 ]; then paths=1; continue; fi
     case "$t" in
-      --) [ "$sub" = "checkout" ] && paths=1; continue ;;
+      --) [ "$sub" != "checkout" ] || dd=1; continue ;;
+      -h|--help) return 0 ;;
       -c|-b|--create|--force-create|--orphan) want_value=1 ;;   # -C/-B match too
       --orphan=*|--create=*|--force-create=*) create="${t#*=}" ;;
       --detach|-d) detach=1 ;;
+      -t|--track|--track=*) track=1 ;;
       -) [ -z "$pos" ] && pos="-" ;;
       -*) ;;
-      *) [ -z "$pos" ] && [ "$paths" -eq 0 ] && pos="$t" ;;
+      *) if [ "$paths" -eq 0 ]; then npos=$((npos + 1)); [ -n "$pos" ] || pos="$t"; fi ;;
     esac
   done
+  # `git checkout <tree-ish> <path>...` restores paths and moves no branch.
+  if [ "$sub" = "checkout" ] && [ "$npos" -gt 1 ] && [ -z "$create" ]; then return 0; fi
   if [ -n "$create" ]; then
     name="$create"
   elif [ "$detach" -eq 1 ]; then
@@ -366,37 +314,117 @@ note_branch_change() {
   else
     name="$pos"
   fi
-  if [ "$name" = "-" ] || [[ $name =~ $re_dir_unknown ]] || [[ $name == *@\{* ]]; then
-    SW_STATE=unknown
+  # bash drops the backslash in `ma\in`, and a branch name cannot hold one.
+  name="${name//\\/}"
+  local newb
+  if [ "$track" -eq 1 ] && [ -z "$create" ] && [ "$detach" -eq 0 ]; then
+    track_name "$name"
+    newb="$TB"
+  elif [ "$name" = "-" ] || [[ $name =~ $re_dir_unknown ]] || [[ $name == *@\{* ]]; then
+    newb="?"
   elif [ -z "$name" ]; then
-    SW_STATE=known
-    SW_BRANCH=""
+    newb=":"
   elif [ -n "$create" ] || [ "$sub" = "switch" ] || is_protected "$name" \
        || { [ "$TARGET_KNOWN" -eq 1 ] && gitq show-ref --verify --quiet "refs/heads/${name}"; }; then
-    SW_STATE=known
-    SW_BRANCH="${name#refs/heads/}"
+    newb="${name#refs/heads/}"
   else
     return 0      # a path or a commit: no branch change the guard has to follow
   fi
-  SW_GITDIR=""
-  if [ "$TARGET_KNOWN" -eq 1 ]; then
-    resolve_branches
-    SW_GITDIR="$repo_gitdir"
+  # Recorded for the repository it ran in. Where that cannot be told, every
+  # later commit or push asks: it may be any of them.
+  if [ "$TARGET_KNOWN" -eq 0 ]; then SW_UNRESOLVED=1; return 0; fi
+  resolve_branches
+  if [ -z "$repo_gitdir" ]; then SW_UNRESOLVED=1; return 0; fi
+  sw_find "$repo_gitdir"
+  local prev
+  if [ "$SWI" -lt 0 ]; then
+    # The first switch here: before it the repository is on its HEAD.
+    prev=" ${branch:-:} "
+    SWI=${#SW_KEYS[@]}
+    SW_KEYS[SWI]="$repo_gitdir"
+  else
+    # Earlier switches here: any of them, or none, may be the one in force if
+    # this one does not happen (`git switch a && git switch b; git commit`
+    # commits on the start branch when the first fails).
+    prev="${SW_PREV[$SWI]}"
+    case "$prev" in
+      *" ${SW_NEW[$SWI]} "*) ;;
+      *) prev="${prev}${SW_NEW[$SWI]} " ;;
+    esac
+  fi
+  SW_NEW[SWI]="$newb"
+  SW_PREV[SWI]="$prev"
+  if [ "$SW_UNCERTAIN_CTX" -eq 1 ] || [ "$SW_IN_ALT" -eq 1 ]; then
+    SW_EPOCH[SWI]=-1
+  else
+    SW_EPOCH[SWI]=$CHAIN
   fi
 }
 
-check_git() {
-  # $@ = tokens after `git` (redirections already removed).
-  local -a a=("$@") copts=()
-  local i=0 n=${#a[@]} sub="" opt v named=0 cwd_known
-  local gdir="" gdir_set=0 gdir_known=1
-  CFG_BAD=""
+# The branch a commit or push (JB_SUB) runs on, for one possible directory:
+# an earlier switch in its repository decides it when certain (only `&&`
+# since), otherwise the branches before it stay possible beside it. In a kept
+# directory (DIR_ALT: an earlier cd may not have taken effect) a protected
+# branch asks instead of denying.
+judge_branch() {
+  local sub="$JB_SUB" unknown_why="" cur maybe="" b pre=""
+  # A spent budget: no git query is made, and the command asks at its end.
+  [ -z "$BUDGET_OUT" ] || return 0
+  local mcd="an earlier cd, Set-Location, pushd or GIT_DIR in this command may not have taken effect (something other than && or || exit follows it)"
+  if [ "$DIR_ALT" -eq 1 ]; then pre="${mcd}, and "; fi
+  if [ "${1:-}" = "overflow" ]; then
+    unknown_why="${mcd}, and more than four directories are possible"
+  elif [ "$GITENV_UNKNOWN" -eq 1 ]; then
+    unknown_why="GIT_DIR or GIT_WORK_TREE is set earlier in this command in a way the guard does not follow (declare, set -a, a bare assignment, Set-Item Env:, SetEnvironmentVariable, \${env:...})"
+  elif [ "$TARGET_KNOWN" -eq 0 ]; then
+    unknown_why="a cd, pushd, popd, -C, env -C or GIT_DIR on the way names its directory with a variable, ~, - or nothing, or after & or on the right of ||, or a cd inside parentheses in PowerShell, or after an unmatched )"
+  elif [ "$SW_UNRESOLVED" -eq 1 ]; then
+    unknown_why="an earlier git switch or checkout in this command ran in a repository the guard could not tell"
+  else
+    resolve_branches
+    cur="$branch"
+    SWI=-1
+    [ -z "$repo_gitdir" ] || sw_find "$repo_gitdir"
+    if [ "$SWI" -ge 0 ]; then
+      cur="${SW_NEW[$SWI]}"
+      [ "${SW_EPOCH[$SWI]}" = "$CHAIN" ] || maybe="${SW_PREV[$SWI]}"
+      if [ "$cur" = ":" ]; then cur=""; fi
+    fi
+    if [ "$cur" = "?" ]; then
+      unknown_why="an earlier git switch or checkout in this command moves to a branch it cannot read"
+    elif [ "$TARGET_NAMED" -eq 1 ] && [ -z "$repo_gitdir" ]; then
+      unknown_why="git cannot read a repository in the directory it names"
+    elif [ -n "$cur" ] && is_protected "$cur"; then
+      if [ "$DIR_ALT" -eq 1 ]; then
+        add_ask "${mcd}, so this git ${sub} may still run in the directory before it, on ${cur} (a protected branch); join them with && (or || exit) or confirm"
+      else
+        deny "CLAUDE.md S3.2: direct commits/pushes to ${cur} (a protected branch) are prohibited - use a feature branch and a PR."
+      fi
+    fi
+    # Unquoted on purpose: a space-separated list (noglob is set).
+    for b in $maybe; do
+      if [ "$b" = "?" ]; then
+        add_ask "${pre}a git switch or checkout earlier in this command may not have taken effect (something other than && follows it), and the branch before it could not be read; confirm this git ${sub} does not run on a protected branch"
+      elif [ "$b" != ":" ] && is_protected "$b"; then
+        add_ask "${pre}a git switch or checkout earlier in this command may not have taken effect (something other than && follows it), so this git ${sub} may still run on ${b} (a protected branch); join them with && or confirm"
+      fi
+    done
+  fi
+  if [ -n "$unknown_why" ]; then
+    add_ask "${pre}the guard could not tell which branch this git ${sub} runs on (${unknown_why}); confirm it is not a protected branch"
+  fi
+}
+
+# GIT_C, TARGET_KNOWN and TARGET_NAMED for this git command, from the carried
+# state (CD_C, SH_GITDIR...) and this segment's own `env -C`, GIT_DIR= and the
+# git options in SEG_GO (pairs: -C or --git-dir, value).
+compute_target() {
+  local -a copts=(${CD_C[@]+"${CD_C[@]}"})
+  local cwd_known=$CD_KNOWN gdir="" gdir_set=0 gdir_known=1 d k opt v
+  TARGET_NAMED=0
   # The directory: carried `cd`s, then `env -C` of this segment.
-  copts=(${CD_C[@]+"${CD_C[@]}"})
-  cwd_known=$CD_KNOWN
-  local d
   for d in ${NS_ENV_DIRS[@]+"${NS_ENV_DIRS[@]}"}; do
-    named=1
+    TARGET_NAMED=1
     if [[ $d =~ $re_dir_unknown ]]; then cwd_known=0
     elif is_abs_dir "$d"; then copts=(-C "$d"); cwd_known=1
     else copts+=(-C "$d"); fi
@@ -405,9 +433,8 @@ check_git() {
   if [ "$SH_GITDIR_SET" -eq 1 ]; then
     gdir_set=1; gdir="$SH_GITDIR"; gdir_known=$SH_GITDIR_KNOWN
   fi
-  local re_gd='(^|[[:space:]])GIT_DIR=([^[:space:]]*)'
-  local rest="${NS_ASSIGN:-}"
-  local whole
+  local re_gd='(^|[[:space:]])GIT_DIR=(("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]"'"'"'])*)'
+  local rest="${NS_ASSIGN:-}" whole
   while [[ $rest =~ $re_gd ]]; do
     whole="${BASH_REMATCH[0]}"        # saved: the test below overwrites BASH_REMATCH
     unquote "${BASH_REMATCH[2]}"
@@ -415,8 +442,81 @@ check_git() {
     if [ -z "$gdir" ] || [[ $gdir =~ $re_dir_unknown ]]; then gdir_known=0; fi
     rest="${rest#*"$whole"}"
   done
-  if [ "${#CD_C[@]}" -gt 0 ] || [ "$CD_KNOWN" -eq 0 ] || [ "$gdir_set" -eq 1 ]; then named=1; fi
+  if [ "${#CD_C[@]}" -gt 0 ] || [ "$CD_KNOWN" -eq 0 ] || [ "$gdir_set" -eq 1 ]; then TARGET_NAMED=1; fi
+  k=0
+  while [ "$k" -lt "${#SEG_GO[@]}" ]; do
+    opt="${SEG_GO[$k]}"; v="${SEG_GO[$((k + 1))]}"; k=$((k + 2))
+    TARGET_NAMED=1
+    [ -n "$v" ] || continue          # git treats `-C ""` as no change
+    if [ "$opt" = "-C" ]; then
+      if [[ $v =~ $re_dir_unknown ]]; then cwd_known=0
+      elif is_abs_dir "$v"; then copts=(-C "$v"); cwd_known=1
+      else copts+=(-C "$v"); fi
+    else
+      gdir_set=1; gdir="$v"; gdir_known=1
+      if [[ $v =~ $re_dir_unknown ]]; then gdir_known=0; fi
+    fi
+  done
+  # An absolute git directory names the repository whatever the directory is;
+  # a relative one is relative to it (git applies every -C first).
+  GIT_C=(${copts[@]+"${copts[@]}"})
+  if [ "$gdir_set" -eq 1 ]; then
+    if [ "$gdir_known" -eq 0 ]; then
+      TARGET_KNOWN=0
+    else
+      GIT_C+=("--git-dir=${gdir}")
+      if is_abs_dir "$gdir"; then TARGET_KNOWN=1; else TARGET_KNOWN=$cwd_known; fi
+    fi
+  else
+    TARGET_KNOWN=$cwd_known
+  fi
+}
 
+# Run "$@" once for the state in force and, when the directory is uncertain,
+# once more for each kept state with DIR_ALT=1 (the globals swapped in and
+# restored). GIT_C and friends are left for the state in force.
+for_each_dir_state() {
+  local -a s_cdc=(${CD_C[@]+"${CD_C[@]}"})
+  local s_cdk=$CD_KNOWN s_gd=$SH_GITDIR s_gds=$SH_GITDIR_SET s_gdk=$SH_GITDIR_KNOWN k=0
+  DIR_ALT=0
+  compute_target
+  "$@"
+  if dir_uncertain; then
+    if [ "$ALT_OVF" -eq 1 ]; then DIR_ALT=1; "$@" overflow; fi
+  else
+    k=$ALT_NEWFROM
+  fi
+  [ "$k" -lt "$ALT_N" ] || { DIR_ALT=0; return 0; }
+  DIR_ALT=1
+  while [ "$k" -lt "$ALT_N" ]; do
+    dir_use "$k"
+    k=$((k + 1))
+    compute_target
+    "$@"
+  done
+  DIR_ALT=0
+  CD_C=(${s_cdc[@]+"${s_cdc[@]}"})
+  CD_KNOWN=$s_cdk; SH_GITDIR=$s_gd; SH_GITDIR_SET=$s_gds; SH_GITDIR_KNOWN=$s_gdk
+  compute_target
+}
+
+# A switch or checkout, for one possible directory. In a kept one (DIR_ALT)
+# it may have run there or not, so it is never certain there, nor where the
+# directory is in force.
+switch_in_state() {
+  SW_IN_ALT=0
+  if [ "${1:-}" = "overflow" ]; then SW_UNRESOLVED=1; return 0; fi
+  if dir_uncertain || [ "$ALT_NEWFROM" -lt "$ALT_N" ]; then SW_IN_ALT=1; fi
+  note_branch_change "$SW_SUB" ${SW_ARGS[@]+"${SW_ARGS[@]}"}
+  SW_IN_ALT=0
+}
+
+check_git() {
+  # $@ = tokens after `git` (redirections already removed).
+  local -a a=("$@")
+  local i=0 n=${#a[@]} sub="" opt v
+  CFG_BAD=""
+  SEG_GO=()
   while [ "$i" -lt "$n" ]; do
     # Unquoted before it is read: `git "--no-pager" push` and `git '-c' x=y push`.
     unquote "${a[$i]}"
@@ -441,35 +541,13 @@ check_git() {
           --config-env) check_push_config "$v" --config-env; continue ;;
           --work-tree) continue ;;      # does not change which HEAD is read
         esac
-        named=1
-        [ -n "$v" ] || continue          # git treats `-C ""` as no change
-        if [ "$opt" = "-C" ]; then
-          if [[ $v =~ $re_dir_unknown ]]; then cwd_known=0
-          elif is_abs_dir "$v"; then copts=(-C "$v"); cwd_known=1
-          else copts+=(-C "$v"); fi
-        else
-          gdir_set=1; gdir="$v"; gdir_known=1
-          [[ $v =~ $re_dir_unknown ]] && gdir_known=0
-        fi
+        if [ "$opt" = "-C" ]; then SEG_GO+=(-C "$v"); else SEG_GO+=(--git-dir "$v"); fi
         ;;
       --namespace|--super-prefix) i=$((i + 2)) ;;
       -*) i=$((i + 1)) ;;
       *) sub="$opt"; i=$((i + 1)); break ;;
     esac
   done
-  # An absolute git directory names the repository whatever the directory is;
-  # a relative one is relative to it (git applies every -C first).
-  GIT_C=(${copts[@]+"${copts[@]}"})
-  if [ "$gdir_set" -eq 1 ]; then
-    if [ "$gdir_known" -eq 0 ]; then
-      TARGET_KNOWN=0
-    else
-      GIT_C+=("--git-dir=${gdir}")
-      if is_abs_dir "$gdir"; then TARGET_KNOWN=1; else TARGET_KNOWN=$cwd_known; fi
-    fi
-  else
-    TARGET_KNOWN=$cwd_known
-  fi
 
   local -a args=()
   while [ "$i" -lt "$n" ]; do
@@ -479,30 +557,11 @@ check_git() {
   done
 
   case "$sub" in
-    switch|checkout) note_branch_change "$sub" ${args[@]+"${args[@]}"} ;;
-    commit|push)
-      local unknown_why="" cur
-      if [ "$TARGET_KNOWN" -eq 0 ]; then
-        unknown_why="a cd, pushd, popd, -C, env -C or GIT_DIR on the way names its directory with a variable, ~, - or nothing, or after & or on the right of ||"
-      else
-        resolve_branches
-        cur="$branch"
-        if [ -n "$SW_STATE" ] && { [ -z "$SW_GITDIR" ] || [ "$SW_GITDIR" = "$repo_gitdir" ]; }; then
-          if [ "$SW_STATE" = "unknown" ]; then
-            unknown_why="an earlier git switch or checkout in this command moves to a branch it cannot read"
-          fi
-          cur="$SW_BRANCH"
-        fi
-        if [ -z "$unknown_why" ] && [ "$named" -eq 1 ] && [ -z "$repo_gitdir" ]; then
-          unknown_why="git cannot read a repository in the directory it names"
-        elif [ -z "$unknown_why" ] && [ -n "$cur" ] && is_protected "$cur"; then
-          deny "CLAUDE.md S3.2: direct commits/pushes to ${cur} (a protected branch) are prohibited - use a feature branch and a PR."
-        fi
-      fi
-      if [ -n "$unknown_why" ]; then
-        add_ask "the guard could not tell which branch this git ${sub} runs on (${unknown_why}); confirm it is not a protected branch"
-      fi
-      ;;
+    switch|checkout)
+      SW_SUB="$sub"; SW_ARGS=(${args[@]+"${args[@]}"})
+      for_each_dir_state switch_in_state ;;
+    commit|push) JB_SUB="$sub"; for_each_dir_state judge_branch ;;
+    *) compute_target ;;
   esac
 
   if [ "$sub" = "push" ]; then

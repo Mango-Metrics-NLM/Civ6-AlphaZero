@@ -1,4 +1,5 @@
-"""The guard sources ``_guard_git.sh`` from its own directory; without it the guard must DENY.
+"""The guard sources ``_guard_state.sh`` and ``_guard_git.sh`` from its own directory; without
+either the guard must DENY.
 
 The source happens after the EXIT trap is set, so a missing or unreadable file is a crash,
 and a crash is a deny with exit 0 (a non-zero exit would let the tool call run).
@@ -25,6 +26,8 @@ from tests.governance._guard_harness import (
 pytestmark = pytest.mark.skipif(not HAVE_TOOLS, reason="guard needs git plus jq or python")
 
 SIBLING = GUARD.parent / "_guard_git.sh"
+STATE = GUARD.parent / "_guard_state.sh"
+SIBLINGS = (SIBLING, STATE)
 
 
 def _run(hooks: Path, command: str) -> subprocess.CompletedProcess[bytes]:
@@ -39,13 +42,15 @@ def _run(hooks: Path, command: str) -> subprocess.CompletedProcess[bytes]:
     )
 
 
-def test_the_sourced_git_rules_file_exists() -> None:
-    assert SIBLING.is_file()
+@pytest.mark.parametrize("sibling", SIBLINGS, ids=lambda p: p.name)
+def test_the_sourced_files_exist(sibling: Path) -> None:
+    assert sibling.is_file()
 
 
 def test_a_copy_with_the_sibling_works(tmp_path: Path) -> None:
     shutil.copy(GUARD, tmp_path / GUARD.name)
-    shutil.copy(SIBLING, tmp_path / SIBLING.name)
+    for sibling in SIBLINGS:
+        shutil.copy(sibling, tmp_path / sibling.name)
     got = parse(_run(tmp_path, "git push origin HEAD:qa"))
     assert got.decision == "deny"
     assert "protected" in got.reason
@@ -57,5 +62,14 @@ def test_missing_sibling_denies_every_command(tmp_path: Path, command: str) -> N
     shutil.copy(GUARD, tmp_path / GUARD.name)  # _guard_git.sh deliberately absent
     proc = _run(tmp_path, command)
     got = parse(proc)  # exit code 0 and valid JSON
+    assert got.decision == "deny", got
+    assert "failed unexpectedly" in got.reason
+
+
+@pytest.mark.parametrize("command", ["echo hello", "git push origin HEAD:qa"])
+def test_missing_state_file_denies_every_command(tmp_path: Path, command: str) -> None:
+    shutil.copy(GUARD, tmp_path / GUARD.name)
+    shutil.copy(SIBLING, tmp_path / SIBLING.name)  # _guard_state.sh deliberately absent
+    got = parse(_run(tmp_path, command))
     assert got.decision == "deny", got
     assert "failed unexpectedly" in got.reason

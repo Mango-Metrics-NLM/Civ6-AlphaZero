@@ -39,9 +39,13 @@ def test_protected_target_is_denied(world: World, changer: str, call: str) -> No
 def test_feature_target_is_allowed_from_a_protected_directory(
     world: World, changer: str, call: str
 ) -> None:
-    # The hook's own directory is on `main`; the cd target decides.
-    got = decide(world.p, f"{changer} {world.f}; {call}", tool_name="PowerShell")
+    # The hook's own directory is on `main`; the cd target decides when the change is certain
+    # (PowerShell 7's `&&`). After `;` a failed change leaves the commit on main: it asks.
+    got = decide(world.p, f"{changer} {world.f} && {call}", tool_name="PowerShell")
     assert got == ALLOWED
+    got = decide(world.p, f"{changer} {world.f}; {call}", tool_name="PowerShell")
+    assert got.decision == "ask", got
+    assert "may not have taken effect" in got.reason
 
 
 def test_quoted_directory_and_chained_set_location(world: World) -> None:

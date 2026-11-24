@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from pathlib import Path
 
 import pytest
@@ -32,14 +33,19 @@ from tests.governance._guard_harness import (
 
 pytestmark = pytest.mark.skipif(not HAVE_TOOLS, reason="guard needs git plus jq or python")
 
-RAW = os.fsdecode(b"a\xffb")  # b"a\xffb" on POSIX (surrogateescape); a plain str elsewhere
+# A raw 0xff byte reaches the guard only where file names and arguments are bytes: on POSIX
+# `os.fsdecode` maps it through surrogateescape, while on Windows it raises (UTF-8, strict).
+# So the raw-byte cases exist on POSIX only; the parametrizations below leave them out
+# elsewhere rather than skipping (a skip would raise the debt ratchet's count).
+POSIX = os.name == "posix"
 ODD_NAMES = {
     "control": "a\x01b",
     "quote": 'a"b',
     "backslash": "a\\b",
     "multibyte": "ä€é",
-    "raw_byte": RAW,
 }
+if POSIX:
+    ODD_NAMES["raw_byte"] = os.fsdecode(b"a\xffb")
 # Tool sets on PATH: the guard prefers jq, then python3, then python.
 TOOLSETS = {
     "jq_and_python": ("git", "cat", "jq", "python3", "python"),
@@ -48,7 +54,18 @@ TOOLSETS = {
 
 
 def _bin_dir(tmp_path: Path, tools: tuple[str, ...]) -> str:
-    """A PATH holding exactly ``tools``; a missing real tool is simply left out."""
+    """A PATH holding exactly ``tools``; a missing real tool is simply left out.
+
+    On Windows a symbolic link needs a privilege, so the PATH is the tools' own directories
+    instead (as ``test_hook_guard_json.py`` does); that may expose a neighbour of a tool too.
+    """
+    if sys.platform == "win32":
+        dirs: list[str] = []
+        for tool in tools:
+            real = shutil.which(tool)
+            if real is not None and str(Path(real).resolve().parent) not in dirs:
+                dirs.append(str(Path(real).resolve().parent))
+        return os.pathsep.join(dirs)
     d = tmp_path / ("bin_" + "_".join(tools))
     d.mkdir(exist_ok=True)
     for tool in tools:
@@ -101,13 +118,14 @@ def test_ask_with_an_odd_runner_name_is_valid_json(
 
 
 @pytest.mark.parametrize("toolset", sorted(TOOLSETS))
+@pytest.mark.parametrize("odd_bytes", [b"we\xffrd"] if POSIX else [])
 def test_ask_with_a_non_utf8_ref_name_is_valid_json(
-    world: World, tmp_path: Path, toolset: str
+    world: World, tmp_path: Path, toolset: str, odd_bytes: bytes
 ) -> None:
     # A protected branch whose remote-tracking ref name holds a raw 0xff byte, and a push of
     # merged work to a new name: the recreated-branch ask names that branch in its reason.
     p = world.p
-    odd = os.fsdecode(b"we\xffrd")  # str passed to subprocess is re-encoded with the same byte
+    odd = os.fsdecode(odd_bytes)  # str passed to subprocess is re-encoded with the same byte
     git(p, "checkout", "-q", "-b", "claude/merged-work")
     tip = git(p, "rev-parse", "HEAD")
     git(p, "update-ref", "-d", "refs/remotes/origin/main")  # leave only the odd name

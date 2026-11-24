@@ -100,8 +100,9 @@ def test_a_feature_target_is_still_allowed_after_redirections(world: World) -> N
 # --- marker bytes ----------------------------------------------------------------------------
 
 
-# Every marker byte the splitter uses internally (\x02 .. \x08) must be stripped from the input.
-@pytest.mark.parametrize("marker", [chr(c) for c in range(2, 9)])
+# Every marker byte the splitter uses internally (\x02 .. \x08, \x0e .. \x10) must be stripped
+# from the input.
+@pytest.mark.parametrize("marker", [chr(c) for c in (*range(2, 9), *range(0x0E, 0x11))])
 @pytest.mark.parametrize(
     "template",
     [

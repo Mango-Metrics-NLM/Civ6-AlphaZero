@@ -15,8 +15,7 @@
 #     (`:dev`, `--delete dev`, `-d`), or pushes tags: `refs/tags/*`, `--tags`,
 #     `--follow-tags`, a source git resolves to a tag in the target repository
 #     (`v2.0.0` when that tag exists, `tags/v2.0.0`, `v2.0.0^{tag}`), and a
-#     deletion of a name that is neither `refs/heads/<x>` nor a local branch
-#     (`git push origin :v9` deletes the remote TAG v9);
+#     deletion of any `refs/*` other than `refs/heads/*`;
 #   * git push of everything: `--all`, `--branches`, `--mirror`, a refspec
 #     containing `*`, the "matching" refspec `:`, and `--prune` (it deletes
 #     remote branches); long options also in git's abbreviated forms (`--al`,
@@ -34,6 +33,10 @@
 #   * a payload no parser can read (fail closed -- see below).
 #
 # ASKS (permissionDecision "ask", i.e. the user is prompted) on:
+#   * an unqualified remote deletion (`:x`, `--delete x`) unless
+#     `refs/remotes/<remote>/x` exists here and no tag `x` does: git matches
+#     the name against every remote ref, so it may delete a TAG x (a local
+#     branch x proves nothing);
 #   * `--approval_ref` (recorded by the runner, never verified, so a human
 #     confirms -- the charter amendment's ruling), including over-cap runs;
 #   * `--preset production`;
@@ -45,8 +48,10 @@
 #     a directory or GIT_DIR given by a variable, `~`, `-` or nothing
 #     (`cd "$X"`, `cd -`, a bare `cd`, `pushd`/`popd`, `GIT_DIR=$X`), a `cd`
 #     after `&` or on the right of `||`, a named directory where git cannot
-#     read a repository, or an earlier `git switch -` / `git switch "$B"`. It
-#     neither allows that silently nor denies on a guess;
+#     read a repository, an earlier `git switch -` / `git switch "$B"` or a
+#     switch in a repository it cannot tell, or a protected starting branch
+#     when an earlier switch may not have taken effect (see "Branch changes").
+#     It neither allows that silently nor denies on a guess;
 #   * a `git push` to origin of a commit that is already on a protected branch,
 #     when the destination has no remote-tracking ref or one that is fully
 #     merged into that same branch: usually the name of a branch whose PR was
@@ -65,17 +70,32 @@
 # `iex`/`Invoke-Expression` and the `&` call operator are stripped before
 # matching, so `pwsh -c "git push origin HEAD:qa"` is judged as the push it is.
 #
-# Target directory (the git rules are in _guard_git.sh, sourced below): the
+# Target directory (the git rules are in _guard_git.sh, the carried state in
+# _guard_state.sh, both sourced below): the
 # repository a git command acts on is the one git itself would use. A command
 # names another one in these ways, and each is followed:
 #   * a `cd` (also `chdir`, `Set-Location`, `sl`) earlier in the command. `&&`,
 #     `;` and a newline carry it to the segments after it, and so does the LEFT
-#     side of `||`, which runs either way. A `cd` on the RIGHT of `||` (it runs
+#     side of `||`, which runs either way. Only `&&` (and `X || exit`) makes it
+#     CERTAIN; after anything else the cd may have failed, so the directory
+#     before it stays possible and is judged too: a protected branch there
+#     asks (`cd f; git commit` from main). Same for GIT_DIR. Past four
+#     possible directories it asks. `X || exit` is certain too, unless a quote
+#     or `#` comes before it or `exit` is redefined; `!` never is. A `cd` is
+#     logical, as bash's (`cd link/..` returns; `cd -P` is physical). A `cd`
+#     in a child process does not carry: `bash -c`, `pwsh -c`, `cmd /c`, a
+#     bash pipeline element, `timeout`, `nohup`, `env`, `sudo` (in PowerShell
+#     a pipeline element's Set-Location makes the directory unknown). A `cd` on the RIGHT of `||` (it runs
 #     only if the left failed) or before `&` (a background job in bash, the
 #     next command in sequence in cmd) leaves the directory unknown. A `cd`
-#     before `|` or inside `( ... )` changes only its own pipeline element or
-#     subshell, so it is ignored. A `cd` inside `( ... )` followed by `&&`
-#     still carries past the `)`: that can only add a deny or an ask.
+#     before `|` changes only its own pipeline element, so it is ignored. A
+#     `cd` (or `export GIT_DIR`) inside `( ... )` or `$( ... )` holds until the
+#     matching `)`, where bash restores the directory; in PowerShell, which does
+#     not scope parentheses, it leaves the directory unknown after the `)`, as
+#     it does for a parenthesis inside quotes or where no command starts. An
+#     unquoted `)` with no `(` (a `case` pattern) leaves it unknown, and with
+#     `$'...'`, a heredoc or a PowerShell here-string anywhere in the command
+#     no parenthesis restores. Line continuations are joined first.
 #     Redirections (`>/dev/null`, `2>&1`, `&>f`) are not arguments of `cd` and
 #     their `&` is not a separator;
 #   * `env -C <dir>` / `env --chdir[=]<dir>`;
@@ -90,8 +110,21 @@
 #
 # Branch changes: an earlier `git switch <b>` / `git checkout <b>` (also `-B`,
 # `-C`, `-c`, `-b`, `--orphan`) in the same command decides the branch of a
-# later commit or push in that repository. A path checkout (`checkout -- f`,
-# `checkout .`) or a commit is not a branch change.
+# later commit or push IN THAT REPOSITORY (one record per git directory). It
+# is certain only when every separator from it to the commit or push is `&&`
+# (and it is not on the right of `||`): `git switch f; git commit` commits on
+# the old branch when the switch fails, so a protected old branch then asks.
+# A switch inside parentheses is not undone at the `)` (HEAD moved on disk).
+# A switch in a repository the guard cannot tell makes every later commit or
+# push ask. `checkout <b> <path>` and `--help` change no branch; `-t
+# origin/main` switches to `main`. Any mention of GIT_DIR or GIT_WORK_TREE
+# outside the followed forms makes every later commit or push ask. Past 200
+# segments or 40 git queries the guard makes no more git queries but still
+# judges every segment by the rules that need none (a deny still denies),
+# then asks; past 500 segments the rest is not judged and it asks (the
+# hook's own timeout would let it run unchecked). `set -P` / `set -o
+# physical` anywhere, or CDPATH set, make a `cd` it cannot place unknown. A path checkout (`checkout -- f`, `checkout .`) or a commit is not
+# a branch change.
 #
 # Shell keywords (`then`, `do`, `else`, `elif`, `if`, `while`, `until`, `!`,
 # `time`) are stripped before the command word is read.
@@ -186,12 +219,14 @@ if [ -n "${CIV6AZ_GUARD_SELFTEST_FAIL:-}" ]; then
   false
 fi
 
-# The git rules live beside this file. Sourced after the trap, so a missing or
-# broken file is a crash and therefore a deny.
+# The git rules and the carried state live beside this file. Sourced after the
+# trap, so a missing or broken file is a crash and therefore a deny.
 case "${BASH_SOURCE[0]}" in
   */*|*\\*) GUARD_DIR="${BASH_SOURCE[0]%[/\\]*}" ;;
   *) GUARD_DIR="." ;;
 esac
+# shellcheck source=_guard_state.sh
+. "${GUARD_DIR}/_guard_state.sh"
 # shellcheck source=_guard_git.sh
 . "${GUARD_DIR}/_guard_git.sh"
 
@@ -251,8 +286,12 @@ cmd="${cmd//$'\r'/}"
 #
 # How a separator moves a `cd` (see "Target directory" in the header). Marker
 # bytes, never in a command (they are deleted from it first):
-#   NO_CARRY (end of a segment followed by `|` or `)`): a `cd` there changes
-#     only its own pipeline element or subshell, so it is ignored;
+#   NO_CARRY (end of a segment followed by `|`): a `cd` there changes only
+#     its own pipeline element, so it is ignored;
+#   AND (end of a segment followed by `&&`): the next segment runs only if
+#     this one succeeded, so a branch change in it stays certain;
+#   OPEN / CLOSE (end of a segment followed by `(` / `)`): the main loop saves
+#     the directory and GIT_DIR at `(` and restores them at `)`;
 #   BG (end of a segment followed by `&`): bash runs it in the background, cmd
 #     runs it in sequence, so the directory after it is unknown;
 #   OR_RIGHT (start of a segment after `||`): it runs only when the left side
@@ -271,7 +310,10 @@ BG=$'\x05'
 OR_RIGHT=$'\x06'
 LBR=$'\x07'
 RBR=$'\x08'
-cmd="${cmd//[$NO_CARRY$RESET$REDIR$BG$OR_RIGHT$LBR$RBR]/}"
+AND=$'\x0e'
+OPEN=$'\x0f'
+CLOSE=$'\x10'
+cmd="${cmd//[$NO_CARRY$RESET$REDIR$BG$OR_RIGHT$LBR$RBR$AND$OPEN$CLOSE]/}"
 re_revbrace='([@^])\{([^{}[:space:]]*)\}'
 split_segments() {
   local s="$1" sep
@@ -281,24 +323,51 @@ split_segments() {
   s="${s//&>/$REDIR>}"
   s="${s//>&/>$REDIR}"
   s="${s//<&/<$REDIR}"
-  s="${s//&&/$'\n'}"
+  s="${s//&&/$AND$'\n'}"
   s="${s//||/$'\n'$OR_RIGHT}"
-  for sep in '|' ')'; do
-    s="${s//"$sep"/$NO_CARRY$'\n'}"
-  done
+  sep='|'; s="${s//"$sep"/$NO_CARRY$'\n'}"
+  sep=')'; s="${s//"$sep"/$CLOSE$'\n'}"
   s="${s//&/$BG$'\n'}"
-  for sep in ';' '(' '{' '}' '`'; do
+  sep='('; s="${s//"$sep"/$OPEN$'\n'}"
+  for sep in ';' '{' '}'; do
     s="${s//"$sep"/$'\n'}"
   done
+  # A backtick keeps the chain: the second reading (backticks deleted) is
+  # the one in which what they enclose did not take effect.
+  sep='`'; s="${s//"$sep"/$AND$'\n'}"
   s="${s//$REDIR/"&"}"   # quoted: bash 5.2 reads a bare & as the match
   s="${s//$LBR/\{}"
   SEGS="${s//$RBR/\}}"
 }
-split_segments "$cmd"
-segs="$SEGS"
+# A backslash continuation is bash's; PowerShell reads the backslash as text
+# and the newline as a separator. The tool decides; an unknown tool gets both
+# readings.
+if [[ $cmd == *$'\\\n'* ]]; then
+  join_continued "$cmd" '\'
+  tool_kind
+  case "$TOOL_KIND" in
+    bash) split_segments "$JC"; segs="$SEGS" ;;
+    ps) split_segments "$cmd"; segs="$SEGS" ;;
+    *) split_segments "$JC"; segs="$SEGS"; split_segments "$cmd"
+       segs="${segs}"$'\n'"${RESET}"$'\n'"${SEGS}" ;;
+  esac
+else
+  split_segments "$cmd"
+  segs="$SEGS"
+fi
 if [[ $cmd == *'`'* ]]; then
-  split_segments "${cmd//\`/}"
+  join_continued "$cmd" '`'
+  split_segments "${JC//\`/}"
   segs="${segs}"$'\n'"${RESET}"$'\n'"${SEGS}"
+fi
+# Quoting the splitter cannot see ($'...', heredocs, PowerShell here-strings)
+# can forge a parenthesis, so none of them restores a directory.
+PAREN_UNSURE=0
+case "$cmd" in *"\$'"*|*'<<'*|*"@'"*|*'@"'*) PAREN_UNSURE=1 ;; esac
+# `exit` redefined anywhere: `X || exit` proves nothing.
+EXIT_RULE=1
+if [[ $cmd =~ (^|[^A-Za-z0-9_])exit[[:space:]]*\(|function[[:space:]]+exit|alias[[:space:]]+exit ]]; then
+  EXIT_RULE=0
 fi
 
 
@@ -312,7 +381,8 @@ unquote() {
 }
 
 # --- unwrapping --------------------------------------------------------------
-re_assign='^[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+'
+# A `VAR=val` prefix; a quoted value may hold spaces (`GIT_DIR="/x y" git ...`).
+re_assign='^[A-Za-z_][A-Za-z0-9_]*=("[^"]*"|'"'"'[^'"'"']*'"'"'|[^[:space:]"'"'"'])*[[:space:]]+'
 re_lead_junk='^[[:space:]"'"'"'{(]+'
 # A quoted first word, spaces allowed: PowerShell's
 # `& 'C:\Program Files\Git\cmd\git.exe' push ...` names its program this way.
@@ -345,26 +415,37 @@ add_ask() {
 # `env [options] [VAR=val]... command`: sets NS_ENV_DIRS (each -C/--chdir) and
 # adds the assignments to NS_ASSIGN. $1 = the text after `env`; sets ENV_REST.
 unwrap_env() {
-  local s="$1" t want=""
-  while [[ $s =~ ^[[:space:]]*([^[:space:]]+) ]]; do
-    t="${BASH_REMATCH[1]}"
+  local t want="" k=0 rest=""
+  local -a ws=()
+  qsplit "$1"
+  ws=(${QW[@]+"${QW[@]}"})
+  while [ "$k" -lt "${#ws[@]}" ]; do
+    t="${ws[$k]}"
+    k=$((k + 1))
     if [ -n "$want" ]; then
       [ "$want" = "dir" ] && { unquote "$t"; NS_ENV_DIRS+=("$UQ"); }
+      if [ "$want" = "split" ]; then unquote "$t"; rest="$UQ"; break; fi
       want=""
-      s="${s#*"$t"}"
       continue
     fi
     case "$t" in
       -C|--chdir) want=dir ;;
       --chdir=*) unquote "${t#*=}"; NS_ENV_DIRS+=("$UQ") ;;
-      -u|--unset|-S|--split-string) want=skip ;;
+      # `-S "git push ..."`: the split string IS the command env runs.
+      -S|--split-string) want=split ;;
+      --split-string=*) unquote "${t#*=}"; rest="$UQ"; break ;;
+      -S?*) unquote "${t#-S}"; rest="$UQ"; break ;;
+      -u|--unset) want=skip ;;
       -*) ;;
       [A-Za-z_]*=*) NS_ASSIGN="${NS_ASSIGN} ${t} " ;;
-      *) break ;;
+      *) k=$((k - 1)); break ;;
     esac
-    s="${s#*"$t"}"
   done
-  ENV_REST="$s"
+  while [ "$k" -lt "${#ws[@]}" ]; do
+    rest="${rest:+$rest }${ws[$k]}"
+    k=$((k + 1))
+  done
+  ENV_REST="$rest"
 }
 
 # Normalise one segment: drop leading whitespace/quotes, env assignments and
@@ -376,6 +457,8 @@ normalise() {
   local s="$1" prev="" n=0
   NS_ASSIGN=""
   NS_ENV_DIRS=()
+  NS_CHILD=0
+  NS_LAUNCH_CHILD=0
   while [ "$s" != "$prev" ] && [ "$n" -lt 8 ]; do
     prev="$s"
     n=$((n + 1))
@@ -402,12 +485,23 @@ normalise() {
       add_ask "an encoded PowerShell command cannot be inspected by the guard"
     fi
     if [[ $s =~ $re_env ]]; then
+      NS_LAUNCH_CHILD=1
       unwrap_env "${s:${#BASH_REMATCH[0]}}"
       s="$ENV_REST"
       continue
     fi
-    if [[ $s =~ $re_pwsh ]] || [[ $s =~ $re_cmd ]] || [[ $s =~ $re_sh ]] \
-       || [[ $s =~ $re_iex ]] || [[ $s =~ $re_launcher ]]; then
+    # A child shell or a launcher that starts a child: a `cd` it runs does
+    # not move this shell (`command`, `builtin`, `time` and `iex` run here).
+    if [[ $s =~ $re_pwsh ]] || [[ $s =~ $re_cmd ]] || [[ $s =~ $re_sh ]]; then
+      NS_CHILD=1
+      s="${s:${#BASH_REMATCH[0]}}"
+    elif [[ $s =~ $re_launcher ]]; then
+      case "${BASH_REMATCH[2]}" in
+        command|builtin|time) ;;
+        *) NS_LAUNCH_CHILD=1 ;;
+      esac
+      s="${s:${#BASH_REMATCH[0]}}"
+    elif [[ $s =~ $re_iex ]]; then
       s="${s:${#BASH_REMATCH[0]}}"
     fi
   done
@@ -595,70 +689,112 @@ re_redir='^([0-9]+|&)?(<|>)'
 re_redir_bare='^([0-9]+|&)?(<|<<|>|>>|<>|>\||>&|<&|&>|&>>)$'
 # PowerShell: `$env:GIT_DIR = '...'` sets the variable for the rest of the command.
 re_psenv='^\$env:([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
+# A `(` opens a subshell or substitution only where a command can start, or
+# after `$`, `<` or `>`; elsewhere (`-m "fix(x)"`) it is text in quotes.
+re_open_cmd='^[[:space:]]*((then|do|else|elif|if|while|until|!|time)[[:space:]]*)?$'
+re_open_sub='[$<>][[:space:]]*$'
+# `X || exit`: only `exit` (a `return` outside a function does not stop
+# the shell). A segment negated by `!` succeeds when its command fails.
+re_exit='^exit([[:space:]]|$)'
+re_neg='^[[:space:]]*((time|then|do|else|elif|if|while|until)[[:space:]]+)*![[:space:]]'
+
+# A command too long to judge before the hook's own timeout (which would let
+# it run unchecked) spends the budget: past 200 segments here, past 40 git
+# queries in git_budget (_guard_state.sh), and past 500 segments in the loop.
+nl="${segs//[!$'\n']/}"
+if [ "${#nl}" -ge 200 ]; then budget_out "more than 200 segments"; fi
+# `set -P` / `set -o physical` anywhere: a `cd` resolves `..` physically, so
+# none is placed (case-sensitive: `set -p` is another option).
+shopt -u nocasematch
+if [[ $cmd =~ (^|[^A-Za-z0-9_-])set[[:space:]]+(-[A-Za-z]*P|-o[[:space:]]+physical) ]]; then CD_PHYS=1; fi
+shopt -s nocasematch
+
+pending=0
+prev_pipe=0
+seg_i=0
 while IFS= read -r raw; do
+  # Judging stays under the hook's timeout: past 500 segments it stops (a
+  # deny further on becomes the ask below, never an allow).
+  seg_i=$((seg_i + 1))
+  if [ "$seg_i" -gt 500 ]; then
+    BUDGET_OUT="more than 500 segments; the rest was not judged"
+    break
+  fi
   if [ "$raw" = "$RESET" ]; then
     reset_carried_state
+    pending=0
+    prev_pipe=0
     continue
   fi
   # How this segment's `cd` / `export` reaches the next ones: 1 carries,
-  # 0 does not (a pipeline element or subshell), 2 leaves them unknown.
+  # 3 is a pipeline element (see eff_carry), 2 leaves them unknown.
   carry=1
-  if [[ $raw == "$OR_RIGHT"* ]]; then carry=2; raw="${raw#"$OR_RIGHT"}"; fi
-  if [[ $raw == *"$NO_CARRY" ]]; then
-    [ "$carry" -eq 2 ] || carry=0
-    raw="${raw%"$NO_CARRY"}"
-  elif [[ $raw == *"$BG" ]]; then
-    carry=2
-    raw="${raw%"$BG"}"
-  fi
-  normalise "$raw"
-  seg="$NS"
-  [ -z "$seg" ] && continue
-  words=()
-  read -ra words <<<"$seg" || true
-  toks=()
-  skip_next=0
-  for w in ${words[@]+"${words[@]}"}; do
-    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
-    if [[ $w =~ $re_redir ]]; then
-      [[ $w =~ $re_redir_bare ]] && skip_next=1
-      continue
+  or_right=0
+  ends=""
+  if [[ $raw == "$OR_RIGHT"* ]]; then carry=2; or_right=1; raw="${raw#"$OR_RIGHT"}"; fi
+  if [ "$prev_pipe" -eq 1 ] && [ "$carry" -ne 2 ]; then carry=3; fi
+  prev_pipe=0
+  case "$raw" in
+    *"$AND") ends=and ;;
+    *"$NO_CARRY") ends=pipe; prev_pipe=1; [ "$carry" -eq 2 ] || carry=3 ;;
+    *"$BG") ends=bg; carry=2 ;;
+    *"$OPEN") ends=open ;;
+    *"$CLOSE") ends=close ;;
+  esac
+  [ -z "$ends" ] || raw="${raw%?}"
+  # An `&` where a command starts (`cd f && & git commit`) is PowerShell's
+  # call operator, not a separator: it leaves the chain as it was.
+  if [ "$ends" = bg ] && [[ $raw =~ ^[[:space:]]*$ ]]; then ends=and; fi
+  # A separator other than `&&` breaks the chain (CHAIN) before the next
+  # segment is judged, except in `X || exit`: the shell stops when X fails,
+  # so what follows the `exit` ran only if X succeeded.
+  exit_guard=0
+  if [ "$pending" -eq 1 ]; then
+    pending=0
+    # Only where nothing before it can hide the `||` (a quote, a comment)
+    # and `exit` is not redefined.
+    if [ "$or_right" -eq 1 ] && [ "$EXIT_RULE" -eq 1 ] && [ "$SEEN_QH" -eq 0 ] \
+       && { [ -z "$ends" ] || [ "$ends" = and ]; }; then
+      normalise "$raw"
+      if [[ $NS =~ $re_exit ]]; then exit_guard=1; fi
     fi
-    toks+=("$w")
-  done
-  [ "${#toks[@]}" -eq 0 ] && continue
-  unquote "${toks[0]}"
-  prog="$UQ"
-  base="${prog##*[/\\]}"
-  case "$base" in
-    cd|chdir|set-location|sl)
-      case "$carry" in
-        1) apply_cd 1 "${toks[@]}" ;;
-        2) apply_cd 0 "${toks[@]}" ;;
-      esac ;;
-    pushd|popd|push-location|pop-location)
-      [ "$carry" -eq 0 ] || apply_cd 0 "${toks[@]}" ;;
-    export)
-      for w in ${toks[@]+"${toks[@]:1}"}; do
-        case "$w" in
-          GIT_DIR=*) [ "$carry" -eq 0 ] || apply_shell_git_dir $((carry == 1)) "${w#*=}" ;;
-        esac
-      done ;;
-  esac
-  if [[ $seg =~ $re_psenv ]] && [[ ${BASH_REMATCH[1]} == GIT_DIR ]]; then
-    [ "$carry" -eq 0 ] || apply_shell_git_dir $((carry == 1)) "${BASH_REMATCH[2]}"
+    if [ "$exit_guard" -eq 0 ]; then CHAIN=$((CHAIN + 1)); fi
   fi
-  case "$base" in
-    git|git.exe) check_git ${toks[@]+"${toks[@]:1}"} ;;
-    gh|gh.exe) check_gh ${toks[@]+"${toks[@]:1}"} ;;
-  esac
-  if [[ $base =~ $re_runnerish ]] || [[ $prog =~ $re_runnerish ]]; then
-    check_runner "$seg" "${toks[@]}"
+  NEG_CTX=0
+  if [[ $raw =~ $re_neg ]]; then NEG_CTX=1; fi
+  SW_UNCERTAIN_CTX=0
+  if [ "$or_right" -eq 1 ] || [ "$NEG_CTX" -eq 1 ] || [ "$OR_DEPTH" -gt 0 ]; then
+    SW_UNCERTAIN_CTX=1
   fi
+  judge_segment "$raw"
+  if [ "$GITENV_PEND" -eq 1 ]; then GITENV_UNKNOWN=1; fi
+  quote_scan "$raw"
+  case "$raw" in *[\"\'#]*) SEEN_QH=1 ;; esac
+  # After the segment: what the separator does to the carried state, and
+  # whether a branch change before it is still certain (only `&&` and the
+  # parentheses of a subshell keep it so).
+  case "$ends" in
+    and) ;;
+    open)
+      unc=$((or_right || NEG_CTX))
+      if [ "$QS" -ne 0 ] || [ "$PAREN_UNSURE" -eq 1 ]; then scope_open 0 "$unc"
+      elif [[ $raw =~ $re_open_sub ]]; then scope_open 2 "$unc"
+      elif [[ $raw =~ $re_open_cmd ]]; then scope_open 1 "$unc"
+      else scope_open 0 "$unc"; fi ;;
+    close)
+      scope_close $((QS != 0))
+      if [ "$SCOPE_KIND" -ne 0 ] && [ "$SCOPE_KIND" -ne 1 ]; then CHAIN=$((CHAIN + 1)); fi ;;
+    *) if [ "$exit_guard" -eq 0 ]; then pending=1; fi ;;
+  esac
+  # A child shell's command ends where its quotes close.
+  if [ "$CHILD_IDX" -ge 0 ] && [ "$QS" -eq 0 ]; then scope_close_child; fi
 done <<EOF
 $segs
 EOF
 
+if [ -n "$BUDGET_OUT" ]; then
+  add_ask "this command is too long for the guard to judge before its own timeout (${BUDGET_OUT}); no deny rule fired in what was judged, but branches and directories were not checked; split it, or confirm"
+fi
 if [ -n "$asks" ]; then
   emit ask "PreToolUse guard: ${asks}."
 fi
