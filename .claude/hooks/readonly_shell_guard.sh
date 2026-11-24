@@ -23,8 +23,9 @@
 # Two modes, chosen by the first argument the hook command passes:
 #   (none)  the read-only roles
 #   --qa    sdlc-qa-sdet: everything above PLUS `python -m pytest <paths under tests/>`
-#           with a short list of safe flags (no `-c`, no plugins, no rootdir) and an optional leading
-#           `OMP_NUM_THREADS=<digits>`. RESIDUAL RISK, stated plainly: pytest executes test
+#           with a short list of safe flags (no `-c`, no plugins, no rootdir) and the optional
+#           leading `OMP_NUM_THREADS=<digits>` and `CIV6AZ_REQUIRE_LUA=1` (each at most once,
+#           either order, only before pytest). RESIDUAL RISK, stated plainly: pytest executes test
 #           code and conftest, so a test can write anywhere. This is an accident net, not a
 #           sandbox; the independent review reads the tests it ran, and identity is the control.
 #           `python -c`, `git add|commit|push` and the rest stay denied.
@@ -114,7 +115,7 @@ emit() {
 }
 
 deny() {
-  emit deny "read-only role shell guard: $1 Allowed (one plain command, no quotes, pipes, redirection or globs): git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api <one relative path> (GET only); python scripts/<one of ten vetted validate_/check_/verify_release_evidence checkers, exact options>.py; and, only for sdlc-qa-sdet (--qa), python -m pytest <paths under tests/> with safe flags and an optional OMP_NUM_THREADS=<digits> prefix. Return the text you wanted to write to your caller instead."
+  emit deny "read-only role shell guard: $1 Allowed (one plain command, no quotes, pipes, redirection or globs): git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api <one relative path> (GET only); python scripts/<one of ten vetted validate_/check_/verify_release_evidence checkers, exact options>.py; and, only for sdlc-qa-sdet (--qa), python -m pytest <paths under tests/> with safe flags and the optional prefixes OMP_NUM_THREADS=<digits> and CIV6AZ_REQUIRE_LUA=1 (each at most once). Return the text you wanted to write to your caller instead."
   exit 0
 }
 
@@ -213,13 +214,32 @@ read -r -a tok <<<"$cmd"
 n=${#tok[@]}
 [ "$n" -eq 0 ] && exit 0
 
-# --qa only: one optional leading OMP_NUM_THREADS=<digits> (the torch spin-wait
-# workaround, CLAUDE.md section 5.3). Dropped here so the command is judged without it;
-# a second one, or any other VAR=value, is then an unknown program and is denied.
-if [ "$qa" -eq 1 ] && [[ ${tok[0]} =~ ^OMP_NUM_THREADS=[0-9]+$ ]]; then
-  tok=("${tok[@]:1}")
+# --qa only: two optional leading assignments, each at most once, in either order:
+# OMP_NUM_THREADS=<digits> (the torch spin-wait workaround, CLAUDE.md section 5.3) and
+# CIV6AZ_REQUIRE_LUA=1 (a missing `lupa` fails the Lua suites instead of skipping them:
+# a skip is not a pass). They are dropped here so the command is judged without them;
+# a repeat, any other value or any other VAR=value is then an unknown program and is
+# denied. A prefix is accepted only in front of `python -m pytest`.
+if [ "$qa" -eq 1 ]; then
+  env_prefix=0
+  seen_omp=0
+  seen_lua=0
+  while [ "${#tok[@]}" -gt 0 ]; do
+    if [ "$seen_omp" -eq 0 ] && [[ ${tok[0]} =~ ^OMP_NUM_THREADS=[0-9]+$ ]]; then
+      seen_omp=1
+    elif [ "$seen_lua" -eq 0 ] && [ "${tok[0]}" = CIV6AZ_REQUIRE_LUA=1 ]; then
+      seen_lua=1
+    else
+      break
+    fi
+    env_prefix=1
+    tok=("${tok[@]:1}")
+  done
   n=${#tok[@]}
   [ "$n" -eq 0 ] && deny "an environment prefix with no command."
+  if [ "$env_prefix" -eq 1 ] && { [ "${tok[1]:-}" != -m ] || [ "${tok[2]:-}" != pytest ]; }; then
+    deny "an environment prefix is only allowed before 'python -m pytest'."
+  fi
 fi
 
 prog="${tok[0]}"

@@ -37,7 +37,7 @@ Every DEV-SQE output: the diff against the acceptance criteria, the tests agains
 
 Reads: the diff, the spec, `tests/`.
 Writes: files under `tests/**` only (`tests_only_write_guard.sh` denies any other path).
-Shell: `readonly_shell_guard.sh --qa` allows the read-only commands plus `python -m pytest <paths under tests/>` with safe flags (`-q`, `-x`, `-k <word>`, `-m <word>`, `--tb=short`, ...) and an optional leading `OMP_NUM_THREADS=<digits>`; `python -c`, `git add`, `git commit` and `git push` are denied.
+Shell: `readonly_shell_guard.sh --qa` allows the read-only commands plus `python -m pytest <paths under tests/>` with safe flags (`-q`, `-x`, `-k <word>`, `-m <word>`, `--tb=short`, ...) and the optional leading `OMP_NUM_THREADS=<digits>` and `CIV6AZ_REQUIRE_LUA=1` (each at most once, either order; use the second for the Lua suites, where a skip is not a pass); `python -c`, `git add`, `git commit` and `git push` are denied.
 Returns: test files you wrote, a negative-control record, and a review with findings.
 
 ## Constraints

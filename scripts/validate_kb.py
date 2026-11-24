@@ -11,7 +11,9 @@ Checks (error codes are stable and referenced by ``tests/governance/``):
       an ``openspec/changes/<id>/...`` path also resolves through the archive
       (``openspec/changes/archive/<date>-<id>/...``), since the ledger is
       append-only and archiving a merged change moves its directory
-  K6  every ``kb/sessions/*.state.json`` file parses as JSON
+  K6  every ``kb/sessions/*.state.json`` file parses as JSON, and its
+      ``resume_pointers.next_steps``, when present, is a list of at most
+      ``MAX_NEXT_STEPS`` non-empty strings (a longer list is a log, and goes stale)
   K7  no commit reachable from HEAD modifies, deletes, or renames a file under
       ``kb/handoffs/`` (immutability), except entries in ``ALLOWED_AMENDMENTS``
 
@@ -49,6 +51,8 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 LEDGER = REPO_ROOT / "kb" / "ledger" / "ledger.jsonl"
 SESSIONS_DIR = REPO_ROOT / "kb" / "sessions"
+# K6: a session state file says what to do next, not what was learned.
+MAX_NEXT_STEPS = 5
 HANDOFFS_PREFIX = "kb/handoffs/"
 
 logger = logging.getLogger("validate_kb")
@@ -186,16 +190,39 @@ def _validate_ledger_entry(
                 issues.append(Issue("K5", f"referenced {key} '{ref}' does not exist", path, lineno))
 
 
+def _validate_state_file(state: Path, issues: list[Issue]) -> None:
+    """K6 for one session state file: valid JSON, and a short ``next_steps``."""
+    try:
+        data = json.loads(state.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        issues.append(Issue("K6", f"session state is not valid JSON ({exc.msg})", state))
+        return
+    pointers = data.get("resume_pointers") if isinstance(data, dict) else None
+    if not isinstance(pointers, dict) or "next_steps" not in pointers:
+        return
+    steps = pointers["next_steps"]
+    if not isinstance(steps, list) or not all(isinstance(s, str) and s.strip() for s in steps):
+        issues.append(
+            Issue("K6", "resume_pointers.next_steps must be a list of non-empty strings", state)
+        )
+    elif len(steps) > MAX_NEXT_STEPS:
+        issues.append(
+            Issue(
+                "K6",
+                f"resume_pointers.next_steps has {len(steps)} items; the cap is "
+                f"{MAX_NEXT_STEPS} (lessons belong in the summary or the ledger)",
+                state,
+            )
+        )
+
+
 def _validate_sessions(issues: list[Issue]) -> None:
     if not SESSIONS_DIR.is_dir():
         return
     state_files = sorted(SESSIONS_DIR.glob("*.state.json"))
     logger.debug("scanning %d session state file(s)", len(state_files))
     for state in state_files:
-        try:
-            json.loads(state.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            issues.append(Issue("K6", f"session state is not valid JSON ({exc.msg})", state))
+        _validate_state_file(state, issues)
 
 
 def _is_shallow_clone() -> bool:
@@ -277,10 +304,7 @@ def _validate_path(path: Path, issues: list[Issue]) -> None:
         issues.append(Issue("K1", "path does not exist", path))
         return
     if path.name.endswith(".state.json"):
-        try:
-            json.loads(path.read_text(encoding="utf-8"))
-        except json.JSONDecodeError as exc:
-            issues.append(Issue("K6", f"session state is not valid JSON ({exc.msg})", path))
+        _validate_state_file(path, issues)
     elif path.name == "ledger.jsonl":
         _validate_ledger(path, issues, cross_file=False)
 

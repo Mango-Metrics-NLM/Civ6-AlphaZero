@@ -38,17 +38,45 @@ assertion about *content* (a value distribution, a density, a signed outcome)
 over one about *shape* (keys, lengths, types), because shape assertions survive
 most degenerate data.
 
-### 2. Reintroduce the defect
+### 2. Back up, then reintroduce the defect
 
-Take a backup, then revert the fix only:
+First look at the file you are about to change:
 
 ```bash
-cp <file> /tmp/<file>.fixed
-# edit <file> to restore the original broken behaviour
+git status --porcelain -- <file>
 ```
 
-Keep the change minimal and behavioural — reverting the whole commit also
-reverts the test.
+Either the file has no uncommitted changes, or you accept that the backup is of the
+file as it is, uncommitted changes included, and that this exact copy is what gets
+restored. Both are fine. What is not fine is assuming the committed version is the one
+to go back to.
+
+Take the backup in the session's scratchpad or a temporary directory, named by its
+full path, never beside the file (a copy beside the file gets linted, collected by
+pytest or committed). Name each backup by its repository path, not its base name, so
+two files called `__init__.py` cannot overwrite each other: inside the backup
+directory, `alpha_zero/core/x.py` is saved as `alpha_zero/core/x.py`.
+
+```bash
+BACKUP_DIR="$(mktemp -d)"            # or a new directory in the session scratchpad
+echo "backup directory: $BACKUP_DIR"
+mkdir -p "$BACKUP_DIR/$(dirname <repo/path/to/file>)"
+cp <repo/path/to/file> "$BACKUP_DIR/<repo/path/to/file>"
+ls -l "$BACKUP_DIR/<repo/path/to/file>"
+# edit <repo/path/to/file> to restore the original broken behaviour
+```
+
+Print the backup directory and write it down. A shell variable does not survive
+between tool calls, so in step 4 `$BACKUP_DIR` is empty: use the literal absolute path
+that was printed.
+
+Keep the change minimal and behavioural: reverting the whole commit also reverts the
+test.
+
+If the planted change needs a generated file rebuilt before the test can see it (the
+Lua bundle `mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua`, rebuilt by
+`python scripts/build_lua_bundle.py` from the Lua modules beside it), back up the
+generated file the same way before rebuilding, and restore it too in step 4.
 
 ### 3. Confirm the test fails
 
@@ -60,15 +88,29 @@ It must FAIL, and the failure message must name the real problem. A test that
 errors for an unrelated reason (import error, fixture problem) has not been
 validated.
 
-### 4. Restore and confirm it passes
+### 4. Restore from the backup and confirm it passes
+
+Copy the backup back, check that the file equals the backup, then run the test. Use
+the literal absolute path printed in step 2 in place of `/abs/backup/dir`:
 
 ```bash
-cp /tmp/<file>.fixed <file>
-pytest <test target> -q
+cp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file> \
+  && cmp /abs/backup/dir/<repo/path/to/file> <repo/path/to/file> \
+  && echo restored \
+  && pytest <test target> -q
 ```
 
-Verify with `git diff` that the working tree matches your intended fix — a
-restore that silently drops part of the change is worse than no control at all.
+The commands are one `&&` chain on purpose: if the copy or the comparison fails, the test
+does not run. Stop if `cmp` reports a difference (no `restored` line): the file is not restored, and
+nothing else should be run or edited until it equals the backup. A checksum of both
+files does the same job (`sha256sum`, or `shasum -a 256` on macOS), as does `diff`.
+Do the same for every generated file you backed up; restore it from its backup and do
+not rebuild it, so that it too equals its backup byte for byte.
+
+**Never use `git checkout`, `git restore` or `git stash` to undo a planted defect.** They put back the committed version, not the file you started from, so they discard every uncommitted change in that file along with the defect.
+
+Then read `git diff -- <file>` and confirm the working tree still holds your intended
+fix: a restore that silently drops part of the change is worse than no control at all.
 
 ### 5. Record the result
 
