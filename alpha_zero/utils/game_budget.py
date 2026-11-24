@@ -292,6 +292,16 @@ def _probe_target_sharpness(r: Mapping[str, Any]) -> int:
     return 0
 
 
+def _census_search_expressivity(r: Mapping[str, Any]) -> int:
+    """No games: it converts recorded states and reads the simulator's root mask.
+
+    Nothing is stepped, searched or trained. Priced explicitly, as
+    ``probe_target_sharpness`` is, so a change that makes it play has to say so here.
+    """
+    _nonneg(r["states"])
+    return 0
+
+
 def _enhanced_env_smoke_test(r: Mapping[str, Any]) -> int:
     """``num_selfplay_games`` complete games; the vectorised check takes one step only."""
     return _nonneg(r["num_selfplay_games"])
@@ -323,6 +333,7 @@ _MODELS: dict[str, Callable[[Mapping[str, Any]], int]] = {
     "calibrate_throughput": _calibrate_throughput,
     "determinism_check": _determinism_check,
     "probe_target_sharpness": _probe_target_sharpness,
+    "census_search_expressivity": _census_search_expressivity,
     "enhanced_env_smoke_test": _enhanced_env_smoke_test,
 }
 
