@@ -7,11 +7,22 @@
 # API directly; nothing here can stop that, and nothing here claims to.
 #
 # DENIES (permissionDecision "deny"):
-#   * git commit / git push while checked out on a protected branch;
+#   * git commit / git push on a protected branch, judged in the repository the
+#     command runs in and on the branch it would be on (see "Target directory"
+#     and "Branch changes" below);
 #   * git push whose destination is a protected branch, in any refspec form
 #     (`qa`, `HEAD:qa`, `HEAD:refs/heads/qa`, `'qa'`), deletes one
-#     (`:dev`, `--delete dev`, `-d`), or pushes tags (`refs/tags/*`, `--tags`,
-#     `--follow-tags`) or everything (`--all`, `--mirror`);
+#     (`:dev`, `--delete dev`, `-d`), or pushes tags: `refs/tags/*`, `--tags`,
+#     `--follow-tags`, a source git resolves to a tag in the target repository
+#     (`v2.0.0` when that tag exists, `tags/v2.0.0`, `v2.0.0^{tag}`), and a
+#     deletion of a name that is neither `refs/heads/<x>` nor a local branch
+#     (`git push origin :v9` deletes the remote TAG v9);
+#   * git push of everything: `--all`, `--branches`, `--mirror`, a refspec
+#     containing `*`, the "matching" refspec `:`, and `--prune` (it deletes
+#     remote branches); long options also in git's abbreviated forms (`--al`,
+#     `--b`, `--m`, `--ta`, `--fol`, `--pru`); and `-c` / `--config-env`
+#     setting push.followTags, push.default=matching, remote.<x>.push or
+#     remote.<x>.mirror;
 #   * force-pushes (`--force`, `-f`, a `+refspec`); `--force-with-lease` is allowed;
 #   * `git tag` unless every argument is a listing option
 #     (`-l`, `--list`, `--contains`, `--points-at`, `--merged`, `--sort`,
@@ -30,6 +41,12 @@
 #   * an UNKNOWN game runner: shaped like one (`scripts/run_*.py`, a module
 #     named like a self-play/arena/training worker, ...) but not on the list of
 #     runners that price themselves.
+#   * git commit / git push whose repository or branch the guard cannot tell:
+#     a directory or GIT_DIR given by a variable, `~`, `-` or nothing
+#     (`cd "$X"`, `cd -`, a bare `cd`, `pushd`/`popd`, `GIT_DIR=$X`), a `cd`
+#     after `&` or on the right of `||`, a named directory where git cannot
+#     read a repository, or an earlier `git switch -` / `git switch "$B"`. It
+#     neither allows that silently nor denies on a guess;
 #   * a `git push` to origin of a commit that is already on a protected branch,
 #     when the destination has no remote-tracking ref or one that is fully
 #     merged into that same branch: usually the name of a branch whose PR was
@@ -48,8 +65,40 @@
 # `iex`/`Invoke-Expression` and the `&` call operator are stripped before
 # matching, so `pwsh -c "git push origin HEAD:qa"` is judged as the push it is.
 #
+# Target directory (the git rules are in _guard_git.sh, sourced below): the
+# repository a git command acts on is the one git itself would use. A command
+# names another one in these ways, and each is followed:
+#   * a `cd` (also `chdir`, `Set-Location`, `sl`) earlier in the command. `&&`,
+#     `;` and a newline carry it to the segments after it, and so does the LEFT
+#     side of `||`, which runs either way. A `cd` on the RIGHT of `||` (it runs
+#     only if the left failed) or before `&` (a background job in bash, the
+#     next command in sequence in cmd) leaves the directory unknown. A `cd`
+#     before `|` or inside `( ... )` changes only its own pipeline element or
+#     subshell, so it is ignored. A `cd` inside `( ... )` followed by `&&`
+#     still carries past the `)`: that can only add a deny or an ask.
+#     Redirections (`>/dev/null`, `2>&1`, `&>f`) are not arguments of `cd` and
+#     their `&` is not a separator;
+#   * `env -C <dir>` / `env --chdir[=]<dir>`;
+#   * git's own `-C <dir>`, in order (a relative one is relative to the
+#     previous), and `--git-dir`, which a later absolute `-C` does not undo;
+#   * GIT_DIR: as `GIT_DIR=<d> git ...`, through `env`, by `export GIT_DIR=...`
+#     or PowerShell's `$env:GIT_DIR = ...` earlier in the command.
+#     GIT_WORK_TREE and GIT_COMMON_DIR alone do not change which HEAD git reads.
+# The default branch is read in that repository when CIV6AZ_DEFAULT_BRANCH is
+# unset, and the branch is read without --short (with a tag of the same name,
+# `--short` prints `heads/main`).
+#
+# Branch changes: an earlier `git switch <b>` / `git checkout <b>` (also `-B`,
+# `-C`, `-c`, `-b`, `--orphan`) in the same command decides the branch of a
+# later commit or push in that repository. A path checkout (`checkout -- f`,
+# `checkout .`) or a commit is not a branch change.
+#
+# Shell keywords (`then`, `do`, `else`, `elif`, `if`, `while`, `until`, `!`,
+# `time`) are stripped before the command word is read.
+#
 # Protected branches: CIV6AZ_PROTECTED_BRANCHES (space-separated), plus the
-# default branch (CIV6AZ_DEFAULT_BRANCH -> origin/HEAD -> `main`), plus
+# default branch (CIV6AZ_DEFAULT_BRANCH -> origin/HEAD of the TARGET
+# repository -> `main`), plus
 # `dev qa main` always. The LIST drives protection, not the default: setting
 # CIV6AZ_DEFAULT_BRANCH=dev before the rename must not unprotect the old
 # default, which is why the shipped settings list it explicitly.
@@ -74,17 +123,40 @@ shopt -s nocasematch
 
 decided=0
 
-# The reason is untrusted text (it can quote an argument), so every control
-# character is replaced before it reaches the JSON: a raw \x01 made the output
-# invalid JSON, which Claude Code ignores -- a fail-open.
-emit() {
-  local reason="$2"
+# The reason is untrusted text (it can quote a branch name, a runner name or a
+# ref), so the decision JSON is built by an encoder, never by hand-escaping: a
+# raw \x01 or a byte that is not UTF-8 made the old output invalid JSON, which
+# Claude Code ignores -- a fail-open. jq first, then python (the bytes decoded
+# as utf-8 with replacement), then a fixed string that still carries the
+# decision. A COPY of `json_decision` in readonly_shell_guard.sh, kept
+# identical on purpose (each hook stays one self-contained file); change both.
+json_decision() {
+  local dec="$1" reason="$2" out="" py
   reason="${reason//[[:cntrl:]]/ }"
-  reason="${reason//\\/\\\\}"
-  reason="${reason//\"/\\\"}"
-  decided=1
+  if command -v jq >/dev/null 2>&1 \
+     && out="$(jq -n -c --arg d "$dec" --arg r "$reason" \
+        '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:$d,permissionDecisionReason:$r}}' 2>/dev/null)" \
+     && [ -n "$out" ]; then
+    printf '%s' "$out"
+    return 0
+  fi
+  for py in python3 python; do
+    command -v "$py" >/dev/null 2>&1 || continue
+    if out="$(printf '%s' "$reason" | "$py" -c 'import json,sys
+r=sys.stdin.buffer.read().decode("utf-8","replace")
+sys.stdout.write(json.dumps({"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":sys.argv[1],"permissionDecisionReason":r}}))' "$dec" 2>/dev/null)" \
+       && [ -n "$out" ]; then
+      printf '%s' "$out"
+      return 0
+    fi
+  done
   printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":"%s"}}' \
-    "$1" "$reason"
+    "$dec" "guard could not build its message (no jq or python); see the guard script for the rule that fired."
+}
+
+emit() {
+  decided=1
+  json_decision "$1" "$2"
 }
 
 deny() {
@@ -113,6 +185,15 @@ trap on_exit EXIT
 if [ -n "${CIV6AZ_GUARD_SELFTEST_FAIL:-}" ]; then
   false
 fi
+
+# The git rules live beside this file. Sourced after the trap, so a missing or
+# broken file is a crash and therefore a deny.
+case "${BASH_SOURCE[0]}" in
+  */*|*\\*) GUARD_DIR="${BASH_SOURCE[0]%[/\\]*}" ;;
+  *) GUARD_DIR="." ;;
+esac
+# shellcheck source=_guard_git.sh
+. "${GUARD_DIR}/_guard_git.sh"
 
 input="$(cat)"
 
@@ -146,7 +227,11 @@ if [ "$parsed" -eq 0 ]; then
   done
 fi
 if [ "$parsed" -eq 0 ]; then
-  deny "CLAUDE.md S3.2 guard cannot inspect this command: no working jq or python could parse the hook payload, so the prohibited-action checks cannot run. Install jq or python3 rather than proceeding unguarded."
+  # A fixed literal, like the EXIT trap's: with no jq and no python there is no
+  # encoder either, and this text holds nothing untrusted.
+  decided=1
+  printf '%s' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"CLAUDE.md S3.2 guard cannot inspect this command: no working jq or python could parse the hook payload, so the prohibited-action checks cannot run. Install jq or python3 rather than proceeding unguarded."}}'
+  exit 0
 fi
 cmd="${cmd//$'\r'/}"
 [ -z "$cmd" ] && exit 0
@@ -163,61 +248,59 @@ cmd="${cmd//$'\r'/}"
 # HEAD:qa`). Rather than trust tool_name to pick one reading, a command
 # containing a backtick is checked under BOTH: split on it, and with every
 # backtick deleted. A deny under either reading denies.
+#
+# How a separator moves a `cd` (see "Target directory" in the header). Marker
+# bytes, never in a command (they are deleted from it first):
+#   NO_CARRY (end of a segment followed by `|` or `)`): a `cd` there changes
+#     only its own pipeline element or subshell, so it is ignored;
+#   BG (end of a segment followed by `&`): bash runs it in the background, cmd
+#     runs it in sequence, so the directory after it is unknown;
+#   OR_RIGHT (start of a segment after `||`): it runs only when the left side
+#     failed, so a `cd` there leaves the directory unknown. The LEFT side of
+#     `||` runs either way and carries like `&&`;
+#   RESET (a line of its own): the second, backtick-deleted reading starts
+#     from the hook's own directory again;
+#   REDIR: stands in for the `&` of a redirection (`&>`, `>&`, `<&`, `2>&1`)
+#     while splitting, so a redirection is never read as a separator;
+#   LBR / RBR: stand in for the braces of git's revision syntax (`v9^{tag}`,
+#     `HEAD@{1}`, `@{-1}`), which would otherwise split a refspec in two.
+NO_CARRY=$'\x02'
+RESET=$'\x03'
+REDIR=$'\x04'
+BG=$'\x05'
+OR_RIGHT=$'\x06'
+LBR=$'\x07'
+RBR=$'\x08'
+cmd="${cmd//[$NO_CARRY$RESET$REDIR$BG$OR_RIGHT$LBR$RBR]/}"
+re_revbrace='([@^])\{([^{}[:space:]]*)\}'
 split_segments() {
   local s="$1" sep
+  while [[ $s =~ $re_revbrace ]]; do
+    s="${s/"${BASH_REMATCH[0]}"/"${BASH_REMATCH[1]}${LBR}${BASH_REMATCH[2]}${RBR}"}"
+  done
+  s="${s//&>/$REDIR>}"
+  s="${s//>&/>$REDIR}"
+  s="${s//<&/<$REDIR}"
   s="${s//&&/$'\n'}"
-  s="${s//||/$'\n'}"
-  for sep in ';' '|' '&' '(' ')' '{' '}' '`'; do
+  s="${s//||/$'\n'$OR_RIGHT}"
+  for sep in '|' ')'; do
+    s="${s//"$sep"/$NO_CARRY$'\n'}"
+  done
+  s="${s//&/$BG$'\n'}"
+  for sep in ';' '(' '{' '}' '`'; do
     s="${s//"$sep"/$'\n'}"
   done
-  SEGS="$s"
+  s="${s//$REDIR/"&"}"   # quoted: bash 5.2 reads a bare & as the match
+  s="${s//$LBR/\{}"
+  SEGS="${s//$RBR/\}}"
 }
 split_segments "$cmd"
 segs="$SEGS"
 if [[ $cmd == *'`'* ]]; then
   split_segments "${cmd//\`/}"
-  segs="${segs}"$'\n'"${SEGS}"
+  segs="${segs}"$'\n'"${RESET}"$'\n'"${SEGS}"
 fi
 
-# --- protected branches (resolved lazily: git is a process spawn) ------------
-resolved=0
-branch=""
-default_branch=""
-protected=" dev qa main "
-protected_display="dev qa main"
-
-resolve_branches() {
-  [ "$resolved" -eq 1 ] && return 0
-  resolved=1
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  default_branch="${CIV6AZ_DEFAULT_BRANCH:-}"
-  if [ -z "$default_branch" ]; then
-    default_branch="$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)"
-    default_branch="${default_branch#origin/}"
-  fi
-  [ -z "$default_branch" ] && default_branch="main"
-  local b out=" "
-  # Unquoted on purpose: the env var is a space-separated list (noglob is set).
-  for b in dev qa main $default_branch ${CIV6AZ_PROTECTED_BRANCHES:-}; do
-    case "$out" in
-      *" $b "*) ;;
-      *) out="${out}${b} " ;;
-    esac
-  done
-  protected="$out"
-  protected_display="${out# }"
-  protected_display="${protected_display% }"
-}
-
-is_protected() {
-  resolve_branches
-  local name="${1#refs/heads/}"
-  [ -n "$name" ] || return 1
-  case "$protected" in
-    *" $name "*) return 0 ;;
-  esac
-  return 1
-}
 
 # Sets UQ -- a global, not stdout: every `$(...)` is a fork, and forks are slow
 # under MSYS/Cygwin bash on Windows.
@@ -242,6 +325,13 @@ re_pwsh_enc="^${re_path}(pwsh|powershell)(\\.exe)?([[:space:]]+-[A-Za-z]+([[:spa
 re_cmd="^${re_path}cmd(\\.exe)?([[:space:]]+/[A-Za-z])*[[:space:]]+/[ck]([[:space:]]+|$)"
 re_sh="^${re_path}(bash|sh|zsh|dash)(\\.exe)?([[:space:]]+--?[A-Za-z-]+)*[[:space:]]+-[A-Za-z]*c[A-Za-z]*([[:space:]]+|$)"
 re_iex='^(iex|invoke-expression)([[:space:]]+|$)'
+# Shell keywords that may start a segment once the splitter has cut at `;`:
+# `if x; then git push ...` leaves `then git push ...`.
+re_keyword='^(then|do|else|elif|if|while|until|!)([[:space:]]+|$)'
+# `env` is unwrapped by unwrap_env (its -C / --chdir move the directory and its
+# VAR=val operands set GIT_DIR); the generic launcher pattern below would
+# drop `--chdir <dir>` and read the directory as the command.
+re_env="^${re_path}env(\\.exe)?([[:space:]]+|$)"
 # Launchers that run their argument as the command (`env git push ...`,
 # `sudo -u x git push ...`), with their own options and `VAR=val` operands.
 re_launcher="^${re_path}(env|command|builtin|exec|sudo|doas|nohup|nice|time|timeout)(\\.exe)?(([[:space:]]+-[ugnCk][[:space:]]+[^-[:space:]][^[:space:]]*)|([[:space:]]+-[^[:space:]]*)|([[:space:]]+[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*)|([[:space:]]+[0-9]+[smhd]?))*[[:space:]]+"
@@ -252,6 +342,31 @@ add_ask() {
   asks="${asks:+$asks; }$1"
 }
 
+# `env [options] [VAR=val]... command`: sets NS_ENV_DIRS (each -C/--chdir) and
+# adds the assignments to NS_ASSIGN. $1 = the text after `env`; sets ENV_REST.
+unwrap_env() {
+  local s="$1" t want=""
+  while [[ $s =~ ^[[:space:]]*([^[:space:]]+) ]]; do
+    t="${BASH_REMATCH[1]}"
+    if [ -n "$want" ]; then
+      [ "$want" = "dir" ] && { unquote "$t"; NS_ENV_DIRS+=("$UQ"); }
+      want=""
+      s="${s#*"$t"}"
+      continue
+    fi
+    case "$t" in
+      -C|--chdir) want=dir ;;
+      --chdir=*) unquote "${t#*=}"; NS_ENV_DIRS+=("$UQ") ;;
+      -u|--unset|-S|--split-string) want=skip ;;
+      -*) ;;
+      [A-Za-z_]*=*) NS_ASSIGN="${NS_ASSIGN} ${t} " ;;
+      *) break ;;
+    esac
+    s="${s#*"$t"}"
+  done
+  ENV_REST="$s"
+}
+
 # Normalise one segment: drop leading whitespace/quotes, env assignments and
 # any wrapper, repeatedly, until nothing changes (nested wrappers unwrap too).
 # Sets NS; runs in the main shell so add_ask() is not lost in a subshell.
@@ -260,6 +375,7 @@ add_ask() {
 normalise() {
   local s="$1" prev="" n=0
   NS_ASSIGN=""
+  NS_ENV_DIRS=()
   while [ "$s" != "$prev" ] && [ "$n" -lt 8 ]; do
     prev="$s"
     n=$((n + 1))
@@ -277,12 +393,18 @@ normalise() {
       fi
     fi
     if [[ $s =~ $re_lead_junk ]]; then s="${s:${#BASH_REMATCH[0]}}"; fi
+    if [[ $s =~ $re_keyword ]]; then s="${s:${#BASH_REMATCH[0]}}"; fi
     while [[ $s =~ $re_assign ]]; do
       NS_ASSIGN="${NS_ASSIGN} ${BASH_REMATCH[0]}"
       s="${s:${#BASH_REMATCH[0]}}"
     done
     if [[ $s =~ $re_pwsh_enc ]]; then
       add_ask "an encoded PowerShell command cannot be inspected by the guard"
+    fi
+    if [[ $s =~ $re_env ]]; then
+      unwrap_env "${s:${#BASH_REMATCH[0]}}"
+      s="$ENV_REST"
+      continue
     fi
     if [[ $s =~ $re_pwsh ]] || [[ $s =~ $re_cmd ]] || [[ $s =~ $re_sh ]] \
        || [[ $s =~ $re_iex ]] || [[ $s =~ $re_launcher ]]; then
@@ -309,213 +431,6 @@ re_games_env='(^|[[:space:]])(NUM_GAMES|GAMES|GAMES_PER_WORKER)=([0-9]+)'
 re_runnerish='^(python[0-9.]*|py|make|bash|sh)(\.exe)?$|^(\./)?scripts/'
 
 # --- per-tool checks ---------------------------------------------------------
-# `git` in the directory the judged command named with -C (cwd when none).
-GIT_C=()
-gitq() {
-  git ${GIT_C[@]+"${GIT_C[@]}"} "$@" 2>/dev/null
-}
-
-# ASK before a push that would re-create a merged branch. $@ = `git push` args.
-#
-# A CONVENIENCE NET, not a control. Judged from local refs alone (no network),
-# in the directory the push runs in (`-C <dir>` included). It asks when, for
-# ONE protected branch P whose refs/remotes/origin/P exists locally (dev, qa,
-# main, the default branch, CIV6AZ_PROTECTED_BRANCHES; a name with no such ref
-# is skipped):
-#   * the pushed commit (the refspec's source; HEAD when none) is origin/P or
-#     an ancestor of it, so the push carries nothing new; AND
-#   * refs/remotes/origin/<dst> is absent (the push would create <dst>), or is
-#     itself origin/P or an ancestor of it. The second case is the stale ref:
-#     git does not prune by default, so after GitHub deletes a merged branch
-#     its tracking ref is still here and would otherwise hide the slip.
-# Any git query that fails means "no ask". It runs after every deny rule and
-# only ever adds an ask. Not covered, on purpose (both err toward allow): a
-# remote other than origin, and deletions.
-check_recreated_branch() {
-  local -a pos=()
-  local t skip=0
-  for t in "$@"; do
-    if [ "$skip" -eq 1 ]; then skip=0; continue; fi
-    case "$t" in
-      -d|--delete|--prune) return 0 ;;
-      -o|--push-option|--repo|--receive-pack|--exec) skip=1 ;;
-      -*) ;;
-      *) pos+=("$t") ;;
-    esac
-  done
-  if [ "${#pos[@]}" -ge 1 ] && [ "${pos[0]}" != "origin" ]; then
-    return 0
-  fi
-
-  resolve_branches
-  local def="$default_branch" cur
-  if [ "${#GIT_C[@]}" -gt 0 ] && [ -z "${CIV6AZ_DEFAULT_BRANCH:-}" ]; then
-    # `git -C <dir> push`: the default branch is that repository's, not the hook's.
-    def="$(gitq symbolic-ref --short refs/remotes/origin/HEAD)" || def=""
-    def="${def#origin/}"
-    [ -n "$def" ] || def="main"
-  fi
-  cur="$(gitq symbolic-ref --quiet --short HEAD)" || cur=""
-
-  # Protected branches that have a remote-tracking ref here, with their tips.
-  local -a pnames=() ptips=()
-  local b seen=" " tip
-  # Unquoted on purpose: $protected is a space-separated list (noglob is set).
-  for b in $def $protected; do
-    case "$seen" in *" $b "*) continue ;; esac
-    seen="${seen}${b} "
-    tip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${b}^{commit}")" || continue
-    [ -n "$tip" ] || continue
-    pnames+=("$b")
-    ptips+=("$tip")
-  done
-  [ "${#pnames[@]}" -gt 0 ] || return 0
-
-  local -a specs=()
-  if [ "${#pos[@]}" -ge 2 ]; then
-    specs=("${pos[@]:1}")
-  else
-    specs=(HEAD)
-  fi
-  local spec src dst sha dtip k hit what
-  for spec in "${specs[@]}"; do
-    case "$spec" in
-      *:*) src="${spec%%:*}"; dst="${spec##*:}" ;;
-      *) src="$spec"; dst="$spec" ;;
-    esac
-    [ -n "$src" ] || continue                  # `:dst` deletes
-    if [ "$dst" = "HEAD" ] || [ "$dst" = "@" ]; then dst="$cur"; fi
-    dst="${dst//\\/}"
-    dst="${dst#refs/heads/}"
-    case "$dst" in ""|refs/*) continue ;; esac
-    sha="$(gitq rev-parse --verify --quiet "${src}^{commit}")" || continue
-    [ -n "$sha" ] || continue
-    # Empty when origin/<dst> does not exist: the push would create it.
-    dtip="$(gitq rev-parse --verify --quiet "refs/remotes/origin/${dst}^{commit}")" || dtip=""
-    hit=""
-    k=0
-    while [ "$k" -lt "${#pnames[@]}" ]; do
-      if gitq merge-base --is-ancestor "$sha" "${ptips[$k]}" \
-         && { [ -z "$dtip" ] || gitq merge-base --is-ancestor "$dtip" "${ptips[$k]}"; }; then
-        hit="${pnames[$k]}"
-        break
-      fi
-      k=$((k + 1))
-    done
-    [ -n "$hit" ] || continue
-    if [ "$hit" = "$def" ]; then what="the default branch (${hit})"; else what="the protected branch ${hit}"; fi
-    if [ -z "$dtip" ]; then
-      add_ask "git push would create ${dst} on origin from a commit that is already on ${what}, so it carries nothing new; ${dst} may be a branch whose PR was merged and deleted - confirm before re-creating it"
-    else
-      add_ask "git push sends ${dst} a commit that is already on ${what}, and the local origin/${dst} is fully merged into ${hit} too, so it may be a stale ref of a branch whose PR was merged and deleted (git fetch --prune would tell) - confirm before re-creating it"
-    fi
-  done
-  return 0
-}
-
-check_git() {
-  # $@ = tokens after `git`
-  local -a a=("$@")
-  local i=0 n=${#a[@]} sub=""
-  GIT_C=()
-  while [ "$i" -lt "$n" ]; do
-    case "${a[$i]}" in
-      -C)
-        # Kept for check_recreated_branch, whose queries must run where the push does.
-        unquote "${a[$((i + 1))]:-}"
-        GIT_C+=(-C "$UQ")
-        i=$((i + 2)) ;;
-      -c|--git-dir|--work-tree|--namespace|--config-env|--super-prefix) i=$((i + 2)) ;;
-      -*) i=$((i + 1)) ;;
-      *) unquote "${a[$i]}"; sub="$UQ"; i=$((i + 1)); break ;;
-    esac
-  done
-  local -a args=()
-  while [ "$i" -lt "$n" ]; do
-    unquote "${a[$i]}"
-    args+=("$UQ")
-    i=$((i + 1))
-  done
-
-  case "$sub" in
-    commit|push)
-      resolve_branches
-      if [ -n "$branch" ] && is_protected "$branch"; then
-        deny "CLAUDE.md S3.2: direct commits/pushes to ${branch} (a protected branch) are prohibited - use a feature branch and a PR."
-      fi
-      ;;
-  esac
-
-  if [ "$sub" = "push" ]; then
-    local t dst
-    for t in ${args[@]+"${args[@]}"}; do
-      case "$t" in
-        --force-with-lease*|--force-if-includes|--no-force-if-includes) ;;
-        --force|--force=*)
-          deny "CLAUDE.md S3.2: force-pushes are prohibited (use --force-with-lease if truly needed)." ;;
-        --tags|--follow-tags)
-          deny "Branching policy: pushing tags is maintainer-only (${t}); release tags are created by the maintainer's release script." ;;
-        --all|--branches|--mirror)
-          deny "Branching policy: git push ${t} would push protected branches; push one feature branch instead." ;;
-        --*) ;;
-        -*)
-          case "$t" in
-            -*f*) deny "CLAUDE.md S3.2: force-pushes are prohibited (use --force-with-lease if truly needed)." ;;
-          esac
-          ;;
-        +*)
-          deny "CLAUDE.md S3.2: force-pushes are prohibited (a +refspec forces the update)." ;;
-        tag)
-          # `git push origin tag v9` is git's spelling of refs/tags/v9.
-          deny "Branching policy: pushing tags is maintainer-only (git push ... tag <name>)." ;;
-        *)
-          dst="${t##*:}"
-          # bash drops the backslash in `q\a`, and a ref name cannot contain
-          # one, so deleting it loses nothing; `refs//heads/qa` collapses.
-          dst="${dst//\\/}"
-          while [[ $dst == *//* ]]; do dst="${dst//\/\//\/}"; done
-          case "$dst" in
-            refs/tags/*)
-              deny "Branching policy: pushing to refs/tags/* is maintainer-only; release tags are created by the maintainer's release script." ;;
-          esac
-          if is_protected "$dst"; then
-            deny "CLAUDE.md S3.2: pushing to or deleting ${dst#refs/heads/} (protected: ${protected_display}) is prohibited - use a feature branch and a PR."
-          fi
-          ;;
-      esac
-    done
-    # Only reached when no deny rule above fired (deny exits).
-    check_recreated_branch ${args[@]+"${args[@]}"}
-  fi
-
-  if [ "$sub" = "tag" ]; then
-    local list_mode=0 t j m=${#args[@]} expect_value=0 bad=""
-    for t in ${args[@]+"${args[@]}"}; do
-      case "$t" in
-        -l|--list|-n*|--contains*|--no-contains*|--points-at*|--merged*|--no-merged*) list_mode=1 ;;
-      esac
-    done
-    j=0
-    while [ "$j" -lt "$m" ]; do
-      t="${args[$j]}"
-      j=$((j + 1))
-      if [ "$expect_value" -eq 1 ]; then expect_value=0; continue; fi
-      case "$t" in
-        -l|--list|-n*|-i|--ignore-case|--no-column|--omit-empty) ;;
-        --contains=*|--no-contains=*|--points-at=*|--merged=*|--no-merged=*) ;;
-        --sort=*|--format=*|--column=*|--color=*|--column|--color) ;;
-        --contains|--no-contains|--merged|--no-merged) ;;
-        --points-at|--sort|--format) expect_value=1 ;;
-        -*) bad="$t"; break ;;
-        *) [ "$list_mode" -eq 1 ] || { bad="$t"; break; } ;;
-      esac
-    done
-    if [ -n "$bad" ]; then
-      deny "Branching policy: git tag may only list tags here (offending argument: ${bad}); creating, moving or deleting tags is maintainer-only."
-    fi
-  fi
-  return 0
-}
 
 check_gh() {
   # Positional tokens of the gh command line, flag values skipped.
@@ -674,16 +589,65 @@ check_runner() {
 }
 
 # --- main loop ---------------------------------------------------------------
+# A redirection is not an argument: `cd p >/dev/null 2>&1` names one directory.
+# A bare operator (`>`, `2>`, `&>`) takes the next word as its target.
+re_redir='^([0-9]+|&)?(<|>)'
+re_redir_bare='^([0-9]+|&)?(<|<<|>|>>|<>|>\||>&|<&|&>|&>>)$'
+# PowerShell: `$env:GIT_DIR = '...'` sets the variable for the rest of the command.
+re_psenv='^\$env:([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*[^[:space:]])[[:space:]]*$'
 while IFS= read -r raw; do
+  if [ "$raw" = "$RESET" ]; then
+    reset_carried_state
+    continue
+  fi
+  # How this segment's `cd` / `export` reaches the next ones: 1 carries,
+  # 0 does not (a pipeline element or subshell), 2 leaves them unknown.
+  carry=1
+  if [[ $raw == "$OR_RIGHT"* ]]; then carry=2; raw="${raw#"$OR_RIGHT"}"; fi
+  if [[ $raw == *"$NO_CARRY" ]]; then
+    [ "$carry" -eq 2 ] || carry=0
+    raw="${raw%"$NO_CARRY"}"
+  elif [[ $raw == *"$BG" ]]; then
+    carry=2
+    raw="${raw%"$BG"}"
+  fi
   normalise "$raw"
   seg="$NS"
   [ -z "$seg" ] && continue
+  words=()
+  read -ra words <<<"$seg" || true
   toks=()
-  read -ra toks <<<"$seg" || true
+  skip_next=0
+  for w in ${words[@]+"${words[@]}"}; do
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    if [[ $w =~ $re_redir ]]; then
+      [[ $w =~ $re_redir_bare ]] && skip_next=1
+      continue
+    fi
+    toks+=("$w")
+  done
   [ "${#toks[@]}" -eq 0 ] && continue
   unquote "${toks[0]}"
   prog="$UQ"
   base="${prog##*[/\\]}"
+  case "$base" in
+    cd|chdir|set-location|sl)
+      case "$carry" in
+        1) apply_cd 1 "${toks[@]}" ;;
+        2) apply_cd 0 "${toks[@]}" ;;
+      esac ;;
+    pushd|popd|push-location|pop-location)
+      [ "$carry" -eq 0 ] || apply_cd 0 "${toks[@]}" ;;
+    export)
+      for w in ${toks[@]+"${toks[@]:1}"}; do
+        case "$w" in
+          GIT_DIR=*) [ "$carry" -eq 0 ] || apply_shell_git_dir $((carry == 1)) "${w#*=}" ;;
+        esac
+      done ;;
+  esac
+  if [[ $seg =~ $re_psenv ]] && [[ ${BASH_REMATCH[1]} == GIT_DIR ]]; then
+    [ "$carry" -eq 0 ] || apply_shell_git_dir $((carry == 1)) "${BASH_REMATCH[2]}"
+  fi
   case "$base" in
     git|git.exe) check_git ${toks[@]+"${toks[@]:1}"} ;;
     gh|gh.exe) check_gh ${toks[@]+"${toks[@]:1}"} ;;
