@@ -50,6 +50,9 @@ local ERROR_CODES = {
     -- The move or attack would put the player at war. The mod never does that
     -- as a side effect; declaring war is the diplomacy command's business.
     WOULD_START_WAR = "WOULD_START_WAR",
+    -- A diplomacy command whose setting (ALLOW_MAKE_PEACE, ALLOW_DENOUNCE) is
+    -- not turned on. Nothing was sent to the game.
+    DIPLOMACY_TURNED_OFF = "DIPLOMACY_TURNED_OFF",
 }
 
 -- ----------------------------------------------------------------------------
@@ -1125,10 +1128,72 @@ local function _diplomacyRequest(playerId, targetPlayerId, civ6ActionName, subAc
         string.format("No diplomacy API available for %s", subActionName)
 end
 
+-- True only when the setting is the boolean true: a string "true", a 1 or an
+-- unset setting leaves the command turned off.
+local function _diplomacySettingOn(name)
+    return AlphaZeroConfig ~= nil and AlphaZeroConfig.Get(name) == true
+end
+
+-- Ask the acting player's diplomacy object one yes/no question about the
+-- target. Fails closed: where the game cannot be asked (no diplomacy object,
+-- no such method, the call raises, the answer is not a boolean) the answer is
+-- (nil, message) and the caller refuses the command.
+local function _askDiplomacy(playerId, method, targetPlayerId)
+    local function cannot(why)
+        return nil, string.format("Cannot ask the game %s(%s): %s",
+            method, tostring(targetPlayerId), why)
+    end
+    local player = Players and Players[playerId]
+    if not player or type(player.GetDiplomacy) ~= "function" then
+        return cannot("no diplomacy for player " .. tostring(playerId))
+    end
+    local ok, diplomacy = pcall(player.GetDiplomacy, player)
+    if not ok then return cannot("GetDiplomacy raised: " .. tostring(diplomacy)) end
+    if type(diplomacy) ~= "table" and type(diplomacy) ~= "userdata" then
+        return cannot("no diplomacy object")
+    end
+    local okMethod, fn = pcall(function() return diplomacy[method] end)
+    if not okMethod or type(fn) ~= "function" then
+        return cannot("the method is not available")
+    end
+    local okCall, answer = pcall(fn, diplomacy, targetPlayerId)
+    if not okCall then return cannot("the call raised: " .. tostring(answer)) end
+    if type(answer) ~= "boolean" then
+        return cannot("the answer was not a boolean (" .. tostring(answer) .. ")")
+    end
+    return answer, nil
+end
+
+-- Peace and denouncing are for major civilizations only (not barbarians,
+-- city-states or free cities). Asks Players[target]:IsMajor() fail-closed;
+-- returns nil when the target may be acted on, else (code, message).
+local function _refuseUnlessMajor(targetPlayerId)
+    local function cannot(why)
+        return ERROR_CODES.EXECUTION_FAILED, string.format(
+            "Cannot ask the game IsMajor(%s): %s", tostring(targetPlayerId), why)
+    end
+    local target = Players and Players[targetPlayerId]
+    if target == nil then return cannot("no such player") end
+    local okMethod, fn = pcall(function() return target.IsMajor end)
+    if not okMethod or type(fn) ~= "function" then
+        return cannot("the method is not available")
+    end
+    local okCall, answer = pcall(fn, target)
+    if not okCall then return cannot("the call raised: " .. tostring(answer)) end
+    if type(answer) ~= "boolean" then
+        return cannot("the answer was not a boolean (" .. tostring(answer) .. ")")
+    end
+    if not answer then
+        return ERROR_CODES.OPERATION_REFUSED, string.format(
+            "Refused: player %s is not a major civilization", tostring(targetPlayerId))
+    end
+    return nil
+end
+
 local function diplomacyDeclareWar(playerId, targetPlayerId)
     -- Refused unless the setting allows it: nothing in this mod may start a
     -- war by default (the same answer a move or an attack that would gets).
-    if not (AlphaZeroConfig and AlphaZeroConfig.Get("ALLOW_DECLARE_WAR") == true) then
+    if not _diplomacySettingOn("ALLOW_DECLARE_WAR") then
         return false, ERROR_CODES.WOULD_START_WAR,
             string.format("Refused: declaring war on player %s is turned off (ALLOW_DECLARE_WAR)",
                 tostring(targetPlayerId))
@@ -1137,10 +1202,48 @@ local function diplomacyDeclareWar(playerId, targetPlayerId)
 end
 
 local function diplomacyMakePeace(playerId, targetPlayerId)
+    -- Refused unless the setting allows it, and then only with a major
+    -- civilization the game itself reports the pair at war with.
+    if not _diplomacySettingOn("ALLOW_MAKE_PEACE") then
+        return false, ERROR_CODES.DIPLOMACY_TURNED_OFF,
+            string.format("Refused: making peace with player %s is turned off (ALLOW_MAKE_PEACE)",
+                tostring(targetPlayerId))
+    end
+    local majorCode, majorWhy = _refuseUnlessMajor(targetPlayerId)
+    if majorCode then return false, majorCode, majorWhy end
+    local atWar, why = _askDiplomacy(playerId, "IsAtWarWith", targetPlayerId)
+    if atWar == nil then return false, ERROR_CODES.EXECUTION_FAILED, why end
+    if not atWar then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Refused: not at war with player %s, so there is no peace to make",
+                tostring(targetPlayerId))
+    end
     return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_MAKE_PEACE", "MAKE_PEACE")
 end
 
 local function diplomacyDenounce(playerId, targetPlayerId)
+    -- Refused unless the setting allows it, and then only a major civilization
+    -- the game reports as met and not at war.
+    if not _diplomacySettingOn("ALLOW_DENOUNCE") then
+        return false, ERROR_CODES.DIPLOMACY_TURNED_OFF,
+            string.format("Refused: denouncing player %s is turned off (ALLOW_DENOUNCE)",
+                tostring(targetPlayerId))
+    end
+    local majorCode, majorWhy = _refuseUnlessMajor(targetPlayerId)
+    if majorCode then return false, majorCode, majorWhy end
+    local met, whyMet = _askDiplomacy(playerId, "HasMet", targetPlayerId)
+    if met == nil then return false, ERROR_CODES.EXECUTION_FAILED, whyMet end
+    if not met then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Refused: player %s has not been met", tostring(targetPlayerId))
+    end
+    local atWar, whyWar = _askDiplomacy(playerId, "IsAtWarWith", targetPlayerId)
+    if atWar == nil then return false, ERROR_CODES.EXECUTION_FAILED, whyWar end
+    if atWar then
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            string.format("Refused: at war with player %s; denouncing is for a player at peace",
+                tostring(targetPlayerId))
+    end
     return _diplomacyRequest(playerId, targetPlayerId, "DIPLOACTION_DENOUNCE", "DENOUNCE")
 end
 
@@ -1167,6 +1270,13 @@ local function executeDiplomacy(playerId, command)
     end
     if targetPlayerId == nil then
         return false, ERROR_CODES.INVALID_COMMAND, "DIPLOMACY missing metadata.target_player_id"
+    end
+
+    if targetPlayerId == playerId then
+        -- No diplomacy is aimed at oneself, whatever the sub-action (declaring
+        -- war and the deferred ones included); checked first, nothing is sent.
+        return false, ERROR_CODES.INVALID_TARGET,
+            string.format("DIPLOMACY target player %s is the acting player", tostring(targetPlayerId))
     end
 
     local subActionName = DIPLOMACY_SUB_ACTION_NAMES[subActionId] or "UNKNOWN"

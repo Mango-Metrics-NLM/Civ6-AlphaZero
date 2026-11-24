@@ -75,3 +75,36 @@ none is offered while other players are not exported.
 
 - **WHEN** `OBSERVE_ALL_PLAYERS` is off and a unit of a player at war stands next to an own unit
 - **THEN** no attack is offered, and an attack sent by hand is still carried out
+
+## ADDED Requirements
+
+### Requirement: Making peace and denouncing are gated and fail closed
+
+The mod SHALL refuse the diplomacy sub-actions MAKE_PEACE and DENOUNCE, sending nothing to the
+game, unless their settings `ALLOW_MAKE_PEACE` and `ALLOW_DENOUNCE` are the boolean `true`; both
+MUST be off by default. With a setting on, the target MUST be one the game answers is a major
+civilization; MAKE_PEACE MUST then be sent only when the game answers that the pair is at war,
+and DENOUNCE only when the game answers that the target has been met and is not at war. Where
+the game cannot be asked, or its answer is not a boolean, the command MUST be refused. A
+diplomacy command of any sub-action, declaring war included, whose target is the acting player
+MUST be refused before anything else is checked.
+
+#### Scenario: Default settings
+
+- **WHEN** a make-peace or denounce command is sent with its setting unset, false, or a non-boolean value
+- **THEN** the answer is `DIPLOMACY_TURNED_OFF` naming the setting, and nothing is requested
+
+#### Scenario: The game's state does not allow it
+
+- **WHEN** the target is barbarians, a city-state or a free city, or make peace is sent to a player at peace, or a denouncement to a player not met or at war
+- **THEN** the answer is `OPERATION_REFUSED`, and nothing is requested
+
+#### Scenario: The game cannot be asked
+
+- **WHEN** the target player, the diplomacy object or a method (`IsMajor`, `IsAtWarWith`, `HasMet`) is missing, the call raises, or the answer is not a boolean
+- **THEN** the answer is `EXECUTION_FAILED` starting "Cannot ask the game", and nothing is requested
+
+#### Scenario: The acting player as the target
+
+- **WHEN** a diplomacy command of any sub-action names the acting player as its target
+- **THEN** the answer is `INVALID_TARGET`, and nothing is requested

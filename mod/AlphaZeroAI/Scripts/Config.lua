@@ -54,6 +54,12 @@ local DEFAULT_CONFIG = {
     AI_PLAYER_ID = nil,            -- Auto-detect first human player
     OBSERVE_ALL_PLAYERS = false,   -- Only observe AI player's visible tiles
     ALLOW_DECLARE_WAR = false,     -- The declare-war command is refused unless this is true
+    -- Making peace is refused unless this is true; with it on, only while the
+    -- game reports the pair at war.
+    ALLOW_MAKE_PEACE = false,
+    -- Denouncing is refused unless this is true; with it on, only a player the
+    -- game reports as met and not at war.
+    ALLOW_DENOUNCE = false,
 
     -- Map settings
     MAX_TILES_PER_STATE = 10000,   -- Limit tiles in state dump
