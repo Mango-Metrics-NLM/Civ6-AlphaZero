@@ -12,6 +12,7 @@
 - [x] 2.5 No attack offered when other players are not exported
 - [x] 2.6 `findAIPlayer`
 - [x] 2.7 Bundle regenerated; refusal message; docs; gap register
+- [x] 2.8 `ALLOW_MAKE_PEACE` / `ALLOW_DENOUNCE`: off by default; with one on, a major-civilization target and the game's war and met state decide, asked fail-closed; a self-targeted diplomacy command is refused (tests first, planted defects)
 
 ## 3. Verification
 - [x] 3.1 Independent review; planted defects; Lua and bridge suites with `CIV6AZ_REQUIRE_LUA=1`; empty play-path diff

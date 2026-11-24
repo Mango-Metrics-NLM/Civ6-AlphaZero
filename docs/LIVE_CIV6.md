@@ -44,6 +44,7 @@ This table is the one place that says what state each part is in. `README.md`,
 | `city_produce` | yes | yes | answer seen for `UNIT_WARRIOR`, 2026-11-21 |
 | `unit_sleep` | yes | yes | no |
 | `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | no |
+| The make-peace and denounce gates (`ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`) | yes, off by default | yes | no |
 | `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | no | no; expect them not to work |
 | `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run. "Cannot be asked": no |
 | The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | found live; the rebuilt mod has not been run since |
@@ -98,6 +99,7 @@ the record of 2026-11-21 supports; the maintainer ticks an item when its effect 
 | 28 | a state arrives within a second or two of a command | open |
 | 29 | ten turns end by themselves | open |
 | 30 | the bridge plays the right player | open |
+| 31, 32 | making peace and denouncing with their settings on | open |
 
 ## What exists
 
@@ -346,7 +348,15 @@ The eight now go the way the game's own UI sends them:
   The separate declare-war command is refused the same way unless `ALLOW_DECLARE_WAR = true`
   (off by default). Without file access, the usual case, that means changing the default in
   `Config.lua`, rebuilding the bundle and reinstalling the mod; with file access the override
-  file can set it too. Making peace and denouncing are not gated and have never run in a game.
+  file can set it too. Making peace and denouncing have their own settings, `ALLOW_MAKE_PEACE`
+  and `ALLOW_DENOUNCE`, off by default and changed the same way; off, the command answers
+  `DIPLOMACY_TURNED_OFF` and sends nothing. On, the target must be a major civilization
+  (`IsMajor`; not barbarians, city-states or free cities), peace is sent only while the game
+  reports the pair at war, a denouncement only to a player the game reports as met and not at
+  war (`OPERATION_REFUSED` otherwise), and where the game cannot be asked the answer is
+  `EXECUTION_FAILED` ("Cannot ask the game ..."). Any diplomacy command aimed at the acting
+  player, declaring war and the deferred sub-actions included, is `INVALID_TARGET`, checked
+  before anything else. Neither is offered to the agent, and neither has run in a game.
   `end_turn` is also refused when the bridge's player is not the game's local player, because
   the game's end-of-turn request always ends the local player's turn. A move into a tile the player cannot see is not asked about, as in
   the game's own move routine.
@@ -444,6 +454,25 @@ Live checklist, continuing the one above:
     game once per unit, neighbour and action and once per unit and building row per city.
 20. Note whether a refused check writes anything to `Lua.log`, whether a `MustPurchase` item
     is ever offered, and what a unit at the map's wrap seam is offered.
+
+Two more for making peace and denouncing (2026-11-24), each with its setting turned on in
+`Config.lua` and the mod rebuilt and reinstalled; turn it off again afterwards:
+
+31. At war with a major civilization, send `diplomacy` with `sub_action` 1 and that player as
+    `target_player_id`. A success answer means the peace was *requested*, not that it was
+    made: confirm it in the game's own diplomacy screen, or with `OBSERVE_ALL_PLAYERS = true`
+    and a visible unit of the target (no longer offered as an attack). The game may refuse
+    peace on its own terms, for example the AI declines, or the minimum number of turns after
+    a declaration of war has not passed. Sent to a player you are at peace with, or to
+    barbarians, a city-state or a free city: `OPERATION_REFUSED`.
+32. Send `diplomacy` with `sub_action` 5 to a major civilization you have met and are at peace
+    with. Success again means *requested*: confirm the denouncement in the game's diplomacy
+    screen. To a player you have not met, or to a city-state: `OPERATION_REFUSED`.
+
+For both: the request call itself (`GetDiplomacy():DoAction` with a `DIPLOACTION_*` name, then
+`UI.RequestDiplomacyMove`) is unverified, written from memory and not from the game's UI code.
+An answer `Diplomacy action ... failed` or `No diplomacy API available` points there, not at the
+gate; an answer `Cannot ask the game ...` points at the gate's questions. Send us the message.
 
 What the stand-in cannot tell us, because it was written from the same reading as the mod:
 whether skip, sleep and fortify are operations under those names; whether the strict check

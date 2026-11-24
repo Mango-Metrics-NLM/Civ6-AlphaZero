@@ -3,7 +3,9 @@
 New configuration ``ALLOW_DECLARE_WAR`` (default false). With it false the diplomacy command whose
 sub-action is DECLARE_WAR answers ``WOULD_START_WAR`` and nothing reaches the game: no ``DoAction``,
 no ``UI.RequestDiplomacyMove``, no change to the stand-in's war record. With it true behaviour is as
-before. Make peace and denounce are unchanged either way. A declare-war action is never offered.
+before. Make peace and denounce have their own settings (``ALLOW_MAKE_PEACE`` / ``ALLOW_DENOUNCE``,
+default false, see ``test_lua_fail_closed_diplomacy.py``): whatever ``ALLOW_DECLARE_WAR`` says they
+answer ``DIPLOMACY_TURNED_OFF`` here. A declare-war action is never offered.
 """
 
 from __future__ import annotations
@@ -64,12 +66,14 @@ class TestNotAllowed:
         assert h.execute(runtime, DECLARE_WAR)[:2] == (False, "WOULD_START_WAR")
         assert _calls(runtime) == []
 
-    def test_the_other_sub_actions_are_unchanged(self, allow: bool | None) -> None:
+    def test_the_other_sub_actions_are_refused_by_their_own_settings(
+        self, allow: bool | None
+    ) -> None:
         runtime = _load(allow=allow, setup=MODEL)  # at war
-        assert h.execute(runtime, MAKE_PEACE) == (True, None, "MAKE_PEACE against player 1")
-        assert _at_war(runtime) is False
-        assert h.execute(runtime, DENOUNCE) == (True, None, "DENOUNCE against player 1")
-        assert _calls(runtime) == ["DoAction", "DoAction"]
+        assert h.execute(runtime, MAKE_PEACE)[:2] == (False, "DIPLOMACY_TURNED_OFF")
+        assert h.execute(runtime, DENOUNCE)[:2] == (False, "DIPLOMACY_TURNED_OFF")
+        assert _at_war(runtime) is True
+        assert _calls(runtime) == []
 
 
 class TestAllowed:
@@ -80,11 +84,11 @@ class TestAllowed:
         assert _calls(runtime) == ["DoAction"]
         assert _at_war(runtime) is True
 
-    def test_the_other_sub_actions_are_unchanged(self) -> None:
+    def test_allowing_war_does_not_allow_peace_or_denouncing(self) -> None:
         runtime = _load(allow=True, setup=MODEL)
-        assert h.execute(runtime, MAKE_PEACE)[:2] == (True, None)
-        assert h.execute(runtime, DENOUNCE)[:2] == (True, None)
-        assert _at_war(runtime) is False
+        assert h.execute(runtime, MAKE_PEACE)[:2] == (False, "DIPLOMACY_TURNED_OFF")
+        assert h.execute(runtime, DENOUNCE)[:2] == (False, "DIPLOMACY_TURNED_OFF")
+        assert _at_war(runtime) is True
 
 
 def test_the_setting_exists_and_defaults_to_false() -> None:
