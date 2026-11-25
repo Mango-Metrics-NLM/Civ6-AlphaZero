@@ -96,6 +96,54 @@ repos:
         language: system
         files: ^(README\.md|CLAUDE\.md|ROADMAP\.md|PROJECT_CHARTER\.md|CONTRIBUTING\.md|CHANGELOG\.md|SUPPORT\.md|SECURITY\.md|GOVERNANCE\.md|CITATION\.cff|docs/|\.github/workflows/ci\.yml|\.claude/skills/|pyproject\.toml|alpha_zero/(__init__|[^/]+/__init__)\.py)
         pass_filenames: false
+      # A hook edit runs the hook-syntax gate (bash -n on every hook, each
+      # settings.json command names a real file, no orphan hook) and the hook and
+      # guard tests: every file named test_hook_*, test_*guard*, test_qa_shell_*,
+      # plus any governance test that names a .claude/hooks/*.sh script. The files
+      # are listed by name because pre-commit runs `entry` without a shell, so a
+      # glob is never expanded, and `-k` selects by test name and missed
+      # test_qa_shell_require_lua.py. test_hook_syntax.py fails when a file that
+      # should be here is not, so the list cannot go stale silently. About 60 s;
+      # it fires only when a hook or the settings change.
+      - id: hook-syntax-and-guards
+        name: hook syntax and guard tests
+        entry: >-
+          python -m pytest -c tests/governance/pytest.ini --confcutdir=tests/governance
+          -q -p no:cacheprovider
+          tests/governance/test_guard_branch_change.py
+          tests/governance/test_guard_cd_certainty.py
+          tests/governance/test_guard_cd_splitter.py
+          tests/governance/test_guard_copilot_threads.py
+          tests/governance/test_guard_decision_json.py
+          tests/governance/test_guard_decision_json_portability.py
+          tests/governance/test_guard_git_environment.py
+          tests/governance/test_guard_json_decision_copy.py
+          tests/governance/test_guard_option_table_drift.py
+          tests/governance/test_guard_powershell_cd.py
+          tests/governance/test_guard_push_bare_tags.py
+          tests/governance/test_guard_push_globs.py
+          tests/governance/test_guard_push_merged_branch.py
+          tests/governance/test_guard_push_syntax.py
+          tests/governance/test_guard_push_tag_names.py
+          tests/governance/test_guard_review2_git.py
+          tests/governance/test_guard_review2_parsing.py
+          tests/governance/test_guard_review3.py
+          tests/governance/test_guard_review_round1.py
+          tests/governance/test_guard_round1_controls.py
+          tests/governance/test_guard_sourced_file.py
+          tests/governance/test_guard_subshell_cd.py
+          tests/governance/test_guard_switch_certainty.py
+          tests/governance/test_guard_switch_per_repo.py
+          tests/governance/test_guard_target_directory.py
+          tests/governance/test_hook_guard_json.py
+          tests/governance/test_hook_syntax.py
+          tests/governance/test_pretooluse_guard.py
+          tests/governance/test_qa_shell_require_lua.py
+          tests/governance/test_readonly_shell_guard.py
+          tests/governance/test_validate_claude_agents.py
+        language: system
+        files: ^\.claude/(hooks/|settings\.json$)
+        pass_filenames: false
       - id: check-lua-bundle
         name: check Civ6 Lua bundle sync
         entry: python scripts/build_lua_bundle.py --check

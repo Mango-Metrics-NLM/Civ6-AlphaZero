@@ -13,7 +13,8 @@ target is defined in the Makefile, the script/hook file is on disk, the pytest
 path resolves. It does not run anything, so it cannot tell you a command still
 does what the skill claims.
 
-Extraction is restricted to fenced code blocks and inline ``code`` spans. A
+Extraction (``scripts/validate_skills.py``, rule S6, imported here) is
+restricted to fenced code blocks and inline ``code`` spans. A
 naive scan over prose reported two false positives on this very tree --
 "raising a baseline to make a red build green" and "make the coverage-gate
 number match" -- which is how a checker of this shape becomes noise and gets
@@ -30,48 +31,29 @@ planted skill, 0 on the prose, 0 on the real trees.
 
 from __future__ import annotations
 
-import re
+import importlib.util
+import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MAKEFILE = REPO_ROOT / "Makefile"
 
-_FENCE_RE = re.compile(r"```[a-z]*\n(.*?)```", re.S)
-_INLINE_RE = re.compile(r"`([^`\n]+)`")
-_MAKE_TARGET_RE = re.compile(r"(?:^|\|\s*|&&\s*)make\s+([a-z0-9_.-]+)")
-_SCRIPT_RE = re.compile(r"(?<![\w/.-])(scripts/[\w./-]+\.(?:py|sh))")
-_HARNESS_RE = re.compile(r"(?<![\w/.-])(\.claude/(?:hooks|skills)/[\w./-]+)")
-_TESTS_RE = re.compile(r"(?<![\w/.-])(tests/[\w./-]+)")
+# The extraction lives in the validator (rule S6) and is imported here, so the
+# gate and this test cannot drift apart.
+_SCRIPT = REPO_ROOT / "scripts" / "validate_skills.py"
+_spec = importlib.util.spec_from_file_location("validate_skills_resolve", _SCRIPT)
+assert _spec is not None and _spec.loader is not None
+_vs = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = _vs
+_spec.loader.exec_module(_vs)
+
+dangling_references = _vs.dangling_references
 
 
 def _make_targets(makefile: Path) -> set[str]:
-    return set(re.findall(r"^([A-Za-z0-9_.-]+):", makefile.read_text(encoding="utf-8"), re.M))
-
-
-def _code_spans(text: str) -> list[str]:
-    """Command-bearing spans only: fenced-block lines and inline code spans."""
-    spans: list[str] = []
-    for block in _FENCE_RE.findall(text):
-        spans += block.splitlines()
-    spans += _INLINE_RE.findall(text)
-    return spans
-
-
-def dangling_references(skill_md: Path, root: Path, targets: set[str]) -> list[str]:
-    """Referents named in ``skill_md``'s code spans that do not exist under ``root``."""
-    findings: list[str] = []
-    for span in _code_spans(skill_md.read_text(encoding="utf-8")):
-        for target in _MAKE_TARGET_RE.findall(span.strip()):
-            if target not in targets:
-                findings.append(f"make target '{target}'")
-        for path in _SCRIPT_RE.findall(span) + _HARNESS_RE.findall(span):
-            if not (root / path).exists():
-                findings.append(f"path '{path}'")
-        if "pytest" in span:
-            for path in _TESTS_RE.findall(span):
-                if not (root / path.split("::")[0]).exists():
-                    findings.append(f"pytest path '{path}'")
-    return findings
+    targets = _vs.make_targets(makefile)
+    assert targets is not None, f"no Makefile at {makefile}"
+    return targets
 
 
 def _all_skills() -> list[Path]:
@@ -144,6 +126,27 @@ def test_real_commands_are_recognised(tmp_path: Path) -> None:
         "---\nname: probe\ndescription: probe\n---\n\n"
         "## Steps\n\n```bash\nmake verify\npython scripts/validate_skills.py\n"
         "pytest tests/governance -q\n```\n",
+        encoding="utf-8",
+    )
+    assert dangling_references(skill, REPO_ROOT, _make_targets(MAKEFILE)) == []
+
+
+def test_negative_control_prose_is_never_read(tmp_path: Path) -> None:
+    """Prose that would be a finding if it were read as code is not reported.
+
+    The control above passes even when prose is scanned, because neither of its
+    sentences starts with ``make`` or names a path. These lines do: under a scan
+    that reads prose, each one is a finding (a dangling script, hook and pytest
+    path, a make target and a skill), so only the code-span restriction keeps
+    this list empty.
+    """
+    skill = tmp_path / "SKILL.md"
+    skill.write_text(
+        "---\nname: probe\ndescription: probe\n---\n\n"
+        "## Notes\n\n"
+        "make the coverage-gate number match before you push.\n"
+        "The old scripts/ghost_prose.py and .claude/hooks/ghost_prose.sh are gone;\n"
+        "pytest tests/ghost_prose/ no longer exists, and neither does the ghost-prose skill.\n",
         encoding="utf-8",
     )
     assert dangling_references(skill, REPO_ROOT, _make_targets(MAKEFILE)) == []

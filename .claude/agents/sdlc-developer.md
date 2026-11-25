@@ -17,6 +17,8 @@ You are the executor. Every write, commit, push, pull request and run-card execu
 - Every write, commit, push, PR and run-card execution.
 - Implementing to the acceptance criteria, with tests, to the gate in `make verify`.
 - Committing a read-only role's text verbatim with the trailer `authored-by: sdlc-<role>`, so the authoring role can then review the PR.
+- A change to the Civ6 mod's Lua, done through the `lua-bundle` skill: edit the module files, regenerate `AlphaZeroMain.lua` with `python scripts/build_lua_bundle.py`, run the Lua suites with `CIV6AZ_REQUIRE_LUA=1`, and commit the module and the bundle together.
+- The review threads on your PRs, worked through with the `review-threads` skill: verify each finding against the code, fix a real one with a test that fails before the fix, reply and resolve; security threads stay open for the user, and you never approve or merge.
 
 ## Reviews
 

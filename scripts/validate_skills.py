@@ -18,6 +18,31 @@ Checks (error codes are stable and referenced by ``tests/governance/``):
       ``pyproject.toml`` (``fail_under``)
   S5  every skill directory actually contains a ``SKILL.md`` (a directory
       without one used to be skipped in silence)
+  S6  every script, hook, make target, pytest path and skill that the
+      instructions name exists: a ``scripts/*.py|sh`` or
+      ``.claude/hooks|skills/...`` path is on disk, a ``make`` target is
+      defined in ``REPO_ROOT / "Makefile"`` (read at call time), a path after
+      ``pytest`` resolves, and a skill named as one is a skill directory or one
+      of Claude Code's built-in skills. What counts as a skill reference (a code
+      span followed by "skill" or "skills", line breaks allowed) and the
+      built-in allowlist (``BUILTIN_SKILLS``) live in ``scripts/skill_refs.py``,
+      which ``validate_claude_agents.py`` (C6) uses too
+
+S6 reads only fenced code blocks (three or more backticks or tildes; a fence
+closes on a line of its own character at least as long) and inline code spans,
+never prose: a scan over prose reported "make a red build green" and "make the
+coverage-gate number match" as make targets. In a ``make`` command the option
+words (``-C DIR``, ``-f FILE``, ``-j4``, ``-n``) and ``VAR=value`` assignments
+are skipped before the targets. A path must not continue another path (no word
+character, ``/``, ``.`` or ``-`` before it), so ``tests/scripts/x.py`` is not
+read as ``scripts/x.py``. ``tests/governance/test_skill_commands_resolve.py``
+imports the same extraction (``dangling_references``) rather than keeping a
+copy.
+
+Known limits of S6, not checked: paths under ``.agents/skills/``; the module form
+of a command (``python -m scripts.x``, which names no ``scripts/`` path);
+a glob in a pytest path, which reads as its prefix and is reported, so a skill
+names a make target or a file instead.
 
 A "concrete" kb path is lowercase with a file extension and no placeholder
 characters, so example templates like ``kb/handoffs/YYYYMMDD-<slug>.md`` are
@@ -36,6 +61,15 @@ import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+
+# The skill-reference rule is shared with validate_claude_agents.py (C6). The checkout
+# heads sys.path whether this runs as a script, as a module or is loaded by a test.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.skill_refs import (
+    BUILTIN_SKILLS,  # noqa: F401 -- re-exported: the allowlist the rule uses
+    known_skills,
+    unknown_skill_references,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SKILLS_DIR = REPO_ROOT / ".claude" / "skills"
@@ -56,6 +90,22 @@ _COVERAGE_LINE_RE = re.compile(r"coverage|cov-fail-under", re.IGNORECASE)
 _PERCENT_RE = re.compile(r"(?<![\d.])(\d{2,3})\s*%")
 _COV_FLAG_RE = re.compile(r"cov-fail-under[=\s]+(\d{2,3})")
 _FAIL_UNDER_RE = re.compile(r"fail_under\s*=\s*(\d+)")
+
+# S6. A fence opens with three or more backticks or tildes and closes with a line of
+# the same character, at least as long.
+_FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})")
+_INLINE_RE = re.compile(r"`([^`\n]+)`")
+# A ``make`` command: at the start of the span or after a shell operator.
+_MAKE_RE = re.compile(r"(?:^|[|&;]\s*)make((?:\s+[^\s|&;#<>]+)*)")
+_TARGET_RE = re.compile(r"[a-z0-9_.-]+")
+_ASSIGNMENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*=")
+# Options of GNU make that take the next word as their argument.
+_MAKE_ARG_OPTIONS = frozenset({"-C", "-f", "-I", "-o", "-W", "--directory", "--file"})
+# ``-j`` and ``-l`` take a number only when one follows (``make -j verify`` is legal).
+_MAKE_NUMBER_OPTIONS = frozenset({"-j", "-l"})
+_SCRIPT_RE = re.compile(r"(?<![\w/.-])(scripts/[\w./-]+\.(?:py|sh))")
+_HARNESS_RE = re.compile(r"(?<![\w/.-])(\.claude/(?:hooks|skills)/[\w./-]+)")
+_TESTS_RE = re.compile(r"(?<![\w/.-])(tests/[\w./-]+)")
 
 
 @dataclass
@@ -152,6 +202,109 @@ def _is_concrete_kb_path(candidate: str) -> bool:
     return candidate == candidate.lower()  # placeholders like YYYYMMDD are uppercase
 
 
+def make_targets(makefile: Path) -> set[str] | None:
+    """Targets defined in ``makefile``, or ``None`` when there is no Makefile."""
+    if not makefile.is_file():
+        return None
+    return set(re.findall(r"^([A-Za-z0-9_.-]+):", makefile.read_text(encoding="utf-8"), re.M))
+
+
+def code_spans(text: str) -> list[tuple[int, str]]:
+    """``(line, span)`` for every fenced-block line and every inline code span."""
+    spans: list[tuple[int, str]] = []
+    fence: str | None = None
+    for idx, line in enumerate(text.splitlines(), start=1):
+        opener = _FENCE_RE.match(line)
+        if fence is None and opener:
+            fence = opener.group(1)
+            continue
+        if fence is not None:
+            if opener and opener.group(1)[0] == fence[0] and len(opener.group(1)) >= len(fence):
+                if not line.strip().lstrip(fence[0]):
+                    fence = None
+                    continue
+            spans.append((idx, line))
+            continue
+        spans += [(idx, m.group(1)) for m in _INLINE_RE.finditer(line)]
+    return spans
+
+
+def make_invocation_targets(span: str) -> list[str]:
+    """The targets of every ``make`` command in ``span``, option words skipped.
+
+    ``-C DIR``, ``-f FILE``, ``-j N`` and the other options that take an argument skip
+    it; any other ``-x`` word and a ``VAR=value`` assignment are skipped alone.
+    """
+    targets: list[str] = []
+    for match in _MAKE_RE.finditer(span.strip()):
+        words = match.group(1).split()
+        i = 0
+        while i < len(words):
+            word = words[i]
+            if word in _MAKE_ARG_OPTIONS:
+                i += 2
+                continue
+            if word in _MAKE_NUMBER_OPTIONS and i + 1 < len(words) and words[i + 1].isdigit():
+                i += 2
+                continue
+            if word.startswith("-") or _ASSIGNMENT_RE.match(word):
+                i += 1
+                continue
+            if not _TARGET_RE.fullmatch(word):
+                break
+            targets.append(word)
+            i += 1
+    return targets
+
+
+def _known_skills() -> set[str]:
+    """The one skill set S6 checks against: both skill trees plus the built-ins."""
+    return known_skills(_skill_trees())
+
+
+def unknown_skill_names(text: str) -> list[str]:
+    """Names ``text`` refers to as skills that do not exist (the rule C6 shares)."""
+    return [name for _, name in unknown_skill_references(text, _known_skills())]
+
+
+def dangling_line_references(
+    text: str, root: Path, targets: set[str] | None, skills: set[str]
+) -> list[tuple[int, str]]:
+    """``(line, finding)`` for each referent in ``text`` that does not exist."""
+    findings: list[tuple[int, str]] = []
+    for idx, span in code_spans(text):
+        if targets is not None:
+            for target in make_invocation_targets(span):
+                if target not in targets:
+                    findings.append((idx, f"make target '{target}'"))
+        for path in _SCRIPT_RE.findall(span) + _HARNESS_RE.findall(span):
+            if not (root / path).exists():
+                findings.append((idx, f"path '{path}'"))
+        if "pytest" in span:
+            for path in _TESTS_RE.findall(span):
+                if not (root / path.split("::")[0]).exists():
+                    findings.append((idx, f"pytest path '{path}'"))
+    findings += [(idx, f"skill '{name}'") for idx, name in unknown_skill_references(text, skills)]
+    return sorted(findings)
+
+
+def dangling_references(
+    skill_md: Path, root: Path, targets: set[str] | None, skills: set[str] | None = None
+) -> list[str]:
+    """Referents named in ``skill_md``'s code spans that do not exist under ``root``."""
+    known = _known_skills() if skills is None else skills
+    text = skill_md.read_text(encoding="utf-8")
+    return [finding for _, finding in dangling_line_references(text, root, targets, known)]
+
+
+def _check_references(skill_md: Path, lines: list[str], issues: list[Issue]) -> None:
+    """S6, against ``REPO_ROOT``, its Makefile and the skill trees at call time."""
+    targets = make_targets(REPO_ROOT / "Makefile")
+    known = _known_skills()
+    for idx, finding in dangling_line_references("\n".join(lines), REPO_ROOT, targets, known):
+        issues.append(Issue("S6", f"{finding} does not exist", skill_md, idx))
+
+
 def _validate_skill(skill_md: Path, issues: list[Issue], gate: int | None) -> None:
     dir_name = skill_md.parent.name
     lines = skill_md.read_text(encoding="utf-8").splitlines()
@@ -196,6 +349,8 @@ def _validate_skill(skill_md: Path, issues: list[Issue], gate: int | None) -> No
                     issues.append(
                         Issue("S4", f"coverage literal {found}% != gate {gate}%", skill_md, idx)
                     )
+
+    _check_references(skill_md, lines, issues)
 
 
 def _skill_trees() -> list[Path]:

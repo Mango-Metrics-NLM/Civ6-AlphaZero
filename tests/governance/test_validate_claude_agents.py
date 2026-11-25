@@ -36,7 +36,8 @@ vca = importlib.util.module_from_spec(_spec)
 sys.modules[_spec.name] = vca
 _spec.loader.exec_module(vca)
 
-SKILLS = ("planning-handoff", "dev-sqe-handoff", "pre-pr-handoff", "negative-control", "verify")
+# The real skill names, so every skill a copied role file names exists in the tmp tree.
+SKILLS = tuple(sorted(p.parent.name for p in (REPO_ROOT / ".claude" / "skills").glob("*/SKILL.md")))
 
 
 @pytest.fixture

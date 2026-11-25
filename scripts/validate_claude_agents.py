@@ -26,7 +26,9 @@ Checks (codes are stable and referenced by ``tests/governance/``):
       table, the hard constraints (no commit to dev/qa/main or tags; the 1,000-game
       cap; maintainer-only actions; no GitHub side effects for non-developer
       roles) and the owner-vs-executor rule (``authored-by: <name>``)
-  C6  every skill the file names (frontmatter ``skills`` or "`x` skill") exists
+  C6  every skill the file names (frontmatter ``skills`` or "`x` skill") exists;
+      the body rule and the built-in allowlist are ``scripts/skill_refs.py``,
+      shared with validate_skills.py S6
   C7  all eight roles exist, and no other ``sdlc-*`` role does
   C8  each role is dispatched by the skill(s) the role table names
   C9  coverage-percentage literals equal the canonical gate in ``pyproject.toml``,
@@ -46,6 +48,16 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+# What counts as a skill reference, and the built-in allowlist, are shared with
+# validate_skills.py (S6). The checkout heads sys.path so the import works whether this
+# runs as a script, as a module or is loaded by a test.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from scripts.skill_refs import (
+    BUILTIN_SKILLS,  # noqa: F401 -- re-exported: the allowlist the rule uses
+    known_skills,
+    unknown_skill_references,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 AGENTS_DIR = REPO_ROOT / ".claude" / "agents"
@@ -195,7 +207,6 @@ REQUIRED_SECTIONS = (
 )
 
 _PLACEHOLDER_RE = re.compile(r"\b(todo|tbd|fixme|lorem|placeholder|xxx|description here)\b", re.I)
-_SKILL_REF_RE = re.compile(r"`([a-z0-9][a-z0-9-]*)` skill\b")
 _KB_ROLE_RE = re.compile(r"^\*\*KB role:\*\*\s*(?P<role>.+?)\s*$", re.M)
 _COVERAGE_LINE_RE = re.compile(r"coverage|cov-fail-under", re.I)
 _PERCENT_RE = re.compile(r"(?<![\d.])(\d{2,3})\s*%")
@@ -643,10 +654,15 @@ def _check_skills(c: _Ctx) -> None:
         named += [s.strip() for s in fm_skills.split(",") if s.strip()]
     elif isinstance(fm_skills, list):
         named += [str(s) for s in fm_skills]
-    named += _SKILL_REF_RE.findall(body)
-    for skill in sorted(set(named)):
-        if not _skill_exists(skill):
-            add("C6", f"skill {skill!r} does not exist under .claude/skills/")
+    missing = {skill for skill in named if not _skill_exists(skill)}
+    missing |= set(unknown_skill_names(body))
+    for skill in sorted(missing):
+        add("C6", f"skill {skill!r} does not exist under .claude/skills/")
+
+
+def unknown_skill_names(body: str) -> list[str]:
+    """Skills ``body`` names ("`x` skill") that are neither in SKILLS_DIR nor built in."""
+    return [name for _, name in unknown_skill_references(body, known_skills([SKILLS_DIR]))]
 
 
 def _check_literals(c: _Ctx) -> None:

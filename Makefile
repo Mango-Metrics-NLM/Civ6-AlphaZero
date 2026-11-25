@@ -97,7 +97,8 @@ help:
 	@echo "  make verify-registration  A1 registration gate: digest, log row, constants, run cards"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
-	@echo "  make validate          Run governance validators (6 validators + Lua bundle sync)"
+	@echo "  make validate          Run governance validators (6 validators + Lua bundle sync + lint-hooks)"
+	@echo "  make lint-hooks        bash -n (and shellcheck, if installed) on every .claude/hooks/*.sh"
 	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
 	@echo "  make check-mod-install Verify installed Steam Civ6 mod matches repo SHA-256"
 	@echo "  make test-lua          Run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1"
@@ -376,8 +377,22 @@ check-mod-install:
 test-lua:
 	CIV6AZ_REQUIRE_LUA=1 $(PYTHON) -m pytest tests/unit/test_lua_*.py -v --tb=short
 
+# Every hook script must parse: a hook with a syntax error exits non-zero when
+# Claude Code runs it, and a guard that cannot start fails its tool call (or, for
+# a non-blocking hook, nothing at all). `bash -n` always; shellcheck at error
+# severity when it is installed (it is not a declared dependency).
+.PHONY: lint-hooks
+lint-hooks:
+	@for f in .claude/hooks/*.sh; do bash -n "$$f" || exit 1; done
+	@if command -v shellcheck >/dev/null 2>&1; then \
+		shellcheck --severity=error .claude/hooks/*.sh; \
+	else \
+		echo "lint-hooks: shellcheck not on PATH; ran bash -n only"; \
+	fi
+	@echo "lint-hooks: OK"
+
 .PHONY: validate
-validate:
+validate: lint-hooks
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
