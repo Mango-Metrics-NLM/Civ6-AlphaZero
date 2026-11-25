@@ -4,7 +4,7 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v2.0.0, 2026-11-25 (`monitoring/wandb_compat.py` extracted from `mlflow_logger.py`, `run_enhanced_training.py` helpers decomposed, `local_muzero_launcher.py` `shell=False` hardening, and `check_release_readiness.py` gate)
+- **As of:** v2.0.1, 2026-11-25 (`monitoring/wandb_compat.py` extracted from `mlflow_logger.py`, `run_enhanced_training.py` helpers decomposed, `local_muzero_launcher.py` `shell=False` hardening, and `check_release_readiness.py` gate)
 - **Submodule count:** 31
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
