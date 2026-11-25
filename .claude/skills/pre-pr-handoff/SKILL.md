@@ -36,6 +36,10 @@ coverage scope). Passing that sequence proved nothing about CI — and this is
 the *last* role before a PR, so it is the worst place to run a weaker gate
 than the one downstream.
 
+When the change touches `mod/AlphaZeroAI/`, confirm it followed the `lua-bundle`
+skill: `python scripts/build_lua_bundle.py --check` exits 0, the Lua suites ran with
+`CIV6AZ_REQUIRE_LUA=1` (a skip is not a pass), and module and bundle are in one commit.
+
 Add the smoke test when the change touches training:
 
 ```bash
@@ -66,6 +70,11 @@ inline. Instead, dispatch the review to a fresh agent so judgement is decoupled:
 Treat the subagent's findings as the review of record; fold fixes back through
 DEV-SQE (QA-GAP) if they are non-trivial. Note in the summary that review ran in
 an isolated subagent.
+
+Once the PR is open, its review threads (Copilot, the role reviews) are worked through
+with the `review-threads` skill, by `sdlc-developer`: each finding verified against
+the code, a real one fixed with a test that fails before the fix, at most two review
+rounds, security threads left open for the user, and no approval or merge.
 
 ### 3. Determine Handoff Type
 
