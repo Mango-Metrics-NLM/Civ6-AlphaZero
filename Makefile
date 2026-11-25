@@ -101,6 +101,7 @@ help:
 	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
 	@echo "  make check-mod-install Verify installed Steam Civ6 mod matches repo SHA-256"
 	@echo "  make test-lua          Run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1"
+	@echo "  make test-gpu          Run the 21 GPU-gated suites under CIV6AZ_REQUIRE_GPU (default 2; skips fail)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -375,6 +376,33 @@ check-mod-install:
 .PHONY: test-lua
 test-lua:
 	CIV6AZ_REQUIRE_LUA=1 $(PYTHON) -m pytest tests/unit/test_lua_*.py -v --tb=short
+
+GPU_TEST_FILES := \
+	tests/cloud/unit/test_training_worker.py \
+	tests/integration/test_ddp_initialization.py \
+	tests/integration/test_ddp_multinode.py \
+	tests/regression/test_cuda_determinism_regression.py \
+	tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py \
+	tests/regression/test_gpu_e2e_and_worktree_aqa.py \
+	tests/scripts/test_run_card.py \
+	tests/unit/test_checkpoint_contract.py \
+	tests/unit/test_civ6_local.py \
+	tests/unit/test_cuda_determinism_wiring.py \
+	tests/unit/test_hexcrystal_encoder_roundtrip.py \
+	tests/unit/test_imitation_pretraining.py \
+	tests/unit/test_inference_benchmark.py \
+	tests/unit/test_local_devices.py \
+	tests/unit/test_losses.py \
+	tests/unit/test_memory_guard_coverage.py \
+	tests/unit/test_run_muzero_training.py \
+	tests/unit/test_training_smoke.py \
+	tests/unit/test_web_config.py \
+	tests/unit/test_utils/test_device.py \
+	tests/unit/test_utils/test_device_contract.py
+
+.PHONY: test-gpu
+test-gpu:
+	CIV6AZ_REQUIRE_GPU=$${CIV6AZ_REQUIRE_GPU:-2} $(PYTHON) -m pytest $(GPU_TEST_FILES) -rs -v --tb=short
 
 .PHONY: validate
 validate:

@@ -404,6 +404,7 @@ When making changes, update the relevant sections below:
 | `pytest tests/unit/test_storage_backend.py -v` | Test storage backends |
 | `pytest tests/unit/test_orchestrator_stagnation.py -v` | Test stagnation config + orchestrator wiring |
 | `pytest tests/regression/test_debt_ratchet.py -v` | Tech-debt ratchet — every tracked metric vs the committed baseline |
+| `make test-gpu` / `CIV6AZ_REQUIRE_GPU=N` | Opt-in GPU skip gate (`tests/fixtures/gpu_skip_gate.py`): fails session startup if `device_count() < N` and converts CUDA/GPU/device skips (`CIV6AZ_GPU_SKIP_PATTERN`) into failures; unset leaves CPU CI unchanged |
 | `python scripts/audit_import_graph.py` | List `alpha_zero/` modules with no live importer (AST import graph; shares `iter_python_files` + PEP 405/worktree pruning with `measure_debt.py`) |
 | `python scripts/measure_debt.py --write PATH` | Re-measure every tracked debt metric as JSON |
 | `pytest tests/unit/test_replay_buffer.py -v` | Test replay buffers |

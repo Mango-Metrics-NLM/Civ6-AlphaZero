@@ -43,6 +43,9 @@ This directory provides comprehensive testing:
 | `governance/pytest.ini` | Isolated governance suite pytest config (`--confcutdir=tests/governance`) |
 | `governance/agent_warning_baseline.json` | Ratchet baseline (`max_warnings`) for `scripts/validate_agents.py` |
 | `regression/test_gpu_e2e_and_worktree_aqa.py` | Dual-mode (live GPU + mocked) AQA suite & worktree/venv/RAG hardening |
+| `regression/test_gpu_skip_gate_aqa.py` | AQA gate verifying opt-in `CIV6AZ_REQUIRE_GPU` skip-to-failure plugin behavior |
+| `regression/test_post_sync_defects_regression.py` | Regression tests for post-sync defects including bidirectional `cd -P` physical resolution across NTFS junctions |
+| `fixtures/gpu_skip_gate.py` | Opt-in pytest plugin (`CIV6AZ_REQUIRE_GPU`) enforcing device count and failing CUDA/GPU/device skips |
 | `regression/test_suite_wiring_regression.py` | Enforces CI + `Makefile` wiring across all test directories |
 | `regression/test_repo_hygiene_regression.py` | Validates `.gitignore` and `.gitleaks.toml` invariants |
 
