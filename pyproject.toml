@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "2.0.0"
+version = "2.0.1"
 description = "AlphaZero/MuZero-style self-play reinforcement learning for a Civilization-like environment, with a bridge into Civilization VI"
 readme = "README.md"
 license = "MIT"

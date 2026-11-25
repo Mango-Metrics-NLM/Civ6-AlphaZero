@@ -1394,7 +1394,7 @@ python -m infra.vertex_launcher \
 
 > Long-term themes: see ROADMAP.md. Scope boundaries and invariants: see PROJECT_CHARTER.md.
 
-### Current State (v2.0.0)
+### Current State (v2.0.1)
 
 Learning is **not yet demonstrated** on the corrected (post-2026-09-04) search: every
 committed run predates those fixes (`docs/evidence/README.md`). The first post-fix run,
@@ -1714,5 +1714,5 @@ This file is gitignored and never committed.
 ---
 
 *Last updated: 2026-11-25*
-*Version: v2.0.0 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
+*Version: v2.0.1 (public-release readiness: honest public surface, public-readiness and evidence gates, evaluation protocol)*
 *Current Focus: M4 (ROADMAP.md) — v2.1 local-first T0b/A1 readiness, GM-B0..B8b bridge built and frozen until A1 has run (status: docs/LIVE_CIV6.md), pre-PR governance & dual-GPU AQA hardening. Governance: PROJECT_CHARTER.md*
