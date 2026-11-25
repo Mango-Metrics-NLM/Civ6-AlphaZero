@@ -432,6 +432,318 @@ def evaluate_network(
     }
 
 
+_TRAINING_PRESETS: dict[str, dict[str, int]] = {
+    "fast": {
+        "num_iterations": 10,
+        "games_per_iteration": 10,
+        "batch_size": 32,
+        "num_epochs": 3,
+        "num_simulations": 20,
+        "board_size": 8,
+        "max_turns": 30,
+        "eval_interval": 5,
+    },
+    "balanced": {
+        "num_iterations": 50,
+        "games_per_iteration": 30,
+        "batch_size": 64,
+        "num_epochs": 5,
+        "num_simulations": 30,
+        "board_size": 10,
+        "max_turns": 50,
+        "eval_interval": 10,
+    },
+    "full": {
+        "num_iterations": 200,
+        "games_per_iteration": 100,
+        "batch_size": 128,
+        "num_epochs": 10,
+        "num_simulations": 50,
+        "board_size": 12,
+        "max_turns": 100,
+        "eval_interval": 20,
+    },
+}
+
+
+def _init_tracking_logger(
+    wandb_enabled: bool,
+    wandb_project: str,
+    wandb_run_name: str | None,
+    wandb_tags: list[str] | None,
+    config_dict: dict[str, Any],
+) -> Any:
+    """Initialise the MLflow-backed compatibility logger when tracking is requested."""
+    if not wandb_enabled:
+        return None
+    if not WANDB_AVAILABLE:
+        logger.warning(
+            "Tracking requested but MLflow backend unavailable. "
+            "Install with: pip install -e '.[monitoring]'"
+        )
+        return None
+    tag_list = wandb_tags or ["enhanced-training", "curriculum", "reward-shaping"]
+    wandb_config = WandbConfig(
+        enabled=True,
+        experiment_name=wandb_project,
+        run_name=wandb_run_name,
+        tags=dict.fromkeys(tag_list, "true"),
+    )
+    wandb_logger = WandbLogger(wandb_config)
+    wandb_logger.init(config_dict=config_dict)
+    if wandb_logger.run_name:
+        logger.info("Tracking run initialized: %s", wandb_logger.run_name)
+    return wandb_logger
+
+
+def _build_curriculum_and_env(
+    board_size: int,
+    max_turns: int,
+    games_per_iteration: int,
+    checkpoint_dir: str,
+    use_curriculum: bool,
+    use_env_tuning: bool,
+) -> tuple[CurriculumManager, EnvironmentTuningConfig]:
+    """Construct curriculum manager and environment tuning configuration."""
+    if use_curriculum:
+        curriculum_config = CurriculumConfig.default_three_stage()
+        for stage in curriculum_config.stages:
+            stage.min_games = max(10, games_per_iteration)
+        curriculum_config.save_path = os.path.join(checkpoint_dir, "curriculum_state.json")
+        curriculum = CurriculumManager(curriculum_config)
+        logger.info("Curriculum: %d stages", len(curriculum_config.stages))
+    else:
+        curriculum_config = CurriculumConfig(stages=[CurriculumConfig._default_stages()[0]])
+        curriculum_config.stages[0].board_size = board_size
+        curriculum_config.stages[0].max_turns = max_turns
+        curriculum = CurriculumManager(curriculum_config)
+
+    env_params = curriculum.get_environment_params()
+    current_board_size = env_params["board_size"]
+    current_max_turns = env_params["max_turns"]
+    if use_env_tuning:
+        env_config = get_default_fast_config()
+        env_config.board_size = current_board_size
+        env_config.max_turns = current_max_turns
+    else:
+        env_config = EnvironmentTuningConfig(
+            enabled=False,
+            board_size=current_board_size,
+            max_turns=current_max_turns,
+        )
+    return curriculum, env_config
+
+
+def _log_selfplay_iteration(
+    wandb_logger: Any,
+    curriculum: CurriculumManager,
+    replay_buffer: ReplayBuffer,
+    examples: list[TrainingExample],
+    game_stats: list[dict[str, Any]],
+    progress: dict[str, Any],
+    iteration: int,
+) -> None:
+    """Log self-play and curriculum metrics for one iteration."""
+    if not (wandb_logger and wandb_logger.is_initialized):
+        return
+    if not game_stats:
+        logger.debug(
+            "Iteration %d produced no game_stats; skipping tracker selfplay log", iteration
+        )
+        return
+    from alpha_zero.evaluation import scoring
+
+    wins = sum(1 for s in game_stats if s.get("winner") == 0)
+    draws = sum(1 for s in game_stats if s.get("winner") is None)
+    losses = max(len(game_stats) - wins - draws, 0)
+    avg_steps = sum(s["steps"] for s in game_stats) / len(game_stats)
+
+    wandb_logger.log_selfplay(
+        games_completed=progress["total_games"],
+        buffer_size=len(replay_buffer),
+        samples_generated=len(examples),
+        win_rate=scoring.win_rate(wins, draws, losses),
+        score_rate=scoring.score_rate(wins, draws, losses),
+        draw_rate=draws / len(game_stats),
+        avg_game_length=avg_steps,
+        step=iteration,
+    )
+    wandb_logger.log(
+        {
+            "curriculum/stage": progress["current_level"],
+            "curriculum/stage_name": progress["current_stage"],
+            "curriculum/win_rate": progress["win_rate"],
+            "curriculum/total_games": progress["total_games"],
+        },
+        step=iteration,
+    )
+
+
+def _run_training_epochs(
+    network: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    replay_buffer: ReplayBuffer,
+    batch_size: int,
+    num_epochs: int,
+    learning_rate: float,
+    device: str,
+    iteration: int,
+    wandb_logger: Any,
+) -> dict[str, float] | None:
+    """Sample replay buffer and train for ``num_epochs``, returning final epoch losses."""
+    if len(replay_buffer) < batch_size:
+        logger.info("Skipping training (buffer %d < %d)", len(replay_buffer), batch_size)
+        return None
+    logger.info("Training network...")
+    sample_size = min(len(replay_buffer), batch_size * 50)
+    train_examples = replay_buffer.sample(sample_size)
+    dataloader = DataLoader(
+        ReplayDataset(train_examples),
+        batch_size=batch_size,
+        shuffle=True,
+        num_workers=0,
+    )
+
+    last_losses: dict[str, float] | None = None
+    global_step = iteration * num_epochs
+    for epoch in range(num_epochs):
+        losses = train_epoch(network, optimizer, dataloader, device)
+        last_losses = losses
+        logger.info(
+            "Epoch %d: loss=%.4f, policy=%.4f, value=%.4f",
+            epoch + 1,
+            losses["total_loss"],
+            losses["policy_loss"],
+            losses["value_loss"],
+        )
+        if wandb_logger and wandb_logger.is_initialized:
+            wandb_logger.log_training_step(
+                step=global_step + epoch,
+                loss=losses["total_loss"],
+                policy_loss=losses["policy_loss"],
+                value_loss=losses["value_loss"],
+                learning_rate=learning_rate,
+            )
+    return last_losses
+
+
+def _run_periodic_evaluation(
+    network: torch.nn.Module,
+    env_config: EnvironmentTuningConfig,
+    device: str,
+    num_simulations: int,
+    checkpoint_dir: str,
+    iteration: int,
+    wandb_logger: Any,
+) -> dict[str, float]:
+    """Evaluate current weights against random play and save periodic checkpoint."""
+    logger.info("Evaluating...")
+    eval_metrics = evaluate_network(
+        network=network,
+        board_size=int(env_config.board_size or 8),
+        max_turns=int(env_config.max_turns or 100),
+        device=device,
+        num_games=10,
+        num_simulations=num_simulations // 2,
+    )
+    logger.info("Win rate vs random: %.1f%%", eval_metrics["win_rate"] * 100)
+    logger.info("Avg game length: %.1f", eval_metrics["avg_game_length"])
+
+    if wandb_logger and wandb_logger.is_initialized:
+        wandb_logger.log_evaluation(
+            win_rate=eval_metrics["win_rate"],
+            games_played=10,
+            average_reward=eval_metrics["win_rate"] * 2 - 1,
+            average_turns=eval_metrics["avg_game_length"],
+            step=iteration,
+        )
+
+    checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_{iteration + 1}.pt")
+    network.save(checkpoint_path)  # type: ignore[operator]
+    logger.info("Saved: %s", checkpoint_path)
+
+    if wandb_logger and wandb_logger.is_initialized:
+        wandb_logger.log_model(
+            model_path=checkpoint_path,
+            name=f"model-iter-{iteration + 1}",
+            metadata={"iteration": iteration + 1, "win_rate": eval_metrics["win_rate"]},
+        )
+    return eval_metrics
+
+
+def _finalize_training(
+    network: torch.nn.Module,
+    env_config: EnvironmentTuningConfig,
+    curriculum: CurriculumManager,
+    device: str,
+    num_simulations: int,
+    num_iterations: int,
+    checkpoint_dir: str,
+    history: dict[str, Any],
+    wandb_logger: Any,
+) -> dict[str, Any]:
+    """Run final evaluation, persist ``latest.pt``, and close experiment tracker."""
+    logger.info("\n" + "=" * 50)
+    logger.info("FINAL EVALUATION")
+    logger.info("=" * 50)
+
+    final_metrics = evaluate_network(
+        network=network,
+        board_size=int(env_config.board_size or 8),
+        max_turns=int(env_config.max_turns or 100),
+        device=device,
+        num_games=20,
+        num_simulations=num_simulations,
+    )
+    logger.info("Final win rate vs random: %.1f%%", final_metrics["win_rate"] * 100)
+    logger.info("Final avg game length: %.1f", final_metrics["avg_game_length"])
+
+    final_path = os.path.join(checkpoint_dir, "latest.pt")
+    network.save(final_path)  # type: ignore[operator]
+    logger.info("Final model saved: %s", final_path)
+
+    history["final_metrics"] = final_metrics
+    curriculum_progress = curriculum.get_progress()
+    history["final_curriculum"] = curriculum_progress
+
+    logger.info("\n" + "=" * 50)
+    logger.info("TRAINING COMPLETE")
+    logger.info("=" * 50)
+    logger.info("Total games: %s", curriculum_progress["total_games"])
+    logger.info("Final stage: %s", curriculum_progress["current_stage"])
+    logger.info("Final win rate: %.1f%%", final_metrics["win_rate"] * 100)
+
+    if wandb_logger and wandb_logger.is_initialized:
+        wandb_logger.log_evaluation(
+            win_rate=final_metrics["win_rate"],
+            games_played=20,
+            average_reward=final_metrics["win_rate"] * 2 - 1,
+            average_turns=final_metrics["avg_game_length"],
+        )
+        wandb_logger.summary(
+            {
+                "final_win_rate": final_metrics["win_rate"],
+                "final_avg_game_length": final_metrics["avg_game_length"],
+                "total_iterations": num_iterations,
+                "total_games": curriculum_progress["total_games"],
+                "final_curriculum_stage": curriculum_progress["current_stage"],
+                "final_curriculum_level": curriculum_progress["current_level"],
+            }
+        )
+        wandb_logger.log_model(
+            model_path=final_path,
+            name="model-final",
+            metadata={
+                "win_rate": final_metrics["win_rate"],
+                "total_games": curriculum_progress["total_games"],
+            },
+        )
+        wandb_logger.finish()
+        logger.info("W&B run finished")
+
+    return history
+
+
 def run_enhanced_training(
     num_iterations: int = 50,
     games_per_iteration: int = 20,
@@ -452,48 +764,39 @@ def run_enhanced_training(
     wandb_run_name: str | None = None,
     wandb_tags: list[str] | None = None,
 ) -> dict[str, Any]:
-    """Run enhanced training with all improvements.
+    """Run enhanced training with curriculum, reward shaping, and env tuning.
 
     Args:
-        num_iterations: Number of training iterations
-        games_per_iteration: Self-play games per iteration
-        batch_size: Training batch size
-        learning_rate: Initial learning rate
-        num_epochs: Training epochs per iteration
-        num_simulations: MCTS simulations
-        board_size: Initial board size
-        max_turns: Initial max turns
-        checkpoint_dir: Directory for checkpoints
-        eval_interval: Iterations between evaluations
-        device: Compute device
-        use_curriculum: Enable curriculum learning
-        use_reward_shaping: Enable reward shaping
-        use_env_tuning: Enable environment tuning
-        wandb_enabled: Enable W&B logging
-        wandb_project: W&B project name
-        wandb_run_name: W&B run name (auto-generated if None)
-        wandb_tags: W&B tags for the run
+        num_iterations: Number of training iterations.
+        games_per_iteration: Self-play games per iteration.
+        batch_size: Training batch size.
+        learning_rate: Initial learning rate.
+        num_epochs: Training epochs per iteration.
+        num_simulations: MCTS simulations.
+        board_size: Initial board size.
+        max_turns: Initial max turns.
+        checkpoint_dir: Directory for checkpoints.
+        eval_interval: Iterations between evaluations.
+        device: Compute device.
+        use_curriculum: Enable curriculum learning.
+        use_reward_shaping: Enable reward shaping.
+        use_env_tuning: Enable environment tuning.
+        wandb_enabled: Enable W&B/MLflow compatibility logging.
+        wandb_project: Experiment project name.
+        wandb_run_name: Optional run name (auto-generated if ``None``).
+        wandb_tags: Optional tags for the run.
 
     Returns:
-        Training history dictionary
+        Training history dictionary.
     """
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     os.makedirs(checkpoint_dir, exist_ok=True)
-
-    # Initialize W&B logger
-    wandb_logger: WandbLogger | None = None
-    if wandb_enabled and WANDB_AVAILABLE:
-        tag_list = wandb_tags or ["enhanced-training", "curriculum", "reward-shaping"]
-        wandb_config = WandbConfig(
-            enabled=True,
-            experiment_name=wandb_project,
-            run_name=wandb_run_name,
-            tags=dict.fromkeys(tag_list, "true"),
-        )
-        wandb_logger = WandbLogger(wandb_config)
-
-        # Initialize W&B run with training config
-        config_dict = {
+    wandb_logger = _init_tracking_logger(
+        wandb_enabled,
+        wandb_project,
+        wandb_run_name,
+        wandb_tags,
+        {
             "num_iterations": num_iterations,
             "games_per_iteration": games_per_iteration,
             "batch_size": batch_size,
@@ -506,97 +809,59 @@ def run_enhanced_training(
             "use_reward_shaping": use_reward_shaping,
             "use_env_tuning": use_env_tuning,
             "device": device,
-        }
-        wandb_logger.init(config_dict=config_dict)
-        if wandb_logger.run_name:
-            logger.info(f"Tracking run initialized: {wandb_logger.run_name}")
-    elif wandb_enabled and not WANDB_AVAILABLE:
-        logger.warning(
-            "Tracking requested but MLflow backend unavailable. "
-            "Install with: pip install -e '.[monitoring]'"
-        )
+        },
+    )
 
     logger.info("=" * 60)
     logger.info("ENHANCED TRAINING WITH IMPROVEMENTS")
     logger.info("=" * 60)
-    logger.info(f"Device: {device}")
-    logger.info(f"Iterations: {num_iterations}")
-    logger.info(f"Games/iteration: {games_per_iteration}")
-    logger.info(f"Board size: {board_size}, Max turns: {max_turns}")
     logger.info(
-        f"Curriculum: {use_curriculum}, Reward shaping: {use_reward_shaping}, Env tuning: {use_env_tuning}"
+        "Device=%s iterations=%d games/iter=%d board=%d max_turns=%d",
+        device,
+        num_iterations,
+        games_per_iteration,
+        board_size,
+        max_turns,
+    )
+    logger.info(
+        "Curriculum=%s reward_shaping=%s env_tuning=%s",
+        use_curriculum,
+        use_reward_shaping,
+        use_env_tuning,
     )
     logger.info("=" * 60)
 
-    # Initialize curriculum
-    if use_curriculum:
-        curriculum_config = CurriculumConfig.default_three_stage()
-        # Reduce min_games for faster progression during short training
-        for stage in curriculum_config.stages:
-            stage.min_games = max(10, games_per_iteration)
-        curriculum_config.save_path = os.path.join(checkpoint_dir, "curriculum_state.json")
-        curriculum = CurriculumManager(curriculum_config)
-        logger.info(f"Curriculum: {len(curriculum_config.stages)} stages")
-    else:
-        # Create dummy curriculum that doesn't change
-        curriculum_config = CurriculumConfig(stages=[CurriculumConfig._default_stages()[0]])
-        curriculum_config.stages[0].board_size = board_size
-        curriculum_config.stages[0].max_turns = max_turns
-        curriculum = CurriculumManager(curriculum_config)
+    curriculum, env_config = _build_curriculum_and_env(
+        board_size,
+        max_turns,
+        games_per_iteration,
+        checkpoint_dir,
+        use_curriculum,
+        use_env_tuning,
+    )
+    current_board_size = int(env_config.board_size or board_size)
+    action_space_size = MicroCivEnv(board_size=current_board_size).action_space_handler.total_size
 
-    # Get initial environment params from curriculum
-    env_params = curriculum.get_environment_params()
-    current_board_size = env_params["board_size"]
-    current_max_turns = env_params["max_turns"]
-
-    # Initialize environment config
-    if use_env_tuning:
-        env_config = get_default_fast_config()
-        env_config.board_size = current_board_size
-        env_config.max_turns = current_max_turns
-    else:
-        env_config = EnvironmentTuningConfig(
-            enabled=False,
-            board_size=current_board_size,
-            max_turns=current_max_turns,
-        )
-
-    # Initialize environment to get action space size
-    temp_env = MicroCivEnv(board_size=current_board_size)
-    action_space_size = temp_env.action_space_handler.total_size
-
-    # Initialize network
     network = MicroCivNetwork(
         board_size=current_board_size,
         action_space_size=action_space_size,
         num_res_blocks=4,
         num_filters=32,
     ).to(device)
-
-    param_count = sum(p.numel() for p in network.parameters())
-    logger.info(f"Network parameters: {param_count:,}")
-    logger.info(f"Action space: {action_space_size}")
-
-    # Initialize reward shaper
-    if use_reward_shaping:
-        reward_shaper = create_enhanced_reward_shaper(
-            scale_factor=1.0,
-            board_size=current_board_size,
-        )
-    else:
-        reward_shaper = None
-
-    # Initialize optimizer
-    optimizer = optim.Adam(
-        network.parameters(),
-        lr=learning_rate,
-        weight_decay=0.0001,
+    logger.info(
+        "Network parameters: %s | Action space: %d",
+        f"{sum(p.numel() for p in network.parameters()):,}",
+        action_space_size,
     )
 
-    # Initialize replay buffer
+    reward_shaper = (
+        create_enhanced_reward_shaper(scale_factor=1.0, board_size=current_board_size)
+        if use_reward_shaping
+        else None
+    )
+    optimizer = optim.Adam(network.parameters(), lr=learning_rate, weight_decay=0.0001)
     replay_buffer = ReplayBuffer(max_size=50000)
 
-    # Training history
     history: dict[str, Any] = {
         "iterations": [],
         "losses": [],
@@ -605,28 +870,22 @@ def run_enhanced_training(
         "game_stats": [],
     }
 
-    # Training loop
     for iteration in range(num_iterations):
         iter_start = time.time()
-
-        logger.info(f"\n{'=' * 50}")
-        logger.info(f"Iteration {iteration + 1}/{num_iterations}")
-
-        # Check curriculum progress
+        logger.info("\n%s\nIteration %d/%d", "=" * 50, iteration + 1, num_iterations)
         progress = curriculum.get_progress()
-        logger.info(f"Curriculum: {progress['current_stage']} (level {progress['current_level']})")
-        logger.info(f"Win rate: {progress['win_rate']:.2%}")
-
+        logger.info(
+            "Curriculum: %s (level %s) | Win rate: %.2f%%",
+            progress["current_stage"],
+            progress["current_level"],
+            progress["win_rate"] * 100,
+        )
         history["curriculum_stages"].append(progress["current_stage"])
 
-        # Update environment config from curriculum
         env_params = curriculum.get_environment_params()
         env_config.board_size = env_params["board_size"]
         env_config.max_turns = env_params["max_turns"]
 
-        # Self-play
-        logger.info("Running self-play...")
-        use_simple = iteration == 0
         examples, game_stats = run_self_play_enhanced(
             network=network,
             env_config=env_config,
@@ -635,195 +894,66 @@ def run_enhanced_training(
             num_games=games_per_iteration,
             num_simulations=num_simulations,
             device=device,
-            use_simple_mcts=use_simple,
+            use_simple_mcts=(iteration == 0),
         )
         replay_buffer.add_game(examples)
         history["game_stats"].append(game_stats)
+        logger.info(
+            "Generated %d examples from %d games | Buffer size: %d",
+            len(examples),
+            games_per_iteration,
+            len(replay_buffer),
+        )
+        _log_selfplay_iteration(
+            wandb_logger,
+            curriculum,
+            replay_buffer,
+            examples,
+            game_stats,
+            progress,
+            iteration,
+        )
 
-        logger.info(f"Generated {len(examples)} examples from {games_per_iteration} games")
-        logger.info(f"Buffer size: {len(replay_buffer)}")
+        last_losses = _run_training_epochs(
+            network,
+            optimizer,
+            replay_buffer,
+            batch_size,
+            num_epochs,
+            learning_rate,
+            device,
+            iteration,
+            wandb_logger,
+        )
+        if last_losses is not None:
+            history["losses"].append(last_losses)
 
-        # Log self-play stats to W&B
-        if wandb_logger and wandb_logger.is_initialized:
-            from alpha_zero.evaluation import scoring
-
-            wins = sum(1 for s in game_stats if s.get("winner") == 0)
-            draws = sum(1 for s in game_stats if s.get("winner") is None)
-            losses = max(len(game_stats) - wins - draws, 0)
-            avg_steps = sum(s["steps"] for s in game_stats) / len(game_stats)
-
-            # Use iteration as the step for non-training metrics to keep them sync'd
-            wandb_logger.log_selfplay(
-                games_completed=curriculum.get_progress()["total_games"],
-                buffer_size=len(replay_buffer),
-                samples_generated=len(examples),
-                win_rate=scoring.win_rate(wins, draws, losses),
-                score_rate=scoring.score_rate(wins, draws, losses),
-                draw_rate=draws / len(game_stats),
-                avg_game_length=avg_steps,
-                step=iteration,  # Explicitly set step to iteration
-            )
-            # Log curriculum progress
-            wandb_logger.log(
-                {
-                    "curriculum/stage": progress["current_level"],
-                    "curriculum/stage_name": progress["current_stage"],
-                    "curriculum/win_rate": progress["win_rate"],
-                    "curriculum/total_games": progress["total_games"],
-                },
-                step=iteration,
-            )
-
-        # Training
-        if len(replay_buffer) >= batch_size:
-            logger.info("Training network...")
-            sample_size = min(len(replay_buffer), batch_size * 50)
-            train_examples = replay_buffer.sample(sample_size)
-
-            dataset = ReplayDataset(train_examples)
-            dataloader = DataLoader(
-                dataset,
-                batch_size=batch_size,
-                shuffle=True,
-                num_workers=0,
-            )
-
-            epoch_losses = []
-            global_step = iteration * num_epochs
-            for epoch in range(num_epochs):
-                losses = train_epoch(network, optimizer, dataloader, device)
-                epoch_losses.append(losses)
-                logger.info(
-                    f"Epoch {epoch + 1}: loss={losses['total_loss']:.4f}, "
-                    f"policy={losses['policy_loss']:.4f}, value={losses['value_loss']:.4f}"
-                )
-
-                # Log training losses to W&B
-                if wandb_logger and wandb_logger.is_initialized:
-                    wandb_logger.log_training_step(
-                        step=global_step + epoch,
-                        loss=losses["total_loss"],
-                        policy_loss=losses["policy_loss"],
-                        value_loss=losses["value_loss"],
-                        learning_rate=learning_rate,
-                    )
-
-            history["losses"].append(epoch_losses[-1])
-        else:
-            logger.info(f"Skipping training (buffer {len(replay_buffer)} < {batch_size})")
-
-        # Evaluation
         if (iteration + 1) % eval_interval == 0:
-            logger.info("Evaluating...")
-            eval_metrics = evaluate_network(
-                network=network,
-                board_size=int(env_config.board_size or 8),
-                max_turns=int(env_config.max_turns or 100),
-                device=device,
-                num_games=10,
-                num_simulations=num_simulations // 2,
+            eval_metrics = _run_periodic_evaluation(
+                network,
+                env_config,
+                device,
+                num_simulations,
+                checkpoint_dir,
+                iteration,
+                wandb_logger,
             )
-            logger.info(f"Win rate vs random: {eval_metrics['win_rate']:.1%}")
-            logger.info(f"Avg game length: {eval_metrics['avg_game_length']:.1f}")
             history["win_rates"].append(eval_metrics["win_rate"])
 
-            # Log evaluation metrics to W&B
-            if wandb_logger and wandb_logger.is_initialized:
-                wandb_logger.log_evaluation(
-                    win_rate=eval_metrics["win_rate"],
-                    games_played=10,
-                    average_reward=eval_metrics["win_rate"] * 2 - 1,  # Map to [-1, 1]
-                    average_turns=eval_metrics["avg_game_length"],
-                    step=iteration,  # Use current iteration as step
-                )
-
-            # Save checkpoint
-            checkpoint_path = os.path.join(checkpoint_dir, f"checkpoint_{iteration + 1}.pt")
-            network.save(checkpoint_path)
-            logger.info(f"Saved: {checkpoint_path}")
-
-            # Log model artifact to W&B
-            if wandb_logger and wandb_logger.is_initialized:
-                wandb_logger.log_model(
-                    model_path=checkpoint_path,
-                    name=f"model-iter-{iteration + 1}",
-                    metadata={"iteration": iteration + 1, "win_rate": eval_metrics["win_rate"]},
-                )
-
         history["iterations"].append(iteration + 1)
-        iter_time = time.time() - iter_start
-        logger.info(f"Iteration time: {iter_time:.1f}s")
+        logger.info("Iteration time: %.1fs", time.time() - iter_start)
 
-    # Final evaluation
-    logger.info("\n" + "=" * 50)
-    logger.info("FINAL EVALUATION")
-    logger.info("=" * 50)
-
-    final_metrics = evaluate_network(
-        network=network,
-        board_size=int(env_config.board_size or 8),
-        max_turns=int(env_config.max_turns or 100),
-        device=device,
-        num_games=20,
-        num_simulations=num_simulations,
+    return _finalize_training(
+        network,
+        env_config,
+        curriculum,
+        device,
+        num_simulations,
+        num_iterations,
+        checkpoint_dir,
+        history,
+        wandb_logger,
     )
-    logger.info(f"Final win rate vs random: {final_metrics['win_rate']:.1%}")
-    logger.info(f"Final avg game length: {final_metrics['avg_game_length']:.1f}")
-
-    # Save final model
-    final_path = os.path.join(checkpoint_dir, "latest.pt")
-    network.save(final_path)
-    logger.info(f"Final model saved: {final_path}")
-
-    # Save training history
-    history["final_metrics"] = final_metrics
-    curriculum_progress = curriculum.get_progress()
-    history["final_curriculum"] = curriculum_progress
-
-    logger.info("\n" + "=" * 50)
-    logger.info("TRAINING COMPLETE")
-    logger.info("=" * 50)
-    logger.info(f"Total games: {curriculum_progress['total_games']}")
-    logger.info(f"Final stage: {curriculum_progress['current_stage']}")
-    logger.info(f"Final win rate: {final_metrics['win_rate']:.1%}")
-
-    # Log final summary and close W&B
-    if wandb_logger and wandb_logger.is_initialized:
-        # Log final evaluation
-        wandb_logger.log_evaluation(
-            win_rate=final_metrics["win_rate"],
-            games_played=20,
-            average_reward=final_metrics["win_rate"] * 2 - 1,
-            average_turns=final_metrics["avg_game_length"],
-        )
-
-        # Update summary
-        wandb_logger.summary(
-            {
-                "final_win_rate": final_metrics["win_rate"],
-                "final_avg_game_length": final_metrics["avg_game_length"],
-                "total_iterations": num_iterations,
-                "total_games": curriculum_progress["total_games"],
-                "final_curriculum_stage": curriculum_progress["current_stage"],
-                "final_curriculum_level": curriculum_progress["current_level"],
-            }
-        )
-
-        # Log final model
-        wandb_logger.log_model(
-            model_path=final_path,
-            name="model-final",
-            metadata={
-                "win_rate": final_metrics["win_rate"],
-                "total_games": curriculum_progress["total_games"],
-            },
-        )
-
-        # Finish run
-        wandb_logger.finish()
-        logger.info("W&B run finished")
-
-    return history
 
 
 def main():
@@ -859,41 +989,7 @@ def main():
     add_budget_arguments(parser)
     args = parser.parse_args()
 
-    # Preset configurations
-    presets = {
-        "fast": {
-            "num_iterations": 10,
-            "games_per_iteration": 10,
-            "batch_size": 32,
-            "num_epochs": 3,
-            "num_simulations": 20,
-            "board_size": 8,
-            "max_turns": 30,
-            "eval_interval": 5,
-        },
-        "balanced": {
-            "num_iterations": 50,
-            "games_per_iteration": 30,
-            "batch_size": 64,
-            "num_epochs": 5,
-            "num_simulations": 30,
-            "board_size": 10,
-            "max_turns": 50,
-            "eval_interval": 10,
-        },
-        "full": {
-            "num_iterations": 200,
-            "games_per_iteration": 100,
-            "batch_size": 128,
-            "num_epochs": 10,
-            "num_simulations": 50,
-            "board_size": 12,
-            "max_turns": 100,
-            "eval_interval": 20,
-        },
-    }
-
-    config = presets[args.preset]
+    config = dict(_TRAINING_PRESETS[args.preset])
 
     # Apply overrides
     if args.iterations:

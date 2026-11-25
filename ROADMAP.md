@@ -37,7 +37,7 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
 
 - `openspec/changes/branching-and-release`: the dev / qa / main branch model,
   rulesets and release gates of the local-first plan.
-- `openspec/changes/harden-governance-gates`: governance-gate hardening.
+- `openspec/changes/harden-governance-gates`: governance-gate hardening (including `scripts/check_release_readiness.py`, eleven vetted read-only shell checkers, `public-release-audit` skill, and synced `posttooluse_governance.sh` triggers).
 - `openspec/changes/add-gpu-first-run-cards`: GPU-first registered runs (pinned
   CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
   reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
@@ -181,8 +181,8 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
 - Bring omitted modules under the coverage gate (re-tightened 80% → 85% on
   2026-07-13; omit-list shrink remains). **`cloud/` is now measured** — not by
   un-omitting it, but by a separate per-package floor (`coverage-floors.json`,
-  `.coveragerc-cloud`) enforced in CI's `cloud-tests` job: floor 58%, measured
-  59.7% on 2026-09-02. `serving/` and `inference/` still need the `web` extra in
+  `.coveragerc-cloud`) enforced in CI's `cloud-tests` job: floor 59%, measured
+  60.2% on 2026-11-25 (`coverage-floors.json` ratchet). `serving/` and `inference/` still need the `web` extra in
   the coverage job before they can follow.
 - Achieve 100% clean mypy type safety across all 350 files (done 2026-08-10).
 - **Tech-debt reduction and hardening** (`kb/specs/20260902-tech-debt-hardening.md`).
@@ -198,7 +198,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   - **Tier B** — fourteen yes/no keep-or-delete decisions, 18,133 lines.
   - **WS3.2** — collapse the env prefix to `CIV6AZ_` only, behind a two-release
     warn-and-map shim in `env_loader.py`.
-  - **WS5** — decompose the remaining god files (23 over 1,000 lines after extracting `alpha_zero/local/gameplay_config.py` from `civ6_local.py`), each behind a re-export shim with a patchability test.
+  - **WS5** — decompose the remaining god files (22 over 1,000 lines after extracting `alpha_zero/monitoring/wandb_compat.py` from `mlflow_logger.py` and `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, plus helper extraction in `scripts/run_enhanced_training.py`), each behind a re-export shim with a patchability test.
   - **WS6** — consolidate duplicate definitions (`setup_logging`, `create_mcts`,
     Elo, `MCTSConfig`) and settle on one dependency manifest.
   - **WS7** — layering test, wider type-check scope, skip-site burndown,

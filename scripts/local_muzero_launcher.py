@@ -43,12 +43,13 @@ def run_command(cmd: list[str], env: dict[str, str] | None = None) -> None:
     """Run a command in a subprocess and wait for it to complete."""
     cmd_str = " ".join(cmd)
     logger.info("Running: %s", cmd_str)
+    logger.debug("Subprocess argv=%r (shell=False)", cmd)
     try:
         subprocess.run(
             cmd,
             check=True,
             env=env,
-            shell=True if os.name == "nt" else False,
+            shell=False,
         )
     except subprocess.CalledProcessError as e:
         logger.error("Command failed: %s", e)
@@ -62,8 +63,16 @@ def main() -> None:
     parser.add_argument("--num_selfplay_workers", type=int, default=2)
     parser.add_argument("--games_per_worker", type=int, default=10)
     parser.add_argument("--mcts_simulations", type=int, default=50)
-    parser.add_argument("--project", type=str, default="civ6-alphazero")
-    parser.add_argument("--bucket", type=str, default="civ6-alphazero-training")
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "civ6-alphazero"),
+    )
+    parser.add_argument(
+        "--bucket",
+        type=str,
+        default=os.environ.get("CIV6AZ_GCS_BUCKET", "civ6-alphazero-training"),
+    )
     parser.add_argument(
         "--allow-gcs",
         action="store_true",
@@ -98,8 +107,6 @@ def main() -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = os.getcwd()
     env["CIV6AZ_STORAGE_BACKEND"] = "local"
-    env["CIV6AZ_VERTEX_PROJECT"] = args.project
-    env["CIV6AZ_GCS_BUCKET"] = args.bucket
     env["CIV6AZ_VERTEX_PROJECT"] = args.project
     env["CIV6AZ_GCS_BUCKET"] = args.bucket
 
@@ -167,9 +174,8 @@ def main() -> None:
                 cmd[3] = "--mcts_type=civ6"
 
             logger.info("Launching worker %d...", i)
-            # On Windows, we need to use shell=True for some path resolution,
-            # but we use Popen to run in parallel
-            proc = subprocess.Popen(cmd, env=env, shell=True if os.name == "nt" else False)
+            logger.debug("Worker %d argv=%r (shell=False)", i, cmd)
+            proc = subprocess.Popen(cmd, env=env, shell=False)
             selfplay_procs.append(proc)
 
         # Wait for all workers

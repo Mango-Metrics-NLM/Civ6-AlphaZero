@@ -44,6 +44,7 @@ from alpha_zero.monitoring.mlflow_logger import (
     mlflow,
 )
 from alpha_zero.monitoring.tournament_dashboards import TournamentMlflowLogger
+from alpha_zero.monitoring.wandb_compat import WandbCompatAdapter
 
 __all__ = [
     "DEFAULT_EXPERIMENT_NAME",
@@ -56,6 +57,7 @@ __all__ = [
     "MlflowClient",
     "MonitoringConfig",
     "TournamentMlflowLogger",
+    "WandbCompatAdapter",
     "compute_elo_spread",
     "compute_policy_entropy",
     "compute_value_correlation",

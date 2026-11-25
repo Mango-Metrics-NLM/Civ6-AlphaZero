@@ -4,7 +4,7 @@
 referenced by `README.md` and `CLAUDE.md` SECTION 7. Update it whenever a submodule is added
 or removed.
 
-- **As of:** v2.0.0, 2026-11-21 (`local/gameplay_config.py` extracted from `civ6_local.py`, `bridge/config.py` live transport helpers unified, and Lua mod live-Civ6 parity fixes landed)
+- **As of:** v2.0.0, 2026-11-25 (`monitoring/wandb_compat.py` extracted from `mlflow_logger.py`, `run_enhanced_training.py` helpers decomposed, `local_muzero_launcher.py` `shell=False` hardening, and `check_release_readiness.py` gate)
 - **Submodule count:** 31
 - **Counting method:** recursive `*.py` files, excluding `__pycache__`
   (`find alpha_zero/<mod> -name '*.py' -not -path '*__pycache__*' | wc -l`).
@@ -36,7 +36,7 @@ or removed.
 | `rules` | 10 | Game rule sets as data: frozen integer-only specs, a strict YAML loader, a structural validator, queries, index registry and hash-pinned built-ins; a zero-game pacing model (`pacing.py`) and an importer that turns a GameInfo table export into a rule set outside the repository (`gameinfo.py`). CLI: `python -m alpha_zero.rules validate\|hash\|pace\|import-gameinfo`. A leaf package; no environment uses it yet (`docs/GAME_RULES.md`) |
 | `gameplay` | 8 | Gameplay systems: combat, economy, fog of war, terrain, city growth, victory (no tech tree yet; one is planned as GM-S2) |
 | `human_interface` | 4 | Human gameplay interface |
-| `monitoring` | 6 | MLflow experiment tracking: `MLflowConfig`, `MLflowLogger`, metric helpers, dashboards |
+| `monitoring` | 7 | MLflow experiment tracking: `MLflowConfig`, `MLflowLogger`, `WandbCompatAdapter`, metric helpers, dashboards |
 | `inference` | 4 | Inference service: client, engine, schemas (HTTP server lives in `serving/`) |
 | `interfaces` | 4 | Game interface contracts + Unciv JSON interface |
 | `opponents` | 2 | Opponent types & strategies |
@@ -56,8 +56,8 @@ CI `[dev]` install does not provide:
   optional extras (web, spacetimedb, llm) or live services.
 - **`cloud/`** — still omitted from the repo-wide gate, but **no longer unmeasured**. Since
   2026-09-02, CI's `cloud-tests` job measures it separately with `.coveragerc-cloud` and holds
-  it to the per-package floor in `coverage-floors.json` (**58%**, measured **60.2%** across
-  26 files / 5,538 statements on 2026-11-20). A floor may only ever be raised. Reproduce with
+  it to the per-package floor in `coverage-floors.json` (**59%**, measured **60.2%** across
+  26 files / 5,542 statements on 2026-11-25). A floor may only ever be raised. Reproduce with
   `make test-cloud-coverage`.
 
 The repo-wide gate (85%) re-tightens as the remaining omitted modules are brought under

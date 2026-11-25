@@ -91,7 +91,7 @@ case "$rel" in
   mod/AlphaZeroAI/AlphaZeroAI.modinfo|mod/AlphaZeroAI/Scripts/*.lua)
     "$PY" scripts/build_lua_bundle.py --check || exit 2
     ;;
-  CLAUDE.md|README.md|CONTRIBUTING.md|CHANGELOG.md|ROADMAP.md|CITATION.cff|docs/*|pyproject.toml|alpha_zero/__init__.py|setup.py)
+  CLAUDE.md|README.md|ROADMAP.md|PROJECT_CHARTER.md|CONTRIBUTING.md|CHANGELOG.md|SUPPORT.md|SECURITY.md|GOVERNANCE.md|CITATION.cff|docs/*|.github/workflows/ci.yml|pyproject.toml|alpha_zero/__init__.py|alpha_zero/*/__init__.py)
     # Documentation drift is otherwise caught only by CI, so it lives in the
     # tree for a whole session. This validator has no --path mode (its checks
     # are cross-file by nature) but a whole-repo run costs ~100ms, which is

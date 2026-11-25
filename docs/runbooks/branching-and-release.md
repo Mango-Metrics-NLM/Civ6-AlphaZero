@@ -56,7 +56,8 @@ The last ordinary `dev` PR before promotion. It bumps `pyproject.toml`,
 The changelog and `date-released` are final at the first rc, because the final-tag rule
 forbids later edits outside `docs/evidence/`. Write claims about results neutrally, for
 example "verdict in `docs/evidence/release_v2_1_0/report.md`", since the evidence does
-not exist yet. An agent can prepare this PR (the `release` skill); it does not tag.
+not exist yet. An agent can prepare this PR (the `release` and `public-release-audit`
+skills, verified by `make check-release-readiness`); it does not tag.
 
 ### Promote (maintainer)
 

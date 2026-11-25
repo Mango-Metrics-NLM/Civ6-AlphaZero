@@ -37,8 +37,10 @@ On Windows PowerShell, set `$env:CUDA_DEVICE_ORDER="PCI_BUS_ID"`,
 ### 1. Run developer-side GPU determinism and E2E AQA suites
 
 ```bash
-pytest tests/regression/test_cuda_determinism_regression.py tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py -v
+CIV6AZ_REQUIRE_GPU=2 pytest tests/regression/test_cuda_determinism_regression.py tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py -v
 ```
+
+Setting `CIV6AZ_REQUIRE_GPU=N` (or running `make test-gpu` across all 21 GPU-gated modules) enables `tests/fixtures/gpu_skip_gate.py`, which fails at startup if fewer than `N` CUDA devices are visible and converts any CUDA/GPU/device skip (`CIV6AZ_GPU_SKIP_PATTERN`) into a test failure. Leave `CIV6AZ_REQUIRE_GPU` unset on CPU-only hosts.
 
 Runs **in-process** developer-side checks on every visible GPU (repeating seeded
 training/arena within the same Python process, cross-GPU checkpoint save/load parity,
@@ -70,7 +72,8 @@ python scripts/run_card.py configs/run_cards/t0b.yaml --price_only
    explicit maintainer confirmation (`make verify-registration` holds the digest gate).
 2. Keep total priced games <= 1,000 unless explicitly running an approved card with
    `--approval_ref`.
-3. Never treat a skipped CUDA test on a CPU host as a GPU pass; report the observed
+3. Never treat a skipped CUDA test on a CPU host as a GPU pass; set `CIV6AZ_REQUIRE_GPU=<n>`
+   on GPU hosts so CUDA/GPU skips fail at pytest level, and report the observed
    `torch.cuda.is_available()` and GPU names explicitly.
 
 ## Related

@@ -221,10 +221,11 @@ make install-lua         # install dev extras plus the lupa Lua 5.1 harness runt
 make check-lua-bundle    # verify AlphaZeroMain.lua matches its Lua source modules
 make check-mod-install   # verify installed Steam mod files match repo SHA-256
 make test-lua            # run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1
-make verify-fast         # lint, types, regression and governance gates — the inner loop
-make verify              # every CI gate in one pass — run before opening a PR
-make test-all            # coverage, mirroring CI's coverage job (gate: 85%)
-make test-cloud-coverage # the deployed path, against coverage-floors.json
+make verify-fast              # lint, types, regression and governance gates — the inner loop
+make check-release-readiness  # deterministic public-release readiness checks (R1-R6)
+make verify                   # every CI gate in one pass — run before opening a PR
+make test-all                 # coverage, mirroring CI's coverage job (gate: 85%)
+make test-cloud-coverage      # the deployed path, against coverage-floors.json
 ```
 
 The Makefile exports `OMP_NUM_THREADS ?= 2`; without the cap two tests wedge in
