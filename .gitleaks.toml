@@ -65,6 +65,8 @@ paths = [
     '''^venv\.bak/''',
     '''^\.tools/''',
     '''^\.claude/worktrees/''',
+    '''^cutover/''',
+    '''^mypy_output\.txt$''',
     '''^\.worktrees/''',
     '''^worktrees/''',
 ]

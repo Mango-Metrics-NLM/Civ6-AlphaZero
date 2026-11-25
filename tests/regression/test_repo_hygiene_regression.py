@@ -272,11 +272,25 @@ class TestSecretScanningConfig:
             "mlflow.db-wal",
             "mlartifacts/",
             "eval_results/",
+            "cutover/",
+            "test_results/",
+            "mypy_output.txt",
         ):
             assert required in entries, f"{required!r} missing from .dockerignore"
         assert not any(
             pat in entries for pat in ("alpha_zero/", "alpha_zero/rules/", "alpha_zero/rules/data/")
         ), ".dockerignore must not exclude packaged rules YAML data"
+
+    def test_gitignore_excludes_scratch_typecheck_and_cutover_artifacts(self) -> None:
+        """Scratch mypy logs, cutover bundles, and JUnit XML reports stay gitignored."""
+        gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        entries = {
+            ln.strip()
+            for ln in gitignore.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        }
+        for required in ("mypy_output.txt", "mypy_*.txt", "cutover/", "junit*.xml"):
+            assert required in entries, f"{required!r} missing from .gitignore"
 
 
 class TestPreCommitDocSyncFilter:

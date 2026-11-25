@@ -142,6 +142,11 @@ gameinfo.json
 docs/superpowers/
 release-staging*/
 dataset-export/
+cutover/
+test_results/
+mypy_output.txt
+mypy_*.txt
+junit*.xml
 
 # Security scan outputs (not needed in container image)
 bandit-report.json

@@ -44,8 +44,9 @@ flowchart TB
 > still reach W&B-hosted history, and they are documented as deprecated.
 
 **Legend:**
+
 | Colour | Meaning |
-|--------|---------|
+| -------- | --------- |
 | Dark blue | Person (actor) |
 | Mid blue | Civ6-AlphaZero system boundary |
 | Grey | External system / service |
@@ -118,7 +119,7 @@ flowchart TB
 **Container responsibilities:**
 
 | Unit | `--mode` | Technology | Hosts |
-|------|----------|-----------|-------|
+| ------ | ---------- | ----------- | ------- |
 | Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel, BatchGumbel, or MuZero MCTS over MicroCiv (`SeedStream.SELF_PLAY_SEARCH` when `seed` is set) |
 | Training Worker | `training` | Python / PyTorch / Docker (Vertex) | SGD updates, weight promotion |
 | Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent (`SeedStream.ARENA_SEARCH`) |
@@ -150,7 +151,7 @@ flowchart LR
     classDef util fill:#067D26,color:#fff,stroke:#055E1C
 
     subgraph Monitoring["alpha_zero/monitoring/"]
-        MLflowLogger["MLflowLogger\nmlflow_logger.py\n• start_run() / end_run()\n• log_evaluation_result() → 15 metrics\n• FINISHED / FAILED lifecycle"]:::comp
+        MLflowLogger["MLflowLogger\nmlflow_logger.py (<1k) + wandb_compat.py\n• start_run() / end_run()\n• log_evaluation_result() → 15 metrics\n• FINISHED / FAILED lifecycle"]:::comp
         MLflowConfig["MLflowConfig\nconfig.py\n(MonitoringConfig = back-compat alias)\n• tracking_uri, experiment_name\n• SQLite backend settings"]:::comp
         AZEvaluator["AlphaZeroMLflowEvaluator\nmlflow_evaluator.py\ncompute_metrics() →\npolicy_entropy · value_mae\npolicy_top1_acc · action_diversity"]:::comp
     end
@@ -192,7 +193,7 @@ flowchart LR
 **15 metrics logged by `log_evaluation_result()` (`{prefix}/<metric>`):**
 
 | Category | Metrics |
-|----------|---------|
+| ---------- | --------- |
 | Counts (4) | `wins`, `losses`, `draws`, `total_games` |
 | Normalised rates (4) | `win_rate`, `score_rate`, `draw_rate`, `loss_rate` (fractions 0–1) |
 | Game stats (7) | `avg_game_length`, `avg_cities_won`, `avg_cities_lost`, `avg_units_won`, `avg_units_lost`, `total_evaluation_time`, `value_correlation` |
@@ -276,7 +277,7 @@ flowchart TD
 Line counts below were re-measured on 2026-09-04 (`wc -l alpha_zero/core/mcts/*.py`).
 
 | Module | Lines | Contents | Depends on |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `backup.py` | 249 | `backpropagate_path`, `perspective_sign`, `should_track_to_play`, `env_current_player`, backup diagnostics | — |
 | `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
 | `gumbel_ops.py` | 186 | `gumbel_sample_actions`, `compute_completed_q`, `build_completed_q_policy` | — |
@@ -405,6 +406,7 @@ flowchart TD
 ```
 
 **Key invariants:**
+
 - `WinRateResult.win_rate` is on a **0–100 scale**; `log_evaluation_result()` normalises to **0–1** before storing in MLflow.
 - Each MLflow run corresponds to one model checkpoint (one iteration).
 - `resolve_run_id()` auto-detects the latest champion from GCS — no hardcoded UUIDs.
@@ -427,7 +429,7 @@ flowchart TD
         Classify["classify_encoder_keys()"]:::logic
         Validate["validate_encoder_state()"]:::logic
         Warn["Log mismatch warning / error"]:::logic
-        
+
         Load --> Classify
         Classify --> Validate
         Validate -->|"mismatch detected"| Warn
@@ -438,7 +440,7 @@ flowchart TD
         Verify["Verify safe-tensors only"]:::logic
         ModelCard["Assemble Model Card README"]:::logic
         Publish["HfApi.upload_folder()"]:::logic
-        
+
         Extract --> Verify
         Verify --> ModelCard
         ModelCard --> Publish
@@ -530,9 +532,9 @@ reported `REPRODUCED`, while formal single-use T0b/A1 run-card execution via
 `scripts/run_card.py` remains the maintainer gate.
 
 **Governance & AST Debt Auditing.** Static governance and hygiene checks (`scripts/validate_*.py`,
-`scripts/check_doc_sync.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
-canonical sorted `--json` (`sort_keys=True`) and `--verbose` structured stderr logging across all
-six governance validators, plus single-source tree discovery (`audit_import_graph.iter_python_files`,
+`scripts/check_doc_sync.py`, `scripts/check_release_readiness.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
+canonical sorted `--json` (`sort_keys=True`) and `--verbose` structured stderr logging across the
+governance and readiness validators (eleven vetted checkers exposed via `readonly_shell_guard.sh`, fourteen skills incl. `public-release-audit`, and synced `posttooluse_governance.sh` doc-sync globs), plus single-source tree discovery (`audit_import_graph.iter_python_files`,
 pruning PEP 405 virtual environments via `pyvenv.cfg` and linked git worktrees). Lua mod bundle
 parity (`scripts/build_lua_bundle.py --check`) is enforced across `make validate`, pre-commit,
 and `posttooluse_governance.sh`.
@@ -582,7 +584,8 @@ flowchart LR
 
 ---
 
-*Last revised: 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
+*Last revised: 2026-11-25 — extracted `alpha_zero/monitoring/wandb_compat.py` from `mlflow_logger.py` (`<1k` lines), decomposed `scripts/run_enhanced_training.py` (`PLR0915` removed), hardened `scripts/local_muzero_launcher.py` (`shell=False`), added `scripts/check_release_readiness.py` + `public-release-audit` skill (eleven vetted checkers, synced `posttooluse_governance.sh`), and ratcheted `alpha_zero/cloud` coverage floor `58% -> 59%`.*
+*Previously 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
 *Previously 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
 component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified
 all six governance validators on sorted `--json` / `--verbose` plus `check-lua-bundle` wiring.
