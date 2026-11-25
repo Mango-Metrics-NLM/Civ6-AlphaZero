@@ -449,6 +449,18 @@ function AlphaZeroFileIO.ReadCommands()
     end
 end
 
+-- Whether a command is waiting to be read, without reading it: the file
+-- changed since it was last read, or ExposedMembers holds one.
+function AlphaZeroFileIO.HasPendingCommand()
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("COMMANDS_PATH")
+        if not path then return false end
+        local content = AlphaZeroFileIO.Read(path)
+        return content ~= nil and simpleHash(content) ~= fileContentHashes[path]
+    end
+    return ExposedMembers ~= nil and ExposedMembers.AlphaZeroCommand ~= nil
+end
+
 -- Write acknowledgment
 function AlphaZeroFileIO.WriteAck(msgId, success, errorCode, errorMessage, executed)
     local ack = {

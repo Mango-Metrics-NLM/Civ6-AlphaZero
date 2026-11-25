@@ -329,16 +329,8 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     import asyncio
 
-    # Optional startup kick: if the game is idle on the local player's turn
-    # with an expired command window, no fresh state ever arrives. Setting
-    # CIV6_BRIDGE_KICK_START forces one end-turn (socket transport only) so a
-    # new turn-begin export is emitted for the agent to catch.
-    kick_start = os.getenv("CIV6_BRIDGE_KICK_START", "").lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
+    # Optional startup kick (socket only): re-arms a lapsed window; never ends the turn.
+    kick_start = os.getenv("CIV6_BRIDGE_KICK_START", "").lower() in ("1", "true", "yes", "on")
 
     async def _session() -> int:
         # Single event loop wraps both start and stop, fixing the inherited
@@ -348,8 +340,14 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         try:
             await bridge.start()
             if kick_start:
-                logger.info("Kick-start enabled: forcing one end-turn to un-stall.")
-                await bridge.kick_turn()
+                try:  # a failed kick must not stop the agent
+                    sent = await bridge.kick_turn()
+                    logger.info(
+                        "Kick-start: re-arm %s (answer: AZ_REARM line in Lua.log)",
+                        "requested" if sent else "not supported by this transport",
+                    )
+                except Exception as exc:
+                    logger.warning("Kick-start re-arm failed, continuing: %s", exc)
             return await agent_loop.run()
         finally:
             await bridge.stop()

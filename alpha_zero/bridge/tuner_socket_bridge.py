@@ -36,6 +36,8 @@ import asyncio
 import logging
 import socket
 import struct
+import uuid
+import warnings
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -45,6 +47,7 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "REARM_LUA",
     "FireTunerClient",
     "FireTunerError",
     "SocketTunerBridge",
@@ -80,6 +83,16 @@ DEFAULT_TUNER_PORT = 4318
 #: Lua contexts to target for the command global, most-preferred first. The
 #: proven ``.ltp`` panel used ``GameCore_Tuner``; ``InGame`` is the fallback.
 PREFERRED_STATES = ("GameCore_Tuner", "InGame")
+
+#: Lua that asks the mod to re-arm its command window (``request_rearm``). It only sets a
+#: flag the mod's ``PollCommands`` reads; the mod decides whether the turn is its own and
+#: active, then exports the state and listens again. It can never end a turn: it names no
+#: game action. ``{nonce}`` is filled with ``str.replace`` (a hex string).
+REARM_LUA = (
+    "if not ExposedMembers then ExposedMembers = {} end; "
+    'ExposedMembers.AlphaZeroRearm = "{nonce}"; '
+    'print("AZ_REARM_SET {nonce}")'
+)
 
 
 class FireTunerError(Exception):
@@ -419,7 +432,7 @@ class SocketTunerBridge:
         """Close the FireTuner socket.
 
         Acquires ``self._lock`` before closing so a close cannot interleave
-        with an in-flight ``send_command``/``kick_end_turn`` worker thread
+        with an in-flight ``send_command``/``request_rearm`` worker thread
         operating on the same (non-thread-safe) socket. All socket ops are
         bounded by the client timeout, so the lock frees promptly; if a stray
         worker is somehow still holding it, we time out and close anyway
@@ -463,33 +476,49 @@ class SocketTunerBridge:
         self._commands_sent += 1
         return True
 
-    async def kick_end_turn(self, context: str = "InGame") -> bool:
-        """Force an end-of-turn via the tuner to un-stall a waiting game.
+    async def request_rearm(self, context: str | None = None) -> str:
+        """Ask the mod to re-arm its command window; never ends the turn.
 
-        The mod only exports state and polls for commands on
-        ``LocalPlayerTurnBegin``. If the previous turn's command window has
-        already expired (the game is sitting idle on the local player's turn),
-        no fresh state will ever arrive and the agent waits forever. Executing
-        ``UI.RequestAction(ACTION_ENDTURN)`` directly — the same call the mod's
-        ``executeEndTurn`` uses — advances the turn so a new turn-begin export
-        is emitted, which the already-running LogTailer then catches.
+        Once the mod's command window has lapsed (``COMMAND_TIMEOUT`` after the last command)
+        it reads nothing and exports nothing until the next turn starts, so an agent that
+        connects late waits forever. This sets ``ExposedMembers.AlphaZeroRearm`` to a fresh
+        nonce, through the same context as ``send_command`` (``GameCore_Tuner`` preferred).
+        The mod accepts it only on its own active turn with no command in flight: it then
+        exports the state and listens again, and logs ``Re-arm accepted <nonce>``; otherwise
+        it logs ``Re-arm ignored: <reason>``. Either way it clears the flag.
 
         Args:
-            context: Lua UI context to run the action in (``InGame`` default).
+            context: Lua state to write the flag in (default: the preferred states).
 
         Returns:
-            True if the kick Lua executed without a protocol error.
+            The nonce written, to match against the mod's log line.
         """
         if not self._running:
             raise FireTunerError("SocketTunerBridge is not running")
-        lua = (
-            "if UI and UI.RequestAction and ActionTypes then "
-            "UI.RequestAction(ActionTypes.ACTION_ENDTURN) end; "
-            'print("AZ_KICK_SENT")'
-        )
+        nonce = uuid.uuid4().hex
+        lua = REARM_LUA.replace("{nonce}", nonce)
         async with self._lock:
-            out = await asyncio.to_thread(self._client.run_lua, lua, context)
-        logger.info("Kick end-turn sent via tuner (%s): %s", context, out.strip())
+            out = await asyncio.to_thread(self._client.run_lua, lua, context, self._client.timeout)
+        logger.info("Re-arm requested via tuner (nonce %s)", nonce)
+        logger.debug("Re-arm tuner output: %r", out)
+        return nonce
+
+    async def kick_end_turn(self, context: str | None = None) -> bool:
+        """Deprecated alias of :meth:`request_rearm`; it no longer ends the turn.
+
+        It used to run ``UI.RequestAction(ACTION_ENDTURN)``, which bypassed the mod's
+        end-of-turn blocker check and threw away the agent's turn.
+
+        Returns:
+            True once the re-arm flag was written.
+        """
+        warnings.warn(
+            "SocketTunerBridge.kick_end_turn is deprecated and no longer ends the turn; "
+            "use request_rearm",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        await self.request_rearm(context)
         return True
 
     @property

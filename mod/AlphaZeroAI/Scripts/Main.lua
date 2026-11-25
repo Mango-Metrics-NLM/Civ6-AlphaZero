@@ -36,6 +36,9 @@ local bridgeState = {
     -- Frames left before the state is exported after a command message; nil
     -- when no export is pending.
     exportAfterTicks = nil,
+    -- An end_turn was carried out this turn: the turn is ending and a re-arm
+    -- must not reopen it. Reset at the turn's start.
+    turnEnding = false,
 }
 
 -- Polling state (use explicit callback reference for reliable removal)
@@ -95,6 +98,37 @@ local function findAIPlayer()
         return decided(found, "the first living human player")
     end
     return decided(0, "fallback: no local player and no human found")
+end
+
+-- Drop a pending re-arm request (ExposedMembers.AlphaZeroRearm) without
+-- acting on it, saying why. Used where the state is exported anyway (a turn
+-- start) or the bridge starts over (initialisation, reset), so a request left
+-- from before cannot fire later and export a second, stale state.
+local function dropRearm(why)
+    if not ExposedMembers or ExposedMembers.AlphaZeroRearm == nil then return end
+    local nonce = ExposedMembers.AlphaZeroRearm
+    ExposedMembers.AlphaZeroRearm = nil
+    if Log then Log.Info("Re-arm dropped %s: %s", tostring(nonce), why) end
+end
+
+-- Whether the game says it is the bridge player's turn: the local player is
+-- the bridge's player and that player's turn is active. Returns true, or false
+-- and why not ("not our turn", "turn not active", "cannot ask"). Anything the
+-- game cannot answer is "cannot ask", never a yes.
+local function ourActiveTurn()
+    local playerId = bridgeState.aiPlayerId
+    if playerId == nil then return false, "cannot ask" end
+    local okLocal, localId = pcall(function() return Game.GetLocalPlayer() end)
+    if not okLocal or type(localId) ~= "number" then return false, "cannot ask" end
+    if localId ~= playerId then return false, "not our turn" end
+    local okActive, active = pcall(function()
+        local player = Players[playerId]
+        if not player or not player.IsTurnActive then error("no IsTurnActive") end
+        return player:IsTurnActive()
+    end)
+    if not okActive then return false, "cannot ask" end
+    if not active then return false, "turn not active" end
+    return true
 end
 
 -- Initialize the bridge
@@ -185,7 +219,8 @@ function AlphaZeroBridge.Initialize()
     bridgeState.aiPlayerId = findAIPlayer()
     if Log then Log.Info("AI Player ID: %d", bridgeState.aiPlayerId) end
 
-    -- Clear old files
+    -- Clear old files, and a re-arm request from before this initialisation
+    dropRearm("the bridge was initialised")
     if AlphaZeroFileIO then
         AlphaZeroFileIO.ClearAll()
         AlphaZeroFileIO.WriteHeartbeat()
@@ -206,6 +241,13 @@ function AlphaZeroBridge.Initialize()
     bridgeState.initialized = true
     if Log then Log.Info("AlphaZero Bridge initialized successfully") end
 
+    -- Loaded in the middle of our own active turn (a reload, or the mod added
+    -- late): the turn-start event has already gone by, so start the turn here.
+    if ourActiveTurn() then
+        if Log then Log.Info("Loaded during our active turn: starting it") end
+        AlphaZeroBridge.OnTurnStart(bridgeState.aiPlayerId)
+    end
+
     return true
 end
 
@@ -225,6 +267,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     end
 
     if Log then Log.Info("Turn started for player %d", playerId) end
+    dropRearm("the turn start exports the state")
 
     bridgeState.isMyTurn = true
     bridgeState.actionsThisTurn = 0
@@ -233,6 +276,7 @@ function AlphaZeroBridge.OnTurnStart(playerId)
     bridgeState.lastCommandTime = bridgeState.turnStartTime
     bridgeState.exportAfterTicks = nil
     bridgeState.exportAfterFrames = nil
+    bridgeState.turnEnding = false
 
     -- Export and write current state
     local success, err = AlphaZeroStateExporter.ExportAndWrite(playerId)
@@ -313,8 +357,69 @@ function AlphaZeroBridge.StopPolling()
     isPolling = false
 end
 
+-- A re-arm request from the Python side (ExposedMembers.AlphaZeroRearm, a
+-- nonce string): reopen a lapsed command window and export the state once.
+-- Accepted only on our own active turn, with the window closed, no command
+-- waiting to be read or for its state export, and no end_turn carried out;
+-- the flag is cleared either way. It never asks the game to do anything: it
+-- cannot end a turn. Each answer is logged and also printed as a machine line
+-- AZ_REARM:<nonce>:accepted or AZ_REARM:<nonce>:ignored:<reason>. Returns
+-- true when accepted.
+local function checkRearm()
+    if not ExposedMembers then return false end
+    local nonce = ExposedMembers.AlphaZeroRearm
+    if nonce == nil then return false end
+    ExposedMembers.AlphaZeroRearm = nil
+
+    local reason = nil
+    if type(nonce) ~= "string" or nonce == "" then
+        reason = "not a non-empty string"
+        nonce = "-"
+    elseif bridgeState.exportAfterTicks
+        or (AlphaZeroFileIO and AlphaZeroFileIO.HasPendingCommand and AlphaZeroFileIO.HasPendingCommand()) then
+        reason = "command in flight"
+    elseif bridgeState.turnEnding then
+        reason = "turn ending"
+    elseif bridgeState.isMyTurn and bridgeState.waitingForCommand then
+        reason = "window open"
+    else
+        local ours, why = ourActiveTurn()
+        if not ours then reason = why end
+    end
+    if reason then
+        if Log then Log.Warn("Re-arm ignored %s: %s", nonce, reason) end
+        print(string.format("AZ_REARM:%s:ignored:%s", nonce, reason))
+        return false
+    end
+
+    if Log then Log.Info("Re-arm accepted %s", nonce) end
+    print(string.format("AZ_REARM:%s:accepted", nonce))
+    if not bridgeState.isMyTurn then
+        bridgeState.actionsThisTurn = 0
+    end
+    local now = (os and os.time) and os.time() or 0
+    bridgeState.isMyTurn = true
+    bridgeState.waitingForCommand = true
+    bridgeState.turnStartTime = now
+    bridgeState.lastCommandTime = now
+    bridgeState.exportAfterTicks = nil
+    bridgeState.exportAfterFrames = nil
+    local exported, err = AlphaZeroStateExporter.ExportAndWrite(bridgeState.aiPlayerId)
+    if not exported then
+        if Log then Log.Error("Failed to export state after a re-arm: %s", tostring(err)) end
+        bridgeState.lastError = err
+    end
+    AlphaZeroBridge.StartPolling()
+    return true
+end
+
 -- Poll for and process commands
 function AlphaZeroBridge.PollCommands(source)
+    -- Before the early return below: a re-arm is what reopens a lapsed window.
+    if checkRearm() then
+        return
+    end
+
     if not bridgeState.isMyTurn or not bridgeState.waitingForCommand then
         return
     end
@@ -472,6 +577,7 @@ function AlphaZeroBridge.ProcessCommands(commandMessage)
 
     if endTurnExecuted then
         bridgeState.waitingForCommand = false
+        bridgeState.turnEnding = true
     else
         -- Export the new state some frames from now, not in this one: the
         -- game has not carried the requests out yet.
@@ -627,6 +733,10 @@ function AlphaZeroBridge.Reset()
     bridgeState.waitingForCommand = false
     bridgeState.actionsThisTurn = 0
     bridgeState.turnStartTime = 0
+    bridgeState.exportAfterTicks = nil
+    bridgeState.exportAfterFrames = nil
+    bridgeState.turnEnding = false
+    dropRearm("the bridge was reset")
 
     if AlphaZeroFileIO then
         AlphaZeroFileIO.ClearAll()

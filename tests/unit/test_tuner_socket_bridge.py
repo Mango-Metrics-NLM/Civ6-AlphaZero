@@ -360,7 +360,10 @@ class TestSocketTunerBridge:
         with pytest.raises(FireTunerError, match="not running"):
             await bridge.send_command(_FakeCommand(1))
 
-    async def test_kick_end_turn_runs_action_lua(self, mock_server) -> None:
+    async def test_kick_end_turn_rearms_and_never_ends_the_turn(self, mock_server) -> None:
+        # Changed with the kick re-arm (contract PR 1): this test used to pin the old
+        # behaviour (``kick_end_turn`` ran ``UI.RequestAction(ACTION_ENDTURN)`` in InGame).
+        # It now sends the re-arm flag to GameCore_Tuner and never an end of turn.
         bridge = SocketTunerBridge(
             BridgeConfig(command_transport="socket"),
             host=mock_server.host,
@@ -370,13 +373,16 @@ class TestSocketTunerBridge:
         bridge._client._handshake_quiet = 0.15
         await bridge.start()
         try:
-            assert await bridge.kick_end_turn() is True
+            with pytest.warns(DeprecationWarning):
+                assert await bridge.kick_end_turn() is True
         finally:
             await bridge.stop()
         cmd = mock_server.received_cmds[-1]
-        assert "ACTION_ENDTURN" in cmd
-        # InGame index is 96 in the canonical LSQ dump.
-        assert cmd.startswith("CMD:96:")
+        assert "ACTION_ENDTURN" not in cmd
+        assert "RequestAction" not in cmd
+        assert "ExposedMembers.AlphaZeroRearm" in cmd
+        # GameCore_Tuner is index 2 in the canonical LSQ dump.
+        assert cmd.startswith("CMD:2:")
 
     async def test_kick_before_start_raises(self, socket_bridge) -> None:
         bridge, _fake = socket_bridge
