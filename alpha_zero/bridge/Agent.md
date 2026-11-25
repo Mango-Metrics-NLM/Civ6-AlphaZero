@@ -115,7 +115,7 @@ Command delivery is pluggable; state always flows out via `Lua.log` regardless o
 Select the transport via `BridgeConfig.command_transport` or the env vars consumed by `BridgeConfig.from_env()`:
 - `CIV6_BRIDGE_TRANSPORT` — `"file"` or `"socket"` (case-insensitive)
 - `CIV6_BRIDGE_TUNER_HOST` / `CIV6_BRIDGE_TUNER_PORT` — override the FireTuner endpoint (default `127.0.0.1:4318`)
-- `CIV6_BRIDGE_KICK_START` — forces one `END_TURN` on startup to un-stall a game that's already idling on a human/AI turn
+- `CIV6_BRIDGE_KICK_START` — asks the mod once at startup to re-arm a lapsed command window (`SocketTunerBridge.request_rearm`, which sets `ExposedMembers.AlphaZeroRearm`); the mod accepts it only on its own active turn with the window closed and nothing in flight, then exports the state; its answer is the `Lua.log` line `AZ_REARM:<nonce>:accepted|ignored:<reason>`. It **never ends the turn** (until 2026-11-25 it sent `END_TURN` past the blocker check). `kick_end_turn` is a deprecated alias of `request_rearm`; a failed kick is logged at WARNING and the agent loop still starts
 
 ### FireTuner wire protocol (reverse-engineered, verified live)
 

@@ -122,18 +122,18 @@ class LiveBridge:
         logger.info("LiveBridge stopped")
 
     async def kick_turn(self) -> bool:
-        """Bootstrap a stalled turn when using the socket transport.
+        """Ask the mod to re-arm a lapsed command window (socket transport only).
 
-        Delegates to :meth:`SocketTunerBridge.kick_end_turn` when the socket
-        transport is active; a no-op (returns False) for the file transport,
-        which has no live connection to inject a kick through.
+        Delegates to :meth:`SocketTunerBridge.request_rearm`, which never ends the turn;
+        a no-op (returns False) for a transport without it, such as the file transport,
+        which has no live connection to send the request through.
         """
-        kick = getattr(self._tuner, "kick_end_turn", None)
-        if kick is None:
-            logger.debug("kick_turn requested but transport has no kick support")
+        rearm = getattr(self._tuner, "request_rearm", None)
+        if rearm is None:
+            logger.debug("kick_turn requested but transport has no re-arm support")
             return False
-        result: bool = await kick()
-        return result
+        await rearm()
+        return True
 
     # --- State reading (delegates to LogTailer) ---
 

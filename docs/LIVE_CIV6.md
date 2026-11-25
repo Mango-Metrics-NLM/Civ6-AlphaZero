@@ -100,6 +100,7 @@ the record of 2026-11-21 supports; the maintainer ticks an item when its effect 
 | 29 | ten turns end by themselves | open |
 | 30 | the bridge plays the right player | open |
 | 31, 32 | making peace and denouncing with their settings on | open |
+| 33, 34 | `IsTurnActive` exists; the kick re-arms a lapsed window and the turn does not end | open |
 
 ## What exists
 
@@ -552,6 +553,40 @@ One more item for the checklist, the reason for this tool's transport fix:
    command was discarded whenever it reached the log together with the command's answer, and the
    agent then waited out its timeout while the mod gave the turn up.
 
+### Starting late in a turn: the kick re-arms, never ends the turn
+
+The mod listens for commands for `COMMAND_TIMEOUT` (30 s) after the last command, then reads
+and exports nothing until the next turn begins. An agent started later in the turn used to wait
+forever, and `CIV6_BRIDGE_KICK_START` "fixed" that by ending the turn, past the blocker check.
+Since 2026-11-25 the kick (`SocketTunerBridge.request_rearm`; `kick_end_turn` is a deprecated
+alias that does the same) only sets a flag the mod reads on its next poll. The mod accepts it
+when the local player is the bridge's player, `Players[id]:IsTurnActive()` answers true, the
+command window is closed, no command is waiting to be read or for its state export, and no
+`end_turn` has been carried out this turn; it then exports the state once and reopens the window.
+Otherwise it ignores the flag and says why (`window open`, `command in flight`, `turn ending`,
+`not our turn`, `turn not active`, `cannot ask`; the last one also when `IsTurnActive` does not
+exist). Either way the flag is cleared, and a turn start, a reset or the mod's initialisation
+drops a flag still pending (`Re-arm dropped <nonce>: ...`), so an old request never causes a
+second, stale export. A configured `AI_PLAYER_ID` that is not the game's local player is always
+refused ("not our turn"). A mod loaded in the middle of its own active turn (a reload) now starts
+the turn itself, by the same check. None of this has run in a real game.
+
+The agent does not wait for the mod's answer. It logs `Kick-start: re-arm requested` and the
+nonce (`Re-arm requested via tuner (nonce ...)`); the answer is one line in `Lua.log`, found with
+`findstr AZ_REARM Lua.log` (or `grep AZ_REARM Lua.log`): `AZ_REARM:<nonce>:accepted` or
+`AZ_REARM:<nonce>:ignored:<reason>`, beside the readable `Re-arm accepted <nonce>` /
+`Re-arm ignored <nonce>: <reason>`.
+
+For the checklist:
+
+33. Check that `Players[Game.GetLocalPlayer()]:IsTurnActive()` exists in the UI context (run it
+    from FireTuner's `InGame` state on your own turn: it prints `true`; after ending the turn,
+    `false`). If it does not exist, every re-arm is ignored with "cannot ask".
+34. On your own turn with nothing pending, wait 40 s (the window lapses), then start the agent
+    with `CIV6_BRIDGE_KICK_START=1` and `CIV6_BRIDGE_TRANSPORT=socket`. `Lua.log` shows
+    `AZ_REARM:<nonce>:accepted` (the nonce the agent logged), a state arrives and the agent starts sending commands, and the
+    turn does **not** end by itself (the turn number is unchanged until the agent ends it).
+
 ### What the agent remembers inside a game turn (GM-B7c-2)
 
 The agent sends several commands per game turn and gets a new state after each. Within one game
@@ -644,7 +679,7 @@ For the checklist:
 |----------|---------|---------|
 | `CIV6_BRIDGE_TRANSPORT` | `file` | `socket` for the headless FireTuner path (recommended); `file` needs the FireTuner GUI relay. |
 | `CIV6_BRIDGE_TUNER_HOST` / `CIV6_BRIDGE_TUNER_PORT` | `127.0.0.1` / `4318` | Where the game's FireTuner listener is. |
-| `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to send one `END_TURN` at start-up to un-stall an idle game (socket transport only). **It bypasses the mod's blocker check**: sent while a research, production or unit-orders choice is open, it is the very request that deactivates the turn (LF-H1). Use it only when nothing blocks the turn. |
+| `CIV6_BRIDGE_KICK_START` | unset | Set to `1` to ask the mod, once at start-up, to re-arm its command window (socket transport only): it sets `ExposedMembers.AlphaZeroRearm`, and the mod, on its own active turn with no command in flight, exports the state and listens again (`Re-arm accepted <nonce>` in `Lua.log`, and the line `AZ_REARM:<nonce>:accepted`; otherwise `AZ_REARM:<nonce>:ignored:<reason>`). **It never ends the turn** (since 2026-11-25; before, it sent `END_TURN` past the blocker check, LF-H1). A failed kick is logged as a warning and the agent starts anyway. See "Starting late in a turn". |
 | `CIV6AZ_AGENT_MAX_GAME_TURNS` | `0` | Stop after this many finished game turns (0: no limit). `CIV6AZ_AGENT_MAX_TURNS` (default 500) counts loop steps, one per command, not game turns; set it to `0` when using this. There is no command-line flag for either. |
 | `CIV6AZ_AGENT_MAX_COMMANDS_PER_TURN` | `100` | Past this many commands in one game turn the agent sends only `end_turn` (the mod's own cap is 200). |
 | `CIV6AZ_AGENT_MAX_RESELECTIONS` | `8` | How often per step the policy is asked again after a choice that cannot be sent. |
