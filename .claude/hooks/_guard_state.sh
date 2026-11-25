@@ -357,24 +357,60 @@ lex_norm() {
   LN="/${out[*]+${out[*]}}"
 }
 
+# An absolute path `cd -P` may resolve: POSIX-rooted (not a `//` UNC share) or a drive (C:/, C:\).
+is_phys_abs() { { [[ $1 == /* ]] && [[ $1 != //* ]]; } || [[ $1 =~ ^[A-Za-z]:[/\\] ]]; }
+# Physical resolution of $1 into PR, as `cd -P` would land; fails when the directory is missing.
+# On MSYS2/Git for Windows, calling `cd -P` directly on `C:/.../link/..` collapses `..` in the
+# Win32-to-POSIX converter before traversing the junction, so drive paths step to `X:/` first and
+# walk the remainder as a POSIX path.
+phys_resolve() {
+  local target="$1" drv="" rest=""
+  if [[ $target =~ ^[A-Za-z]:[/\\] ]]; then
+    drv="${target:0:2}/"
+    rest="${target:3}"
+    rest="${rest//\\//}"
+    while [[ $rest == /* ]]; do rest="${rest#/}"; done
+    if [ -n "$rest" ]; then
+      PR="$(CDPATH= cd -P -- "$drv" 2>/dev/null && CDPATH= cd -P -- "$rest" 2>/dev/null && pwd -P)" && [ -n "$PR" ]
+    else
+      PR="$(CDPATH= cd -P -- "$drv" 2>/dev/null && pwd -P)" && [ -n "$PR" ]
+    fi
+    return $?
+  fi
+  PR="$(CDPATH= cd -P -- "$target" 2>/dev/null && pwd -P)" && [ -n "$PR" ]
+}
+
 # Where `cd $2` from the state whose cd entries are $1 (joined by US; empty
 # is the hook's own directory) lands, as cd entries in CR. Logical (bash's
 # default, PowerShell): an absolute path normalised lexically from $PWD, never
 # a relative chain for `git -C`, which resolves `..` physically and so leaves
-# a symbolic link where bash does not (`cd fl/..`). $3 = 1 for `cd -P`, and
-# for a base that is not a POSIX path (a Windows drive): the chain git follows.
+# a symbolic link where bash does not (`cd fl/..`). Physical (`cd -P`, $3 = 1)
+# resolves `..` across symlinks/junctions via `pwd -P` for POSIX-rooted paths
+# (excluding `//` UNC shares) and Windows drive paths (`C:/...`), falling back
+# to the `git -C` chain on failure or when the base is another form.
 cd_resolve() {
-  local base="" rest
+  local base="" rest b=""
   if [ "$3" -eq 0 ] && [[ $2 == /* ]]; then lex_norm "$2"; CR="-C${US}${LN}"; return 0; fi
-  if is_abs_dir "$2"; then CR="-C${US}$2"; return 0; fi
-  if [ "$3" -eq 0 ]; then
-    if [ -z "$1" ]; then
-      base="${PWD:-}"
-    else
-      rest="${1#-C"$US"}"
-      [[ $rest == *"$US"* ]] || base="$rest"
+  if is_abs_dir "$2"; then
+    if [ "$3" -eq 1 ] && is_phys_abs "$2" && phys_resolve "$2"; then
+      CR="-C${US}${PR}"; return 0
     fi
+    CR="-C${US}$2"; return 0
+  fi
+  if [ -z "$1" ]; then
+    base="${PWD:-}"
+  else
+    rest="${1#-C"$US"}"
+    [[ $rest == *"$US"* ]] || base="$rest"
+  fi
+  if [ "$3" -eq 0 ]; then
     if [[ $base == /* ]]; then lex_norm "${base}/$2"; CR="-C${US}${LN}"; return 0; fi
+  elif is_phys_abs "$base"; then
+    b="${base%/}"
+    b="${b%\\}"
+    if phys_resolve "${b}/$2"; then
+      CR="-C${US}${PR}"; return 0
+    fi
   fi
   CR="${1:+$1$US}-C${US}$2"
 }
