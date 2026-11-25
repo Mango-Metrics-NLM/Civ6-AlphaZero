@@ -28,6 +28,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -86,13 +87,14 @@ def _decide(
     *,
     shipped: bool = False,
     env: dict[str, str] | None = None,
+    bash: str | None = None,
 ) -> tuple[str | None, str]:
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
     base = {k: v for k, v in os.environ.items() if k not in KNOBS}
     if shipped:
         base.update(_shipped_env())
     proc = subprocess.run(
-        [BASH, GUARD.as_posix()],
+        [bash or BASH, GUARD.as_posix()],
         cwd=repo,
         input=payload,
         env=env if env is not None else base,
@@ -419,6 +421,27 @@ def test_not_a_repository_does_not_ask_or_crash(tmp_path: Path) -> None:
 
 
 def test_git_missing_from_path_does_not_ask_or_crash(repo: Path, tmp_path: Path) -> None:
+    env = {k: v for k, v in os.environ.items() if k not in KNOBS}
+    if sys.platform == "win32":
+        # Git\bin\bash.exe is a launcher that prepends /mingw64/bin (holding git);
+        # invoke the underlying usr\bin\bash.exe directly so PATH stays isolated.
+        resolved = Path(BASH).resolve()
+        if resolved.parent.name.lower() == "bin" and resolved.parent.parent.name.lower() == "usr":
+            msys_bash = resolved
+        else:
+            msys_bash = resolved.parents[1] / "usr" / "bin" / "bash.exe"
+        assert msys_bash.is_file(), f"expected MSYS bash at {msys_bash}"
+        clean_path = os.pathsep.join(
+            [str(msys_bash.parent), str(Path(sys.executable).resolve().parent)]
+        )
+        assert shutil.which("git", path=clean_path) is None
+        env["PATH"] = clean_path
+        assert _decide(repo, f"git push origin {MERGED}", env=env, bash=str(msys_bash)) == (
+            None,
+            "",
+        )
+        return
+
     bindir = tmp_path / "bin"
     bindir.mkdir()
     for tool in ("bash", "cat", "jq", "python3", "python"):
@@ -431,6 +454,5 @@ def test_git_missing_from_path_does_not_ask_or_crash(repo: Path, tmp_path: Path)
         except OSError:
             shutil.copy2(found, target)
     assert not (bindir / "git").exists()
-    env = {k: v for k, v in os.environ.items() if k not in KNOBS}
     env["PATH"] = str(bindir)
     assert _decide(repo, f"git push origin {MERGED}", env=env) == (None, "")

@@ -7,6 +7,7 @@ Nothing is written then: not even the out directory.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
@@ -66,7 +67,13 @@ def test_a_symbolic_link_and_its_target_are_refused(
 ) -> None:
     log = _log(tmp_path / "Lua.log", range(21, 41))
     link = tmp_path / "link.log"
-    link.symlink_to(log)
+    try:
+        link.symlink_to(log)
+    except OSError:
+        if sys.platform != "win32":
+            raise
+        # Windows without symlink privilege falls back to a hard link; _given_twice checks st_dev/st_ino.
+        link.hardlink_to(log)
     _refused(tmp_path, capsys, "--log", str(link), "--log", str(log))
 
 

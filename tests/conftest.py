@@ -122,6 +122,12 @@ def scrub_cloud_environment(environ: dict[str, str] | os._Environ[str]) -> list[
 def pytest_configure(config: pytest.Config) -> None:
     """Scrub cloud variables for the whole session and register custom markers."""
     scrub_cloud_environment(os.environ)
+    if os.environ.get("CIV6AZ_REQUIRE_GPU", "").strip():
+        from tests.fixtures import gpu_skip_gate
+
+        if not config.pluginmanager.is_registered(gpu_skip_gate):
+            config.pluginmanager.register(gpu_skip_gate, "civ6az-gpu-skip-gate")
+        gpu_skip_gate.pytest_configure(config)
     config.addinivalue_line(
         "markers", "requires_gcp: marks tests requiring GCP credentials (skip if unavailable)"
     )

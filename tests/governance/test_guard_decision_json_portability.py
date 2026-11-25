@@ -25,6 +25,7 @@ def fake_fsdecode(b):
     return real_fsdecode(b)
 def no_symlink(self, *a, **k):
     raise OSError("symbolic link privilege not held")
+real_name = os.name
 import shutil
 found = {t: shutil.which(t) for t in ("git", "cat")}  # resolved before the platform is faked
 shutil.which = lambda tool, *a, **k: found.get(tool)
@@ -33,7 +34,7 @@ pathlib.Path.symlink_to = no_symlink
 os.name = "nt"
 sys.platform = "win32"
 import tests.governance.test_guard_decision_json as m
-os.name = "posix"  # the module reads it at import; pathlib cannot build a WindowsPath here
+os.name = real_name  # the module reads it at import; restore host os.name before Path(d)
 assert "raw_byte" not in m.ODD_NAMES, m.ODD_NAMES
 with tempfile.TemporaryDirectory() as d:
     path = m._bin_dir(pathlib.Path(d), ("git", "cat"))
