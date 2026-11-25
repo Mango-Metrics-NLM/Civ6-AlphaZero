@@ -18,7 +18,7 @@
 #   gh pr view|list|checks
 #   gh api            (a RELATIVE api path + --jq/-q, --paginate, -H X-GitHub-Api-Version:*
 #                      only; never a URL, host or scheme)
-#   python scripts/<one of ten vetted validate_/check_/verify_ scripts>.py
+#   python scripts/<one of eleven vetted validate_/check_/verify_ scripts>.py
 #
 # Two modes, chosen by the first argument the hook command passes:
 #   (none)  the read-only roles
@@ -115,7 +115,7 @@ emit() {
 }
 
 deny() {
-  emit deny "read-only role shell guard: $1 Allowed (one plain command, no quotes, pipes, redirection or globs): git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api <one relative path> (GET only); python scripts/<one of ten vetted validate_/check_/verify_release_evidence checkers, exact options>.py; and, only for sdlc-qa-sdet (--qa), python -m pytest <paths under tests/> with safe flags and the optional prefixes OMP_NUM_THREADS=<digits> and CIV6AZ_REQUIRE_LUA=1 (each at most once). Return the text you wanted to write to your caller instead."
+  emit deny "read-only role shell guard: $1 Allowed (one plain command, no quotes, pipes, redirection or globs): git log|show|diff|status|rev-parse|merge-base|ls-files|cat-file|tag -l; gh pr view|list|checks; gh api <one relative path> (GET only); python scripts/<one of eleven vetted validate_/check_/verify_release_evidence checkers, exact options>.py; and, only for sdlc-qa-sdet (--qa), python -m pytest <paths under tests/> with safe flags and the optional prefixes OMP_NUM_THREADS=<digits> and CIV6AZ_REQUIRE_LUA=1 (each at most once). Return the text you wanted to write to your caller instead."
   exit 0
 }
 
@@ -381,7 +381,7 @@ ok_gh_pr() {
   return 1
 }
 
-# The ten vetted checkers, EXACT and case-sensitive. A casefold match to an excluded
+# The eleven vetted checkers, EXACT and case-sensitive. A casefold match to an excluded
 # script is denied by name so the reason is clear, but the allowlist is what decides.
 script_check() {
   local sl k tk name w
@@ -395,7 +395,8 @@ script_check() {
     scripts/validate_agents.py | scripts/validate_claude_agents.py | scripts/validate_kb.py | \
       scripts/validate_openspec.py | scripts/validate_skills.py | scripts/check_doc_sync.py | \
       scripts/check_coverage_floors.py | scripts/check_branch_direction.py | \
-      scripts/check_learning_trend.py | scripts/verify_release_evidence.py) ;;
+      scripts/check_learning_trend.py | scripts/check_release_readiness.py | \
+      scripts/verify_release_evidence.py) ;;
     *) deny "'${sub:-<none>}' is not one of the vetted read-only scripts." ;;
   esac
   # Layer 1: an EXACT allowlist of long options per script, read from each script's
@@ -413,6 +414,7 @@ script_check() {
     scripts/check_coverage_floors.py) opts=" --report --floors --package --allow-empty --verbose -v " ;;
     scripts/check_branch_direction.py) opts=" " ;;
     scripts/check_learning_trend.py) opts=" --run-dir --iterations --eval --benchmark --print-protocol-sha --evaluation-md " ;;
+    scripts/check_release_readiness.py) opts=" --root --quiet --json --verbose --skip-git " ;;
     scripts/verify_release_evidence.py) opts=" --repo-root --repo --head --scope " ;;
     *) opts=" " ;;
   esac

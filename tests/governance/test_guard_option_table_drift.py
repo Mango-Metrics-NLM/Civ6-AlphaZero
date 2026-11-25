@@ -65,9 +65,9 @@ def _scan(script: Path) -> set[str]:
     return found
 
 
-def test_the_table_covers_exactly_the_ten_vetted_scripts() -> None:
+def test_the_table_covers_exactly_the_eleven_vetted_scripts() -> None:
     table = _guard_table()
-    assert len(table) == 10, sorted(table)
+    assert len(table) == 11, sorted(table)
     for rel in table:
         assert (REPO_ROOT / rel).is_file(), f"{rel} is in the guard table but does not exist"
 

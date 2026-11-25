@@ -71,6 +71,9 @@ VALIDATOR_INVOCATIONS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("check_doc_sync.py", ()),
     ("check_doc_sync.py", ("--json",)),
     ("check_doc_sync.py", ("--verbose",)),
+    ("check_release_readiness.py", ()),
+    ("check_release_readiness.py", ("--json",)),
+    ("check_release_readiness.py", ("--verbose",)),
 )
 
 

@@ -97,7 +97,8 @@ help:
 	@echo "  make verify-registration  A1 registration gate: digest, log row, constants, run cards"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
-	@echo "  make validate          Run governance validators (6 validators + Lua bundle sync)"
+	@echo "  make validate          Run governance validators (7 validators + Lua bundle sync)"
+	@echo "  make check-release-readiness  Run deterministic public-release readiness checks (R1-R6)"
 	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
 	@echo "  make check-mod-install Verify installed Steam Civ6 mod matches repo SHA-256"
 	@echo "  make test-lua          Run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1"
@@ -404,6 +405,10 @@ GPU_TEST_FILES := \
 test-gpu:
 	CIV6AZ_REQUIRE_GPU=$${CIV6AZ_REQUIRE_GPU:-2} $(PYTHON) -m pytest $(GPU_TEST_FILES) -rs -v --tb=short
 
+.PHONY: check-release-readiness
+check-release-readiness:
+	$(PYTHON) scripts/check_release_readiness.py
+
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
@@ -412,6 +417,7 @@ validate:
 	$(PYTHON) scripts/validate_agents.py
 	$(PYTHON) scripts/validate_claude_agents.py
 	$(PYTHON) scripts/check_doc_sync.py
+	$(PYTHON) scripts/check_release_readiness.py
 	$(PYTHON) scripts/build_lua_bundle.py --check
 
 # The A1 registration gate (.claude/skills/a1-reregister): section 7.1's digest, the

@@ -105,6 +105,8 @@ ALLOWED = [
     "python3 scripts/check_doc_sync.py --quiet",
     "python3 scripts/check_doc_sync.py --verbose",
     "python scripts/verify_release_evidence.py --scope",
+    "python scripts/check_release_readiness.py --json",
+    "python3 scripts/check_release_readiness.py --skip-git",
     "GIT LOG --oneline",
     "git.exe status",
 ]

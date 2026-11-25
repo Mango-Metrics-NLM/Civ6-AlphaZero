@@ -39,6 +39,11 @@ _spec.loader.exec_module(vca)
 SKILLS = ("planning-handoff", "dev-sqe-handoff", "pre-pr-handoff", "negative-control", "verify")
 
 
+def _repo_skill_names() -> tuple[str, ...]:
+    discovered = {p.name for p in (REPO_ROOT / ".claude" / "skills").iterdir() if p.is_dir()}
+    return tuple(sorted(discovered | set(SKILLS)))
+
+
 @pytest.fixture
 def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A valid tree: the real role files, skills that dispatch them, hooks, a gate."""
@@ -48,7 +53,7 @@ def tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
         shutil.copy(src, agents / src.name)
     names = sorted(p.stem for p in agents.glob("sdlc-*.md"))
     skills = tmp_path / ".claude" / "skills"
-    for skill in SKILLS:
+    for skill in _repo_skill_names():
         (skills / skill).mkdir(parents=True)
         # Each handoff skill names every role; the table check is "your role is named".
         (skills / skill / "SKILL.md").write_text(" ".join(names), encoding="utf-8")
