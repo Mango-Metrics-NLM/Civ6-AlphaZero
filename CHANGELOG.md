@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [2.0.1] - 2026-11-25
+
 Local-first operation and the dev/qa/main release model (plan:
 [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)).
 The A1 learning run is registered, not run: no verdict exists yet.
