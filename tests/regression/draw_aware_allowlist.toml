@@ -23,6 +23,6 @@
 [metric_pairing]
 "alpha_zero/cloud/gcp/vertex_orchestrator.py::run_iterations" = "CONFIRM-FIRST (distributed coordination): proposed hunk in the P7 report adds orchestrator/eval_score_rate and eval_draw_rate from the arena artifact."
 "alpha_zero/cloud/gcp/vertex_orchestrator.py::main" = "CONFIRM-FIRST (distributed coordination): win_rate_trend is a slope over the legacy statistic; the report proposes score_rate_trend beside it."
-"alpha_zero/monitoring/mlflow_logger.py::WandbCompatAdapter.log_evaluation" = "W&B-parity adapter taking a scalar win_rate; callers that have counts pass score_rate/draw_rate through **kwargs, which the literal cannot show."
+"alpha_zero/monitoring/wandb_compat.py::WandbCompatAdapter.log_evaluation" = "W&B-parity adapter taking a scalar win_rate; callers that have counts pass score_rate/draw_rate through **kwargs, which the literal cannot show."
 "alpha_zero/tournament/wandb_dashboards.py::TournamentWandbLogger.log_head_to_head_matrix" = "Averages a precomputed win-rate matrix; no per-match counts reach this method, so no score rate can be derived here."
-"scripts/run_enhanced_training.py::run_enhanced_training" = "curriculum/win_rate is the curriculum's rolling window over iterations (no draw record), a rung-advance signal rather than a champion-vs-candidate statistic."
+"scripts/run_enhanced_training.py::_log_selfplay_iteration" = "curriculum/win_rate is the curriculum's rolling window over iterations (no draw record), a rung-advance signal rather than a champion-vs-candidate statistic."
