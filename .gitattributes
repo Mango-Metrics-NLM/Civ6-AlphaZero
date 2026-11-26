@@ -1,0 +1,2 @@
+# Enforce LF for shell scripts so CRLF checkouts on Windows do not break WSL/bash.
+*.sh text eol=lf

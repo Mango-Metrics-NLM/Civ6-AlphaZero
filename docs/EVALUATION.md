@@ -412,7 +412,7 @@ python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --
 python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
 ```
 
-- **Branch in force: pending T0b.** T0b replaces "pending T0b" with "40" or
+- **Branch in force: 40.** T0b replaces "pending T0b" with "40" or
   "60" and, for "60", puts the two branch commands into both cards.
 - **A1-R** is the same card with every `--seed 20261111` replaced by
   `--seed 20261112`, under its own `<card>`.
@@ -554,10 +554,7 @@ re-run under this rule, only a new `card_id`.
 - **Reference:** T0b measures it on post-B1 code at board 8 / 60 turns,
   heuristic vs random, seeds 1001–1003 × 200 games. This replaces the board-6
   figure of 0.725.
-  - **Measured reference: pending T0b.** T0b records here, before any
-    exploratory or confirmatory run: W/D/L, the score and its hull, the number
-    of pooled pairs, P(40) with its 95% interval and P(60) by pair bootstrap,
-    and the iid P(40).
+  - **Measured reference** (T0b, seeds 1001, 1002, 1003 x 200 games, board 8 / 60 turns, heuristic vs random): W/D/L 303/255/42, score 0.7175, 95% hull [0.6912, 0.7421], 300 pooled pairs; P(40) = 0.0166 (95% interval [0.0030, 0.0493]) and P(60) = 0.0010 by pair bootstrap; iid P(40) = 0.0215.
   - Pre-B1 reference, superseded by T0b: 0.7375, CI [0.711, 0.761].
 - **Branch:** if the **upper bound of P(40)'s 95% interval** exceeds 0.05,
   the positive control takes 60 games and "final vs random" drops to 20,
@@ -663,6 +660,7 @@ in `run.json` and the release bundle, not here.
 | 2026-11-14 | `c58abfad89091b37ab2bace9dde820c72894ad3b1e82108297364d29977b4194` | GPU-first re-registration (before any A1-family run; maintainer instruction, PR #138): training and self-play on `cuda:0`, every arena arm on `cuda:1` (was `cpu` throughout); new "Devices" paragraph (pinned torch build, PCI device order, `run_card` refuses a missing device, deterministic algorithms enforced); "After a VOID" reproduction claim scoped to the same machine, torch build and device |
 | 2026-11-14 | `dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91` | Review round on the GPU registration (before any A1-family run; PR #138, ML-science, QA and architecture reviews): the torch build and both GPUs are named in a machine-readable `a1-devices` block and a run on anything else is VOID; GPU determinism is a precondition checked by T0b's `determinism` invocation in the pinned environment, each repeat in its own process, with a stated consequence; "After a VOID" makes the re-run a reproduction check (`evaluation.reproduction compare`) and a non-reproducing re-run cannot PASS; a never-launched attempt is not an attempt; T0b is named as a card; "the devices or the torch build" added to what a later amendment may not change; the confirmatory-seed sentence corrected for the 2026-11-11 harness smoke |
 | 2026-11-14 | `e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17` | Automated review of PR #138 (before any A1-family run; same maintainer instruction as the two rows above): `torch_spec` names the build (`torch==2.11.0+cu128`, was `torch==2.11.0`) and the installed `torch.__version__` must equal it in full, so another CUDA variant of the same release is another build (the cu128 index was already registered; the build is the same one, now named); arena games are compared by outcome, length and a sha256 of their actions in order, in the determinism precondition and in the "After a VOID" reproduction check (was outcome only) |
+| 2026-11-26 | `c1d22e37141c693de40f1916a84f819f8e0810478a4d978765040788c30e75d3` | T0b slot fill-in: measured reference (303/255/42, score 0.7175, P(40)=0.0166 [0.0030, 0.0493], P(60)=0.0010), branch 40, GPU determinism REPRODUCED (6.1 h one-card ETA) |
 
 ## 8. The LLM advisor gate is not an evaluation
 

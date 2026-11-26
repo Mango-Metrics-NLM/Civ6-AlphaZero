@@ -1,26 +1,26 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T15:40:00Z",
-  "current_focus": "PR #180 merged (a3905895). Phase 1 live Steam Civ6 verification & GM-B11 census complete on fix/ws1-live-soak-and-evidence (Item 29 10-turn exit-0 soak Turns 9->19, Item 13, research_civic, Item 11 WOULD_START_WAR, Item 12a occupied-tile refusal, 41-turn Japan GM-B11 census verdict=stop E1=0.2667, and harden-governance-gates archived).",
+  "last_timestamp": "2026-11-26T18:20:00Z",
+  "current_focus": "WS-0 branch cut-over complete (dev @ 5138af23, qa & main @ c214daaa / v2.0.0) and T0b 660-game dual-GPU calibration COMPLETE (REPRODUCED determinism on cuda:0 RTX 5060 Ti / cuda:1 RTX 5060, positive control 303/255/42 = 0.7175, P(40)=0.0166 [0.0030, 0.0493], Branch in force: 40, 6.1 h ETA). Opening Section 7.1 registration PR into dev.",
   "resume_pointers": {
-    "current_task": "Open Phase 1 live-evidence PR off a3905895, then execute Phase 2 WS-0 branch cut-over and close Steam Civ6 before Phase 3 WS-2 dual-GPU T0b -> A1 -> A1-R validation",
+    "current_task": "Merge chore/t0b-section7-registration PR into dev, then promote dev -> qa, tag v2.1.0-rc.1, and execute A1 (980g) and A1-R (980g) on quiet dual GPUs",
     "blocked_on": [
-      "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh, civ6az-agent PAT)",
-      "Maintainer: Close Steam Civ6 before running T0b, A1, and A1-R on quiet dual GPUs (v2.1.0 gate)"
+      "Maintainer: review & merge chore/t0b-section7-registration PR into dev",
+      "Maintainer: provision civ6az-agent machine user & run 4 identity verification checks",
+      "Maintainer: promote dev -> qa and run tag_release v2.1.0-rc.1 --execute before A1 / A1-R"
     ],
     "next_steps": [
-      "Review and merge fix/ws1-live-soak-and-evidence PR into claude/civ6-alphazero-implementation-vMnun",
-      "Execute WS-0 branch cut-over (v2.0.0 tag on c214daaa, dev/qa/main, civ6az-agent)",
-      "Close Steam Civ6 and run T0b -> Section 7.1 PR -> A1 -> A1-R dual-GPU validation"
+      "Merge chore/t0b-section7-registration PR into dev",
+      "Run Release Prep -> promote dev to qa -> tag v2.1.0-rc.1",
+      "Run a1.yaml (980g) -> a1r.yaml (980g) on quiet dual GPUs, build release bundle, and verify release evidence"
     ]
   },
   "context_files": [
+    "docs/evidence/t0b_calibration/README.md",
+    "docs/EVALUATION.md",
+    "alpha_zero/evaluation/a1_registration.py",
     "docs/evidence/live_civ6_baseline/README.md",
-    "kb/handoffs/20261123-devsqe-to-prepr-gm-b9-fail-closed.md",
-    "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
-    "docs/LIVE_CIV6.md",
-    "kb/specs/20261119-game-mechanics-gap-register.md",
-    "openspec/specs/civ6-bridge/spec.md",
+    "docs/runbooks/branching-and-release.md",
     "CLAUDE.md"
   ]
 }

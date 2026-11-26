@@ -105,6 +105,7 @@ below marked *before* was measured on **pre-fix** code.
 | [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
 | [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget: current settings vs Danihelka et al. (2022) under two normalisation readings and `mctx`'s defaults; 0 games. | after |
 | [`evidence/live_civ6_baseline/README.md`](evidence/live_civ6_baseline/README.md) | Live Steam Civ6 Turns 1–41 bridge baseline (Item 29 10-turn exit-0 soak, Item 11/12a/13, `research_civic`) and `GM-B11` MicroCiv expressivity census (`verdict: stop`, `E1=0.2667` at board 8; 0 games). | after |
+| [`evidence/t0b_calibration/README.md`](evidence/t0b_calibration/README.md) | T0b dual-GPU calibration (`660` games): `REPRODUCED` determinism (`RTX 5060 Ti` / `RTX 5060`), throughput (`6.1 h` ETA), positive control `0.7175`, `P(40)=0.0166`, `Branch in force: 40`. | after |
 
 ### Architecture decision records
 
