@@ -45,7 +45,8 @@ This table is the one place that says what state each part is in. `README.md`,
 | `unit_sleep` | yes | yes | no |
 | `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | no |
 | The make-peace and denounce gates (`ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`) | yes, off by default | yes | no |
-| `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | no | no; expect them not to work |
+| `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | yes (Lua 5.1 dispatch/stub execution; Civ6 API unverified live) | no; expect them not to work (`SetCitizenLocked` is void under `pcall`) |
+| `unit_delete` (`ALLOW_UNIT_DELETE`) | yes, off by default (fail-closed until live-verified) | yes | no |
 | `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run. "Cannot be asked": no |
 | The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | found live; the rebuilt mod has not been run since |
 | A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | no |

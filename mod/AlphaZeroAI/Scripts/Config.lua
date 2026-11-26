@@ -60,6 +60,9 @@ local DEFAULT_CONFIG = {
     -- Denouncing is refused unless this is true; with it on, only a player the
     -- game reports as met and not at war.
     ALLOW_DENOUNCE = false,
+    -- Disbanding (deleting) a unit is refused unless this is true; unverified
+    -- destructive handler kept fail-closed until live-tested.
+    ALLOW_UNIT_DELETE = false,
 
     -- Map settings
     MAX_TILES_PER_STATE = 10000,   -- Limit tiles in state dump

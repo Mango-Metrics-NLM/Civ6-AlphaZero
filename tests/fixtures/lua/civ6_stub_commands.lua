@@ -62,6 +62,7 @@ end
 local OP = {
     MOVE_TO = 91001, RANGE_ATTACK = 91002, FOUND_CITY = 91003,
     SKIP_TURN = 91004, FORTIFY = 91005, SLEEP = 91006,
+    BUILD_IMPROVEMENT = 91007, PROMOTE = 91008,
 }
 local CMD = { DELETE = 92001, WAKE = 92002 }
 
@@ -83,8 +84,10 @@ GameInfo.UnitCommands = rows(Civ6Stub.unitCommandRows)
 UnitOperationTypes = {
     TYPE = 9001,
     PARAM_X = 9101, PARAM_Y = 9102, PARAM_MODIFIERS = 9103,
+    PARAM_IMPROVEMENT_TYPE = 9104, PARAM_PROMOTION_TYPE = 9105,
     MOVE_TO = OP.MOVE_TO, RANGE_ATTACK = OP.RANGE_ATTACK, FOUND_CITY = OP.FOUND_CITY,
     SKIP_TURN = OP.SKIP_TURN, FORTIFY = OP.FORTIFY, SLEEP = OP.SLEEP,
+    BUILD_IMPROVEMENT = OP.BUILD_IMPROVEMENT, PROMOTE = OP.PROMOTE,
 }
 UnitCommandTypes = { TYPE = 9002, DELETE = CMD.DELETE, WAKE = CMD.WAKE }
 UnitOperationMoveModifiers = { NONE = 0, ATTACK = 1, MOVE_IGNORE_UNEXPLORED_DESTINATION = 2 }
@@ -102,10 +105,13 @@ CityOperationTypes = {
 -- ----------------------------------------------------------------------------
 -- State
 -- ----------------------------------------------------------------------------
-Civ6Stub.unitRequests = {}   -- queued, not yet applied
-Civ6Stub.dropped = {}        -- { what, reason } for every request not carried out
-Civ6Stub.wars = {}           -- { attacker, defender } for every war an attack started
-Civ6Stub.atPeace = {}        -- ["0:1"] = true: players 0 and 1 are at peace
+Civ6Stub.unitRequests = {}       -- queued, not yet applied
+Civ6Stub.dropped = {}            -- { what, reason } for every request not carried out
+Civ6Stub.wars = {}               -- { attacker, defender } for every war an attack started
+Civ6Stub.builtImprovements = {}  -- { unitId, itemId } for applied BUILD_IMPROVEMENT requests
+Civ6Stub.promotions = {}         -- { unitId, promotionId } for applied PROMOTE requests
+Civ6Stub.purchases = {}          -- { cityId, params } for applied PURCHASE requests
+Civ6Stub.atPeace = {}            -- ["0:1"] = true: players 0 and 1 are at peace
 Civ6Stub.unitsNeedOrders = false
 Civ6Stub.canFoundCity = true
 Civ6Stub.nextCityId = 302
@@ -199,7 +205,8 @@ end
 -- What a unit can do
 -- ----------------------------------------------------------------------------
 local function canEver(spec, op)
-    if op == OP.MOVE_TO or op == OP.SKIP_TURN or op == OP.SLEEP then return true end
+    if op == OP.MOVE_TO or op == OP.SKIP_TURN or op == OP.SLEEP
+        or op == OP.BUILD_IMPROVEMENT or op == OP.PROMOTE then return true end
     if op == OP.FORTIFY then return (spec.combat or 0) > 0 end
     if op == OP.RANGE_ATTACK then return (spec.ranged or 0) > 0 end
     if op == OP.FOUND_CITY then return spec.unitType == 0 end
@@ -339,6 +346,13 @@ end
 local function applyBuild(request)
     local spec, owner = Civ6Stub.city(request.cityId)
     if not spec then return false, "no such city" end
+    if request.op == CityOperationTypes.PURCHASE then
+        table.insert(Civ6Stub.purchases, {
+            cityId = spec.id,
+            params = shallowCopy(request.params),
+        })
+        return true
+    end
     if request.op ~= CityOperationTypes.BUILD then return false, "not a build operation" end
     local params = request.params
     if params[CityOperationTypes.PARAM_INSERT_MODE] ~= CityOperationTypes.VALUE_EXCLUSIVE then
@@ -428,6 +442,16 @@ local function applyOperation(request)
         spec.activity = "fortified"
     elseif op == OP.SLEEP then
         spec.activity = "sleeping"
+    elseif op == OP.BUILD_IMPROVEMENT then
+        table.insert(Civ6Stub.builtImprovements, {
+            unitId = spec.id,
+            itemId = params and params[UnitOperationTypes.PARAM_IMPROVEMENT_TYPE] or nil,
+        })
+    elseif op == OP.PROMOTE then
+        table.insert(Civ6Stub.promotions, {
+            unitId = spec.id,
+            promotionId = params and params[UnitOperationTypes.PARAM_PROMOTION_TYPE] or nil,
+        })
     end
     return true
 end

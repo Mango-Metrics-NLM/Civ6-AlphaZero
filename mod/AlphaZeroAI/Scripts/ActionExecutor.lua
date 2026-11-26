@@ -1031,8 +1031,20 @@ local function executeUnitPromote(playerId, command)
     return false, ERROR_CODES.EXECUTION_FAILED, "Promote operation unavailable"
 end
 
+-- True only when the setting is the boolean true: a string "true", a 1 or an
+-- unset setting leaves the command turned off.
+local function _configFlagEnabled(name)
+    return AlphaZeroConfig ~= nil and AlphaZeroConfig.Get(name) == true
+end
+
 -- Delete (disband) a unit.
 local function executeUnitDelete(playerId, command)
+    if not _configFlagEnabled("ALLOW_UNIT_DELETE") then
+        if Log then Log.Warn("Refused UNIT_DELETE: ALLOW_UNIT_DELETE is turned off") end
+        return false, ERROR_CODES.OPERATION_REFUSED,
+            "Refused: deleting units is turned off (ALLOW_UNIT_DELETE)"
+    end
+
     local unitId = command.unit_id
     if not unitId then
         return false, ERROR_CODES.INVALID_COMMAND, "Missing unit_id"
@@ -1131,7 +1143,7 @@ end
 -- True only when the setting is the boolean true: a string "true", a 1 or an
 -- unset setting leaves the command turned off.
 local function _diplomacySettingOn(name)
-    return AlphaZeroConfig ~= nil and AlphaZeroConfig.Get(name) == true
+    return _configFlagEnabled(name)
 end
 
 -- Ask the acting player's diplomacy object one yes/no question about the
