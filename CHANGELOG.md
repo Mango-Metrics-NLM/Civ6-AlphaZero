@@ -18,8 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Synced `docs/architecture/C4_ARCHITECTURE.md`, `docs/LIVE_CIV6.md`, `README.md`, `alpha_zero/bridge/Agent.md`, `.claude/README.md`, `.claude/hooks/readonly_shell_guard.sh`, `.gitleaks.toml`, `kb/sessions/*.state.json`, and `docs/evidence/tech_debt_baseline/baseline.json`.
 
 ### Added
+- Added committed live Civ6 baseline & `GM-B11` expressivity census evidence under `docs/evidence/live_civ6_baseline/` (`README.md`, `census_summary.json`, indexed in `docs/evidence/README.md` and `docs/README.md`) recording the 41-turn Steam DX12 Japan verification (`1.1.0-a3905895`), **Item 29** 10-turn autonomous `--mode civ6` exit-`0` soak (`Turns 9–19`, `234` commands/acks, `0` errors), **Item 13** multi-turn `unit_move`, `research_civic` (`CIVIC_FOREIGN_TRADE`), **Item 11** peaceful `unit_attack` war-check refusal (`WOULD_START_WAR`), **Item 12a** full-movement occupied-peaceful `unit_move` refusal (`WOULD_START_WAR`), empirical `unit_sleep`/`city_buy`/`unit_build`/`city_citizen` outcomes, `AdvisorPopup` AI-turn pause root cause, and the preregistered `GM-B11` `verdict: "stop"` (`E1=0.2667 < 0.30` at board `8` across `41` non-void states, `11` after turn `30`).
 - Added `.claude/skills/branch-hygiene-audit/SKILL.md` for repeatable pre-PR branch hygiene, coverage, debt ratchet, and governance audits, and updated `.claude/skills/live-civ6-verify/SKILL.md` with mid-turn FireTuner re-arm, `produce` dict schema, and `Lua.log` rotation guidance.
 - Added `tests/unit/test_bridge_protocol_split_backcompat.py` (re-export identity + AST acyclicity & `<1000` LOC guard) and expanded `tests/unit/test_tuner_socket_bridge.py` (`>=95%` coverage).
+
+### Archived
+- Archived `openspec/changes/harden-governance-gates/` -> `openspec/changes/archive/2026-11-26-harden-governance-gates/` and merged its four `validation-gates` requirements into `openspec/specs/validation-gates/spec.md`.
 
 ## [2.0.1] - 2026-11-25
 

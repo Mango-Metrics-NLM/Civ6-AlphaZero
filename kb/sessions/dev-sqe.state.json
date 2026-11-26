@@ -1,21 +1,21 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T05:00:00Z",
-  "current_focus": "PR #179 merged (920fe282). Completing off-play-path PLR0915 burndown (vertex_orchestrator.main & training_worker.main -> 0 PLR0915 ignores) and preparing Phase 1 live Civ6 combat/soak/GM-B11 census + Phase 2 WS-0 cut-over + Phase 3 WS-2 T0b/A1/A1-R.",
+  "last_timestamp": "2026-11-26T15:40:00Z",
+  "current_focus": "PR #180 merged (a3905895). Phase 1 live Steam Civ6 verification & GM-B11 census complete on fix/ws1-live-soak-and-evidence (Item 29 10-turn exit-0 soak Turns 9->19, Item 13, research_civic, Item 11 WOULD_START_WAR, Item 12a occupied-tile refusal, 41-turn Japan GM-B11 census verdict=stop E1=0.2667, and harden-governance-gates archived).",
   "resume_pointers": {
-    "current_task": "Close harden-governance-gates Tasks 4.3-4.5 (PLR0915 burndown) off play path, then run Phase 1 live Steam Civ6 combat & GM-B11 census",
+    "current_task": "Open Phase 1 live-evidence PR off a3905895, then execute Phase 2 WS-0 branch cut-over and close Steam Civ6 before Phase 3 WS-2 dual-GPU T0b -> A1 -> A1-R validation",
     "blocked_on": [
-      "Maintainer: start fresh Turn 1 Civ6 match or load enemy-adjacent save (PID 57372 currently stalled on Turn 5 P1_ACT=true)",
       "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh, civ6az-agent PAT)",
       "Maintainer: Close Steam Civ6 before running T0b, A1, and A1-R on quiet dual GPUs (v2.1.0 gate)"
     ],
     "next_steps": [
-      "Merge PLR0915 burndown PR (functions_over_max_statements: 2 -> 0, ruff_per_file_ignores: 25 -> 23)",
-      "Reset Turn 1 Steam Civ6 match, run Task 3.2 (Items 11-12 combat/war check), 10-turn soak, and GM-B11 >=40t census",
-      "Close Civ6, execute WS-0 branch cut-over, and run T0b -> A1 -> A1-R GPU validation"
+      "Review and merge fix/ws1-live-soak-and-evidence PR into claude/civ6-alphazero-implementation-vMnun",
+      "Execute WS-0 branch cut-over (v2.0.0 tag on c214daaa, dev/qa/main, civ6az-agent)",
+      "Close Steam Civ6 and run T0b -> Section 7.1 PR -> A1 -> A1-R dual-GPU validation"
     ]
   },
   "context_files": [
+    "docs/evidence/live_civ6_baseline/README.md",
     "kb/handoffs/20261123-devsqe-to-prepr-gm-b9-fail-closed.md",
     "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
     "docs/LIVE_CIV6.md",
