@@ -1,18 +1,18 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T02:55:00Z",
-  "current_focus": "PR #179 (fix/ws1-firetuner-handshake-chatter -> claude/civ6-alphazero-implementation-vMnun): FireTuner handshake chatter fix verified live on Win64 Civ6 (Turns 1-5, 6-table GameInfo capture) plus Option A hygiene hardening (FireTunerTimingConfig, _require_socket(), protocol.py 3-layer split, branch-hygiene-audit skill, doc/harness sync, debt ratchet).",
+  "last_timestamp": "2026-11-26T05:00:00Z",
+  "current_focus": "PR #179 merged (920fe282). Completing off-play-path PLR0915 burndown (vertex_orchestrator.main & training_worker.main -> 0 PLR0915 ignores) and preparing Phase 1 live Civ6 combat/soak/GM-B11 census + Phase 2 WS-0 cut-over + Phase 3 WS-2 T0b/A1/A1-R.",
   "resume_pointers": {
-    "current_task": "PR #179 awaiting maintainer review / Tier C merge on fix/ws1-firetuner-handshake-chatter; live combat, diplomacy, and clean Turn 1 soak next on WS-2/WS-3",
+    "current_task": "Close harden-governance-gates Tasks 4.3-4.5 (PLR0915 burndown) off play path, then run Phase 1 live Steam Civ6 combat & GM-B11 census",
     "blocked_on": [
-      "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
-      "Maintainer: fresh Turn 1 soak, live combat/attack and diplomacy probes in docs/LIVE_CIV6.md",
-      "Maintainer: cut-over (WS-0 creating origin/main), civ6az-agent, W&B key revocation; deleting merged remote branches"
+      "Maintainer: start fresh Turn 1 Civ6 match or load enemy-adjacent save (PID 57372 currently stalled on Turn 5 P1_ACT=true)",
+      "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh, civ6az-agent PAT)",
+      "Maintainer: Close Steam Civ6 before running T0b, A1, and A1-R on quiet dual GPUs (v2.1.0 gate)"
     ],
     "next_steps": [
-      "Merge PR #179 after CI confirms debt ratchet, protocol split, and coverage floors pass",
-      "Reset Turn 1 Civ6 match with rebuilt AlphaZeroAI mod and run GM-B11 census cleanly without mixed-mod logs",
-      "Execute WS-0 main cut-over and resume GM-B9/combat live verification checklist"
+      "Merge PLR0915 burndown PR (functions_over_max_statements: 2 -> 0, ruff_per_file_ignores: 25 -> 23)",
+      "Reset Turn 1 Steam Civ6 match, run Task 3.2 (Items 11-12 combat/war check), 10-turn soak, and GM-B11 >=40t census",
+      "Close Civ6, execute WS-0 branch cut-over, and run T0b -> A1 -> A1-R GPU validation"
     ]
   },
   "context_files": [

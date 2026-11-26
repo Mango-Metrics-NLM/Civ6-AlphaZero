@@ -6,19 +6,19 @@
     "openspec/specs/civ6-bridge/spec.md",
     "CLAUDE.md"
   ],
-  "current_focus": "PR #179 open on fix/ws1-firetuner-handshake-chatter: FireTuner handshake fix, 6-table GameInfo capture, protocol.py 3-layer split, bridge hardening, and debt baseline ratchet.",
+  "current_focus": "PR #179 merged cleanly (920fe282). Preparing off-play-path PLR0915 burndown PR (vertex_orchestrator.main & training_worker.main decomposed) ahead of Phase 1 live Civ6 and Phase 2 WS-0 cut-over.",
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T02:55:00Z",
+  "last_timestamp": "2026-11-26T05:00:00Z",
   "resume_pointers": {
     "blocked_on": [
-      "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
-      "Maintainer: fresh Turn 1 soak, live combat/attack and diplomacy probes in docs/LIVE_CIV6.md",
-      "Maintainer: cut-over (WS-0 creating origin/main), civ6az-agent, W&B key revocation; deleting merged remote branches"
+      "Maintainer: start fresh Turn 1 Civ6 match or load enemy-adjacent save (PID 57372 stalled at Turn 5 P1_ACT=true)",
+      "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh)",
+      "Maintainer: T0b, A1, and A1-R on quiet dual GPUs after closing Steam Civ6"
     ],
-    "current_task": "PR #179 awaiting CI and maintainer review/merge on fix/ws1-firetuner-handshake-chatter",
+    "current_task": "Review and merge off-play-path PLR0915 burndown PR (functions_over_max_statements -> 0)",
     "next_steps": [
-      "Confirm PR #179 CI passes across Python 3.11/3.12/3.13, debt ratchet, and coverage floors",
-      "Merge PR #179 into claude/civ6-alphazero-implementation-vMnun before WS-0 main cut-over"
+      "Confirm PLR0915 burndown PR CI passes across Python 3.11/3.12/3.13, debt ratchet, and cloud coverage floors",
+      "Execute Phase 1 live Civ6 combat/soak/census PR and archive fix-bridge-fail-closed"
     ]
   }
 }

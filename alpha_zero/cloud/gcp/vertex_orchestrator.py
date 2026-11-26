@@ -34,6 +34,7 @@ import os
 import random
 import sys
 import time
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
 if TYPE_CHECKING:
@@ -1545,6 +1546,605 @@ def run_iterations(
     return state
 
 
+@dataclass
+class _OrchestratorLoopState:
+    """Mutable loop counters carried across orchestrator iterations."""
+
+    model_version: int
+    initial_model_version: int
+    total_estimated_cost: float = 0.0
+    successful_iterations: int = 0
+    failed_iterations: int = 0
+    consecutive_failures: int = 0
+    win_rate_history: list[float] = field(default_factory=list)
+
+
+def _apply_architecture_preset_to_args(args: argparse.Namespace) -> None:
+    """Sync CLI args with the named architecture preset when specified."""
+    if not getattr(args, "architecture_preset", None):
+        return
+    preset_config = NetworkArchitectureConfig.from_preset(args.architecture_preset)
+    args.num_res_blocks = preset_config.num_layers
+    args.num_filters = preset_config.embed_dim
+    args.num_heads = preset_config.num_heads
+    args.policy_hidden_dim = preset_config.policy_hidden_dim
+    args.value_head_dim = preset_config.value_head_dim
+
+
+def _init_orchestrator_tracker(args: argparse.Namespace) -> Any:
+    """Initialize opt-in MLflow/WandbCompatAdapter tracking and propagate group tags."""
+    try:
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
+    except ImportError:
+        logger.debug("Experiment-tracking backend not available")
+        return None
+
+    wandb_logger = WandbLogger.from_env()
+    if not wandb_logger.is_enabled:
+        return wandb_logger
+
+    wandb_logger.init(
+        config_dict={
+            "iterations": args.iterations,
+            "workers": args.workers,
+            "games_per_worker": args.games_per_worker,
+            "mcts_type": args.mcts_type,
+            "mcts_simulations": args.mcts_simulations,
+            "board_size": args.board_size,
+            "evaluation_games": args.evaluation_games,
+            "epochs": args.epochs,
+            "max_turns": args.max_turns,
+            "trajectory_window": args.trajectory_window,
+            "architecture_preset": getattr(args, "architecture_preset", None),
+            "embed_dim": args.num_filters,
+            "num_layers": args.num_res_blocks,
+            "num_heads": getattr(args, "num_heads", 8),
+            "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
+            "value_head_dim": getattr(args, "value_head_dim", 64),
+            "num_parallel_games": getattr(args, "num_parallel_games", 1),
+            "gameplay_preset": getattr(args, "gameplay_preset", "default"),
+            "encoder_type": getattr(args, "encoder_type", "patch_embed"),
+            "agent_id": getattr(args, "agent_id", None),
+            "mode": "orchestrator",
+        }
+    )
+    try:
+        group_name = getattr(wandb_logger, "run_name", None)
+        if group_name:
+            os.environ["MLFLOW_RUN_GROUP"] = group_name
+            existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
+            group_tag = f"group={group_name}"
+            os.environ["MLFLOW_TAGS"] = (
+                f"{existing_tags},{group_tag}" if existing_tags else group_tag
+            )
+            logger.info("MLflow run group set to: %s", group_name)
+    except Exception as exc:
+        logger.debug("Could not set MLFLOW_RUN_GROUP: %s", exc)
+    logger.info("Experiment tracking enabled for orchestrator (MLflow)")
+    return wandb_logger
+
+
+def _init_curriculum_manager(args: argparse.Namespace) -> Any:
+    """Create the curriculum manager if ``--curriculum`` is enabled."""
+    if not args.curriculum:
+        return None
+    try:
+        from alpha_zero.utils.curriculum_learning import create_curriculum_manager
+
+        manager = create_curriculum_manager(num_stages=args.curriculum_stages)
+        logger.info("Curriculum learning enabled (%d stages)", args.curriculum_stages)
+        return manager
+    except ImportError:
+        logger.warning("Curriculum learning not available, continuing without it")
+        return None
+
+
+def _build_and_validate_config(args: argparse.Namespace) -> GCPConfig | None:
+    """Build ``GCPConfig`` from CLI args and run config + container image preflight."""
+    config = GCPConfig()
+    agent_id = getattr(args, "agent_id", None)
+    if agent_id:
+        config.paths.agent_id = agent_id
+        logger.info("GCS path namespace: agent_id=%s", agent_id)
+
+    encoder_type = getattr(args, "encoder_type", "patch_embed")
+    if encoder_type != "patch_embed":
+        config.network.encoder_type = encoder_type
+        logger.info("Spatial encoder type: %s", encoder_type)
+
+    if getattr(args, "architecture_preset", None):
+        config.network = NetworkArchitectureConfig.from_preset(args.architecture_preset)
+        logger.info(
+            "Architecture preset '%s': embed=%d, layers=%d, heads=%d",
+            args.architecture_preset,
+            config.network.embed_dim,
+            config.network.num_layers,
+            config.network.num_heads,
+        )
+
+    if args.dry_run:
+        return config
+
+    config.validate()
+    if getattr(args, "skip_image_validation", False):
+        return config
+
+    image_uri = config.container_image_uri
+    if not image_uri:
+        logger.error("Container image URI is not set in config.")
+        return None
+    logger.info("Validating container image: %s", image_uri)
+    val_result = validate_container_image(image_uri)
+    if not val_result.exists:
+        logger.error(
+            "Container image not found: %s (error: %s). "
+            "Build and push the image first, or use --skip_image_validation.",
+            image_uri,
+            val_result.error,
+        )
+        return None
+    if val_result.digest:
+        logger.info("Container digest: %s", val_result.digest)
+    return config
+
+
+def _finish_tracker(wandb_logger: Any, exit_code: int | None = None) -> None:
+    """Finalize the experiment tracker when active."""
+    if wandb_logger is None or not wandb_logger.is_enabled:
+        return
+    if exit_code is None:
+        wandb_logger.finish()
+    else:
+        wandb_logger.finish(exit_code=exit_code)
+
+
+def _run_tournament_only_mode(
+    config: GCPConfig, args: argparse.Namespace, wandb_logger: Any
+) -> int:
+    """Execute standalone post-run tournament evaluation and exit cleanly."""
+    explicit = getattr(args, "tournament_model_versions", None)
+    if explicit:
+        versions: list[int] = []
+    else:
+        storage = GCSModelStorage(config)
+        versions = sorted(storage.list_versions())
+
+    logger.info(
+        "Tournament-only mode%s",
+        f": {explicit}" if explicit else f": {len(versions)} models from GCS",
+    )
+    results = run_post_run_evaluation(
+        config=config,
+        model_versions=versions,
+        args=args,
+        wandb_logger=wandb_logger,
+        dry_run=args.dry_run,
+    )
+    _finish_tracker(wandb_logger)
+    return 0 if results else 1
+
+
+def _check_circuit_breaker(
+    consecutive_failures: int,
+    max_consec: int,
+    iteration: int,
+    wandb_logger: Any,
+    *,
+    phase_label: str = "",
+) -> bool:
+    """Return True and emit alerts if the consecutive-failure threshold is reached."""
+    if max_consec <= 0 or consecutive_failures < max_consec:
+        return False
+    suffix = f" ({phase_label})" if phase_label else ""
+    logger.critical(
+        "CIRCUIT BREAKER: %d consecutive failures%s reached "
+        "(threshold=%d). Halting to prevent cost burn.",
+        consecutive_failures,
+        suffix,
+        max_consec,
+    )
+    if wandb_logger is not None and wandb_logger.is_enabled:
+        wandb_logger.alert(
+            title="Circuit Breaker Triggered",
+            text=(
+                f"{consecutive_failures} consecutive failure(s){suffix}. "
+                f"Training halted at iteration {iteration}."
+            ),
+            level="ERROR",
+        )
+    return True
+
+
+def _run_eval_and_promotion(
+    config: GCPConfig,
+    client: VertexAIClient,
+    iteration: int,
+    model_version: int,
+    new_version: int,
+    args: argparse.Namespace,
+    cost_estimator: Any,
+    curriculum_manager: Any,
+) -> tuple[bool, int, float, float]:
+    """Run Phase 3 evaluation and resolve promotion and curriculum recording."""
+    if args.evaluation_games <= 0 or model_version <= 0:
+        return True, new_version, 0.0, 0.0
+
+    eval_start = time.time()
+    logger.info(
+        "Phase 3: Evaluating v%d vs v%d (%d games)",
+        new_version,
+        model_version,
+        args.evaluation_games,
+    )
+    eval_ok, win_rate, eval_verdict = run_evaluation_phase(
+        config=config,
+        client=client,
+        iteration=iteration,
+        model_version_new=new_version,
+        model_version_old=model_version,
+        args=args,
+        dry_run=args.dry_run,
+        max_retries=args.max_retries,
+    )
+    eval_duration = (time.time() - eval_start) / 3600.0
+    eval_cost = float(
+        cost_estimator.estimate_job_cost(
+            machine_type=_EVAL_MACHINE_TYPE,
+            accelerator_type="",
+            accelerator_count=0,
+            duration_hours=eval_duration,
+            is_spot=False,
+        )
+    )
+    logger.info("Evaluation phase cost (est): $%.2f", eval_cost)
+    if not eval_ok:
+        logger.error("Evaluation phase failed for iteration %d after retries", iteration)
+        return False, new_version, win_rate, eval_cost
+
+    promoted = resolve_promotion(eval_verdict, win_rate, args.evaluation_win_threshold)
+    if not promoted:
+        if eval_verdict is not None:
+            logger.warning(
+                "New model rejected by %s policy: %s (win_rate=%.2f%%)",
+                eval_verdict.policy or "unknown",
+                eval_verdict.decision.name,
+                win_rate * 100,
+            )
+        else:
+            logger.warning(
+                "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
+                win_rate * 100,
+                args.evaluation_win_threshold * 100,
+            )
+        resolved_version = model_version
+    else:
+        logger.info(
+            "New model promoted: v%d -> v%d (win_rate=%.2f%%)",
+            model_version,
+            new_version,
+            win_rate * 100,
+        )
+        resolved_version = new_version
+
+    if curriculum_manager is not None:
+        curriculum_manager.record_game(won=promoted, metrics={"win_rate": win_rate})
+    return True, resolved_version, win_rate, eval_cost
+
+
+def _detect_learning_stall(
+    args: argparse.Namespace,
+    iteration: int,
+    model_version: int,
+    win_rate: float,
+    win_rate_history: list[float],
+    wandb_logger: Any,
+) -> tuple[bool, float]:
+    """Evaluate win-rate progression for learning stalls when evaluation ran."""
+    if args.evaluation_games <= 0 or model_version <= 0:
+        return False, 0.0
+    win_rate_history.append(win_rate)
+    try:
+        from alpha_zero.training.diagnostics import TrainingDiagnostics
+    except ImportError:
+        logger.debug("TrainingDiagnostics not available for stall detection")
+        return False, 0.0
+
+    diag = TrainingDiagnostics(stall_threshold=args.stall_threshold)
+    stall_detected = bool(
+        diag.detect_learning_stall(
+            win_rate_history,
+            lookback=args.stall_lookback,
+            threshold=args.stall_threshold,
+        )
+    )
+    win_rate_trend = float(
+        diag.compute_win_rate_trend(win_rate_history, lookback=args.stall_lookback)
+    )
+    if stall_detected:
+        logger.warning(
+            "Learning stall detected at iteration %d: win rate trend=%.4f over last %d iterations",
+            iteration,
+            win_rate_trend,
+            args.stall_lookback,
+        )
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            wandb_logger.alert(
+                title="Learning Stall Detected",
+                text=(
+                    f"Win rate hasn't improved >{args.stall_threshold:.0%} "
+                    f"in {args.stall_lookback} iterations. "
+                    f"Current: {win_rate:.1%}, Trend: {win_rate_trend:+.4f}/iter"
+                ),
+                level="WARN",
+            )
+    return stall_detected, win_rate_trend
+
+
+def _execute_selfplay_step(
+    state: _OrchestratorLoopState,
+    config: GCPConfig,
+    client: VertexAIClient,
+    iteration: int,
+    args: argparse.Namespace,
+    cost_estimator: Any,
+    curriculum_manager: Any,
+) -> tuple[bool, float]:
+    """Run curriculum override resolution and Phase 1 self-play for one iteration."""
+    if curriculum_manager is not None:
+        env_params = curriculum_manager.get_environment_params()
+        args.board_size = env_params.get("board_size", args.board_size)
+        args.max_turns = env_params.get("max_turns", args.max_turns)
+        logger.info(
+            "Curriculum stage=%s, board=%dx%d, max_turns=%d",
+            curriculum_manager.get_current_stage(),
+            args.board_size,
+            args.board_size,
+            args.max_turns,
+        )
+
+    sp_start = time.time()
+    logger.info(
+        "Phase 1: Self-play (%d workers, %d games each, %s MCTS)",
+        args.workers,
+        args.games_per_worker,
+        args.mcts_type,
+    )
+    selfplay_ok = run_selfplay_phase(
+        config=config,
+        client=client,
+        iteration=iteration,
+        model_version=state.model_version,
+        num_workers=args.workers,
+        games_per_worker=args.games_per_worker,
+        args=args,
+        max_retries=args.max_retries,
+        dry_run=args.dry_run,
+    )
+    sp_duration = (time.time() - sp_start) / 3600.0
+    sp_cost = float(
+        cost_estimator.estimate_job_cost(
+            machine_type=config.self_play.machine_type,
+            accelerator_type=config.self_play.accelerator_type,
+            accelerator_count=config.self_play.accelerator_count,
+            duration_hours=sp_duration,
+            is_spot=config.self_play.spot,
+        )
+        * args.workers
+    )
+    state.total_estimated_cost += sp_cost
+    logger.info("Self-play phase cost (est): $%.2f", sp_cost)
+    return selfplay_ok, sp_cost
+
+
+def _execute_training_step(
+    state: _OrchestratorLoopState,
+    config: GCPConfig,
+    client: VertexAIClient,
+    iteration: int,
+    args: argparse.Namespace,
+    cost_estimator: Any,
+) -> tuple[bool, float]:
+    """Resolve resume token and run Phase 2 training for one iteration."""
+    train_start = time.time()
+    earliest = max(0, iteration - args.trajectory_window + 1)
+    trajectory_iterations = list(range(earliest, iteration + 1))
+    logger.info("Phase 2: Training on trajectories from iterations %s", trajectory_iterations)
+
+    resume_token = (
+        getattr(args, "resume_from", None)
+        if args.dry_run
+        else _resolve_resume_token(args, iteration=iteration)
+    )
+    if resume_token:
+        args.resume_from = resume_token
+        logger.info("iteration %d: resuming training from %s", iteration, resume_token)
+    else:
+        args.resume_from = None
+        logger.info("iteration %d: cold-start training (no incumbent checkpoint)", iteration)
+
+    training_ok = run_training_phase(
+        config=config,
+        client=client,
+        iteration=iteration,
+        trajectory_iterations=trajectory_iterations,
+        args=args,
+        max_retries=args.max_retries,
+        dry_run=args.dry_run,
+        model_version=state.model_version,
+    )
+    train_duration = (time.time() - train_start) / 3600.0
+    train_cost = float(
+        cost_estimator.estimate_job_cost(
+            machine_type=config.training.machine_type,
+            accelerator_type=config.training.accelerator_type,
+            accelerator_count=config.training.accelerator_count,
+            duration_hours=train_duration,
+            is_spot=config.training.spot,
+        )
+    )
+    state.total_estimated_cost += train_cost
+    logger.info("Training phase cost (est): $%.2f", train_cost)
+    return training_ok, train_cost
+
+
+def _resolve_trained_version(config: GCPConfig, model_version: int, dry_run: bool) -> int:
+    """Resolve the newly trained model version from GCS or dry-run increment."""
+    if dry_run:
+        return model_version + 1
+    try:
+        return GCSModelStorage(config).get_latest_version()
+    except Exception:
+        return model_version + 1
+
+
+def _run_orchestrator_loop(
+    config: GCPConfig,
+    client: VertexAIClient,
+    args: argparse.Namespace,
+    wandb_logger: Any,
+    curriculum_manager: Any,
+) -> int:
+    """Run all orchestrator training/evaluation iterations and post-run tournament."""
+    from alpha_zero.cloud.gcp.cost import CostEstimator
+
+    start_version = (
+        args.model_version_start
+        if args.model_version_start is not None
+        else get_initial_model_version(config, args.dry_run)
+    )
+    if args.model_version_start is not None:
+        logger.info("Using explicit model version start: %d", start_version)
+
+    state = _OrchestratorLoopState(model_version=start_version, initial_model_version=start_version)
+    cost_estimator = CostEstimator(config)
+    total_start = time.time()
+    max_consec = getattr(args, "max_consecutive_failures", 3)
+
+    for i in range(args.iterations):
+        iteration_start = time.time()
+        iteration = args.start_iteration + i
+        logger.info("=" * 60)
+        logger.info("Starting iteration %d (model v%d)", iteration, state.model_version)
+        logger.info("=" * 60)
+
+        selfplay_ok, sp_cost = _execute_selfplay_step(
+            state, config, client, iteration, args, cost_estimator, curriculum_manager
+        )
+        if not selfplay_ok:
+            logger.error("Self-play phase failed for iteration %d", iteration)
+            state.failed_iterations += 1
+            state.consecutive_failures += 1
+            if _check_circuit_breaker(
+                state.consecutive_failures, max_consec, iteration, wandb_logger
+            ):
+                break
+            continue
+
+        training_ok, train_cost = _execute_training_step(
+            state, config, client, iteration, args, cost_estimator
+        )
+        if not training_ok:
+            logger.error("Training phase failed for iteration %d", iteration)
+            state.failed_iterations += 1
+            state.consecutive_failures += 1
+            if _check_circuit_breaker(
+                state.consecutive_failures, max_consec, iteration, wandb_logger
+            ):
+                break
+            continue
+
+        candidate_version = _resolve_trained_version(config, state.model_version, args.dry_run)
+        eval_ok, resolved_version, win_rate, eval_cost = _run_eval_and_promotion(
+            config,
+            client,
+            iteration,
+            state.model_version,
+            candidate_version,
+            args,
+            cost_estimator,
+            curriculum_manager,
+        )
+        state.total_estimated_cost += eval_cost
+        if not eval_ok:
+            state.failed_iterations += 1
+            state.consecutive_failures += 1
+            if _check_circuit_breaker(
+                state.consecutive_failures, max_consec, iteration, wandb_logger, phase_label="eval"
+            ):
+                break
+            continue
+
+        iteration_duration = (time.time() - iteration_start) / 60.0
+        stall_detected, win_rate_trend = _detect_learning_stall(
+            args, iteration, state.model_version, win_rate, state.win_rate_history, wandb_logger
+        )
+        if wandb_logger is not None and wandb_logger.is_enabled:
+            metrics = {
+                "orchestrator/iteration": iteration,
+                "orchestrator/model_version": resolved_version,
+                "orchestrator/iteration_duration_min": iteration_duration,
+                "orchestrator/selfplay_cost": sp_cost,
+                "orchestrator/training_cost": train_cost,
+                "orchestrator/cumulative_cost": state.total_estimated_cost,
+                "orchestrator/stall_detected": int(stall_detected),
+                "orchestrator/win_rate_trend": win_rate_trend,
+            }
+            if args.evaluation_games > 0 and state.model_version > 0:
+                metrics["orchestrator/eval_win_rate"] = win_rate
+                metrics["orchestrator/eval_cost"] = eval_cost
+            wandb_logger.log(metrics, step=iteration)
+
+        logger.info(
+            "Iteration %d complete in %.1f minutes. Model: v%d",
+            iteration,
+            iteration_duration,
+            resolved_version,
+        )
+        state.model_version = resolved_version
+        state.successful_iterations += 1
+        state.consecutive_failures = 0
+
+    total_elapsed = time.time() - total_start
+    logger.info("=" * 60)
+    logger.info("Training loop complete")
+    logger.info(
+        "Results: %d/%d iterations succeeded in %.1f minutes",
+        state.successful_iterations,
+        args.iterations,
+        total_elapsed / 60,
+    )
+    logger.info("Final model version: v%d", state.model_version)
+    logger.info("Total Estimated Cost: $%.2f", state.total_estimated_cost)
+    logger.info("=" * 60)
+
+    if args.post_run_tournament and state.successful_iterations > 0:
+        latest_version = get_initial_model_version(config, args.dry_run)
+        all_versions = list(range(state.initial_model_version, latest_version + 1))
+        if len(all_versions) >= 2:
+            run_post_run_evaluation(
+                config=config,
+                model_versions=all_versions,
+                args=args,
+                wandb_logger=wandb_logger,
+                dry_run=args.dry_run,
+            )
+
+    if wandb_logger is not None and wandb_logger.is_enabled:
+        wandb_logger.log(
+            {
+                "orchestrator/total_iterations": args.iterations,
+                "orchestrator/successful_iterations": state.successful_iterations,
+                "orchestrator/failed_iterations": state.failed_iterations,
+                "orchestrator/total_cost": state.total_estimated_cost,
+                "orchestrator/total_duration_min": total_elapsed / 60,
+                "orchestrator/final_model_version": state.model_version,
+            }
+        )
+        wandb_logger.finish()
+
+    return 0 if state.failed_iterations == 0 else 1
+
+
 def main() -> int:
     """Main entry point.
 
@@ -1555,17 +2155,9 @@ def main() -> int:
     """
     args = parse_args()
     setup_logging()
-
-    # Resolve the promotion threshold once: explicit CLI > CIV6AZ_ env > default.
-    # Every later read of args.evaluation_win_threshold sees the same float.
     args.evaluation_win_threshold = resolve_evaluation_threshold(args)
-
-    # Surface a parallelism request the self-play worker would silently drop.
     warn_on_ignored_parallelism(args)
 
-    # ARCHITECTURE GUARD: Detect if we're inside a Vertex AI container.
-    # Vertex AI sets CLOUD_ML_JOB_ID for all custom jobs.  The orchestrator
-    # should never run inside a container — it dispatches workers TO containers.
     cloud_job_id = os.environ.get("CLOUD_ML_JOB_ID")
     if cloud_job_id and not getattr(args, "dry_run", False):
         logger.error(
@@ -1578,76 +2170,8 @@ def main() -> int:
         )
         return 1
 
-    # Apply architecture preset BEFORE W&B init so logged config is accurate
-    if getattr(args, "architecture_preset", None):
-        preset_config = NetworkArchitectureConfig.from_preset(args.architecture_preset)
-        # Sync CLI args with preset values for build_*_extra_args and W&B
-        args.num_res_blocks = preset_config.num_layers
-        args.num_filters = preset_config.embed_dim
-        args.num_heads = preset_config.num_heads
-        args.policy_hidden_dim = preset_config.policy_hidden_dim
-        args.value_head_dim = preset_config.value_head_dim
-
-    # Initialize experiment tracker for orchestrator (opt-in via MLFLOW_ENABLED env var)
-    wandb_logger = None
-    try:
-        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
-
-        wandb_logger = WandbLogger.from_env()
-        if wandb_logger.is_enabled:
-            wandb_logger.init(
-                config_dict={
-                    "iterations": args.iterations,
-                    "workers": args.workers,
-                    "games_per_worker": args.games_per_worker,
-                    "mcts_type": args.mcts_type,
-                    "mcts_simulations": args.mcts_simulations,
-                    "board_size": args.board_size,
-                    "evaluation_games": args.evaluation_games,
-                    "epochs": args.epochs,
-                    "max_turns": args.max_turns,
-                    "trajectory_window": args.trajectory_window,
-                    "architecture_preset": getattr(args, "architecture_preset", None),
-                    "embed_dim": args.num_filters,
-                    "num_layers": args.num_res_blocks,
-                    "num_heads": getattr(args, "num_heads", 8),
-                    "policy_hidden_dim": getattr(args, "policy_hidden_dim", 128),
-                    "value_head_dim": getattr(args, "value_head_dim", 64),
-                    "num_parallel_games": getattr(args, "num_parallel_games", 1),
-                    "gameplay_preset": getattr(args, "gameplay_preset", "default"),
-                    "encoder_type": getattr(args, "encoder_type", "patch_embed"),
-                    "agent_id": getattr(args, "agent_id", None),
-                    "mode": "orchestrator",
-                }
-            )
-            # Propagate run name as the MLflow run group for all worker
-            # containers so selfplay/training/evaluation runs sort together
-            # in the MLflow UI. The group is encoded two ways for downstream
-            # consumers: (1) ``MLFLOW_RUN_GROUP`` is the canonical orchestrator
-            # group name and feeds ``_phase_run_name`` so each worker run is
-            # named ``<group>-<phase>-iter<N>``, and (2) it's added to
-            # ``MLFLOW_TAGS`` as ``group=<name>`` so MLflow's filter/search
-            # UI can use it directly.
-            try:
-                # MLflow run metadata lives under run.info — the adapter's
-                # run_name property reads it correctly (a W&B-style
-                # run.name/.id never existed on MLflow run objects, so the
-                # old attribute reads silently produced no group).
-                group_name = getattr(wandb_logger, "run_name", None)
-                if group_name:
-                    os.environ["MLFLOW_RUN_GROUP"] = group_name
-                    existing_tags = os.environ.get("MLFLOW_TAGS", "").strip()
-                    group_tag = f"group={group_name}"
-                    if existing_tags:
-                        os.environ["MLFLOW_TAGS"] = f"{existing_tags},{group_tag}"
-                    else:
-                        os.environ["MLFLOW_TAGS"] = group_tag
-                    logger.info("MLflow run group set to: %s", group_name)
-            except Exception as _e:
-                logger.debug("Could not set MLFLOW_RUN_GROUP: %s", _e)
-            logger.info("Experiment tracking enabled for orchestrator (MLflow)")
-    except ImportError:
-        logger.debug("Experiment-tracking backend not available")
+    _apply_architecture_preset_to_args(args)
+    wandb_logger = _init_orchestrator_tracker(args)
 
     logger.info("Civ6 AlphaZero Vertex AI Orchestrator")
     logger.info(
@@ -1660,511 +2184,29 @@ def main() -> int:
         args.mcts_type,
         getattr(args, "encoder_type", "patch_embed"),
     )
-
     if args.dry_run:
         logger.info("DRY RUN MODE - no cloud jobs will be launched")
 
-    # Set up curriculum manager if enabled
-    curriculum_manager = None
-    if args.curriculum:
-        try:
-            from alpha_zero.utils.curriculum_learning import create_curriculum_manager
-
-            curriculum_manager = create_curriculum_manager(num_stages=args.curriculum_stages)
-            logger.info("Curriculum learning enabled (%d stages)", args.curriculum_stages)
-        except ImportError:
-            logger.warning("Curriculum learning not available, continuing without it")
-
+    curriculum_manager = _init_curriculum_manager(args)
     try:
-        config = GCPConfig()
-
-        # Apply agent_id for GCS path namespacing (A/B experiment isolation)
-        agent_id = getattr(args, "agent_id", None)
-        if agent_id:
-            config.paths.agent_id = agent_id
-            logger.info("GCS path namespace: agent_id=%s", agent_id)
-
-        # Apply encoder_type to network config
-        encoder_type = getattr(args, "encoder_type", "patch_embed")
-        if encoder_type != "patch_embed":
-            config.network.encoder_type = encoder_type
-            logger.info("Spatial encoder type: %s", encoder_type)
-
-        # Apply architecture preset to config (args already synced above)
-        if getattr(args, "architecture_preset", None):
-            config.network = NetworkArchitectureConfig.from_preset(args.architecture_preset)
-            logger.info(
-                "Architecture preset '%s': embed=%d, layers=%d, heads=%d",
-                args.architecture_preset,
-                config.network.embed_dim,
-                config.network.num_layers,
-                config.network.num_heads,
-            )
-
-        if not args.dry_run:
-            config.validate()
-
-        # --- Container image pre-flight validation ---
-        if not args.dry_run and not getattr(args, "skip_image_validation", False):
-            image_uri = config.container_image_uri
-            if not image_uri:
-                logger.error("Container image URI is not set in config.")
-                return 1
-            logger.info("Validating container image: %s", image_uri)
-            val_result = validate_container_image(image_uri)
-            if not val_result.exists:
-                logger.error(
-                    "Container image not found: %s (error: %s). "
-                    "Build and push the image first, or use --skip_image_validation.",
-                    image_uri,
-                    val_result.error,
-                )
-                return 1
-            if val_result.digest:
-                logger.info("Container digest: %s", val_result.digest)
-
+        config = _build_and_validate_config(args)
+        if config is None:
+            return 1
         client = VertexAIClient(
             project=config.project_id,
             region=config.region,
             service_account=config.service_account,
         )
-
-        # Tournament-only mode: skip training, just run tournament.
-        # Version parsing (explicit or subsampled) is centralised inside
-        # run_post_run_evaluation() — we only need to supply the full
-        # candidate list from GCS when no explicit versions are given.
         if getattr(args, "tournament_only", False):
-            explicit = getattr(args, "tournament_model_versions", None)
-            if explicit:
-                # run_post_run_evaluation() will parse, dedup & sort the
-                # explicit string; pass an empty list as placeholder since
-                # it will be overridden by the explicit arg.
-                versions: list[int] = []
-            else:
-                from alpha_zero.cloud.gcp.storage import GCSModelStorage
-
-                storage = GCSModelStorage(config)
-                versions = sorted(storage.list_versions())
-
-            logger.info(
-                "Tournament-only mode%s",
-                f": {explicit}" if explicit else f": {len(versions)} models from GCS",
-            )
-            results = run_post_run_evaluation(
-                config=config,
-                model_versions=versions,
-                args=args,
-                wandb_logger=wandb_logger,
-                dry_run=args.dry_run,
-            )
-            if wandb_logger is not None and wandb_logger.is_enabled:
-                wandb_logger.finish()
-            return 0 if results else 1
-
-        # Get starting model version (save for post-run tournament)
-        if args.model_version_start is not None:
-            model_version = args.model_version_start
-            logger.info("Using explicit model version start: %d", model_version)
-        else:
-            model_version = get_initial_model_version(config, args.dry_run)
-        initial_model_version = model_version
-
-        # Initialize cost estimator
-        from alpha_zero.cloud.gcp.cost import CostEstimator
-
-        cost_estimator = CostEstimator(config)
-        total_estimated_cost = 0.0
-
-        total_start = time.time()
-        successful_iterations = 0
-        failed_iterations = 0
-        consecutive_failures = 0
-        max_consec = getattr(args, "max_consecutive_failures", 3)
-        win_rate_history: list[float] = []
-
-        for i in range(args.iterations):
-            iteration_start = time.time()
-            iteration = args.start_iteration + i
-
-            logger.info("=" * 60)
-            logger.info("Starting iteration %d (model v%d)", iteration, model_version)
-            logger.info("=" * 60)
-
-            # Apply curriculum overrides if enabled
-            if curriculum_manager is not None:
-                env_params = curriculum_manager.get_environment_params()
-                args.board_size = env_params.get("board_size", args.board_size)
-                args.max_turns = env_params.get("max_turns", args.max_turns)
-                logger.info(
-                    "Curriculum stage=%s, board=%dx%d, max_turns=%d",
-                    curriculum_manager.get_current_stage(),
-                    args.board_size,
-                    args.board_size,
-                    args.max_turns,
-                )
-
-            # Phase 1: Self-play
-            sp_start = time.time()
-            logger.info(
-                "Phase 1: Self-play (%d workers, %d games each, %s MCTS)",
-                args.workers,
-                args.games_per_worker,
-                args.mcts_type,
-            )
-            selfplay_ok = run_selfplay_phase(
-                config=config,
-                client=client,
-                iteration=iteration,
-                model_version=model_version,
-                num_workers=args.workers,
-                games_per_worker=args.games_per_worker,
-                args=args,
-                max_retries=args.max_retries,
-                dry_run=args.dry_run,
-            )
-            sp_duration = (time.time() - sp_start) / 3600.0
-
-            # Estimate self-play cost
-            sp_cost = (
-                cost_estimator.estimate_job_cost(
-                    machine_type=config.self_play.machine_type,
-                    accelerator_type=config.self_play.accelerator_type,
-                    accelerator_count=config.self_play.accelerator_count,
-                    duration_hours=sp_duration,
-                    is_spot=config.self_play.spot,
-                )
-                * args.workers
-            )
-            total_estimated_cost += sp_cost
-            logger.info("Self-play phase cost (est): $%.2f", sp_cost)
-
-            if not selfplay_ok:
-                logger.error("Self-play phase failed for iteration %d", iteration)
-                failed_iterations += 1
-                consecutive_failures += 1
-                if max_consec > 0 and consecutive_failures >= max_consec:
-                    logger.critical(
-                        "CIRCUIT BREAKER: %d consecutive failures reached "
-                        "(threshold=%d). Halting to prevent cost burn.",
-                        consecutive_failures,
-                        max_consec,
-                    )
-                    if wandb_logger is not None and wandb_logger.is_enabled:
-                        wandb_logger.alert(
-                            title="Circuit Breaker Triggered",
-                            text=(
-                                f"{consecutive_failures} consecutive iteration "
-                                f"failures. Training halted at iteration {iteration}."
-                            ),
-                            level="ERROR",
-                        )
-                    break
-                continue
-
-            # Phase 2: Training
-            train_start = time.time()
-            earliest = max(0, iteration - args.trajectory_window + 1)
-            trajectory_iterations = list(range(earliest, iteration + 1))
-
-            logger.info(
-                "Phase 2: Training on trajectories from iterations %s", trajectory_iterations
-            )
-
-            # Resolve --resume_from for this iteration so the training worker
-            # fine-tunes the incumbent checkpoint instead of starting fresh.
-            # In dry_run mode skip the GCS round-trip and honour only an
-            # explicit operator override on args.resume_from.
-            if args.dry_run:
-                resume_token = getattr(args, "resume_from", None)
-            else:
-                resume_token = _resolve_resume_token(args, iteration=iteration)
-            if resume_token:
-                args.resume_from = resume_token
-                logger.info("iteration %d: resuming training from %s", iteration, resume_token)
-            else:
-                args.resume_from = None
-                logger.info(
-                    "iteration %d: cold-start training (no incumbent checkpoint)",
-                    iteration,
-                )
-
-            training_ok = run_training_phase(
-                config=config,
-                client=client,
-                iteration=iteration,
-                trajectory_iterations=trajectory_iterations,
-                args=args,
-                max_retries=args.max_retries,
-                dry_run=args.dry_run,
-                model_version=model_version,
-            )
-            train_duration = (time.time() - train_start) / 3600.0
-
-            # Estimate training cost
-            train_cost = cost_estimator.estimate_job_cost(
-                machine_type=config.training.machine_type,
-                accelerator_type=config.training.accelerator_type,
-                accelerator_count=config.training.accelerator_count,
-                duration_hours=train_duration,
-                is_spot=config.training.spot,
-            )
-            total_estimated_cost += train_cost
-            logger.info("Training phase cost (est): $%.2f", train_cost)
-
-            if not training_ok:
-                logger.error("Training phase failed for iteration %d", iteration)
-                failed_iterations += 1
-                consecutive_failures += 1
-                if max_consec > 0 and consecutive_failures >= max_consec:
-                    logger.critical(
-                        "CIRCUIT BREAKER: %d consecutive failures reached "
-                        "(threshold=%d). Halting to prevent cost burn.",
-                        consecutive_failures,
-                        max_consec,
-                    )
-                    if wandb_logger is not None and wandb_logger.is_enabled:
-                        wandb_logger.alert(
-                            title="Circuit Breaker Triggered",
-                            text=(
-                                f"{consecutive_failures} consecutive iteration "
-                                f"failures. Training halted at iteration {iteration}."
-                            ),
-                            level="ERROR",
-                        )
-                    break
-                continue
-
-            # Get new model version
-            if args.dry_run:
-                new_version = model_version + 1
-            else:
-                try:
-                    storage = GCSModelStorage(config)
-                    new_version = storage.get_latest_version()
-                except Exception:
-                    new_version = model_version + 1
-
-            # Initialize metrics for logging
-            win_rate = 0.0
-            eval_cost = 0.0
-            eval_verdict: PromotionVerdict | None = None
-
-            # Phase 3: Evaluation (optional)
-            if args.evaluation_games > 0 and model_version > 0:
-                eval_start = time.time()
-                logger.info(
-                    "Phase 3: Evaluating v%d vs v%d (%d games)",
-                    new_version,
-                    model_version,
-                    args.evaluation_games,
-                )
-                eval_ok, win_rate, eval_verdict = run_evaluation_phase(
-                    config=config,
-                    client=client,
-                    iteration=iteration,
-                    model_version_new=new_version,
-                    model_version_old=model_version,
-                    args=args,
-                    dry_run=args.dry_run,
-                    max_retries=args.max_retries,
-                )
-                eval_duration = (time.time() - eval_start) / 3600.0
-
-                # Estimate eval cost using the actual VertexEvaluationJob spec:
-                # CPU-only worker on _EVAL_MACHINE_TYPE with no accelerators.
-                eval_cost = cost_estimator.estimate_job_cost(
-                    machine_type=_EVAL_MACHINE_TYPE,
-                    accelerator_type="",
-                    accelerator_count=0,
-                    duration_hours=eval_duration,
-                    is_spot=False,
-                )
-                total_estimated_cost += eval_cost
-                logger.info("Evaluation phase cost (est): $%.2f", eval_cost)
-
-                if not eval_ok:
-                    logger.error(
-                        "Evaluation phase failed for iteration %d after retries", iteration
-                    )
-                    failed_iterations += 1
-                    consecutive_failures += 1
-                    if max_consec > 0 and consecutive_failures >= max_consec:
-                        logger.critical(
-                            "CIRCUIT BREAKER: %d consecutive failures (eval) reached "
-                            "(threshold=%d). Halting to prevent cost burn.",
-                            consecutive_failures,
-                            max_consec,
-                        )
-                        if wandb_logger is not None and wandb_logger.is_enabled:
-                            wandb_logger.alert(
-                                title="Circuit Breaker Triggered",
-                                text=(
-                                    f"{consecutive_failures} consecutive failures "
-                                    f"(incl. eval). Training halted at iteration {iteration}."
-                                ),
-                                level="ERROR",
-                            )
-                        break
-                    continue
-
-                promoted = resolve_promotion(eval_verdict, win_rate, args.evaluation_win_threshold)
-                if eval_ok and not promoted:
-                    if eval_verdict is not None:
-                        logger.warning(
-                            "New model rejected by %s policy: %s (win_rate=%.2f%%)",
-                            eval_verdict.policy or "unknown",
-                            eval_verdict.decision.name,
-                            win_rate * 100,
-                        )
-                    else:
-                        logger.warning(
-                            "New model rejected: win_rate=%.2f%% < threshold=%.2f%%",
-                            win_rate * 100,
-                            args.evaluation_win_threshold * 100,
-                        )
-                    new_version = model_version  # Keep old model
-                elif eval_ok:
-                    # The promote path had no log line at all; a promotion was
-                    # only inferable from the version number in a later message.
-                    logger.info(
-                        "New model promoted: v%d -> v%d (win_rate=%.2f%%)",
-                        model_version,
-                        new_version,
-                        win_rate * 100,
-                    )
-
-                # Record results for curriculum progression. Uses the same
-                # resolver as the gate so the two cannot disagree.
-                if curriculum_manager is not None and eval_ok:
-                    curriculum_manager.record_game(
-                        won=promoted,
-                        metrics={"win_rate": win_rate},
-                    )
-
-            iteration_duration = (time.time() - iteration_start) / 60.0  # minutes
-
-            # Stall detection (only when evaluation is enabled)
-            stall_detected = False
-            win_rate_trend = 0.0
-            if args.evaluation_games > 0 and model_version > 0:
-                win_rate_history.append(win_rate)
-
-                try:
-                    from alpha_zero.training.diagnostics import TrainingDiagnostics
-
-                    _stall_diag = TrainingDiagnostics(stall_threshold=args.stall_threshold)
-                    stall_detected = _stall_diag.detect_learning_stall(
-                        win_rate_history,
-                        lookback=args.stall_lookback,
-                        threshold=args.stall_threshold,
-                    )
-                    win_rate_trend = _stall_diag.compute_win_rate_trend(
-                        win_rate_history,
-                        lookback=args.stall_lookback,
-                    )
-
-                    if stall_detected:
-                        logger.warning(
-                            "Learning stall detected at iteration %d: "
-                            "win rate trend=%.4f over last %d iterations",
-                            iteration,
-                            win_rate_trend,
-                            args.stall_lookback,
-                        )
-                        if wandb_logger is not None and wandb_logger.is_enabled:
-                            wandb_logger.alert(
-                                title="Learning Stall Detected",
-                                text=(
-                                    f"Win rate hasn't improved >{args.stall_threshold:.0%} "
-                                    f"in {args.stall_lookback} iterations. "
-                                    f"Current: {win_rate:.1%}, "
-                                    f"Trend: {win_rate_trend:+.4f}/iter"
-                                ),
-                                level="WARN",
-                            )
-                except ImportError:
-                    logger.debug("TrainingDiagnostics not available for stall detection")
-
-            # Log iteration metrics to W&B
-            if wandb_logger is not None and wandb_logger.is_enabled:
-                iteration_metrics = {
-                    "orchestrator/iteration": iteration,
-                    "orchestrator/model_version": new_version,
-                    "orchestrator/iteration_duration_min": iteration_duration,
-                    "orchestrator/selfplay_cost": sp_cost,
-                    "orchestrator/training_cost": train_cost,
-                    "orchestrator/cumulative_cost": total_estimated_cost,
-                    "orchestrator/stall_detected": int(stall_detected),
-                    "orchestrator/win_rate_trend": win_rate_trend,
-                }
-                if args.evaluation_games > 0 and model_version > 0:
-                    iteration_metrics["orchestrator/eval_win_rate"] = win_rate
-                    iteration_metrics["orchestrator/eval_cost"] = eval_cost
-                wandb_logger.log(iteration_metrics, step=iteration)
-
-            logger.info(
-                "Iteration %d complete in %.1f minutes. Model: v%d",
-                iteration,
-                iteration_duration,
-                new_version,
-            )
-
-            model_version = new_version
-            successful_iterations += 1
-            consecutive_failures = 0  # Reset circuit breaker on success
-
-        total_elapsed = time.time() - total_start
-        logger.info("=" * 60)
-        logger.info("Training loop complete")
-        logger.info(
-            "Results: %d/%d iterations succeeded in %.1f minutes",
-            successful_iterations,
-            args.iterations,
-            total_elapsed / 60,
-        )
-        logger.info("Final model version: v%d", model_version)
-        logger.info("Total Estimated Cost: $%.2f", total_estimated_cost)
-        logger.info("=" * 60)
-
-        # Phase 4: Post-run tournament (optional)
-        if args.post_run_tournament and successful_iterations > 0:
-            # Collect all model versions: initial + all produced during training
-            latest_version = get_initial_model_version(config, args.dry_run)
-            all_versions = list(range(initial_model_version, latest_version + 1))
-            if len(all_versions) >= 2:
-                run_post_run_evaluation(
-                    config=config,
-                    model_versions=all_versions,
-                    args=args,
-                    wandb_logger=wandb_logger,
-                    dry_run=args.dry_run,
-                )
-
-        # Log final summary to W&B
-        if wandb_logger is not None and wandb_logger.is_enabled:
-            wandb_logger.log(
-                {
-                    "orchestrator/total_iterations": args.iterations,
-                    "orchestrator/successful_iterations": successful_iterations,
-                    "orchestrator/failed_iterations": failed_iterations,
-                    "orchestrator/total_cost": total_estimated_cost,
-                    "orchestrator/total_duration_min": total_elapsed / 60,
-                    "orchestrator/final_model_version": model_version,
-                }
-            )
-            wandb_logger.finish()
-
-        return 0 if failed_iterations == 0 else 1
-
+            return _run_tournament_only_mode(config, args, wandb_logger)
+        return _run_orchestrator_loop(config, client, args, wandb_logger, curriculum_manager)
     except KeyboardInterrupt:
         logger.warning("Orchestrator interrupted by user")
-        if wandb_logger is not None and wandb_logger.is_enabled:
-            wandb_logger.finish(exit_code=130)
+        _finish_tracker(wandb_logger, exit_code=130)
         return 130
     except Exception as e:
         logger.exception("Orchestrator failed: %s", e)
-        if wandb_logger is not None and wandb_logger.is_enabled:
-            wandb_logger.finish(exit_code=1)
+        _finish_tracker(wandb_logger, exit_code=1)
         return 1
 
 

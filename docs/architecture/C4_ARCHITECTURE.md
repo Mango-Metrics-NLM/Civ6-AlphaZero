@@ -584,7 +584,7 @@ flowchart LR
 
 ---
 
-*Last revised: 2026-11-26 — hardened `FireTunerClient` handshake/LSQ under 1 Hz `AZ_HB:` chatter (`FireTunerTimingConfig`, `_require_socket()`, narrowed timeouts), decomposed `alpha_zero/bridge/protocol.py` (`2,013` LOC -> `protocol_validation.py` + `protocol_entities.py` + `protocol.py` facade), added `.claude/skills/branch-hygiene-audit`, synced harness/gitleaks/doc inventories, and ratcheted `docs/evidence/tech_debt_baseline/baseline.json`.*
+*Last revised: 2026-11-26 — decomposed `vertex_orchestrator.main()` and `training_worker.main()` below 100 statements, removed the final two `PLR0915` ignores in `pyproject.toml` (`functions_over_max_statements: 2 -> 0`, `ruff_per_file_ignores: 25 -> 23`), building on PR #179 (`FireTunerTimingConfig`, `_require_socket()`, `protocol.py` 3-layer split, `.claude/skills/branch-hygiene-audit`, and `baseline.json` ratchet).*
 *Previously 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
 *Previously 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
 component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified
