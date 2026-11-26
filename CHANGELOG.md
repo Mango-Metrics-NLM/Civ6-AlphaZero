@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-11-26
+
+Dual-GPU T0b calibration, live Steam Civ6 41-turn baseline & GM-B11 census, branch-flow hardening, and bridge decomposition; the registered A1 / A1-R evaluation verdict is recorded in [docs/evidence/release_v2_1_0/report.md](docs/evidence/release_v2_1_0/report.md).
+
 ### Fixed
 - Eliminated `FireTunerClient._handshake()` and `run_lua()` starvation under 1 Hz `AZ_HB:` heartbeat chatter on live Win64 Civ6 (`90.58s` timeout -> `~844–1000 ms` handshake).
 - Replaced three `assert self._sock is not None` statements in `alpha_zero/bridge/tuner_socket_bridge.py` with `_require_socket()` raising `FireTunerError` (fixes `runtime_asserts` debt ratchet), narrowed LSQ receive exception handling to `TimeoutError`, validated positive finite timing inputs, and added debug logging in `_drain()`.

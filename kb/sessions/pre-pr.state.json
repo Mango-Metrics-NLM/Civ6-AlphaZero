@@ -7,18 +7,18 @@
     "docs/runbooks/branching-and-release.md",
     "CLAUDE.md"
   ],
-  "current_focus": "WS-0 cut-over complete (dev/qa/main active) and T0b 660-game dual-GPU calibration COMPLETE (REPRODUCED determinism, Branch in force: 40, 6.1 h ETA). Section 7.1 slot fill-in + T0b evidence PR ready on chore/t0b-section7-registration -> dev.",
+  "current_focus": "PR #182 merged into dev (6348548b). Release prep chore/release-v2.1.0 prepared (version 2.1.0 across pyproject.toml, __init__.py, CITATION.cff, SECURITY.md, CHANGELOG.md) ahead of dev -> qa promotion and v2.1.0-rc.1 tag.",
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T18:20:00Z",
+  "last_timestamp": "2026-11-26T18:59:00Z",
   "resume_pointers": {
     "blocked_on": [
-      "Maintainer: review & merge chore/t0b-section7-registration PR into dev",
-      "Maintainer: promote dev -> qa & tag v2.1.0-rc.1 before running A1 (980g) and A1-R (980g)"
+      "Maintainer: review & merge chore/release-v2.1.0 PR into dev",
+      "Maintainer: promote dev -> qa (merge commit) & tag v2.1.0-rc.1 before running A1 (980g) and A1-R (980g)"
     ],
-    "current_task": "Merge chore/t0b-section7-registration PR into dev, then promote to qa / tag v2.1.0-rc.1 and execute A1 & A1-R",
+    "current_task": "Merge chore/release-v2.1.0 PR into dev, then promote to qa / tag v2.1.0-rc.1 and execute A1 & A1-R",
     "next_steps": [
-      "Merge chore/t0b-section7-registration PR into dev",
-      "Release prep -> promote dev -> qa -> tag v2.1.0-rc.1 -> run A1 -> run A1-R -> build release bundle"
+      "Merge chore/release-v2.1.0 PR into dev",
+      "Promote dev -> qa -> tag v2.1.0-rc.1 -> run A1 -> run A1-R -> build release bundle"
     ]
   }
 }
