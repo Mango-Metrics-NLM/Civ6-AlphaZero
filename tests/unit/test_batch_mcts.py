@@ -282,17 +282,14 @@ class TestBatchGumbelMCTS:
     def test_batch_search_empty_list(self, mock_network):
         """Batch search with empty list raises ValueError.
 
-        Note: Empty environment list is an edge case that currently raises
-        ValueError in _batch_sequential_halving. This is reasonable behavior
-        since batch search with no environments doesn't have practical use.
+        Note: this used to raise only by accident (``max()`` of an empty
+        sequence inside the halving loop). The per-env halving schedule no
+        longer takes that ``max``, so the contract is now explicit.
         """
         config = BatchMCTSConfig(num_simulations=2)
         mcts = BatchGumbelMCTS(mock_network, config=config)
 
-        # Empty list causes max() on empty iterable in sequential halving
-        with pytest.raises(
-            ValueError, match=r"max\(\) (arg is an empty sequence|iterable argument is empty)"
-        ):
+        with pytest.raises(ValueError, match="at least one environment"):
             mcts.batch_search([])
 
     def test_batch_search_single_env(self, mock_network, test_env):

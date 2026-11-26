@@ -1,0 +1,43 @@
+{
+  "arena_device": "cuda:1",
+  "args": {
+    "approval_ref": null,
+    "arena_device": "cuda:1",
+    "arena_games": 20,
+    "board_size": 8,
+    "games": 2,
+    "iterations": 2,
+    "k": 8,
+    "keep": false,
+    "max_games": 48,
+    "max_turns": 60,
+    "n": 24,
+    "out": "E:\\civ6az-data\\runs\\t0b-20261112\\determinism\\determinism.json",
+    "seed": 20261114,
+    "train_device": "cuda:0",
+    "work_dir": "E:\\civ6az-data\\runs\\t0b-20261112\\determinism",
+    "worker": null
+  },
+  "components_compared": {
+    "arenas": 1,
+    "checkpoints": 3,
+    "iterations": 2
+  },
+  "coverage_gaps": [],
+  "cublas_workspace_config": ":4096:8",
+  "cudnn": 91900,
+  "deterministic_algorithms": true,
+  "differences": [],
+  "games_priced": 48,
+  "gpu_names": {
+    "arena": "NVIDIA GeForce RTX 5060",
+    "train": "NVIDIA GeForce RTX 5060 Ti"
+  },
+  "harness": "check_determinism",
+  "repeats": 2,
+  "status": "REPRODUCED",
+  "torch": "2.11.0+cu128",
+  "torch_cuda": "12.8",
+  "train_device": "cuda:0",
+  "work_dir": "E:\\civ6az-data\\runs\\t0b-20261112\\determinism"
+}

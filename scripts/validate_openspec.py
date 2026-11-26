@@ -42,6 +42,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import re
 import sys
 from dataclasses import dataclass, field
@@ -49,6 +50,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 OPENSPEC_DIR = REPO_ROOT / "openspec"
+
+logger = logging.getLogger("validate_openspec")
 
 VALID_DELTA_SECTIONS = frozenset({"ADDED", "MODIFIED", "REMOVED"})
 _KEBAB_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
@@ -329,7 +332,9 @@ def _validate_structure(issues: list[Issue]) -> bool:
 def _validate_all(issues: list[Issue], *, only_change: str | None) -> None:
     if not _validate_structure(issues):
         return
-    for spec in sorted((OPENSPEC_DIR / "specs").glob("*/spec.md")):
+    baseline_specs = sorted((OPENSPEC_DIR / "specs").glob("*/spec.md"))
+    logger.debug("scanning %d baseline spec(s)", len(baseline_specs))
+    for spec in baseline_specs:
         _validate_baseline_spec(spec, issues)
     changes_dir = OPENSPEC_DIR / "changes"
     if not changes_dir.is_dir():
@@ -339,6 +344,7 @@ def _validate_all(issues: list[Issue], *, only_change: str | None) -> None:
             continue
         if only_change is not None and change_dir.name != only_change:
             continue
+        logger.debug("scanning change dir %s", change_dir.name)
         _validate_change_dir(change_dir, issues, cross_file=True)
     if only_change is not None and not (changes_dir / only_change).is_dir():
         issues.append(Issue("OS010", f"change '{only_change}' does not exist", changes_dir))
@@ -368,24 +374,40 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--path", help="validate a single file in isolation (hook mode)")
     parser.add_argument("--quiet", action="store_true", help="suppress the pass message")
     parser.add_argument("--json", action="store_true", help="emit issues as JSON")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="log scanned specs/changes and outcome (stderr)",
+    )
     args = parser.parse_args(argv)
+
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.WARNING,
+        format="%(name)s %(levelname)s %(message)s",
+        stream=sys.stderr,
+    )
 
     issues: list[Issue] = []
     try:
         if args.path:
-            _validate_path(Path(args.path).resolve(), issues)
+            target = Path(args.path).resolve()
+            logger.debug("validating single path %s", _relpath(target))
+            _validate_path(target, issues)
         else:
             _validate_all(issues, only_change=args.change)
     except OSError as exc:  # pragma: no cover - defensive I/O guard
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
+    issues.sort(key=lambda i: (str(_relpath(i.file)), i.line or 0, i.code, i.message))
+    logger.debug("finished: %d issue(s)", len(issues))
+
     if args.json:
         payload = [
             {"code": i.code, "message": i.message, "file": str(_relpath(i.file)), "line": i.line}
             for i in issues
         ]
-        print(json.dumps(payload, indent=2))
+        print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         for issue in issues:
             print(issue.render(), file=sys.stderr)

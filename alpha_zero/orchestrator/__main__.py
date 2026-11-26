@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from alpha_zero.utils import game_budget
+
 logger = logging.getLogger(__name__)
 
 
@@ -145,6 +147,8 @@ Environment Variables:
         action="store_true",
         help="Disable curriculum learning",
     )
+
+    game_budget.add_budget_arguments(parser)
 
     # Verbosity
     parser.add_argument(
@@ -284,6 +288,11 @@ def main() -> int:
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return 1
+
+    # Refuse a run over the game cap before building anything.
+    game_budget.enforce_cli(
+        "orchestrator", game_budget.orchestrator_budget_inputs(config, args.dry_run), args
+    )
 
     # Validate configuration
     warnings = config.validate()

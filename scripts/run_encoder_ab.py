@@ -1073,8 +1073,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-level", default="INFO", help="Logging level (default INFO)")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    from alpha_zero.utils.game_budget import add_budget_arguments
+
     train = subparsers.add_parser("train", help="Train one arm per encoder type")
     _add_config_arguments(train)
+    add_budget_arguments(train)
     train.add_argument(
         "--encoder-types",
         nargs="+",
@@ -1091,6 +1094,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     arena = subparsers.add_parser("arena", help="Play two checkpoints head to head")
     _add_config_arguments(arena)
+    add_budget_arguments(arena)
     arena.add_argument(
         "--num_games",
         type=int,
@@ -1136,8 +1140,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _command_train(args: argparse.Namespace) -> int:
     """Run the ``train`` subcommand."""
+    from alpha_zero.utils.game_budget import enforce_cli
+
     config = _config_from_args(args)
     logger.info("Resolved configuration: %s", config)
+    enforce_cli(
+        "run_encoder_ab.train",
+        {
+            "num_arms": len(args.encoder_types),
+            "iterations": config.iterations,
+            "games_per_iter": config.games_per_iter,
+        },
+        args,
+    )
 
     for encoder_type in args.encoder_types:
         tracker = make_tracker(encoder_type, config)
@@ -1151,7 +1166,10 @@ def _command_train(args: argparse.Namespace) -> int:
 
 def _command_arena(args: argparse.Namespace) -> int:
     """Run the ``arena`` subcommand."""
+    from alpha_zero.utils.game_budget import enforce_cli
+
     config = _config_from_args(args)
+    enforce_cli("run_encoder_ab.arena", {"num_games": args.num_games}, args)
     checkpoint_a = args.checkpoint_a or args.checkpoint_dir / f"{ENCODER_ARMS[1]}.pt"
     checkpoint_b = args.checkpoint_b or args.checkpoint_dir / f"{ENCODER_ARMS[0]}.pt"
 

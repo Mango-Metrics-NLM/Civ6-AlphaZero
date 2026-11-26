@@ -263,6 +263,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"agents: internal error: {exc}", file=sys.stderr)
         return 2
 
+    issues.sort(key=lambda i: (str(i.file), i.line or 0, i.code, i.message))
     errors = [i for i in issues if not i.warning]
     warnings = [i for i in issues if i.warning]
     logger.debug(
@@ -290,6 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                     ],
                 },
                 indent=2,
+                sort_keys=True,
             )
         )
         return 1 if (errors or over_budget) else 0

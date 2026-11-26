@@ -16,12 +16,19 @@
 # a file appearing or leaving.
 set -uo pipefail
 
-input="$(cat)"
+HOOK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=_resolve_python.sh
+. "${HOOK_DIR}/_resolve_python.sh"
 
-# One python3 start extracts both payload shapes: the edited path (Write|Edit)
+input="$(cat)"
+cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
+PY="$(resolve_python "${CLAUDE_PROJECT_DIR:-.}" || true)"
+[ -n "$PY" ] || exit 0
+
+# One python start extracts both payload shapes: the edited path (Write|Edit)
 # and the command (Bash). Newlines inside the command are collapsed so the two
 # values stay on two lines; the command is only ever pattern-matched, never run.
-parsed="$(printf '%s' "$input" | python3 -c '
+parsed="$(printf '%s' "$input" | "$PY" -c '
 import json, sys
 d = json.load(sys.stdin)
 inp = d.get("tool_input", {})
@@ -33,18 +40,23 @@ cmd="$(printf '%s\n' "$parsed" | sed -n 2p)"
 [ -z "$f" ] && [ -z "$cmd" ] && exit 0
 
 cd "${CLAUDE_PROJECT_DIR:-.}" 2>/dev/null || exit 0
-rel="${f#"${CLAUDE_PROJECT_DIR:-.}"/}"
+# Windows hands over native or mixed paths (C:\repo\mod\x.lua); every route
+# below matches forward slashes, so both sides are normalised first.
+root="${CLAUDE_PROJECT_DIR:-.}"
+root="${root//\\//}"
+f="${f//\\//}"
+rel="${f#"${root}"/}"
 
 # Run the debt ratchet and surface its report on stderr. ~10-22 s depending on
 # machine load, so every caller below gates it on an event that can actually
 # change the import graph.
 run_debt_ratchet() {
-  if ! python3 -c 'import pytest' 2>/dev/null; then
+  if ! "$PY" -c 'import pytest' 2>/dev/null; then
     printf 'debt ratchet skipped: pytest is not importable (see the SessionStart report)\n' >&2
     return 0
   fi
   local out
-  if ! out="$(OMP_NUM_THREADS=2 python3 -m pytest tests/regression/test_debt_ratchet.py \
+  if ! out="$(OMP_NUM_THREADS=2 "$PY" -m pytest tests/regression/test_debt_ratchet.py \
       -q --no-header -p no:cacheprovider 2>&1)"; then
     printf '%s\n' "$out" >&2
     printf 'debt ratchet FAILED -- see the `debt-audit` skill: a module was added or removed and\n' >&2
@@ -56,23 +68,35 @@ run_debt_ratchet() {
 
 case "$rel" in
   openspec/*)
-    python3 scripts/validate_openspec.py --path "$rel" --quiet || exit 2
+    "$PY" scripts/validate_openspec.py --path "$rel" --quiet || exit 2
     ;;
   kb/*)
-    python3 scripts/validate_kb.py --path "$rel" --quiet || exit 2
+    "$PY" scripts/validate_kb.py --path "$rel" --quiet || exit 2
     ;;
   */Agent.md|Agent.md)
-    python3 scripts/validate_agents.py --path "$rel" --quiet || exit 2
+    "$PY" scripts/validate_agents.py --path "$rel" --quiet || exit 2
+    ;;
+  .claude/agents/*|.claude/hooks/readonly_shell_guard.sh|.claude/hooks/tests_only_write_guard.sh)
+    # SDLC role subagents (local-first plan LF-G13). A role file is checked on its
+    # own (--path); an edit to one of the two guards a role attaches re-checks the
+    # whole directory, because the guard's existence is part of every role's C3.
+    case "$rel" in
+      .claude/agents/*) "$PY" scripts/validate_claude_agents.py --path "$rel" --quiet || exit 2 ;;
+      *) "$PY" scripts/validate_claude_agents.py --quiet || exit 2 ;;
+    esac
     ;;
   .claude/skills/*|.agents/skills/*)
-    python3 scripts/validate_skills.py --path "$rel" --quiet || exit 2
+    "$PY" scripts/validate_skills.py --path "$rel" --quiet || exit 2
     ;;
-  CLAUDE.md|README.md|CONTRIBUTING.md|CHANGELOG.md|ROADMAP.md|docs/*|pyproject.toml|alpha_zero/__init__.py|setup.py)
+  mod/AlphaZeroAI/AlphaZeroAI.modinfo|mod/AlphaZeroAI/Scripts/*.lua)
+    "$PY" scripts/build_lua_bundle.py --check || exit 2
+    ;;
+  CLAUDE.md|README.md|ROADMAP.md|PROJECT_CHARTER.md|CONTRIBUTING.md|CHANGELOG.md|SUPPORT.md|SECURITY.md|GOVERNANCE.md|CITATION.cff|docs/*|.github/workflows/ci.yml|pyproject.toml|alpha_zero/__init__.py|alpha_zero/*/__init__.py)
     # Documentation drift is otherwise caught only by CI, so it lives in the
     # tree for a whole session. This validator has no --path mode (its checks
     # are cross-file by nature) but a whole-repo run costs ~100ms, which is
     # affordable at edit time.
-    python3 scripts/check_doc_sync.py --quiet || exit 2
+    "$PY" scripts/check_doc_sync.py --quiet || exit 2
     ;;
   alpha_zero/*.py)
     # A NEW module only. `git ls-files --error-unmatch` is the discriminator:

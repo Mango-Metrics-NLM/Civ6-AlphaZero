@@ -251,13 +251,9 @@ def test_load_model_refuses_to_start_without_a_bucket(reset_model_state, monkeyp
     fake_net = Mock()
     fake_net.to.return_value = fake_net
 
-    with (
-        patch.multiple("builtins"),
-        pytest.raises(RuntimeError, match="CIV6AZ_GCS_BUCKET is not set"),
-    ):
-        p1, p2, p3 = _network_patches(fake_net)
-        with p1, p2, p3:
-            srv._load_model()
+    p1, p2, p3 = _network_patches(fake_net)
+    with p1, p2, p3, pytest.raises(RuntimeError, match="CIV6AZ_GCS_BUCKET is not set"):
+        srv._load_model()
 
     assert srv._model is None
 

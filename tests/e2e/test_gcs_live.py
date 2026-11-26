@@ -1,10 +1,16 @@
 """E2E tests for live GCS storage operations.
 
-These tests are skipped by default — they require:
+These tests are skipped by default — they upload to and delete from a REAL
+bucket, so they require an explicit opt-in:
+  - CIV6AZ_LIVE_GCS_TESTS=1
   - GCP credentials (Application Default Credentials or service account)
   - A valid GCS bucket (set via CIV6AZ_GCS_BUCKET env var)
 
-Run with:  pytest tests/e2e/test_gcs_live.py -m "requires_env"
+Run with:  CIV6AZ_LIVE_GCS_TESTS=1 pytest tests/e2e/test_gcs_live.py -m "requires_env"
+
+The opt-in is checked before any bucket value is read: a workstation that merely
+has ``CIV6AZ_GCS_BUCKET`` and Application Default Credentials must never reach
+the bucket through an ordinary suite run.
 """
 
 from __future__ import annotations
@@ -18,6 +24,14 @@ from collections.abc import Generator
 from typing import Any
 
 import pytest
+
+LIVE_OPT_IN_ENV = "CIV6AZ_LIVE_GCS_TESTS"
+
+if os.environ.get(LIVE_OPT_IN_ENV) != "1":
+    pytest.skip(
+        f"live GCS tests need an explicit opt-in: set {LIVE_OPT_IN_ENV}=1",
+        allow_module_level=True,
+    )
 
 logger = logging.getLogger(__name__)
 

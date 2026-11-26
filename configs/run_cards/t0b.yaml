@@ -1,0 +1,224 @@
+# Run card: T0b -- the positive-control reference and the wall-clock calibration
+# that section 7.1 of docs/EVALUATION.md leaves "pending T0b" (plan section 8.2).
+#
+#   python scripts/run_card.py configs/run_cards/t0b.yaml --price_only   # prints 660
+#   python scripts/run_card.py configs/run_cards/t0b.yaml --probe        # checks the GPUs, runs nothing
+#
+# T0b runs are NOT A1-family runs (section 7.1, "Amendments"): they use seeds
+# 1001-1003 but lock nothing. Run it on the merged default branch after T7-T10.
+#
+# DO NOT RUN until:
+#   1. `sha` is the merged commit to calibrate (the all-zero placeholder below is
+#      refused by run_card after pricing and before anything is created);
+#   2. no MCTS_* variable is set and the data root is E:\civ6az-data;
+#   3. the machine is quiet (pause Windows Update; stop llama-server and WSL), or
+#      the throughput figure is not the machine's.
+#
+# Invocations, in order:
+#
+#   1. `determinism` -- the precondition for the GPU registration (section 7.1
+#      "Devices"). scripts/check_determinism.py trains and judges a small A1-shaped
+#      run twice, on the registered devices, each repeat in its own process inside
+#      this card's pinned environment, and compares every checkpoint tensor by
+#      tensor and every arena game (outcome, length and a digest of its actions).
+#      It runs FIRST, so a machine on which a seeded
+#      GPU run does not repeat fails the card before anything else is measured.
+#      48 games: 2 repeats x (2 iterations x 2 self-play games + 20 arena games).
+#      Its JSON says REPRODUCED, DIFFERS, INCOMPLETE or WORKER_FAILED.
+#   2. Three wall-clock calibrations of A1's search (board 8 / 60 turns, gumbel
+#      k=8 n=24; 4 self-play games each): on cuda:0, the device A1 trains and
+#      self-plays on, then on cuda:1 and on cpu.
+#   3. The registered positive-control command (section 7.1 "positive-control") at
+#      seeds 1001, 1002 and 1003 with 200 games each -- only --seed, --n-games and
+#      --out differ from it.
+#
+# tests/scripts/test_t0b_calibration.py holds all of that, and the price, in place.
+#
+# The card pins a CUDA torch build and both GPUs, and names the GPU it expects at
+# each ordinal (section 7.1 "Devices"). `throughput.json` (cuda:0) is the file
+# `calibrate --throughput` reads and `throughput_cuda1.json` is its
+# `--arena-throughput`. The cpu timing is informational: it shows what GPU-first
+# costs or buys for single-position search, and triggers nothing by itself.
+# Changing device after T0b is a maintainer decision and a re-registration
+# (.claude/skills/a1-reregister), allowed until the first exploratory run.
+#
+# Then read it with (it never edits docs/EVALUATION.md; exit 1 unless registered):
+#   python -m alpha_zero.evaluation.a1_protocol calibrate
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1001
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1002
+#       E:\civ6az-data\runs\t0b-20261112\arena\seed_1003
+#       --throughput E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json
+#       --arena-throughput E:\civ6az-data\runs\t0b-20261112\calibration\throughput_cuda1.json
+# It prints the reference, P(40) with its 95% interval, P(60), the iid P(40),
+# the branch in force and the exact replacement text for both slots. Filling
+# them is a reviewed dev PR with a registration-log row.
+card_id: t0b-20261112
+sha: '0000000000000000000000000000000000000000'
+max_games: 660
+cuda_visible_devices: '0,1'
+torch_spec: 'torch==2.11.0+cu128'
+torch_index_url: 'https://download.pytorch.org/whl/cu128'
+gpus:
+  'cuda:0': 'NVIDIA GeForce RTX 5060 Ti'
+  'cuda:1': 'NVIDIA GeForce RTX 5060'
+description: T0b GPU reproduction check, A1 wall-clock calibration on cuda:0, cuda:1 and cpu, and the positive-control reference (heuristic vs random, 8/60, seeds 1001-1003 x 200).
+invocations:
+  - name: determinism
+    runner: determinism_check
+    argv:
+      - '--train-device'
+      - 'cuda:0'
+      - '--arena-device'
+      - 'cuda:1'
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--arena-games'
+      - '20'
+      - '--work-dir'
+      - 'E:\civ6az-data\runs\t0b-20261112\determinism'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\determinism\determinism.json'
+  - name: throughput
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cuda:0'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput.json'
+  - name: throughput-cuda1
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cuda:1'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput_cuda1.json'
+  - name: throughput-cpu
+    runner: calibrate_throughput
+    argv:
+      - '--board_size'
+      - '8'
+      - '--max_turns'
+      - '60'
+      - '--mcts'
+      - 'gumbel'
+      - '--k'
+      - '8'
+      - '--n'
+      - '24'
+      - '--device'
+      - 'cpu'
+      - '--games'
+      - '4'
+      - '--seed'
+      - '1001'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\calibration\throughput_cpu.json'
+  - name: seed-1001
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1001'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cuda:1'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1001'
+  - name: seed-1002
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1002'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cuda:1'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1002'
+  - name: seed-1003
+    runner: benchmark
+    argv:
+      - '--opponents='
+      - '--seed'
+      - '1003'
+      - '--board-size'
+      - '8'
+      - '--max-turns'
+      - '60'
+      - '--sims'
+      - '24'
+      - '--gumbel-k'
+      - '8'
+      - '--mcts-type'
+      - 'gumbel'
+      - '--device'
+      - 'cuda:1'
+      - '--candidate'
+      - 'heuristic'
+      - '--opponents=random'
+      - '--n-games'
+      - '200'
+      - '--out'
+      - 'E:\civ6az-data\runs\t0b-20261112\arena\seed_1003'

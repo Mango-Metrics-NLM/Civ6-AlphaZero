@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "alpha_zero"
-version = "2.0.0"
+version = "2.1.0"
 description = "AlphaZero/MuZero-style self-play reinforcement learning for a Civilization-like environment, with a bridge into Civilization VI"
 readme = "README.md"
 license = "MIT"
@@ -113,6 +113,11 @@ jax = [
 chess = [
     "chess>=1.11.0",
 ]
+# Test-only: runs the Civ6 mod's Lua (mod/AlphaZeroAI) outside the game, on the
+# Lua 5.1 runtime lupa bundles. Not part of `dev`; CI's test job installs it.
+lua = [
+    "lupa>=2.0",
+]
 # Hugging Face Hub integration. Opt-in; the hexcrystal encoder and other models
 # use PyTorchModelHubMixin for save_pretrained / from_pretrained support.
 hub = [
@@ -160,7 +165,7 @@ all = [
 # transitive chains (e.g. `python scripts/run_chess_training.py` triggering
 # `from alpha_zero.utils.checkpoint import ...` via env_factory -> microciv -> core).
 [tool.setuptools.package-data]
-alpha_zero = ["py.typed"]
+alpha_zero = ["py.typed", "rules/data/*.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -223,13 +228,6 @@ max-statements = 100
 "tests/unit/test_curriculum.py" = ["E402"]  # same
 "tests/integration/test_chess_*.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
-# PLR0915 burndown (max-statements = 100). Three `main` functions exceed it, at 248,
-# 168 and 134 statements; all are known decomposition targets, deferred with the rest
-# of the cloud-worker work. Delete an entry -- do not raise the threshold -- when its
-# function is split.
-"alpha_zero/cloud/gcp/vertex_orchestrator.py" = ["PLR0915"]  # main(): 248 statements
-"alpha_zero/cloud/gcp/training_worker.py" = ["PLR0915"]  # main(): 168 statements
-"scripts/run_enhanced_training.py" = ["PLR0915"]  # main(): 134 statements
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/gcp/preemption.py" = ["S310"]  # GCP preemption handler metadata URL is intentional
 "scripts/run_*.py" = ["ANN"]  # Skip annotations in run scripts

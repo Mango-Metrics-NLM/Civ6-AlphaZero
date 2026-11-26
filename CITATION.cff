@@ -11,8 +11,8 @@ authors:
   - family-names: Cruickshank
     given-names: Ian
     alias: ianshank
-version: 2.0.0
-date-released: "2026-11-10"
+version: 2.1.0
+date-released: "2026-11-26"
 license: MIT
 repository-code: "https://github.com/Mango-Metrics-NLM/Civ6-AlphaZero"
 keywords:

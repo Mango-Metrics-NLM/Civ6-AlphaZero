@@ -20,6 +20,7 @@
         <File>Scripts/JsonEncoder.lua</File>
         <File>Scripts/FileIO.lua</File>
         <File>Scripts/StateExporter.lua</File>
+        <File>Scripts/GameInfoExporter.lua</File>
         <File>Scripts/ActionExecutor.lua</File>
         <File>Scripts/Main.lua</File>
     </Files>
@@ -27,11 +28,11 @@
     <!-- Use AddUserInterfaces (not AddGameplayScripts) so the Lua context
          has full access to UI, io, and os APIs. The XML wrapper
          (Scripts/AlphaZeroMain.xml) loads Scripts/AlphaZeroMain.lua, the
-         hand-maintained bundle with all modules concatenated into a single
+         GENERATED bundle with all modules concatenated into a single
          file, NOT Main.lua directly. Main.lua and the individual module
-         files (Config.lua, FileIO.lua, etc.) are the readable source; any
-         change affecting runtime behavior must also be applied to the
-         corresponding block inside AlphaZeroMain.lua. -->
+         files (Config.lua, FileIO.lua, etc.) are the source: edit them,
+         never the bundle, then regenerate it from the repository with
+         python scripts/build_lua_bundle.py -->
     <InGameActions>
         <AddUserInterfaces id="AlphaZeroMainUI">
             <Properties>

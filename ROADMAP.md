@@ -18,14 +18,16 @@ about learning.
 | Theme | Name | Delivery status | Validation (evidence) |
 |-------|------|-----------------|-----------------------|
 | M1 | Learning Core | ✅ Delivered | ❌ **Not demonstrated.** All runs predate the 2026-09-04 search fixes; the last committed run scored 0–10% wins vs random with no trend ([`docs/evidence/validation_iteration_zero/`](docs/evidence/validation_iteration_zero/validation_iteration_zero_report.md)). A seeded post-fix learning run is the first item under *Next*. |
-| M2 | Scale & Observability | ✅ Delivered | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
-| M3 | Live Game Bridge | ✅ Delivered | ⚠️ **Command delivery proven, demo-grade.** Four `END_TURN`s on random weights, 2026-07-12; turn-cycle stall open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
+| M2 | Scale & Observability | ✅ Delivered; ⏸ **Vertex/GCP path dormant** (frozen 2026-11-11) | ⚠️ **Operationally exercised**, outputs pre-fix. 50-iteration Vertex AI runs completed; the promotion gate cannot promote at the measured 73.5% draw rate ([`docs/runbooks/promotion-gate.md`](docs/runbooks/promotion-gate.md)). |
+| M3 | Live Game Bridge | ✅ Built; not validated | ⚠️ **Demo-grade; per-capability status in [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md#status-at-a-glance).** No trained policy has played, attacks have not run live, and the rebuilt mod has not had a multi-turn run. Four `END_TURN`s on random weights (2026-07-12); FireTuner TCP, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live with five Lua fixes (2026-11-21); fresh Turn 1 soak open ([`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md)). |
 | M4 | Multiplayer & Throughput | 🔄 Active | — Targets, not measurements. The batch self-play path has no benchmark artifact. |
 | M5 | Full Civ6 Mastery | ⏳ Future | — |
 
 ## Now / Next / Later
 
-Sequencing authority: [`kb/specs/20260904-correctness-first-plan.md`](kb/specs/20260904-correctness-first-plan.md)
+Sequencing authority for v2.1: [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+(local-first program; gap register `kb/specs/20261111-local-first-gap-register.md`). It carries forward
+[`kb/specs/20260904-correctness-first-plan.md`](kb/specs/20260904-correctness-first-plan.md)
 (search correctness → draw-rate re-measure → seeded learning run), which amends
 [`kb/specs/20260902-validated-learning-plan.md`](kb/specs/20260902-validated-learning-plan.md).
 Every *Now* bullet names the issue or OpenSpec change that tracks it
@@ -33,24 +35,50 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
 
 ### Now
 
-- Public-release readiness — all tasks under `openspec/changes/public-release-readiness`
-  (deletion of off-scope material, identifier scrub, README v2, documentation index
-  and gates, charter corrections, CI/supply-chain hardening, the v2.0.0 changelog roll).
+- `openspec/changes/branching-and-release`: the dev / qa / main branch model,
+  rulesets and release gates of the local-first plan.
+- `openspec/changes/harden-governance-gates`: governance-gate hardening (including `scripts/check_release_readiness.py`, eleven vetted read-only shell checkers, `public-release-audit` skill, and synced `posttooluse_governance.sh` triggers).
+- `openspec/changes/add-gpu-first-run-cards`: GPU-first registered runs (pinned
+  CUDA torch, device checks, the reproduction check). Live `scripts/check_determinism.py`
+  reported `REPRODUCED` on dual RTX 5060 Ti / RTX 5060 GPUs; formal single-use T0b
+  and A1/A1-R run-card execution remains open until run on the maintainer's GPU machine.
+- `openspec/changes/archive/2026-11-23-add-game-rules-kernel`: GM-S0a (golden env fingerprint), GM-K1
+  (`alpha_zero/rules/` kernel), and GM-K2 (`pace`, `import-gameinfo`) landed off the
+  play path (PRs #143, #146, #147; no training environment consumes it yet); archived
+  2026-11-23 into the `game-rules` and `training-reproducibility` baselines (plan `kb/specs/20261119-game-mechanics-plan.md`).
+- `openspec/changes/archive/2026-11-20-add-bridge-research-parity` (archived into the `civ6-bridge` baseline): built off the play path: generated `AlphaZeroMain.lua` bundle, `lupa` Lua 5.1 test harness, schema-2 exporter and `END_TURN_BLOCKED`, `tech_registry.py` wiring, `GameInfoExporter.lua` + `gameinfo_capture.py` snapshot capture, and `--mode civ6 --mcts` startup refusal (GM-B0..GM-B5, PRs #148–#153), followed by live Steam Civ 6 verification fixes for Win64 LLP64 integers, sole blocker authority, two-step `CanProduce`, `GetCurrentProductionTypeHash()`, short `YieldTypes` keys, `install_civ6_mod.py --check`, and `civ6_local.py` decomposition (`alpha_zero/local/gameplay_config.py`). Since then (PRs #158 to #165, 2026-11-21 and 22): the command layer rewritten from the game's UI code (GM-B7a to c), the search-to-command translator and its seam (GM-B6a, b), and the export of visible other players with the search's end-of-game rules (GM-B8a, b); their four OpenSpec changes were archived into `civ6-bridge` on 2026-11-23. **Bridge features are frozen until A1 has run**: the bridge now waits for a policy worth carrying. Open, all the maintainer's: the live checklist (`docs/LIVE_CIV6.md`, attacks and the war check first).
 
 ### Next — v2.1 "First validated learning run"
 
+- Follow-up: expose `--seed` on `selfplay_worker.py`'s standalone CLI (`parse_args()`) if
+  standalone CLI invocations need reproducible seeding alongside the already-seeded Python API.
+
+- **A1**, registered in [`docs/EVALUATION.md`](docs/EVALUATION.md) section 7.1
+  (2026-11-11): 20 iterations × 24 self-play games at board 8 / 60 turns on the
+  Gumbel search, then a 200-game paired arena of the final checkpoint against its
+  own random initialisation, with symmetry and positive controls; 980 games
+  priced by `configs/run_cards/a1.yaml`. The verdict is the registered table,
+  whichever way it comes out. Since 2026-11-14 the registration is GPU-first:
+  training on `cuda:0`, every arena arm on `cuda:1`, on a pinned CUDA build of
+  torch. Before it runs, T0b (`configs/run_cards/t0b.yaml`, on the maintainer's
+  machine) checks that a seeded GPU run reproduces, measures the positive-control
+  reference and times the search on both GPUs and on CPU. If the reproduction
+  check fails, the registration goes back to CPU or to devices where it passes.
+- **A1-R** at seed 20261112 (`configs/run_cards/a1r.yaml`); it must also pass
+  before any public claim that the agent learns. A FAIL is followed by A1-P (the
+  PUCT search at the same seed).
 - Re-measure the draw rate under *trained* post-fix play (the committed sweep is
   random play on pre-fix code), then set `max_turns` on the deployed path from
   that number.
-- A seeded 20-iteration learning-trend run on the fixed search, read against a
-  draw-aware score rate with a paired-seat protocol, committed under
-  `docs/evidence/` with the post-fix banner.
-- Evaluation plumbing the run needs: a search seed and paired seats in
-  `run_arena`, additive draw-aware metrics with a regression gate, and a
-  promotion-feasibility report with a corrected runbook.
-- Gumbel policy-target entropy measurement and the documented deviations from
-  the reference algorithm; a closed-loop learning oracle.
-- Memo on the seed overlap in the encoder A/B evidence (WS-S S5).
+
+Done for v2.1 and no longer listed: the search-budget and move-mask fixes,
+checkpoint provenance and `checkpoint_0`, decoupled in-loop evaluation with
+prequential diagnostics, and the benchmark as the A1 evidence producer (all
+archived 2026-11-15 under `openspec/changes/archive/`); the evaluation plumbing
+(seeded, paired arena; additive draw-aware metrics; promotion feasibility), the Gumbel
+target-sharpness probe and completed-Q alignment memo (decision pending with
+the maintainer; A1 registers the current settings), and the seed-overlap memo
+(`kb/specs/20261111-seed-overlap-memo.md`).
 
 ### Later
 
@@ -58,6 +86,13 @@ Every *Now* bullet names the issue or OpenSpec change that tracks it
   tech-debt workstreams (below).
 - M5: fog of war via information-set sampling, the full-scale encoder and action
   space against the real game, sustained live play with a trained checkpoint.
+- Game mechanics (planned; none implemented): after v2.1.0 ships, opt-in
+  MicroCiv rule sets as rungs GM-S0..GM-S7 (preset seam, growth, science and
+  technology, warfare, then civics, districts, world and society), each with
+  its own OpenSpec change and each confirmed again before it starts.
+- M5 end state, as an aim and not a promise: every Civ6 system class has a
+  MicroCiv counterpart at an agreed abstraction, with bridge parity for its
+  state and actions and a passed probe. It is not a rules-exact clone.
 
 ---
 
@@ -75,6 +110,11 @@ AlphaZero on MicroCiv, built end-to-end. *(Delivered: Phases 1–18, v0.x–v1.5
 
 Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7, 19–21, v1.6.0.)*
 
+> **DORMANT (2026-11-11):** the Vertex/GCP half of this milestone is frozen — code kept, not
+> deleted, no local/cloud parity claimed; training runs locally. See
+> [`kb/specs/20261111-local-first-and-branching-plan.md`](kb/specs/20261111-local-first-and-branching-plan.md)
+> and charter amendment A-1. The history below is preserved.
+
 - 3-phase Vertex AI pipeline (self-play → train → eval) in a single image
   (`dockerfiles/Dockerfile.vertex`, routed by `alpha_zero.cloud.gcp.entrypoint`),
   GCS-backed storage and replay, Spot-VM preemption handling.
@@ -87,7 +127,7 @@ Distributed cloud training with full experiment telemetry. *(Delivered: Phases 7
 
 ## M3 — Live Game Bridge
 
-A trained agent plays a real, unmodified Civilization VI. *(Delivered: v1.7.0–v1.8.0.)*
+A trained agent plays a real, unmodified Civilization VI. *(Bridge built: v1.7.0–v1.8.0 and the GM-B track; the goal itself is not met: no trained agent has played. Status: [`docs/LIVE_CIV6.md`](docs/LIVE_CIV6.md#status-at-a-glance).)*
 
 - Lua mod + file-IPC bridge, `BridgeAgentLoop`, `BridgeMCTSEnv` (v1.7.0).
 - Headless FireTuner socket transport (`alpha_zero/bridge/tuner_socket_bridge.py`);
@@ -141,8 +181,8 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
 - Bring omitted modules under the coverage gate (re-tightened 80% → 85% on
   2026-07-13; omit-list shrink remains). **`cloud/` is now measured** — not by
   un-omitting it, but by a separate per-package floor (`coverage-floors.json`,
-  `.coveragerc-cloud`) enforced in CI's `cloud-tests` job: floor 58%, measured
-  59.7% on 2026-09-02. `serving/` and `inference/` still need the `web` extra in
+  `.coveragerc-cloud`) enforced in CI's `cloud-tests` job: floor 59%, measured
+  60.2% on 2026-11-25 (`coverage-floors.json` ratchet). `serving/` and `inference/` still need the `web` extra in
   the coverage job before they can follow.
 - Achieve 100% clean mypy type safety across all 350 files (done 2026-08-10).
 - **Tech-debt reduction and hardening** (`kb/specs/20260902-tech-debt-hardening.md`).
@@ -158,8 +198,7 @@ Make N-player training real and self-play fast; pay down debt. *(Active.)*
   - **Tier B** — fourteen yes/no keep-or-delete decisions, 18,133 lines.
   - **WS3.2** — collapse the env prefix to `CIV6AZ_` only, behind a two-release
     warn-and-map shim in `env_loader.py`.
-  - **WS5** — decompose the seven remaining god files, each behind a re-export
-    shim with a patchability test.
+  - **WS5** — decompose the remaining god files (22 over 1,000 lines after extracting `alpha_zero/monitoring/wandb_compat.py` from `mlflow_logger.py` and `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, plus helper extraction in `scripts/run_enhanced_training.py`), each behind a re-export shim with a patchability test.
   - **WS6** — consolidate duplicate definitions (`setup_logging`, `create_mcts`,
     Elo, `MCTSConfig`) and settle on one dependency manifest.
   - **WS7** — layering test, wider type-check scope, skip-site burndown,

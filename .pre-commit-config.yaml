@@ -69,6 +69,14 @@ repos:
         pass_filenames: false
         files: 'Agent\.md$'
 
+      - id: validate-claude-agents
+        name: validate SDLC role subagents
+        entry: python scripts/validate_claude_agents.py
+        language: system
+        # Also the two hooks a role attaches and the skills that dispatch roles
+        # (C3 and C8 read them), not just the role files.
+        files: ^(pyproject\.toml$|\.claude/(agents/|hooks/(readonly_shell_guard|tests_only_write_guard)\.sh$|skills/(planning|dev-sqe|pre-pr)-handoff/))
+        pass_filenames: false
       - id: validate-skills
         name: validate skills
         entry: python scripts/validate_skills.py
@@ -86,7 +94,15 @@ repos:
         name: check doc sync
         entry: python scripts/check_doc_sync.py
         language: system
-        files: ^(README\.md|CLAUDE\.md|CONTRIBUTING\.md|CITATION\.cff|docs/|pyproject\.toml|alpha_zero/__init__\.py|CHANGELOG\.md)
+        files: ^(README\.md|CLAUDE\.md|ROADMAP\.md|PROJECT_CHARTER\.md|CONTRIBUTING\.md|CHANGELOG\.md|SUPPORT\.md|SECURITY\.md|GOVERNANCE\.md|CITATION\.cff|docs/|\.github/workflows/ci\.yml|\.claude/skills/|pyproject\.toml|alpha_zero/(__init__|[^/]+/__init__)\.py)
+        pass_filenames: false
+      - id: check-lua-bundle
+        name: check Civ6 Lua bundle sync
+        entry: python scripts/build_lua_bundle.py --check
+        language: system
+        # always_run: pre-commit drops deleted files before matching `files`, so a
+        # commit that only deletes a module would skip the check. It costs ~50 ms.
+        always_run: true
         pass_filenames: false
       # Scoped to tests/regression/ (2026-09-02): the unit suite cannot complete
       # in the dev sandbox, so a pre-push hook running it was either skipped

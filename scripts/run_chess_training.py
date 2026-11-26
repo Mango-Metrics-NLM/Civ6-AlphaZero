@@ -445,6 +445,9 @@ def main(argv: list[str] | None = None) -> int:
         "'cuda', or 'cuda:N'. Note: this does NOT affect LM Studio/Qwen, "
         "which is configured inside LM Studio itself.",
     )
+    from alpha_zero.utils.game_budget import add_budget_arguments
+
+    add_budget_arguments(parser)
     args = parser.parse_args(argv)
 
     logging.basicConfig(
@@ -461,6 +464,13 @@ def main(argv: list[str] | None = None) -> int:
         args.games_per_iter
         if args.games_per_iter is not None
         else int(training_cfg.get("games_per_iteration", 1))
+    )
+    from alpha_zero.utils.game_budget import enforce_cli
+
+    enforce_cli(
+        "run_chess_training",
+        {"iterations": iterations, "games_per_iter": games_per_iter, "dry_run": args.dry_run},
+        args,
     )
     if args.skill is not None:
         config.setdefault("curriculum", {})["initial_value"] = args.skill

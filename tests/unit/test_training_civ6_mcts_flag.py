@@ -33,7 +33,8 @@ def _run_main(argv: list[str]) -> TrainingConfig:
 
     with (
         patch.object(training_civ6, "train", fake_train),
-        patch("sys.argv", ["training_civ6", *argv]),
+        # `train` is faked: no games are played, so the cap is satisfied by reference.
+        patch("sys.argv", ["training_civ6", "--approval_ref", "unit-test-train-is-faked", *argv]),
     ):
         training_civ6.main()
     config = captured["config"]
@@ -91,10 +92,10 @@ class TestEvaluationUsesTheConfiguredSearch:
             patch.object(training_civ6, "GumbelMCTS", gumbel_cls),
             patch.object(training_civ6, "Civ6MCTS", puct_cls),
         ):
-            rate = evaluate_against_random(MagicMock(), _config(use_gumbel=True), num_games=1)
+            summary = evaluate_against_random(MagicMock(), _config(use_gumbel=True), num_games=1)
         assert gumbel_cls.called
         assert not puct_cls.called
-        assert 0.0 <= rate <= 1.0
+        assert 0.0 <= summary.score_rate <= 1.0
         # The Gumbel config carries the derived evaluation search seed.
         gumbel_config = gumbel_cls.call_args.args[1]
         assert gumbel_config.seed is not None

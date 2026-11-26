@@ -1,10 +1,13 @@
 """Python version compatibility shims.
 
 Provides re-exports that normalize differences between Python versions,
-allowing the codebase to work across Python 3.10+ (container) and 3.12+ (dev).
+so callers import one name regardless of interpreter. The supported floor is
+Python 3.11 (requires-python), in the container and in development alike.
 
-The container base image (nvcr.io/nvidia/pytorch:24.09-py3) uses Python 3.10,
-while the dev environment uses Python 3.12+. datetime.UTC was added in 3.11.
+The shim dates from the container base nvcr.io/nvidia/pytorch:24.09-py3
+(Python 3.10); datetime.UTC was added in 3.11. The base is now 26.10-py3
+(Python 3.12) and requires-python is >=3.11, so the 3.10 branch is retained
+only for compatibility with existing imports.
 
 Usage:
     from alpha_zero.utils.compat import UTC

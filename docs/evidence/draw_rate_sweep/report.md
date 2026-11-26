@@ -77,6 +77,11 @@ Raw counts: `draw_rate_sweep.json`.
 
 ## A second finding, found in the run's own log
 
+> **Update 2026-11-11 (LF-B1, `fix-move-mask`):** this defect is fixed; the mask now
+> excludes occupied tiles. Every measurement in this report predates the fix and was
+> taken with the old mask. The measured results are unchanged.
+
+
 The run emitted **18,103** `Invalid move to (x, y)` warnings across 720 games — ~25
 per game averaged over all cells, but that average is dominated by the long 100-turn
 and 16×16 games. An independent re-run measured it per cell: **~3 per game at 8/20,

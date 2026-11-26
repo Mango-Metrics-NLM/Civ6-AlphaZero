@@ -93,10 +93,25 @@ so the benchmark and production cannot disagree:
   search, so two runs at one seed are identical;
 - opponents `random`, `heuristic`, `simple_mcts` (random-rollout search) and
   `checkpoint:<sha256>` (a previous model);
-- output `result.json` = `{benchmark_schema_version, protocol, evidence, results[]}`
-  where `evidence` is the block from [`evidence/SCHEMA.md`](evidence/SCHEMA.md)
-  and each result embeds the versioned `EvaluationResult` plus `draw_rate`,
-  `decisive_win_rate`, the interval and the MDE at that `n`.
+- output `result.json` = `{benchmark_schema_version: 2, protocol, candidate, shard,
+  evidence, results[]}` where `evidence` is the block from
+  [`evidence/SCHEMA.md`](evidence/SCHEMA.md) (`search_epoch: post-2026-09-04`,
+  `claims`, `non_claims`, a `shlex`-joined command) and each result embeds the
+  versioned `EvaluationResult` plus `draw_rate`, `decisive_win_rate`, the MDE at
+  that `n`, the per-game records `{pair, seat, result, moves, actions_sha256}`
+  (`actions_sha256` digests every action of the game in order, so two runs can be
+  compared move for move), and an `intervals` block:
+  at 95% and 99%, the iid ternary interval, the pair-clustered interval
+  (`scoring.pair_score_interval`: the plain pentanomial interval, the
+  seat-swapped pair as the unit, no pseudo-counts) and their hull
+  `[min(lows), max(highs)]`, beside `mde_alpha025_80pct` and the same widened by
+  `hull_ratio` (how far the hull reaches toward 0.5 past the iid bound);
+- an existing `<out>/result.json` is never overwritten, so every arm needs its
+  own `--out`;
+- `--candidate heuristic|random` benchmarks a baseline as the candidate (a
+  positive control); `--shard i/N` plays the `i`-th block of whole pairs with
+  the unsharded run's seeds, and `--merge` recombines shards and recomputes every
+  statistic, so the merged file equals the unsharded one.
 
 Run it with `python scripts/benchmark_suite.py --help`. The CI smoke runs the
 protocol at tiny settings and asserts something that can fail: the greedy
@@ -133,6 +148,13 @@ touches distributed coordination and is confirm-first).
 
 ## 7. First post-fix run (pre-registered protocol, milestone v2.1)
 
+> **Superseded (2026-11-11) by [section 7.1](#71-a1-registered-protocol-lf-a1).**
+> The draft below was never run. Section 7.1 replaces it with the A1 protocol
+> of `kb/specs/20261111-local-first-and-branching-plan.md` §5.2: 20 iterations,
+> a pinned `checkpoint_0` as the comparator, a symmetry control, a positive
+> control and a hull-based verdict. Nothing below is in force; it is kept as the
+> record of what was first proposed.
+
 Written before the run so the result cannot move the goalposts:
 
 - Local, CPU, seeded; board 8, 60 turns, 10 iterations × 20 games (well under the
@@ -147,6 +169,498 @@ Written before the run so the result cannot move the goalposts:
 - **Negative control:** random-init vs a differently seeded random-init must give
   an interval containing 0.5 (checks seat and harness bias).
 - Reported whichever way it comes out, with the evidence block and an index row.
+
+<!-- A1-PROTOCOL-BEGIN: the registered text of section 7.1 is every line between this marker and the end marker; see "Hashing section 7.1" after the end marker. -->
+### 7.1 A1: registered protocol (LF-A1)
+
+Registered 2026-11-11 (task T13), before any A1-family run, exploratory runs
+included. Source: `kb/specs/20261111-local-first-and-branching-plan.md` §5.2.
+The A1 artifact records the sha256 of this text, and a run is judged only
+under the registration whose hash its artifact records. Every registered
+digest is logged after this section ("Registration log").
+
+**Amendments.** An **A1-family run** is any execution of a command
+registered below (the training command or an arena arm) at a registered seed
+(1001, 1002, 1003, 20261111 or 20261112); an exploratory run is an A1-family
+run at 1001–1003. T0b is the card `configs/run_cards/t0b.yaml`. Its wall-clock
+calibrations, its determinism check and its positive-control reference runs are
+**not** A1-family runs, although they use seeds 1001–1003, so they lock
+nothing. Before any A1-family run starts, this section may be
+re-registered, with a new log row. **Once any exploratory run has started**,
+the only amendments allowed are the slots marked "pending T0b": the measured
+positive-control reference with its P values and P(40) interval, the 40/60
+branch in force, and the cards' `sha`. Any other change (an arm, a threshold, a verdict row, the
+search settings, the devices or the torch build, the card form) is a **new
+registration with a new confirmatory seed pair**; 20261111 and 20261112 are then
+retired unrun.
+
+**Code binding.** The card's pinned `sha` must contain this section with the
+digest the A1 artifact records; T14 checks `protocol_sha256` of
+`docs/EVALUATION.md` at `run.json`'s `sha`. The settings below are the ones
+that commit's code resolves.
+
+**Question.** Does the local training loop, run on the fixed search at this
+budget, produce a network that beats its own random initialisation under the
+same search? A1 answers it once at seed 20261111. A1-R repeats it at seed
+20261112, and **A1-R must also PASS before any public "learns" claim.**
+
+#### Seeds
+
+- **Exploratory:** 1001, 1002, 1003. Exploratory runs use the registered
+  commands with every `--seed 20261111` replaced. They are never quoted as the
+  verdict.
+- **Confirmatory:** **20261111** (A1) and **20261112** (A1-R). No A1-family run
+  has used either. (A board-4 harness smoke on 2026-11-11 passed 20261111 to
+  `calibrate_throughput`, which derives its own stream and shares no map or
+  search stream with A1.)
+- **Disjointness** (LF-A17, `kb/specs/20261111-seed-overlap-memo.md`). Every
+  map, search and sampling stream is `derive_seed(base, <stream name>,
+  *coords)`; network initialisation is `torch.manual_seed(base)`. At A1's sizes, the 480
+  self-play maps and the 100 benchmark maps share no seed and no map, and this
+  holds for each of the five seeds. A1's and A1-R's streams share nothing, and
+  the exploratory and confirmatory derived seeds are all distinct.
+  `tests/regression/test_a1_seed_disjointness_regression.py` gates this, and
+  its negative control is the arithmetic `seed + pair` rule, which overlaps on
+  99 of 100 maps. To reproduce for one seed (seconds). The block is Python,
+  fenced as `text` so that no formatter rewrites registered text:
+
+  ```text
+  from alpha_zero.envs.microciv import MicroCivEnv
+  from alpha_zero.utils.seeding import SeedStream, derive_seed
+  import hashlib
+  def fp(s):
+      obs, _ = MicroCivEnv(board_size=8, max_turns=60).reset(seed=s)
+      return hashlib.sha256(obs["spatial"].tobytes() + obs["vector"].tobytes()).hexdigest()
+  S = 20261111
+  train = {fp(derive_seed(S, SeedStream.SELF_PLAY_ENV, it, g)) for it in range(20) for g in range(24)}
+  bench = {fp(derive_seed(S, SeedStream.BENCH_ENV, p)) for p in range(100)}
+  assert not train & bench  # holds for 1001, 1002, 1003, 20261111, 20261112
+  ```
+
+- **The arms of one card share maps.** Each arena arm runs at the same
+  `--seed`, so pair `p` is the same map in every arm. Common random numbers make
+  checkpoints comparable map for map, but **the arms are not independent
+  samples**: a map-specific pathology shows in several arms at once.
+- T0b measures the positive-control reference at seeds 1001–1003, which are on
+  `bench.env` maps disjoint from the confirmatory arm's. The reference is
+  therefore out of sample for A1.
+
+#### Search settings (LF-A5: Option A, current settings registered)
+
+No maintainer decision is recorded in
+`kb/specs/20261111-completed-q-alignment-memo.md` §7. The plan's rule is to
+register the current settings in that case. These are the values
+`training_civ6` resolves for A1's flags (`gumbel_search_config`), for
+self-play:
+
+- `num_simulations` (`--gumbel_sims`): 24
+- `num_sampled_actions` (`--gumbel_k`): 8
+- `c_visit`: 50.0
+- `c_scale`: 1.0
+- `policy_target`: `completed_q`
+- `greedy_threshold`: 0.99
+- `use_sequential_halving`: True
+- `temperature`: 1.0
+- `temperature_threshold`: 30
+- Q normalisation before σ: none. The target applies σ to raw Q in [−1, 1],
+  i.e. `softmax(logits + (c_visit + max N) · c_scale · completedQ)` over the
+  visited actions.
+- σ in the sequential-halving score: **not applied**. Survivors are ranked by
+  `g + log π + completedQ`, with coefficient 1 on Q.
+
+These settings diverge from Danihelka et al. (2022) **deliberately**, in items
+3–8 of the memo's §3: the Q normalisation, the completion, the root value in
+the target, the target's support, the halving score, and interior selection.
+The memo is the reference.
+
+- `MCTS_C_VISIT`, `MCTS_GREEDY_THRESHOLD` and every other `MCTS_*` variable
+  override these defaults from the environment (`core/mcts_constants.py`).
+  `run.json` records environment variable **names** only, so they must be
+  **unset**. A run whose `run.json` `env_var_names` contains any `MCTS_` name is
+  VOID.
+- **If the maintainer records a different A5 decision (B, C or D), A1 must be
+  re-registered before any A1-family run.** That means a new section 7.1 and a
+  new hash.
+
+**Arena search.** Every searching side of every arena arm is `GumbelMCTS`,
+built by `create_mcts` inside `run_arena` (`alpha_zero/cloud/gcp/arena.py`):
+
+- `num_simulations` 24 and `num_sampled_actions` 8, from `--sims` and
+  `--gumbel-k`;
+- a seed per game and side, `derive_seed(seed, "arena.search", game, side)`;
+- no root noise; every other `GumbelMCTSConfig` field at its default
+  (`c_visit` 50.0, `c_scale` 1.0, `policy_target` `completed_q`, sequential
+  halving on);
+- the move played is `select_action(target, temperature=0)`, the argmax of the
+  target;
+- board 8, `max_turns` 60, gameplay preset `default`.
+
+Each `result.json` records `protocol` and `evidence.search` (`mcts_type`,
+`num_simulations`, `gumbel_k`, `search_semantics`); T14 compares them with this
+paragraph.
+
+#### Registered commands
+
+`<D>` is `E:\civ6az-data\runs\<card>`, where `<card>` is the run card's
+`card_id`. A card therefore runs with `--data_root E:\civ6az-data` (or
+`CIV6AZ_DATA_ROOT` set to it); under any other root, `run.json` and the run's
+outputs land in different trees, and the run is VOID for want of a
+`COMPLETED` `run.json` at `<D>`. The commands run in this order. Each is executed through
+`scripts/run_card.py` from the card's pinned SHA (T1b); the cards are
+`configs/run_cards/a1.yaml` (A1) and `configs/run_cards/a1r.yaml` (A1-R).
+Every arena arm has its own `--out`, because `result.json` is never overwritten
+(T11 review I1).
+
+**Devices.** Every phase that evaluates a network runs on a GPU. Training, and
+the self-play inside it, runs on `cuda:0`; every arena arm runs on `cuda:1`.
+The torch build and the two GPUs are registered here. The cards carry the same
+values, and `tests/scripts/test_a1_registration.py` holds them equal:
+
+<!-- a1-devices -->
+```text
+torch_spec: torch==2.11.0+cu128
+torch_index_url: https://download.pytorch.org/whl/cu128
+cuda_visible_devices: 0,1
+cuda:0: NVIDIA GeForce RTX 5060 Ti
+cuda:1: NVIDIA GeForce RTX 5060
+```
+
+`run_card` sets `CUDA_DEVICE_ORDER=PCI_BUS_ID`, so `cuda:N` is the card
+`nvidia-smi` lists as GPU N, and records the pin, the device order and each
+GPU's name in `run.json`'s `device_plan`. It launches nothing when a named
+device is missing from the pinned environment, when that torch build has no
+kernels for the GPU, or when a GPU is not the one the card expects at that
+ordinal; the runners would otherwise fall back to CPU with a warning. A run
+whose `device_plan` shows another torch build, device order or GPU than the
+block above is VOID (T14 reads `device_plan`). `torch_spec` names the build with
+its tag (`+cu128`), and the installed `torch.__version__` must equal it in full:
+another CUDA variant of the same release is another build. The positive-control arm loads no
+network, so its `--device` is nominal; it carries the arena's value so that the
+arm keeps the common prefix.
+
+Seeded runs on a CUDA device enforce deterministic algorithms
+(`utils.seeding.enforce_deterministic_backend`): an operation with no
+deterministic implementation raises. What this buys is narrow: a re-run
+reproduces a run **at the same `sha`, with the same torch wheel, NVIDIA driver,
+GPU at each ordinal and `CUBLAS_WORKSPACE_CONFIG`**. It does not hold across GPU
+models, drivers or torch builds. It is a precondition, checked on the machine
+before any A1-family run: T0b's `determinism` invocation
+(`scripts/check_determinism.py`) trains and judges a small A1-shaped run twice
+on the registered devices, each repeat in its own process inside the card's
+pinned environment, and compares every checkpoint tensor by tensor and every
+arena game by game: its outcome, its length and a sha256 of its actions in
+order. If it reports a difference, raises, or has not run on the
+registered build and GPUs, the GPU registration does not stand: no A1-family
+run starts until this section is re-registered, on `cpu` or on devices where
+the check passes.
+
+The training command is copied verbatim from the plan. Each arena command is the
+plan's common prefix, then the arm's flags, then `--out`. Two places expand the
+plan's table:
+
+- the plan's `…<N>.pt` abbreviation is written out as `<D>\ckpt\checkpoint_<N>.pt`;
+- the "final vs random agent" row names its candidate, `--checkpoint
+  <D>\ckpt\checkpoint_20.pt`. Without it, the benchmark would score an untrained
+  network.
+
+<!-- a1-commands:base -->
+```text
+# train
+python -m alpha_zero.training_civ6 --seed 20261111 --board_size 8 --max_turns 60 --num_iterations 20 --num_games 24 --mcts gumbel --gumbel_k 8 --gumbel_sims 24 --device cuda:0 --bootstrap none --save_interval 5 --eval_games 0 --checkpoint_dir <D>\ckpt
+# primary
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 200 --out <D>\arena\primary
+# symmetry
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_0.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 40 --out <D>\arena\symmetry
+# positive-control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 40 --out <D>\arena\positive_control
+# secondary-5
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_5.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_5
+# secondary-10
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_10.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_10
+# secondary-15
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_15.pt --opponent-checkpoint <D>\ckpt\checkpoint_0.pt --n-games 60 --out <D>\arena\secondary_15
+# final-vs-random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 40 --out <D>\arena\final_vs_random
+```
+
+| Invocation | Games |
+|---|---:|
+| train: 20 iterations × 24 self-play games, no in-loop evaluation | 480 |
+| primary: `checkpoint_20` vs `checkpoint_0` | 200 |
+| symmetry: `checkpoint_0` vs `checkpoint_0` | 40 |
+| positive control: heuristic vs random agent | 40 |
+| secondary: `checkpoint_5`, `_10`, `_15` vs `checkpoint_0`, 60 each | 180 |
+| final vs random agent: `checkpoint_20` vs random | 40 |
+| **card total** (arms 500) | **980** |
+
+The total is priced across every invocation, each by its runner's own parser
+(`run_card --price_only`). No invocation exceeds 1,000 games.
+`tests/scripts/test_a1_registration.py` holds these commands, the cards and the
+price together. Under `run_card`, a benchmark child runs as
+`python -m alpha_zero.evaluation.benchmark` with the same arguments (the same
+CLI as `scripts/benchmark_suite.py`), and its `result.json` records that entry
+point; compare the arguments, not the leading tokens.
+
+- **The 60-game branch** (see the positive control below) replaces two
+  invocations. The total stays 980:
+
+<!-- a1-commands:branch-60 -->
+```text
+# positive-control
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --candidate heuristic --opponents=random --n-games 60 --out <D>\arena\positive_control
+# final-vs-random
+python scripts/benchmark_suite.py --opponents= --seed 20261111 --board-size 8 --max-turns 60 --sims 24 --gumbel-k 8 --mcts-type gumbel --device cuda:1 --checkpoint <D>\ckpt\checkpoint_20.pt --opponents=random --n-games 20 --out <D>\arena\final_vs_random
+```
+
+- **Branch in force: 40.** T0b replaces "pending T0b" with "40" or
+  "60" and, for "60", puts the two branch commands into both cards.
+- **A1-R** is the same card with every `--seed 20261111` replaced by
+  `--seed 20261112`, under its own `<card>`.
+- **Only the one-card form is registered.** If T0b's wall-clock ETA for the
+  card is over 12 h, A1 may instead run as two cards (training, then a sharded
+  arena), but that form is **not registered here**. Before it is used it needs a
+  re-registration of its exact commands, both cards' `<D>` directories, the
+  `--shard i/N` and `--merge` commands with their `--out` directories, and the
+  rule that every card's `run.json` must say `COMPLETED`. That is a change of
+  card form, so it must be registered **before any exploratory run starts**
+  (see Amendments). Wall-clock is not estimated in advance; T0b measures it.
+
+#### Intervals
+
+Every arm is read from its `result.json` row, which `benchmark_suite.py` writes
+(`alpha_zero/evaluation/benchmark.py`, `benchmark_evidence.py`). For each arm:
+
+- (a) the iid ternary interval, `scoring.score_interval(w, d, l)`;
+- (b) the plain pentanomial interval, `scoring.pair_score_interval`, with the
+  seat-swapped pair as the unit and no pseudo-counts.
+
+The decision bounds are their **hull**: L = min of the two lows, U = max of the
+two highs (`intervals[<level>]["hull"]`).
+
+- The primary arm and the positive control are read at **95%**.
+- The symmetry control is read at **99%**. On a fair arena it VOIDs with
+  probability ≤ 0.8% (measured 0.42–0.48%). It detects only a gross asymmetry,
+  about 0.20 in score (detection about 83% at 20 pairs).
+- `final vs random` and the secondary arms are reported, not judged.
+
+#### Verdict
+
+The first matching row wins.
+
+| Order | Verdict | Condition |
+|---|---|---|
+| 1 | VOID | the run was interrupted or resumed (below); OR the symmetry arm's 99% hull excludes 0.5 (L > 0.5 or U < 0.5); OR the positive control's 95% L ≤ 0.5 |
+| 2 | PASS | the primary arm's 95% L > 0.5 |
+| 3 | FAIL | the primary arm's 95% U < 0.5 |
+| 4 | INCONCLUSIVE | otherwise |
+
+An INCONCLUSIVE verdict reports two numbers:
+
+- **MDE** = `minimum_detectable_effect(200, d, alpha=0.025)`, where `d` is the
+  primary arm's observed draw rate. That is about 0.072 at d = 0.47, i.e. about
+  +50 Elo.
+- **The MDE widened by `hull_ratio`.** `hull_ratio` is
+  `benchmark_evidence.facing_hull_ratio(score, iid95, hull95)`: "How much further
+  the hull reaches toward 0.5 than the iid interval does."
+  - It is `(score − hull_low) / (score − iid_low)` when score > 0.5,
+    `(hull_high − score) / (iid_high − score)` when score < 0.5, and the larger
+    of the two at exactly 0.5.
+  - It is always ≥ 1, and 1 for a degenerate denominator. A hull that is wider
+    only on the side away from 0.5 does not widen the MDE.
+  - The row records `mde_alpha025_80pct`, `hull_ratio` and their product
+    `mde_alpha025_80pct_hull`.
+
+#### Interruptions
+
+**An interrupted or resumed confirmatory run is VOID.** `scripts/run_card.py`
+(`alpha_zero/local/run_card.py`) writes `<D>\run.json` with status
+`RUNNING`, then:
+
+- an interruption (Ctrl+C, Ctrl+Break, SIGTERM) sets `VOID`;
+- a second attempt that finds a `RUNNING` record sets it to `VOID` ("a card
+  cannot resume");
+- a lingering `RUNNING` record (a hard kill) is read as `VOID`.
+
+The verdict is VOID unless `run.json` says `COMPLETED`. The same applies if any
+`iterations.jsonl` line carries a non-null `resumed_from` or
+`"supersedes_earlier_record": true`, or if `run.json` names an `MCTS_`
+variable.
+
+**After a VOID.** A VOID records no learning result, so a release cannot rest
+on it: T14's verifier exits 1 when a role has no non-VOID attempt. A `FAILED`
+`run.json` is VOID like any other that is not `COMPLETED`. An attempt whose
+`run.json` records no launched invocation (a refused device, a failed
+preflight) played nothing: it is not an attempt, is not listed, and needs no
+re-run under this rule, only a new `card_id`.
+
+1. Fix the cause. An interruption needs nothing fixed. A symmetry or
+   positive-control VOID needs the arena or harness fixed; that is a play-path
+   change, so it lands as a new rc.
+2. Run the same card again under a **new `card_id`** (for example
+   `a1-20261111-r2`, so `<D>` is new) at the **same seed**. This is the one
+   exception to "neither has been run before".
+   - After an **interruption**, or a `FAILED` run whose cause needs no code
+     change, nothing changed, and the re-run is first a **reproduction check**.
+     It runs at the VOID attempt's `sha` with the same `device_plan` (torch
+     pin, device order, GPUs) and the same NVIDIA driver. Every component the
+     VOID attempt finished is then compared with the re-run's, by
+     `python -m alpha_zero.evaluation.reproduction compare <VOID attempt's <D>>
+     <re-run's <D>> --out <file>`: each checkpoint it saved, tensor by tensor;
+     each iteration record it wrote, timings excepted; each arm it completed,
+     game by game (outcome, length and action digest). That file goes in the
+     bundle beside both attempts.
+     - `REPRODUCED`: the re-run is judged.
+     - `NOTHING TO COMPARE` (the attempt finished nothing beyond
+       `checkpoint_0`, which is fixed by the seed alone): nothing of the result
+       had been seen, so the re-run is judged, and the bundle says the
+       comparison was empty.
+     - `DIFFERS`, or a different `sha`, `device_plan` or driver: the
+       reproduction claim under Devices has failed on this machine. The re-run
+       is reported, labelled "non-reproducing re-run", and **cannot PASS**: a
+       PASS row is read as INCONCLUSIVE. No further A1-family run starts until
+       this section is re-registered with a new confirmatory seed pair, and
+       that registration's bundle lists both attempts.
+   - After a **symmetry or positive-control VOID**, the code changed, so the
+     re-run plays different games: it is a **second draw**, made after the VOID
+     attempt's arms (its primary arm included, if it ran) were seen. Listing the
+     VOID attempt in the bundle is what discloses that.
+3. Keep the VOID attempt in the release bundle beside the re-run, with whatever
+   components it left (an invocation or arm that never ran is omitted). Each
+   role has exactly one non-VOID attempt, and that attempt is the one judged.
+
+#### Positive control
+
+- **Rule** (T11 review I2): the calibration is computed on the hull, as
+  **P(hull L ≤ 0.5)**, not P(`ci_low` ≤ 0.5).
+- **How it is computed: pair bootstrap of T0b's measured pairs** (T13 review
+  I1). `pairs` is the concatenation, in seed order 1001, 1002, 1003, of
+  `a1_protocol.pairs_from_games(row["games"])` for the heuristic-vs-random row
+  of each of T0b's three `result.json` files (about 300 seat-swapped pairs).
+  P(n) is `alpha_zero.evaluation.a1_protocol.positive_control_void_probability(pairs,
+  n)` with its defaults (20,000 replicates, seed 1111, 95%): each replicate
+  draws n / 2 whole pairs with replacement and reads L from the benchmark's own
+  `interval_summary`. Resampling pairs keeps the map clustering the hull exists
+  for.
+- **Its uncertainty** (T13 rereview N3): one reference of about 300 pairs makes
+  the point estimate noisy, so T0b also records a 95% percentile interval for
+  P(40), `a1_protocol.positive_control_void_probability_interval(pairs, 40)`
+  with its defaults (200 outer replicates, 2,000 inner, seed 1111, level 0.95,
+  confidence 95%). Each outer replicate resamples `len(pairs)` pairs with
+  replacement and runs the pair bootstrap on that resampled reference.
+- `iid_positive_control_void_probability(p_win, p_draw, 40)` at T0b's pooled
+  proportions is reported beside it as an **informational lower bound**: it
+  draws games independently, so it cannot see clustering. The branch rule never
+  reads it.
+- **Reference:** T0b measures it on post-B1 code at board 8 / 60 turns,
+  heuristic vs random, seeds 1001–1003 × 200 games. This replaces the board-6
+  figure of 0.725.
+  - **Measured reference** (T0b, seeds 1001, 1002, 1003 x 200 games, board 8 / 60 turns, heuristic vs random): W/D/L 303/255/42, score 0.7175, 95% hull [0.6912, 0.7421], 300 pooled pairs; P(40) = 0.0166 (95% interval [0.0030, 0.0493]) and P(60) = 0.0010 by pair bootstrap; iid P(40) = 0.0215.
+  - Pre-B1 reference, superseded by T0b: 0.7375, CI [0.711, 0.761].
+- **Branch:** if the **upper bound of P(40)'s 95% interval** exceeds 0.05,
+  the positive control takes 60 games and "final vs random" drops to 20,
+  keeping the card at 980. (Erring to 60 costs only 20 reported, unjudged
+  "final vs random" games; erring to 40 risks a VOID 980-game run.) If P(60) also
+  exceeds 0.05, the branch is still 60 (the most the 980-game card allows), and
+  T0b records P(60) as the VOID risk the run accepts.
+- **Either branch is plausible.** At μ = 0.7375 the iid lower bound crosses
+  5% near d ≈ 0.23 (5.9% at d = 0.20, 4.6% at d = 0.24), and clustering raises
+  it. The pre-B1 reference cannot settle it, because its game count is not
+  recorded. Figures (informational, μ = 0.7375):
+
+  | Model | P(40) | P(60) |
+  |---|---|---|
+  | iid, d ≈ 0 | about 14% (T11 review) | about 3% |
+  | iid, d = 0.3 | about 3% | about 0.3% |
+  | per-map clustering (κ = 2), d = 0.3 | about 7% (T11 and T13 reviews) | about 1.4% |
+
+#### Trend (LF-A2)
+
+`scripts/check_learning_trend.py` is **descriptive only**. It reads the run's
+`iterations.jsonl` and `eval_*.json` and the arms' `result.json`. It reports
+score-rate series against iteration, with least-squares slopes, beside the
+per-iteration diagnostics. It decides nothing: the verdict is the table above.
+
+- Exit 0: a trend was computed (a score-rate series with ≥ 3 iterations).
+- Exit 1: malformed input.
+- Exit 2: fewer than 3 points.
+
+#### Target-sharpness trigger for the Option E ablation (LF-A5)
+
+Registered from the memo's §6, with the T12 review's corrections. All
+quantities are the A13 fields in `iterations.jsonl`, computed over
+**non-forced positions only**.
+
+- **`sᵢ`** is `prequential.target_share_above_greedy_threshold` at loop index
+  `i` (the record with `"iteration": i + 1`), and **`mᵢ`** is
+  `prequential.target_max_p_mean`. A record that carries an `error`, or whose
+  value is `null` (no non-forced positions), contributes nothing.
+- **`s₀`** is `s` from A1's loop-index-0 record, written as
+  `"iteration": 1`. It is used **only if** that record has
+  `generator == "network"` (A1 runs `--bootstrap none`) and carries no `error`.
+  **Otherwise, or if that share is `null`, `s₀ := 0`**, and the 0.25 floor
+  applies.
+
+After A1 finishes, whatever its verdict, check:
+
+- **T1:** `sᵢ > max(0.25, 5 · s₀)` at any loop index `i ≥ 1` (any record with
+  `"iteration"` ≥ 2); or
+- **T2:** `mᵢ > 0.80` in any record, the first included.
+
+For reference, the non-forced starting values in the review's A1-style
+self-play were about 0–1.5% for the share (0.4% measured through the code) and
+**0.32** for the mean max-p. (The memo's "about 0.36" was a round-1 estimate;
+T12 review M2.) So the 0.25 floor binds, and `5 · s₀` matters only if `s₀`
+exceeds 5%.
+
+If either fires, the Option E ablation is the next experiment. Run B (σ in
+halving) first, because it is the smaller change; run C only if the maintainer
+has chosen its normalisation. The ablation is pre-registered on its own
+(≤1,000 games), under the same seed protocol, with a flag-gated variant. If
+neither fires, the ablation is not motivated by target sharpness, and a FAIL or
+INCONCLUSIVE A1 is diagnosed through A1-P first. The trigger is descriptive: it
+changes nothing during A1 and stops nothing.
+`scripts/check_learning_trend.py` reports it.
+
+#### Follow-ups
+
+- **A1-R** (seed 20261112) must PASS before any public "learns" claim.
+- **On FAIL**, run A1-P: the same card at the same seed with the PUCT search
+  (`--mcts civ6` in training, `--mcts-type civ6` in the arena). It is
+  registered on its own before it runs. It tells a search fault from a loop
+  fault.
+- The result is reported whichever way it comes out, with the evidence block
+  (`search_epoch: post-2026-09-04`) and an index row.
+<!-- A1-PROTOCOL-END -->
+
+**Hashing section 7.1.** The registered text is every line strictly between the
+`A1-PROTOCOL-BEGIN` and `A1-PROTOCOL-END` marker lines. CRLF is normalised to LF,
+each line ends in LF, and the text is encoded as UTF-8. Its sha256 is what the
+A1 artifact records. Compute it with:
+
+- `python scripts/check_learning_trend.py --print-protocol-sha`, or
+- `alpha_zero.evaluation.a1_protocol.protocol_sha256(text)`.
+
+The hash is deliberately not written inside the region.
+
+**Registration log.** One row per registered version of section 7.1, newest
+last. `tests/regression/test_a1_registration_digest_regression.py` fails unless
+the last row's digest is the digest of the text as it stands, so an edit to the
+region, deliberate or a formatter's, needs a new row here in the same change.
+When T0b fills in the "pending T0b" slots it adds a row ("T0b slot fill-in:
+measured reference, branch N"), and the A1 artifact records that row's digest.
+The cards' `sha` is the rc, which already carries this section, so it is recorded
+in `run.json` and the release bundle, not here.
+
+| Date | sha256 of section 7.1 | Change |
+|---|---|---|
+| 2026-11-11 | `990989eea43b90e777a67a40da5bc319f62c2e49c82174b74530d4d1d6f2e377` | Initial registration (T13), with fix round 1: pair-bootstrap calibration, amendment limits, code binding, arena search, one-card form only, `text` fence |
+| 2026-11-12 | `8aad6a84171aa157aa606a74c225b4e3743f7f91842109adbcde9feebf9a753e` | Fix round 2 (before any A1-family run): "A1-family run" defined (T0b's calibration runs excluded); the 40/60 branch reads the upper bound of a bootstrap 95% interval for P(40) |
+| 2026-11-12 | `9853c719b3549822cfa3f6215615ff0b12d637a1194847141b359417ba1e002e` | T14 review I-1 (before any A1-family run): "After a VOID" -- a VOID records no learning result; fix the cause and re-run under a new `card_id` at the same seed; the VOID attempt stays in the bundle and exactly one non-VOID attempt per role is judged |
+| 2026-11-12 | `79a4ba546d4b21c6cbfcab570c2327bb9901eaacc2111300becc75777e238a4b` | T14 rereview N-1/N-2 (before any A1-family run): "After a VOID" says the same-seed re-run is a reproduction only after an interruption; after a symmetry or positive-control VOID it is a second draw, disclosed by the listed VOID attempt, which keeps whatever components it left |
+| 2026-11-14 | `c58abfad89091b37ab2bace9dde820c72894ad3b1e82108297364d29977b4194` | GPU-first re-registration (before any A1-family run; maintainer instruction, PR #138): training and self-play on `cuda:0`, every arena arm on `cuda:1` (was `cpu` throughout); new "Devices" paragraph (pinned torch build, PCI device order, `run_card` refuses a missing device, deterministic algorithms enforced); "After a VOID" reproduction claim scoped to the same machine, torch build and device |
+| 2026-11-14 | `dba9048158702dd9becca29c129a3c723002aefa4af15e872eb3aaa1a0615d91` | Review round on the GPU registration (before any A1-family run; PR #138, ML-science, QA and architecture reviews): the torch build and both GPUs are named in a machine-readable `a1-devices` block and a run on anything else is VOID; GPU determinism is a precondition checked by T0b's `determinism` invocation in the pinned environment, each repeat in its own process, with a stated consequence; "After a VOID" makes the re-run a reproduction check (`evaluation.reproduction compare`) and a non-reproducing re-run cannot PASS; a never-launched attempt is not an attempt; T0b is named as a card; "the devices or the torch build" added to what a later amendment may not change; the confirmatory-seed sentence corrected for the 2026-11-11 harness smoke |
+| 2026-11-14 | `e460a353651a24c26d5e1891b6ad5bd27c18acac4fd9fd6367bc262175237c17` | Automated review of PR #138 (before any A1-family run; same maintainer instruction as the two rows above): `torch_spec` names the build (`torch==2.11.0+cu128`, was `torch==2.11.0`) and the installed `torch.__version__` must equal it in full, so another CUDA variant of the same release is another build (the cu128 index was already registered; the build is the same one, now named); arena games are compared by outcome, length and a sha256 of their actions in order, in the determinism precondition and in the "After a VOID" reproduction check (was outcome only) |
+| 2026-11-26 | `c1d22e37141c693de40f1916a84f819f8e0810478a4d978765040788c30e75d3` | T0b slot fill-in: measured reference (303/255/42, score 0.7175, P(40)=0.0166 [0.0030, 0.0493], P(60)=0.0010), branch 40, GPU determinism REPRODUCED (6.1 h one-card ETA) |
 
 ## 8. The LLM advisor gate is not an evaluation
 

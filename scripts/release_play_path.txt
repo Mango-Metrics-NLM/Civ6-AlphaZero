@@ -1,0 +1,63 @@
+# The play path (plan section 6, LF-D8): code that changes how a fixed network
+# plays, so a change to any of it since an evidence run's commit makes that run
+# stale. scripts/verify_release_evidence.py requires
+#   git diff --name-only <run git_sha> <rc_sha> -- <these pathspecs>
+# to be empty for every component run of a release evidence bundle.
+#
+# One git pathspec per line, matched with the :(glob) magic: `**` spans
+# directories, anything else is a literal path from the repository root.
+# Blank lines and lines starting with # are ignored.
+# tests/scripts/test_verify_release_evidence.py fails if a literal path or a
+# glob's directory does not exist, so a rename cannot silently drop coverage.
+# tests/scripts/test_release_play_path_closure.py fails if a module that the A1
+# training or benchmark code imports is neither listed here nor exempted there
+# with a reason, so a new import cannot silently fall outside the list.
+
+# Search
+alpha_zero/core/mcts/**
+alpha_zero/core/mcts_constants.py
+alpha_zero/core/mcts_factory.py
+alpha_zero/core/batch_mcts.py
+alpha_zero/core/civ6_mcts.py
+
+# Actions and the network
+alpha_zero/core/civ6_actions.py
+alpha_zero/core/civ6_network.py
+
+# The encoders (the hexcrystal implementation and its core re-export shims)
+alpha_zero/hexcrystal/**
+alpha_zero/core/encoder_registry.py
+alpha_zero/core/hex_encoder.py
+alpha_zero/core/hex_conv.py
+alpha_zero/core/crystalline_layers.py
+
+# The environment and its encoders (envs/civ6_encoder.py), the rules the
+# environment factory and the fog-of-war option draw on
+alpha_zero/envs/**
+alpha_zero/gameplay/**
+alpha_zero/multiplayer/fog_of_war.py
+
+# Evaluation: the benchmark, its statistics and the verdict (a1_protocol)
+alpha_zero/evaluation/**
+
+# Value targets and the N-player value loss (training_civ6 imports both)
+alpha_zero/multiplayer/scoring.py
+alpha_zero/multiplayer/network_heads.py
+
+# Checkpoint save/load (which weights a run trains from and an arm plays) and
+# device/thread placement (the CPU thread count changes float reduction order)
+alpha_zero/utils/checkpoint.py
+alpha_zero/utils/safe_load.py
+alpha_zero/core/checkpoint_utils.py
+alpha_zero/utils/device.py
+
+# Seeds and constants
+alpha_zero/utils/seeding.py
+alpha_zero/utils/constants.py
+
+# The arena (and the constants it dispatches on), the training entry point and
+# the registered arena entry point (a thin wrapper over evaluation/benchmark.py)
+alpha_zero/cloud/gcp/arena.py
+alpha_zero/cloud/gcp/config.py
+alpha_zero/training_civ6.py
+scripts/benchmark_suite.py

@@ -14,6 +14,11 @@ Usage::
 
 All knobs are exposed via flags AND env vars. Flags take precedence over
 env. No hardcoded values live in this script.
+
+The run is priced like every other orchestrator run (``game_budget``, LF-G11):
+the defaults (50 iterations of the production YAML's 200 games) price to
+10,150 games and are refused unless ``--approval_ref <issue>`` records the
+maintainer's approval. ``--dry-run`` plays nothing and is allowed.
 """
 
 from __future__ import annotations
@@ -27,6 +32,8 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+
+from alpha_zero.utils import game_budget  # noqa: E402  (after the sys.path insert)
 
 DEFAULT_CONFIG = PROJECT_ROOT / "configs" / "orchestrator_production.yaml"
 DEFAULT_TRACKING_URI = "file://./mlruns"
@@ -96,6 +103,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=os.environ.get("CIV6AZ_LOG_LEVEL", "INFO"),
         help="Logging level (default: INFO)",
     )
+    game_budget.add_budget_arguments(parser)
     return parser.parse_args(argv)
 
 
@@ -137,6 +145,11 @@ def main(argv: list[str] | None = None) -> int:
 
     config = OrchestratorConfig.from_yaml(str(args.config))
     config.apply_env_overrides()
+
+    # Game budget: price the fully resolved config before anything is built.
+    game_budget.enforce_cli(
+        "orchestrator", game_budget.orchestrator_budget_inputs(config, args.dry_run), args
+    )
 
     if args.dry_run:
         logger.info(

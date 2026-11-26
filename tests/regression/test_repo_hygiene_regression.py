@@ -29,6 +29,7 @@ import tomllib
 from pathlib import Path
 
 import pytest
+import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -227,3 +228,99 @@ class TestSecretScanningConfig:
             "GITLEAKS_VERSION must be an overridable Makefile variable so local "
             "runs and CI resolve the same tool version"
         )
+
+    def test_allowlist_covers_venvs_and_worktrees_but_never_dotenv(self) -> None:
+        """Generated venvs/worktrees are skipped without exempting ``.env`` files."""
+        compiled = [re.compile(raw) for raw in _gitleaks_allowlist_paths()]
+        for generated in (
+            ".venv/lib/python3.11/site-packages/pkg.py",
+            ".venv-scan/pyvenv.cfg",
+            ".venv2/Scripts/activate",
+            "venv/pyvenv.cfg",
+            "venv.bak/pyvenv.cfg",
+            ".claude/worktrees/topic/alpha_zero/core/civ6_network.py",
+            ".tools/gitleaks-8.30.0",
+            "mlartifacts/0/model.bin",
+            "eval_results/run.json",
+        ):
+            assert any(rx.search(generated) for rx in compiled), (
+                f"{generated} should be excluded by .gitleaks.toml allowlist"
+            )
+        for sensitive in (".env", ".env.local", ".env.production"):
+            assert not any(rx.search(sensitive) for rx in compiled), (
+                f"{sensitive} must NEVER be allowlisted in .gitleaks.toml"
+            )
+        # A source directory that merely starts with "venv" is not a virtual environment
+        # and is not ignored by git: a credential in it must still be scanned.
+        for source in ("venv-service/config.py", "venv-dev/settings.py", "venvs/app.py"):
+            assert not any(rx.search(source) for rx in compiled), (
+                f"{source} is ordinary source and must not be allowlisted in .gitleaks.toml"
+            )
+
+    def test_dockerignore_excludes_local_mlflow_and_eval_without_hiding_rules_data(self) -> None:
+        """Local dev tracking/eval artifacts stay out of Docker context; rules data stays in."""
+        dockerignore = (REPO_ROOT / ".dockerignore").read_text(encoding="utf-8")
+        entries = {
+            ln.strip()
+            for ln in dockerignore.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        }
+        for required in (
+            "mlruns/",
+            "mlflow.db",
+            "mlflow.db-shm",
+            "mlflow.db-wal",
+            "mlartifacts/",
+            "eval_results/",
+            "cutover/",
+            "test_results/",
+            "mypy_output.txt",
+        ):
+            assert required in entries, f"{required!r} missing from .dockerignore"
+        assert not any(
+            pat in entries for pat in ("alpha_zero/", "alpha_zero/rules/", "alpha_zero/rules/data/")
+        ), ".dockerignore must not exclude packaged rules YAML data"
+
+    def test_gitignore_excludes_scratch_typecheck_and_cutover_artifacts(self) -> None:
+        """Scratch mypy logs, cutover bundles, and JUnit XML reports stay gitignored."""
+        gitignore = (REPO_ROOT / ".gitignore").read_text(encoding="utf-8")
+        entries = {
+            ln.strip()
+            for ln in gitignore.splitlines()
+            if ln.strip() and not ln.strip().startswith("#")
+        }
+        for required in ("mypy_output.txt", "mypy_*.txt", "cutover/", "junit*.xml"):
+            assert required in entries, f"{required!r} missing from .gitignore"
+
+
+class TestPreCommitDocSyncFilter:
+    """check-doc-sync hook files regex must cover every document check_doc_sync validates."""
+
+    def test_check_doc_sync_filter_covers_all_validated_targets(self) -> None:
+        config_path = REPO_ROOT / ".pre-commit-config.yaml"
+        config = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        hooks = [hook for repo in config.get("repos", []) for hook in repo.get("hooks", [])]
+        doc_hook = next(hook for hook in hooks if hook.get("id") == "check-doc-sync")
+        pattern = re.compile(doc_hook["files"])
+
+        for must_match in (
+            "README.md",
+            "CLAUDE.md",
+            "ROADMAP.md",
+            "PROJECT_CHARTER.md",
+            "CONTRIBUTING.md",
+            "CHANGELOG.md",
+            "SUPPORT.md",
+            "SECURITY.md",
+            "GOVERNANCE.md",
+            "CITATION.cff",
+            "docs/MODULE_REFERENCE.md",
+            ".github/workflows/ci.yml",
+            ".claude/skills/gpu-verify/SKILL.md",
+            "pyproject.toml",
+            "alpha_zero/__init__.py",
+            "alpha_zero/local/__init__.py",
+        ):
+            assert pattern.search(must_match), f"check-doc-sync filter missed {must_match!r}"
+
+        assert not pattern.search("tests/unit/test_unrelated.py")

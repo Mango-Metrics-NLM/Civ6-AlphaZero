@@ -1,5 +1,27 @@
 # Planning Log
 
+## 2026-11-23 - The bridge track reviewed as a whole, closed out and frozen
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Focus:** After GM-B8b merged, the maintainer asked for an objective team review. Five roles (product owner, scrum master, architect, ML scientist, AI engineer) reviewed the whole track in parallel; the plan was rewritten from their findings and approved.
+- **Decisions:** Bridge features are frozen until A1 has run. One status table (`docs/LIVE_CIV6.md`, "Status at a glance") says built / tested on the stand-in / seen live; other documents link to it. "Answer seen" is kept apart from "effect seen". Six OpenSpec changes archived, the bridge ones with corrected requirements. Three new register rows: B9 (four fail-open paths in the mod), B10 (the stand-in's defaults model what the live session disproved), B11 (a zero-game census with a stop rule fixed beforehand).
+- **Output:** truth pass over README, ROADMAP, CLAUDE.md, LIVE_CIV6 and the evidence index; `openspec/specs/civ6-bridge`, `game-rules`, `training-reproducibility`; handoff `kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md`.
+- **Correction (review of PR #167):** the handoff's item 6 says the search "cannot win" in its simulator. More exactly: it cannot win by elimination; a win at the turn limit still stands when an enemy city is in sight. Handoff documents are immutable, so the correction is recorded here.
+- **Next:** DEV-SQE: B9 with B10, then the zero-game measurements. Maintainer: T0b, A1, A1-R; the live checklist, attacks and the war check first.
+
+## 2026-11-19 - Game-mechanics gap closure (science, technology, full gameplay): program plan
+- **Session:** session_01CXusP9Ct9R7eg25YLcY7R7
+- **Focus:** "Close the gaps on game mechanics per the documentation." Three read-only surveys (documented gaps, mechanics code, constraints), external research (CivRealm, Terra Nova, Tribes, civ6-mcp), four scoping decisions by the maintainer, an independent design review, then the four role reviews (product owner, scrum master, architect, ML scientist).
+- **Decisions:** No tech tree, research or science yield exists in Python although three documents claimed one; the docs are corrected. Mechanics arrive as opt-in MicroCiv presets on a hardened `EnhancedMicroCivEnv`, with `default` byte-identical; no external simulator, no charter change. A small original rule set is committed; real tables come from a local GameInfo export, never committed. Nothing on the release play path changes before v2.1.0: Phase 1 is docs, a rules kernel outside the play path (`alpha_zero/rules/`) and bridge parity. Ids are `GM-`; rungs are GM-S0..S7. Probes follow a pre-registration template with held-out seeds and bounds, not point estimates.
+- **Output:** `kb/specs/20261119-game-mechanics-plan.md`, `kb/specs/20261119-game-mechanics-gap-register.md` (19 `GM-` rows), `docs/GAME_RULES.md`, OpenSpec `add-game-rules-kernel` and `add-bridge-research-parity`, doc corrections, handoff `kb/handoffs/20261119-planning-to-devsqe-game-mechanics.md`.
+- **Next:** DEV-SQE Phase 1 slices in order (GM-S0a, GM-K1, GM-K2, GM-B0..GM-B5), at most two PRs open. Maintainer: merges, the live checklist, and the v2.1 runs. Simulator rungs get their own task plan after v2.1.0.
+
+## 2026-11-11 - Local-first gap closure + dev/qa/main branching (program plan v3)
+- **Session:** session_9a6019a1-f6d9-4e79-9f63-04002716a56d
+- **Focus:** Close every recorded gap except Vertex/GCP, running everything on the Windows workstation, and adopt a professional dev/qa/main branching strategy. Done as an expert team: 3 explore agents, a 3-role design panel (architect/SDLC/release, ML scientist/AI, product owner/scrum), then two adversarial review rounds (73 + 25 agents; 72 + 17 confirmed findings, 0 refuted).
+- **Decisions:** dev (renamed default) / qa (RCs) / main (tags); code promotes by branch, models by `champion.json`. The local loop is the CLI `run_iterations`, completed (it crashes on real training today); Vertex `main()` frozen, no parity claimed. Maintainer-only enforced by a machine-user identity + `qa-main-merge`/`release-tags` rulesets, hooks are an accident net (guard now covers PowerShell). Runs are fail-closed against GCP (ADC + user-scope bucket var present on the box) and pinned to source (installed `alpha_zero` is a stale editable v1.8.0). A1 re-registered as EVALUATION.md section 7.1: checkpoint_0 as random-init, `--bootstrap none`, hull intervals, ordered verdicts, 980 games priced per card. A negative A1 still ships v2.1 (`learning_recorded` vs `learning_claimed`).
+- **Output:** `kb/specs/20261111-local-first-and-branching-plan.md`, `kb/specs/20261111-local-first-gap-register.md` (82 `LF-` rows), `docs/audits/2026-11-11-local-first-plan-review.md`, handoff `kb/handoffs/20261111-planning-to-devsqe-local-first-and-branching.md`.
+- **Next:** Maintainer §10 actions 1–5 (W&B key revoke + refs/pull/72 purge, IAM, machine user, tag v2.0.0). DEV-SQE Sprint 0: T0a, T1, T2, T3a, T4 (R1), then cut-over with T6 (R2).
+
 ## 2026-09-04 - 2026 coding-standards audit
 - **Session:** session_01KZPsP2Mvg333p1akDqpLTG
 - **Focus:** "Is this project meeting 2026 best coding standards?" Six parallel read-only audit passes (CI/supply chain, application security, code quality/architecture, test suite, docs/governance, and a primary-source 2026 rubric), with every gate-integrity and high-severity claim reproduced by hand before acceptance.

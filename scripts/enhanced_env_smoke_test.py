@@ -23,7 +23,15 @@ import shutil
 import subprocess
 import sys
 import time
+from pathlib import Path
 from typing import NamedTuple
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from alpha_zero.utils.game_budget import (
+    add_budget_arguments,
+    enforce_cli,
+)
 
 
 class SmokeResult(NamedTuple):
@@ -35,7 +43,7 @@ class SmokeResult(NamedTuple):
     detail: str
 
 
-def _parse_args() -> argparse.Namespace:
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Enhanced env pipeline smoke test")
     parser.add_argument(
         "--skip-container",
@@ -62,7 +70,8 @@ def _parse_args() -> argparse.Namespace:
         default=4,
         help="Number of parallel envs for vectorized test (default: 4)",
     )
-    return parser.parse_args()
+    add_budget_arguments(parser)
+    return parser.parse_args(argv)
 
 
 def test_env_creation(board_size: int, max_turns: int) -> SmokeResult:
@@ -391,9 +400,11 @@ def test_gcs_path_isolation() -> SmokeResult:
         return SmokeResult("gcs_path_isolation", False, time.perf_counter() - t0, str(e))
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     """Run all smoke tests and report results."""
-    args = _parse_args()
+    args = _parse_args(argv)
+    # Game budget (LF-G11): refuse before any environment or network is built.
+    enforce_cli("enhanced_env_smoke_test", {"num_selfplay_games": args.num_selfplay_games}, args)
 
     print("=== Enhanced Environment Pipeline Smoke Test ===")
     print(f"Board size: {args.board_size}, Max turns: {args.max_turns}")

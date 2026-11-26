@@ -4,6 +4,11 @@ This script mimics the behavior of the Vertex AI orchestrator but runs everythin
 locally as subprocesses. Useful for debugging and validation when cloud
 access is restricted.
 
+**Superseded** for local training by run cards (``scripts/run_card.py``), which are
+GCP-isolated. Despite its name this launcher reads and writes models through GCS
+(``GCSModelStorage``) whenever Application Default Credentials are present, so it
+refuses to start unless ``--allow-gcs`` says that is intended (final review M-6).
+
 Usage:
     python scripts/local_muzero_launcher.py \
         --algorithm=muzero \
@@ -23,6 +28,7 @@ from dataclasses import asdict
 from alpha_zero.cloud.gcp.config import GCPConfig
 from alpha_zero.cloud.gcp.storage import GCSModelStorage
 from alpha_zero.core.transformer_network import Civ6TransformerNetwork, TransformerConfig
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 
 # Configure logging
 logging.basicConfig(
@@ -37,12 +43,13 @@ def run_command(cmd: list[str], env: dict[str, str] | None = None) -> None:
     """Run a command in a subprocess and wait for it to complete."""
     cmd_str = " ".join(cmd)
     logger.info("Running: %s", cmd_str)
+    logger.debug("Subprocess argv=%r (shell=False)", cmd)
     try:
         subprocess.run(
             cmd,
             check=True,
             env=env,
-            shell=True if os.name == "nt" else False,
+            shell=False,
         )
     except subprocess.CalledProcessError as e:
         logger.error("Command failed: %s", e)
@@ -56,9 +63,41 @@ def main() -> None:
     parser.add_argument("--num_selfplay_workers", type=int, default=2)
     parser.add_argument("--games_per_worker", type=int, default=10)
     parser.add_argument("--mcts_simulations", type=int, default=50)
-    parser.add_argument("--project", type=str, default="civ6-alphazero")
-    parser.add_argument("--bucket", type=str, default="civ6-alphazero-training")
+    parser.add_argument(
+        "--project",
+        type=str,
+        default=os.environ.get("CIV6AZ_VERTEX_PROJECT", "civ6-alphazero"),
+    )
+    parser.add_argument(
+        "--bucket",
+        type=str,
+        default=os.environ.get("CIV6AZ_GCS_BUCKET", "civ6-alphazero-training"),
+    )
+    parser.add_argument(
+        "--allow-gcs",
+        action="store_true",
+        help="Required: this launcher reads and writes models through GCS (superseded locally "
+        "by scripts/run_card.py, which is GCP-isolated).",
+    )
+    add_budget_arguments(parser)
     args = parser.parse_args()
+    enforce_cli(
+        "local_muzero_launcher",
+        {
+            "iterations": args.iterations,
+            "num_selfplay_workers": args.num_selfplay_workers,
+            "games_per_worker": args.games_per_worker,
+        },
+        args,
+    )
+    if not args.allow_gcs:
+        print(
+            "REFUSED: local_muzero_launcher writes through GCS (bucket "
+            f"{args.bucket!r}) whenever credentials are present. Use scripts/run_card.py for "
+            "local runs, or pass --allow-gcs if GCS is intended.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
 
     # Base python command
     python_cmd = sys.executable
@@ -68,8 +107,6 @@ def main() -> None:
     env = os.environ.copy()
     env["PYTHONPATH"] = os.getcwd()
     env["CIV6AZ_STORAGE_BACKEND"] = "local"
-    env["CIV6AZ_VERTEX_PROJECT"] = args.project
-    env["CIV6AZ_GCS_BUCKET"] = args.bucket
     env["CIV6AZ_VERTEX_PROJECT"] = args.project
     env["CIV6AZ_GCS_BUCKET"] = args.bucket
 
@@ -137,9 +174,8 @@ def main() -> None:
                 cmd[3] = "--mcts_type=civ6"
 
             logger.info("Launching worker %d...", i)
-            # On Windows, we need to use shell=True for some path resolution,
-            # but we use Popen to run in parallel
-            proc = subprocess.Popen(cmd, env=env, shell=True if os.name == "nt" else False)
+            logger.debug("Worker %d argv=%r (shell=False)", i, cmd)
+            proc = subprocess.Popen(cmd, env=env, shell=False)
             selfplay_procs.append(proc)
 
         # Wait for all workers

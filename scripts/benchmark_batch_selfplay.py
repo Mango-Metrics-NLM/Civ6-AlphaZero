@@ -29,6 +29,7 @@ from alpha_zero.cloud.gcp.training_worker import create_model
 from alpha_zero.monitoring.config import MonitoringConfig
 from alpha_zero.monitoring.mlflow_logger import MLflowLogger
 from alpha_zero.optimizations.inference_benchmark import InferenceBenchmark
+from alpha_zero.utils.game_budget import add_budget_arguments, enforce_cli
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--num_res_blocks", type=int, default=2)
     p.add_argument("--num_filters", type=int, default=64)
     p.add_argument("--device", choices=["cpu", "cuda"], default="cpu")
+    add_budget_arguments(p)
     return p.parse_args()
 
 
@@ -58,6 +60,12 @@ def main() -> int:
         datefmt="%H:%M:%S",
     )
     args = _parse_args()
+    # The sequential and the batched variant each play `games` plus warmup.
+    enforce_cli(
+        "benchmark_batch_selfplay",
+        {"games": args.games, "warmup_games": args.warmup_games},
+        args,
+    )
 
     device = torch.device(args.device)
     network = create_model(

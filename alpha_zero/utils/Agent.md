@@ -20,8 +20,8 @@ This module provides the foundational utilities consumed by all other modules:
 - **Agent Tools**: Code exploration, debug helpers, task tracking for agentic coding
 - **Factories**: Dependency injection via factory functions for all components
 - **Training Improvements**: Curriculum learning, enhanced rewards, environment tuning
-- **W&B Logger**: Weights & Biases integration (optional)
-- **RAG Client**: Thin RAG pipeline client (optional)
+- **RAG Client**: Thin RAG pipeline client with graceful degradation over non-fatal native panics (`_FATAL_BASE_EXCEPTIONS` preserved)
+- **W&B Logger (Retired)**: Weights & Biases retired 2026-07-13; legacy alias warns in favor of MLflow
 
 ---
 
@@ -38,6 +38,7 @@ This module provides the foundational utilities consumed by all other modules:
 | **Template Method** | `CurriculumManager` — stage progression with overridable difficulty scaling | Reusable curriculum framework |
 | **Builder** | `ConfigManager` — loads YAML, applies env overrides, merges configs | Progressive config construction |
 | **Backward Compatibility** | `TestRunner = PytestRunner`, `TestConfig = RunConfig` aliases | Smooth API migration |
+| **Atomic Publication** | `atomic_io.py` — `write_atomically`, `create_atomically` | Single-writer `<name>.tmp` + `os.replace` vs. concurrent-safe unique `mkstemp` + `os.link`/Windows `os.rename` (never `os.replace`) |
 
 ---
 
@@ -57,8 +58,9 @@ This module provides the foundational utilities consumed by all other modules:
 | `rag_client.py` | RAGClient, thin wrapper for RAG pipeline (optional) |
 | `reward_shaping.py` | RewardShaper for intermediate reward signals |
 | `checkpoint.py` | safe_load_checkpoint for secure deserialization |
+| `atomic_io.py` | `write_atomically` (`<name>.tmp` + `os.replace` for single-writer targets) and `create_atomically` (unique `mkstemp` sibling temp file + `os.link` / Windows `os.rename`, never `os.replace`, refusing existing targets and dangling symlinks) — stdlib-only so a killed or concurrent run leaves no torn or overwritten file |
 | `seeding.py` | `derive_seed`, `SeedStream` — per-stream seeds derived by name from one run seed (BLAKE2b, so it is stable across processes and platforms) |
-| `constants.py` | Namespace objects for game/distributed/training constants |
+| `constants.py` | Namespace objects for game/distributed/training constants and `discrete_action_count` (NumPy 1.x/2.x stub-safe `Discrete.n` extractor) |
 | `memory_guard.py` | MemoryGuard for replay buffer memory limits |
 | `timeout_config.py` | Centralized timeout configuration |
 | `knowledge_base.py` | Local knowledge base utilities |
@@ -112,6 +114,7 @@ This module provides the foundational utilities consumed by all other modules:
 5. `safe_load_checkpoint()` uses `weights_only=True` by default for security
 6. Environment variable prefix is `CIV6AZ_` for all config overrides
 7. No circular imports — utils is a leaf dependency in the module graph
+8. `atomic_io.py` stays stdlib-only (exempted on the A1 play-path closure); `create_atomically` writes via a unique sibling temp file and never calls `os.replace`
 
 ---
 

@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, cast
 import numpy as np
 import torch
 
+from alpha_zero.local.isolation import guard_gcs
 from alpha_zero.storage.backend import StorageBackend
 from alpha_zero.storage.config import StorageConfig
 from alpha_zero.storage.models import (
@@ -100,6 +101,7 @@ class GCSStorageBackend(StorageBackend):
             ImportError: If google-cloud-storage is not installed.
             ValueError: If GCS bucket is not configured.
         """
+        guard_gcs("GCSStorageBackend")
         if not HAS_GCS:
             raise ImportError(
                 "google-cloud-storage is required for GCS backend. "
@@ -114,8 +116,8 @@ class GCSStorageBackend(StorageBackend):
             raise ValueError("GCS bucket name is required. Set CIV6_GCS_BUCKET env var.")
 
         # Initialize GCS client
-        self._client = gcs.Client(project=config.gcs.project)
-        self._bucket = self._client.bucket(self.bucket_name)
+        self._gcs_client = gcs.Client(project=config.gcs.project)
+        self._gcs_bucket = self._gcs_client.bucket(self.bucket_name)
 
         # Retry configuration
         self._retry = gcs_retry.Retry(
@@ -126,6 +128,22 @@ class GCSStorageBackend(StorageBackend):
         )
 
         logger.info(f"GCSStorageBackend initialized: gs://{self.bucket_name}/{self.prefix}")
+
+    @property
+    def _client(self) -> Any:
+        """The GCS client, re-checking local mode on EVERY use.
+
+        A backend built before ``enter_local_mode()`` keeps its authenticated
+        client; only a guard at the point of use stops it reaching GCS.
+        """
+        guard_gcs("GCSStorageBackend client")
+        return self._gcs_client
+
+    @property
+    def _bucket(self) -> Any:
+        """The bucket handle, guarded like :attr:`_client`."""
+        guard_gcs("GCSStorageBackend bucket")
+        return self._gcs_bucket
 
     def _get_timestamp(self) -> str:
         """Get current ISO timestamp."""

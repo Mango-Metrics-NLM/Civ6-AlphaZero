@@ -1,0 +1,606 @@
+"""Pinned source and environment for a local run (LF-E6).
+
+Why
+---
+The globally installed ``alpha_zero`` on a dev box can be a stale editable
+install of another checkout, so "run the code at SHA X" silently runs something
+else. A pinned run therefore executes from
+
+* ``<run_dir>/src`` -- ``git archive <sha>`` extracted and made read-only; and
+* a venv at ``<data_root>/envs/<sha12>`` built from a **non-editable** wheel of
+  that SHA (so the code under test is the wheel, not a path on ``sys.path``).
+
+Children run with ``cwd=src`` and ``PYTHONNOUSERSITE=1`` (:func:`child_env`);
+:func:`assert_running_pinned` is the preflight that proves it.
+
+Design notes
+------------
+* Every subprocess goes through an injected ``runner`` so tests build no real
+  venv. The default runner raises :class:`PinnedEnvError` on a non-zero exit.
+* The wheel is built *before* the tree is made read-only and ``build/`` and
+  ``*.egg-info`` are removed afterwards, so setuptools never needs to write
+  into read-only source and the extracted tree stays byte-identical to the SHA.
+* A venv is reused when its marker file (``.pinned.json``) names the same full
+  SHA **and the same torch pin**; the marker also carries the wheel hash that
+  ``run.json`` records.
+* torch comes from PyPI by default, which on Windows is the CPU-only build. A
+  :class:`TorchPin` installs an exact torch from a named index first (a CUDA
+  build), and is part of the venv's identity: its directory is
+  ``<sha12>-t<pin hash>`` rather than ``<sha12>``, so a CPU venv for the same
+  SHA is never mistaken for the CUDA one.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import errno
+import hashlib
+import json
+import logging
+import math
+import os
+import re
+import shutil
+import stat
+import subprocess
+import sys
+import tarfile
+import threading
+import time
+import tomllib
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from alpha_zero.utils.data_root import DataRootError, resolve_data_root
+
+logger = logging.getLogger(__name__)
+
+MARKER_NAME = ".pinned.json"
+#: pip's installation report for the pinned torch install, kept inside the venv.
+TORCH_REPORT_NAME = ".torch-install-report.json"
+#: The distribution whose wheel is recorded, as a PEP 503 normalised name.
+TORCH_DISTRIBUTION = "torch"
+VENV_LOCK_SUFFIX = ".lock"
+DEFAULT_VENV_LOCK_TIMEOUT_S = 1800.0
+DEFAULT_VENV_LOCK_POLL_S = 0.1
+_LOCK_CONTENTION_ERRNOS = frozenset(
+    {
+        errno.EACCES,
+        errno.EAGAIN,
+        errno.EWOULDBLOCK,
+        getattr(errno, "EDEADLOCK", errno.EAGAIN),
+    }
+)
+_THREAD_LOCKS_GUARD = threading.Lock()
+_THREAD_LOCKS: dict[Path, threading.Lock] = {}
+_SHA256_PREFIX = "sha256="
+_SHA256_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+_NAME_SEPARATORS_RE = re.compile(r"[-_.]+")
+_SHA_RE = re.compile(r"^[0-9a-fA-F]{7,40}$|^HEAD$")
+# An exact pin only: a range would let two builds of one card resolve differently.
+# ``torch==X.Y.Z`` with an optional build tag (PEP 440 local version, ``+cu128``).
+_TORCH_SPEC_RE = re.compile(r"^torch==[0-9]+(\.[0-9]+){1,3}(\+[A-Za-z0-9]+(\.[A-Za-z0-9]+)*)?$")
+_INDEX_URL_RE = re.compile(r"^https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~/-]*)?$")
+
+Runner = Callable[..., str]
+
+
+class PinnedEnvError(RuntimeError):
+    """Pinned source/env could not be prepared, or the process is not running from it."""
+
+
+@dataclass(frozen=True)
+class TorchPin:
+    """An exact torch build for a pinned venv: ``torch==X.Y.Z[+tag]`` from ``index_url``.
+
+    Both parts are validated because they become ``pip`` arguments: the spec must
+    be an exact ``torch==`` pin and the index an ``https`` URL with no query,
+    credentials or whitespace.
+
+    The optional ``+tag`` names the build (``torch==2.11.0+cu128``). With it, the
+    device check compares the installed ``torch.__version__`` in full
+    (:func:`alpha_zero.utils.device.torch_build_matches`), so a cached venv whose
+    torch was replaced by another CUDA variant of the same release is refused.
+    Without it only the public version is compared.
+    """
+
+    spec: str
+    index_url: str
+
+    def __post_init__(self) -> None:
+        if not _TORCH_SPEC_RE.fullmatch(self.spec):
+            raise PinnedEnvError(
+                "torch_spec must be an exact pin such as 'torch==2.11.0' or "
+                f"'torch==2.11.0+cu128', got {self.spec!r}"
+            )
+        if not _INDEX_URL_RE.fullmatch(self.index_url):
+            raise PinnedEnvError(
+                f"torch_index_url must be a plain https URL, got {self.index_url!r}"
+            )
+
+    @property
+    def version(self) -> str:
+        return self.spec.split("==", 1)[1]
+
+    @property
+    def variant(self) -> str:
+        """Short stable tag for the venv directory name."""
+        digest = hashlib.sha256(f"{self.spec}\n{self.index_url}".encode()).hexdigest()
+        return digest[:8]
+
+    def as_dict(self) -> dict[str, str]:
+        return {"spec": self.spec, "index_url": self.index_url}
+
+
+@dataclass(frozen=True)
+class TorchWheel:
+    """The wheel pip installed for a torch pin: where it came from and its sha256.
+
+    A pin names a version and a build; this names the file. It is a record only:
+    nothing compares it, and a run is never refused for lacking it.
+    """
+
+    url: str
+    sha256: str
+
+    def as_dict(self) -> dict[str, str]:
+        return {"url": self.url, "sha256": self.sha256}
+
+    @classmethod
+    def from_mapping(cls, data: Any) -> TorchWheel | None:
+        """A marker's ``torch_wheel`` value back as a :class:`TorchWheel`, else ``None``."""
+        if not isinstance(data, Mapping):
+            return None
+        url, sha256 = data.get("url"), data.get("sha256")
+        if not isinstance(url, str) or not isinstance(sha256, str):
+            return None
+        return cls(url, sha256) if _SHA256_HEX_RE.fullmatch(sha256) else None
+
+
+def torch_wheel_from_report(report: Path) -> TorchWheel | None:
+    """The torch wheel named in a ``pip install --report`` file, or ``None``.
+
+    pip's installation report lists what it installed under ``install``; each
+    entry has ``metadata.name`` and ``download_info`` (``url`` and
+    ``archive_info.hashes.sha256``, or the older ``archive_info.hash`` spelt
+    ``sha256=<hex>``). Anything missing or malformed yields ``None`` and a
+    warning: the hash is a record, so its absence must not fail a run.
+    """
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+        entries = data["install"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        logger.warning("no torch wheel hash: %s is not a pip report (%s)", report, exc)
+        return None
+    found: list[TorchWheel | None] = []
+    for entry in entries if isinstance(entries, list) else []:
+        try:
+            name = _NAME_SEPARATORS_RE.sub("-", str(entry["metadata"]["name"])).lower()
+            if name != TORCH_DISTRIBUTION:
+                continue
+            info = entry["download_info"]
+            archive = info["archive_info"]
+            digest = (archive.get("hashes") or {}).get("sha256")
+            if digest is None and str(archive.get("hash", "")).startswith(_SHA256_PREFIX):
+                digest = str(archive["hash"])[len(_SHA256_PREFIX) :]
+            found.append(TorchWheel.from_mapping({"url": info["url"], "sha256": digest}))
+        except (KeyError, TypeError, AttributeError) as exc:
+            logger.warning("no torch wheel hash: malformed entry in %s (%s)", report, exc)
+            return None
+    if len(found) > 1:  # pip installs one torch; a report naming two cannot say which
+        logger.warning("no torch wheel hash: %s lists %d torch installs", report, len(found))
+        return None
+    if found:
+        if found[0] is None:
+            logger.warning("no torch wheel hash: %s gives no sha256 for torch", report)
+        return found[0]
+    logger.warning("no torch wheel hash: %s lists no %s install", report, TORCH_DISTRIBUTION)
+    return None
+
+
+@dataclass(frozen=True)
+class PinnedEnv:
+    """A prepared pinned run. ``venv`` is derived from ``python``'s location."""
+
+    python: Path
+    src: Path
+    sha: str = ""
+    wheel_sha256: str = ""
+    torch_pin: TorchPin | None = None
+    #: The torch wheel pip installed for ``torch_pin``, when pip reported it.
+    torch_wheel: TorchWheel | None = None
+
+    def __post_init__(self) -> None:
+        if self.python.parent.name not in {"Scripts", "bin"}:
+            raise PinnedEnvError(
+                f"{self.python} is not a venv interpreter (expected a Scripts/ or bin/ parent)"
+            )
+
+    @property
+    def venv(self) -> Path:
+        return self.python.parent.parent
+
+
+def child_env(base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Environment for a pinned child: no user site, no inherited ``PYTHONPATH``."""
+    env = dict(os.environ if base is None else base)
+    env.pop("PYTHONPATH", None)
+    env["PYTHONNOUSERSITE"] = "1"
+    return env
+
+
+def _default_runner(
+    cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+) -> str:
+    logger.debug("run: %s", " ".join(str(c) for c in cmd))
+    result = subprocess.run(  # noqa: S603 - argv built from a regex-validated SHA
+        [str(c) for c in cmd],
+        cwd=cwd,
+        env=dict(env) if env is not None else None,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise PinnedEnvError(
+            f"command failed ({result.returncode}): {' '.join(map(str, cmd))}\n{result.stderr[-2000:]}"
+        )
+    return result.stdout
+
+
+def _default_repo_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _venv_python(venv: Path) -> Path:
+    for candidate in (venv / "Scripts" / "python.exe", venv / "bin" / "python"):
+        if candidate.exists():
+            return candidate
+    return venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+
+
+def _extract_archive(sha: str, repo_root: Path, dest: Path, runner: Runner) -> None:
+    """``git archive <sha>`` of ``repo_root`` extracted into ``dest``."""
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tar_path = dest.parent / f"{dest.name}.tar"
+    try:
+        runner(
+            ["git", "-C", str(repo_root), "archive", "--format=tar", "-o", str(tar_path), sha],
+            cwd=repo_root,
+        )
+        dest.mkdir()
+        with tarfile.open(tar_path) as tar:
+            if not hasattr(tarfile, "data_filter"):
+                raise PinnedEnvError("Python >= 3.11.4 is required for safe tar extraction")
+            tar.extractall(dest, filter="data")
+    finally:
+        tar_path.unlink(missing_ok=True)
+
+
+def _make_read_only(src: Path) -> None:
+    for path in src.rglob("*"):
+        if path.is_file():
+            path.chmod(path.stat().st_mode & ~(stat.S_IWUSR | stat.S_IWGRP | stat.S_IWOTH))
+
+
+def _clean_build_artifacts(src: Path) -> None:
+    shutil.rmtree(src / "build", ignore_errors=True)
+    for egg in src.glob("*.egg-info"):
+        shutil.rmtree(egg, ignore_errors=True)
+
+
+def _sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _marker_torch(torch_pin: TorchPin | None) -> dict[str, str] | None:
+    return None if torch_pin is None else torch_pin.as_dict()
+
+
+def _build_venv(
+    venv: Path,
+    src: Path,
+    wheel_dir: Path,
+    full_sha: str,
+    runner: Runner,
+    torch_pin: TorchPin | None = None,
+) -> tuple[str, TorchWheel | None]:
+    """Create ``venv`` and install a non-editable wheel of ``src``.
+
+    Returns the project wheel's sha256 and, for a ``torch_pin``, the torch wheel
+    pip installed (``None`` when pip's report does not give it).
+
+    With ``torch_pin`` the exact torch is installed from its index *first*; the
+    wheel's own ``torch>=2.0.0`` requirement is then already satisfied, so pip
+    keeps that build instead of pulling the default (CPU-only on Windows) one.
+    """
+    env = child_env()
+    runner([sys.executable, "-m", "venv", str(venv)], env=env)
+    py = _venv_python(venv)
+    torch_wheel: TorchWheel | None = None
+    if torch_pin is not None:
+        logger.info(
+            "installing %s from %s into %s (a large download; pip's output is captured)",
+            torch_pin.spec,
+            torch_pin.index_url,
+            venv,
+        )
+        report = venv / TORCH_REPORT_NAME
+        install = [py, "-m", "pip", "install", "--report", str(report)]
+        runner([*install, torch_pin.spec, "--index-url", torch_pin.index_url], env=env)
+        torch_wheel = torch_wheel_from_report(report)
+        if torch_wheel is not None:
+            logger.info("torch wheel %s sha256 %s", torch_wheel.url, torch_wheel.sha256)
+    runner([py, "-m", "pip", "wheel", str(src), "--no-deps", "-w", str(wheel_dir)], env=env)
+    wheels = sorted(wheel_dir.glob("alpha_zero-*.whl"))
+    if not wheels:
+        raise PinnedEnvError(f"pip wheel produced no alpha_zero wheel in {wheel_dir}")
+    wheel = wheels[-1]
+    # Installing the wheel (not --no-deps) pulls the dependencies pyproject declares.
+    runner([py, "-m", "pip", "install", str(wheel)], env=env)
+    wheel_hash = _sha256_file(wheel)
+    marker = {
+        "sha": full_sha,
+        "wheel_sha256": wheel_hash,
+        "torch": _marker_torch(torch_pin),
+        "torch_wheel": None if torch_wheel is None else torch_wheel.as_dict(),
+    }
+    # Lazy import: tests/scripts/test_run_card.py (_fake_src) copies only pinned_env.py
+    # and data_root.py into the child src tree for PREFLIGHT_CODE, which never builds venvs.
+    from alpha_zero.utils.atomic_io import write_text_atomically
+
+    write_text_atomically(venv / MARKER_NAME, json.dumps(marker))
+    return wheel_hash, torch_wheel
+
+
+def resolve_commit(sha: str, *, runner: Runner | None = None, repo_root: Path | None = None) -> str:
+    """The full commit ``sha`` names in ``repo_root``, via ``git rev-parse --verify <sha>^{commit}``.
+
+    Raises :class:`PinnedEnvError` if ``sha`` is malformed or names no commit
+    there (a typo, an ambiguous abbreviation, a commit not yet fetched).
+    """
+    if not _SHA_RE.match(sha):
+        raise PinnedEnvError(f"not a git SHA: {sha!r}")
+    run = runner or _default_runner
+    repo = repo_root or _default_repo_root()
+    full = run(["git", "-C", str(repo), "rev-parse", "--verify", f"{sha}^{{commit}}"], cwd=repo)
+    return full.strip() or sha
+
+
+def _thread_lock_for(lock_path: Path) -> threading.Lock:
+    key = lock_path.resolve()
+    with _THREAD_LOCKS_GUARD:
+        lock = _THREAD_LOCKS.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _THREAD_LOCKS[key] = lock
+        return lock
+
+
+def _try_lock_fd(fd: int) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+
+
+def _release_file_lock(fd: int) -> None:
+    if sys.platform == "win32":
+        import msvcrt
+
+        os.lseek(fd, 0, os.SEEK_SET)
+        msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        fcntl.flock(fd, fcntl.LOCK_UN)
+
+
+def _validate_lock_timing(timeout_s: float, poll_s: float) -> None:
+    if isinstance(timeout_s, bool) or not math.isfinite(timeout_s) or timeout_s < 0:
+        raise PinnedEnvError(f"lock_timeout_s must be finite and >= 0, got {timeout_s!r}")
+    if isinstance(poll_s, bool) or not math.isfinite(poll_s) or poll_s <= 0:
+        raise PinnedEnvError(f"lock poll interval must be finite and > 0, got {poll_s!r}")
+
+
+def _acquire_file_lock(
+    fd: int,
+    lock_path: Path,
+    *,
+    deadline: float,
+    timeout_s: float,
+    poll_s: float,
+) -> None:
+    waited = False
+    while True:
+        try:
+            _try_lock_fd(fd)
+            return
+        except OSError as exc:
+            if exc.errno not in _LOCK_CONTENTION_ERRNOS:
+                raise PinnedEnvError(f"failed to lock {lock_path}: {exc}") from exc
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise PinnedEnvError(
+                    f"timed out after {timeout_s:.1f}s waiting for venv lock {lock_path}"
+                ) from exc
+            if not waited:
+                logger.info("waiting for pinned venv lock %s", lock_path)
+                waited = True
+            time.sleep(min(poll_s, remaining))
+
+
+@contextlib.contextmanager
+def _venv_lock(
+    lock_path: Path,
+    *,
+    timeout_s: float = DEFAULT_VENV_LOCK_TIMEOUT_S,
+    poll_s: float = DEFAULT_VENV_LOCK_POLL_S,
+) -> Iterator[None]:
+    """Serialize venv reuse/build across threads and processes using a sibling ``.lock`` file.
+
+    The lockfile is intentionally never unlinked so concurrent waiters cannot
+    acquire locks on different inodes for the same path.
+    """
+    _validate_lock_timing(timeout_s, poll_s)
+    deadline = time.monotonic() + timeout_s
+    thread_lock = _thread_lock_for(lock_path)
+    if not thread_lock.acquire(timeout=timeout_s):
+        raise PinnedEnvError(f"timed out after {timeout_s:.1f}s waiting for venv lock {lock_path}")
+    fd: int | None = None
+    locked = False
+    try:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+        _acquire_file_lock(fd, lock_path, deadline=deadline, timeout_s=timeout_s, poll_s=poll_s)
+        locked = True
+        yield
+    finally:
+        if fd is not None:
+            try:
+                if locked:
+                    _release_file_lock(fd)
+            except OSError as exc:
+                logger.warning("failed to unlock %s: %s", lock_path, exc)
+            finally:
+                os.close(fd)
+        thread_lock.release()
+
+
+def _read_reusable_marker(
+    marker: Path, full_sha: str, torch_pin: TorchPin | None
+) -> tuple[str, TorchWheel | None] | None:
+    try:
+        data = json.loads(marker.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError) as exc:
+        logger.warning("corrupt pinned venv marker %s (%s); rebuilding", marker, exc)
+        return None
+    if not isinstance(data, Mapping):
+        logger.warning("corrupt pinned venv marker %s (expected mapping); rebuilding", marker)
+        return None
+    # ``torch_wheel`` is a record, not part of the venv's identity: a marker
+    # written before it existed is still this venv.
+    if data.get("sha") != full_sha or data.get("torch") != _marker_torch(torch_pin):
+        return None
+    raw_hash = data.get("wheel_sha256")
+    if not isinstance(raw_hash, str) or not raw_hash:
+        logger.warning("corrupt pinned venv marker %s (missing wheel_sha256); rebuilding", marker)
+        return None
+    return raw_hash, TorchWheel.from_mapping(data.get("torch_wheel"))
+
+
+def prepare_pinned_run(
+    sha: str,
+    run_dir: Path,
+    *,
+    envs_root: Path | None = None,
+    runner: Runner | None = None,
+    repo_root: Path | None = None,
+    torch_pin: TorchPin | None = None,
+    lock_timeout_s: float = DEFAULT_VENV_LOCK_TIMEOUT_S,
+) -> PinnedEnv:
+    """Extract ``sha`` to ``<run_dir>/src`` (read-only) and ensure its venv exists.
+
+    ``envs_root`` defaults to ``<CIV6AZ_DATA_ROOT>/envs``. The venv is reused when
+    its marker already names this SHA and this ``torch_pin``. Raises
+    :class:`PinnedEnvError` on any failure, including an unset data root when
+    ``envs_root`` is not given.
+    """
+    if not _SHA_RE.match(sha):
+        raise PinnedEnvError(f"not a git SHA: {sha!r}")
+    _validate_lock_timing(lock_timeout_s, DEFAULT_VENV_LOCK_POLL_S)
+    run = runner or _default_runner
+    repo = repo_root or _default_repo_root()
+    run_dir = Path(run_dir)
+    if envs_root is None:
+        try:
+            root = resolve_data_root(required=True)
+        except DataRootError as exc:
+            raise PinnedEnvError(str(exc)) from exc
+        if root is None:  # unreachable: required=True raises
+            raise PinnedEnvError("CIV6AZ_DATA_ROOT is not set")
+        envs_root = root / "envs"
+
+    full_sha = resolve_commit(sha, runner=run, repo_root=repo)
+    venv_name = full_sha[:12] if torch_pin is None else f"{full_sha[:12]}-t{torch_pin.variant}"
+    venv = Path(envs_root) / venv_name
+    lock_path = Path(envs_root) / f"{venv_name}{VENV_LOCK_SUFFIX}"
+    src = run_dir / "src"
+    if src.exists():
+        raise PinnedEnvError(f"{src} already exists; a run directory is single-use")
+
+    _extract_archive(full_sha, repo, src, run)
+
+    marker = venv / MARKER_NAME
+    wheel_hash = ""
+    torch_wheel: TorchWheel | None = None
+    with _venv_lock(lock_path, timeout_s=lock_timeout_s):
+        if marker.is_file() and _venv_python(venv).exists():
+            reusable = _read_reusable_marker(marker, full_sha, torch_pin)
+            if reusable is not None:
+                wheel_hash, torch_wheel = reusable
+                logger.info("reusing pinned venv %s", venv)
+                if torch_pin is not None and torch_wheel is None:
+                    logger.warning("no torch wheel hash: %s was built without recording it", venv)
+        if not wheel_hash:
+            if venv.exists():
+                shutil.rmtree(venv, ignore_errors=True)
+            try:
+                wheel_hash, torch_wheel = _build_venv(
+                    venv, src, run_dir / "wheel", full_sha, run, torch_pin
+                )
+            finally:
+                _clean_build_artifacts(src)
+        python = _venv_python(venv)
+    _make_read_only(src)
+    return PinnedEnv(
+        python=python,
+        src=src,
+        sha=full_sha,
+        wheel_sha256=wheel_hash,
+        torch_pin=torch_pin,
+        torch_wheel=torch_wheel,
+    )
+
+
+def _pyproject_version(src: Path) -> str:
+    data: dict[str, Any] = tomllib.loads((src / "pyproject.toml").read_text(encoding="utf-8"))
+    return str(data["project"]["version"])
+
+
+def assert_running_pinned(
+    env: PinnedEnv, *, module: Any = None, prefix: str | Path | None = None
+) -> None:
+    """Preflight: this process imported ``alpha_zero`` from ``env`` and the version matches.
+
+    ``alpha_zero.__file__`` must lie inside ``env.src`` or ``env.venv`` and
+    ``sys.prefix`` must be the pinned venv (a system python with cwd=src would otherwise
+    pass while every dependency is unpinned) and ``alpha_zero.__version__`` must equal ``<src>/pyproject.toml``'s version.
+    ``module`` is injectable for tests; by default the imported package is used.
+    """
+    if module is None:
+        import alpha_zero as module
+    active = Path(sys.prefix if prefix is None else prefix).resolve()
+    if active != env.venv.resolve():
+        raise PinnedEnvError(
+            f"running under interpreter prefix {active}, not the pinned venv {env.venv.resolve()}"
+        )
+    file = Path(module.__file__).resolve()
+    allowed = [env.src.resolve(), env.venv.resolve()]
+    if not any(root == file or root in file.parents for root in allowed):
+        raise PinnedEnvError(
+            f"alpha_zero imported from {file}, which is not inside the pinned src or venv "
+            f"({allowed[0]}, {allowed[1]})"
+        )
+    expected = _pyproject_version(env.src)
+    if str(module.__version__) != expected:
+        raise PinnedEnvError(
+            f"alpha_zero.__version__ {module.__version__!r} != pyproject version {expected!r}"
+        )

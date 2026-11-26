@@ -1,0 +1,30 @@
+{
+  "captured_local_date": "2026-11-11",
+  "os": "Microsoft Windows 11 Home, build 26200",
+  "cpu": "AMD Ryzen 9 9900X 12-Core Processor, 12 cores / 24 logical",
+  "ram": {
+    "total_kib": 64393564,
+    "free_kib_at_capture": 17298448,
+    "note": "about 61.4 GiB total, 16.5 GiB free at capture"
+  },
+  "gpus": [
+    {
+      "name": "NVIDIA GeForce RTX 5060 Ti",
+      "memory_total_mib": 16311
+    },
+    {
+      "name": "NVIDIA GeForce RTX 5060",
+      "memory_total_mib": 8151
+    }
+  ],
+  "gpu_query": "nvidia-smi --query-gpu=name,memory.total --format=csv",
+  "windows_update": {
+    "readable_without_admin": true,
+    "source": "HKLM\\SOFTWARE\\Microsoft\\WindowsUpdate\\UX\\Settings",
+    "ActiveHoursStart": 7,
+    "ActiveHoursEnd": 1,
+    "active_hours_meaning": "07:00 to 01:00 (18 h window)",
+    "group_policy_AU_key": "HKLM\\SOFTWARE\\Policies\\Microsoft\\WindowsUpdate\\AU returned no values (no policy-set restart behaviour readable)",
+    "restart_policy": "Not otherwise readable without admin; automatic restarts outside active hours (01:00-07:00) remain possible"
+  }
+}

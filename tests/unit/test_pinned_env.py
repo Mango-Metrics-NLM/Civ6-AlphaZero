@@ -1,0 +1,670 @@
+"""Pinned source and environment (LF-E6).
+
+Negative control (when this file was written, reverted): ``assert_running_pinned``
+returning early made ``test_editable_install_fails_preflight`` fail. The test
+process imports ``alpha_zero`` from the worktree, which is exactly the situation
+the preflight exists to refuse.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import subprocess
+import threading
+import time
+import types
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+import alpha_zero
+from alpha_zero.local import pinned_env as pe
+from alpha_zero.utils import atomic_io
+
+REPO = Path(alpha_zero.__file__).resolve().parents[1]
+
+
+class FakeRunner:
+    """Records commands; fakes venv/pip, optionally delegates git to the real thing."""
+
+    def __init__(self, *, real_git: bool = False) -> None:
+        self.calls: list[list[str]] = []
+        self.real_git = real_git
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        cmd = [str(c) for c in cmd]
+        self.calls.append(cmd)
+        if cmd[0] == "git" and self.real_git:
+            return subprocess.run(cmd, cwd=cwd, check=True, capture_output=True, text=True).stdout
+        if cmd[0] == "git":
+            return "0123456789abcdef0123456789abcdef01234567\n"
+        if "venv" in cmd:
+            venv = Path(cmd[-1])
+            (venv / "Scripts").mkdir(parents=True, exist_ok=True)
+            (venv / "Scripts" / "python.exe").write_text("")
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("")
+        if "wheel" in cmd:
+            out = Path(cmd[cmd.index("-w") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "alpha_zero-2.0.0-py3-none-any.whl").write_bytes(b"wheel-bytes")
+        return ""
+
+    def count(self, needle: str) -> int:
+        return sum(1 for c in self.calls if needle in c)
+
+
+def _fake_src_tree(root: Path, version: str = "2.0.0") -> Path:
+    src = root / "src"
+    (src / "alpha_zero").mkdir(parents=True)
+    (src / "alpha_zero" / "__init__.py").write_text(f'__version__ = "{version}"\n')
+    (src / "pyproject.toml").write_text(f'[project]\nname = "x"\nversion = "{version}"\n')
+    return src
+
+
+def test_rejects_bad_sha(tmp_path: Path) -> None:
+    with pytest.raises(pe.PinnedEnvError):
+        pe.prepare_pinned_run("not a sha; rm -rf", tmp_path / "run", envs_root=tmp_path / "e")
+
+
+def test_git_archive_of_head_is_extracted_and_read_only(tmp_path: Path) -> None:
+    runner = FakeRunner(real_git=True)
+    env = pe.prepare_pinned_run(
+        "HEAD", tmp_path / "run", envs_root=tmp_path / "envs", runner=runner, repo_root=REPO
+    )
+    assert env.src == tmp_path / "run" / "src"
+    assert (env.src / "pyproject.toml").is_file()
+    assert (env.src / "alpha_zero" / "__init__.py").is_file()
+    with pytest.raises(PermissionError):
+        (env.src / "pyproject.toml").open("a").close()
+    flat = [" ".join(c) for c in runner.calls]
+    assert any("pip wheel" in c and "--no-deps" in c for c in flat)
+    assert not any(" -e " in f" {c} " for c in flat)
+    assert env.python.exists()
+    assert env.sha and env.wheel_sha256
+
+
+def test_venv_reused_for_same_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runner = FakeRunner()
+    fake = _fake_src_tree(tmp_path / "fake")
+    monkeypatch.setattr(
+        pe, "_extract_archive", lambda sha, repo_root, dest, runner: shutil.copytree(fake, dest)
+    )
+    kwargs = {"envs_root": tmp_path / "envs", "runner": runner, "repo_root": tmp_path}
+    pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)  # type: ignore[arg-type]
+    assert runner.count("venv") == 1
+    env2 = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", **kwargs)  # type: ignore[arg-type]
+    assert runner.count("venv") == 1, "second run must reuse the venv"
+    assert env2.src == tmp_path / "r2" / "src" and env2.wheel_sha256
+
+
+def test_editable_install_fails_preflight(tmp_path: Path) -> None:
+    src = _fake_src_tree(tmp_path)
+    env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
+    with pytest.raises(pe.PinnedEnvError, match="not inside"):
+        pe.assert_running_pinned(env, prefix=tmp_path / "venv")
+
+
+def test_pinned_module_passes_preflight(tmp_path: Path) -> None:
+    src = _fake_src_tree(tmp_path)
+    env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
+    module = types.SimpleNamespace(
+        __file__=str(src / "alpha_zero" / "__init__.py"), __version__="2.0.0"
+    )
+    pe.assert_running_pinned(env, module=module, prefix=tmp_path / "venv")
+
+
+def test_installed_in_venv_passes_preflight(tmp_path: Path) -> None:
+    src = _fake_src_tree(tmp_path)
+    venv = tmp_path / "venv"
+    env = pe.PinnedEnv(python=venv / "Scripts" / "python.exe", src=src)
+    module = types.SimpleNamespace(
+        __file__=str(venv / "Lib" / "site-packages" / "alpha_zero" / "__init__.py"),
+        __version__="2.0.0",
+    )
+    pe.assert_running_pinned(env, module=module, prefix=venv)
+
+
+def test_version_mismatch_fails_preflight(tmp_path: Path) -> None:
+    src = _fake_src_tree(tmp_path, version="2.0.0")
+    env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
+    module = types.SimpleNamespace(
+        __file__=str(src / "alpha_zero" / "__init__.py"), __version__="1.8.0"
+    )
+    with pytest.raises(pe.PinnedEnvError, match="version"):
+        pe.assert_running_pinned(env, module=module, prefix=tmp_path / "venv")
+
+
+def test_child_env_is_isolated() -> None:
+    env = pe.child_env({"PATH": "p", "PYTHONPATH": "leak"})
+    assert env["PYTHONNOUSERSITE"] == "1"
+    assert "PYTHONPATH" not in env
+
+
+def test_system_python_with_cwd_src_fails_preflight(tmp_path: Path) -> None:
+    """alpha_zero imports from src (cwd) but under the system interpreter: deps unpinned."""
+    src = _fake_src_tree(tmp_path)
+    env = pe.PinnedEnv(python=tmp_path / "venv" / "Scripts" / "python.exe", src=src)
+    module = types.SimpleNamespace(
+        __file__=str(src / "alpha_zero" / "__init__.py"), __version__="2.0.0"
+    )
+    with pytest.raises(pe.PinnedEnvError, match="prefix"):
+        pe.assert_running_pinned(env, module=module, prefix=tmp_path / "system-python")
+
+
+def test_pinned_env_rejects_non_venv_interpreter(tmp_path: Path) -> None:
+    """A system python.exe would make venv its drive root and allow everything."""
+    with pytest.raises(pe.PinnedEnvError, match="venv interpreter"):
+        pe.PinnedEnv(python=tmp_path / "python.exe", src=tmp_path)
+
+
+# --------------------------------------------------------------------------
+# Torch pin (GPU-first run cards)
+#
+# Negative controls (recorded when these were written, then reverted):
+#   * dropping the ``pip install <spec> --index-url`` step made
+#     ``test_torch_pin_is_installed_from_its_index_before_the_wheel`` fail;
+#   * keying the venv on the SHA alone made
+#     ``test_cpu_venv_is_not_reused_for_a_cuda_pin`` fail (the second run reused
+#     the first run's venv and no torch install ran).
+# --------------------------------------------------------------------------
+
+_CU128 = "https://download.pytorch.org/whl/cu128"
+
+
+def _pinned_kwargs(tmp_path: Path, runner: FakeRunner, monkeypatch: pytest.MonkeyPatch) -> dict:
+    fake = _fake_src_tree(tmp_path / "fake")
+    monkeypatch.setattr(
+        pe, "_extract_archive", lambda sha, repo_root, dest, runner: shutil.copytree(fake, dest)
+    )
+    return {"envs_root": tmp_path / "envs", "runner": runner, "repo_root": tmp_path}
+
+
+def _torch_installs(runner: FakeRunner) -> list[list[str]]:
+    return [c for c in runner.calls if "--index-url" in c]
+
+
+def test_torch_pin_is_installed_from_its_index_before_the_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef",
+        tmp_path / "r1",
+        torch_pin=pin,
+        **_pinned_kwargs(tmp_path, runner, monkeypatch),
+    )
+    installs = _torch_installs(runner)
+    assert len(installs) == 1
+    assert installs[0][-3:] == ["torch==2.11.0", "--index-url", _CU128]
+    report = installs[0][installs[0].index("--report") + 1]
+    assert Path(report) == env.venv / pe.TORCH_REPORT_NAME, "pip is asked for its report"
+    wheel_install = next(
+        i for i, c in enumerate(runner.calls) if c[-2] == "install" and c[-1].endswith(".whl")
+    )
+    assert runner.calls.index(installs[0]) < wheel_install, "torch must be installed first"
+    assert env.torch_pin == pin
+    assert env.venv.name == f"0123456789ab-t{pin.variant}"
+
+
+def test_no_torch_pin_keeps_the_original_venv_and_commands(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef", tmp_path / "r1", **_pinned_kwargs(tmp_path, runner, monkeypatch)
+    )
+    assert _torch_installs(runner) == []
+    assert env.venv.name == "0123456789ab" and env.torch_pin is None
+
+
+def test_cpu_venv_is_not_reused_for_a_cuda_pin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    cpu = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    gpu = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+    assert gpu.venv != cpu.venv
+    assert runner.count("venv") == 2 and len(_torch_installs(runner)) == 1
+    # Same SHA and same pin: reused, no third build.
+    pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r3", torch_pin=pin, **kwargs)
+    assert runner.count("venv") == 2
+    # Same SHA, another index: a different venv again.
+    other = pe.TorchPin("torch==2.11.0", "https://download.pytorch.org/whl/cu130")
+    assert other.variant != pin.variant
+
+
+def test_torch_pin_may_name_its_build() -> None:
+    """``torch==X.Y.Z+tag`` is the build's own name; ``version`` keeps the tag.
+
+    Negative control: with the tag group removed from ``_TORCH_SPEC_RE`` the
+    constructor raises, and with ``version`` stripping the tag the device check
+    would again accept another CUDA variant of the same release.
+    """
+    pin = pe.TorchPin("torch==2.11.0+cu128", _CU128)
+    assert pin.version == "2.11.0+cu128"
+    assert pin.as_dict() == {"spec": "torch==2.11.0+cu128", "index_url": _CU128}
+    assert pe.TorchPin("torch==2.11.0", _CU128).version == "2.11.0"
+    assert pin.variant != pe.TorchPin("torch==2.11.0", _CU128).variant
+
+
+@pytest.mark.parametrize(
+    ("spec", "url"),
+    [
+        ("torch>=2.0", _CU128),  # a range, not a pin
+        ("torch", _CU128),
+        ("torch==2.11.0 --pre", _CU128),  # smuggled pip flag
+        ("numpy==2.0.0", _CU128),  # not torch
+        ("torch==2.11.0", "http://download.pytorch.org/whl/cu128"),  # not https
+        ("torch==2.11.0", "https://user:pw@example.com/whl"),  # credentials
+        ("torch==2.11.0", "https://example.com/whl?x=1"),  # query
+        ("torch==2.11.0", "https://example.com/whl --extra-index-url https://evil"),
+        ("torch==2.11.0\n", _CU128),  # a YAML block scalar's trailing newline
+        ("torch==2.11.0", _CU128 + "\n"),
+        ("torch==2.11.0+", _CU128),  # an empty build tag
+        ("torch==2.11.0+cu128.", _CU128),
+        ("torch==2.11.0+cu 128", _CU128),
+        ("torch==2.11.0+cu128;python_version>'3'", _CU128),  # a marker is not a pin
+        ("torch==2.11.0+cu128\n", _CU128),
+    ],
+)
+def test_torch_pin_rejects_anything_but_an_exact_pin_and_a_plain_https_index(
+    spec: str, url: str
+) -> None:
+    with pytest.raises(pe.PinnedEnvError):
+        pe.TorchPin(spec, url)
+
+
+# --------------------------------------------------------------------------
+# The torch wheel pip installed (a record: its absence never fails a run)
+# --------------------------------------------------------------------------
+#
+# Negative controls (planted in alpha_zero/local/pinned_env.py, observed failing,
+# restored):
+# 1. ``--report`` dropped from the install command -> the report assertion in
+#    ``test_torch_pin_is_installed_from_its_index_before_the_wheel`` and
+#    ``test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker`` fail.
+# 2. The marker written without ``torch_wheel`` -> the reuse half of
+#    ``test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker`` fails.
+# 3. The parser reading ``hashes`` only -> ``test_a_legacy_hash_field_is_read`` fails.
+# 4. The parser raising on a malformed report ->
+#    ``test_an_unusable_report_records_none_and_does_not_fail`` fails.
+# 5. ``torch_wheel`` made part of the venv's identity ->
+#    ``test_a_marker_without_torch_wheel_is_reused`` fails (a second venv build).
+# 6. The parser returning the first of two torch entries ->
+#    ``test_a_report_that_lists_torch_twice_is_not_trusted`` fails.
+# 7. The warning for a reused venv without a wheel record removed ->
+#    ``test_a_marker_without_torch_wheel_is_reused`` fails.
+
+_WHEEL_URL = "https://download.pytorch.org/whl/cu128/torch-2.11.0%2Bcu128-cp311-cp311-win_amd64.whl"
+_WHEEL_SHA = "ab" * 32
+_DEPENDENCY_SHA = "cd" * 32
+
+
+def _entry(name: str, url: str, archive_info: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metadata": {"name": name, "version": "0"},
+        "download_info": {"url": url, "archive_info": archive_info},
+    }
+
+
+def _report(*entries: dict[str, Any]) -> str:
+    return json.dumps({"version": "1", "pip_version": "24.0", "install": list(entries)})
+
+
+_GOOD_REPORT = _report(
+    # A dependency listed first: the torch entry must be chosen by name, not position.
+    _entry("filelock", "https://example.org/filelock.whl", {"hashes": {"sha256": _DEPENDENCY_SHA}}),
+    _entry("Torch", _WHEEL_URL, {"hash": f"sha256={_WHEEL_SHA}", "hashes": {"sha256": _WHEEL_SHA}}),
+)
+
+
+class ReportingRunner(FakeRunner):
+    """A :class:`FakeRunner` whose pip writes ``report`` where ``--report`` says."""
+
+    def __init__(self, report: str | None) -> None:
+        super().__init__()
+        self.report = report
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        out = super().__call__(cmd, cwd=cwd, env=env)
+        argv = [str(c) for c in cmd]
+        if "--report" in argv and self.report is not None:
+            Path(argv[argv.index("--report") + 1]).write_text(self.report, encoding="utf-8")
+        return out
+
+
+def test_torch_wheel_is_read_from_pips_report_and_kept_in_the_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = ReportingRunner(_GOOD_REPORT)
+    pin = pe.TorchPin("torch==2.11.0+cu128", _CU128)
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    built = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", torch_pin=pin, **kwargs)
+
+    assert built.torch_wheel == pe.TorchWheel(_WHEEL_URL, _WHEEL_SHA)
+    marker = json.loads((built.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))
+    assert marker["torch_wheel"] == {"url": _WHEEL_URL, "sha256": _WHEEL_SHA}
+    assert marker["torch"] == pin.as_dict(), "the pin itself is recorded unchanged"
+
+    # A reused venv has no install to report on: the record comes from the marker.
+    reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+    assert runner.count("venv") == 1 and len(_torch_installs(runner)) == 1
+    assert reused.torch_wheel == built.torch_wheel
+
+
+def test_no_torch_pin_records_no_torch_wheel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = ReportingRunner(_GOOD_REPORT)
+    env = pe.prepare_pinned_run(
+        "0123456789abcdef", tmp_path / "r1", **_pinned_kwargs(tmp_path, runner, monkeypatch)
+    )
+    assert env.torch_wheel is None
+    assert not any("--report" in call for call in runner.calls)
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        None,  # pip wrote no report (an old pip, or the fake)
+        "not json",
+        json.dumps({"install": "not a list"}),
+        json.dumps({"version": "1"}),  # no install key
+        _report(_entry("filelock", "https://example.org/f.whl", {"hashes": {"sha256": "ab" * 32}})),
+        _report(_entry("torch", _WHEEL_URL, {})),  # no hash at all
+        _report(_entry("torch", _WHEEL_URL, {"hashes": {"sha256": "short"}})),
+        _report(_entry("torch", _WHEEL_URL, {"hash": "md5=" + "ab" * 16})),
+        _report({"metadata": {"name": "torch"}}),  # no download_info
+    ],
+)
+def test_an_unusable_report_records_none_and_does_not_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    report: str | None,
+) -> None:
+    runner = ReportingRunner(report)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        env = pe.prepare_pinned_run(
+            "0123456789abcdef",
+            tmp_path / "r1",
+            torch_pin=pin,
+            **_pinned_kwargs(tmp_path, runner, monkeypatch),
+        )
+    assert env.torch_wheel is None
+    assert (
+        json.loads((env.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))["torch_wheel"] is None
+    )
+    assert "no torch wheel hash" in caplog.text
+
+
+def test_a_legacy_hash_field_is_read(tmp_path: Path) -> None:
+    """Older pips wrote only ``archive_info.hash`` as ``sha256=<hex>``."""
+    report = tmp_path / "report.json"
+    report.write_text(
+        _report(_entry("torch", _WHEEL_URL, {"hash": f"sha256={_WHEEL_SHA}"})), encoding="utf-8"
+    )
+    assert pe.torch_wheel_from_report(report) == pe.TorchWheel(_WHEEL_URL, _WHEEL_SHA)
+
+
+def test_a_report_that_lists_torch_twice_is_not_trusted(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """pip installs one torch; a report naming two cannot say which one is in the venv."""
+    report = tmp_path / "report.json"
+    other = _WHEEL_URL.replace("cu128", "cpu")
+    report.write_text(
+        _report(
+            _entry("torch", _WHEEL_URL, {"hashes": {"sha256": _WHEEL_SHA}}),
+            _entry("torch", other, {"hashes": {"sha256": _DEPENDENCY_SHA}}),
+        ),
+        encoding="utf-8",
+    )
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        assert pe.torch_wheel_from_report(report) is None
+    assert "lists 2 torch installs" in caplog.text
+
+
+def test_a_marker_without_torch_wheel_is_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A venv built before the hash was recorded is still that venv, and the run says so."""
+    runner = ReportingRunner(_GOOD_REPORT)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    built = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", torch_pin=pin, **kwargs)
+    marker_path = built.venv / pe.MARKER_NAME
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    del marker["torch_wheel"]
+    marker_path.write_text(json.dumps(marker), encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        reused = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", torch_pin=pin, **kwargs)
+
+    assert runner.count("venv") == 1, "an old marker must not force a rebuild"
+    assert reused.torch_wheel is None and reused.wheel_sha256 == built.wheel_sha256
+    assert "no torch wheel hash" in caplog.text and "without recording it" in caplog.text
+
+
+# --------------------------------------------------------------------------
+# Per-venv locking and corrupt marker recovery
+# --------------------------------------------------------------------------
+
+
+class _BlockingRunner(FakeRunner):
+    """Thread-safe FakeRunner that pauses the first ``-m venv`` call until released."""
+
+    def __init__(self, *, block_once: bool = True) -> None:
+        super().__init__()
+        self._lock = threading.Lock()
+        self._block_once = block_once
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(
+        self, cmd: Sequence[str], *, cwd: Path | None = None, env: Mapping[str, str] | None = None
+    ) -> str:
+        argv = [str(c) for c in cmd]
+        should_block = False
+        with self._lock:
+            self.calls.append(argv)
+            if "venv" in argv and self._block_once:
+                self._block_once = False
+                should_block = True
+        if should_block:
+            self.entered.set()
+            assert self.release.wait(timeout=10.0), "timed out waiting to release venv build"
+        if argv[0] == "git":
+            return "0123456789abcdef0123456789abcdef01234567\n"
+        if "venv" in argv:
+            venv = Path(argv[-1])
+            (venv / "Scripts").mkdir(parents=True, exist_ok=True)
+            (venv / "Scripts" / "python.exe").write_text("")
+            (venv / "bin").mkdir(parents=True, exist_ok=True)
+            (venv / "bin" / "python").write_text("")
+        if "wheel" in argv:
+            out = Path(argv[argv.index("-w") + 1])
+            out.mkdir(parents=True, exist_ok=True)
+            (out / "alpha_zero-2.0.0-py3-none-any.whl").write_bytes(b"wheel-bytes")
+        return ""
+
+    def count(self, needle: str) -> int:
+        with self._lock:
+            return sum(1 for c in self.calls if needle in c)
+
+
+def test_concurrent_prepare_pinned_run_serializes_by_venv_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _BlockingRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    results: list[pe.PinnedEnv] = []
+    errors: list[BaseException] = []
+
+    def worker(run_name: str) -> None:
+        try:
+            results.append(pe.prepare_pinned_run("0123456789abcdef", tmp_path / run_name, **kwargs))
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=worker, args=("r1",))
+    t2 = threading.Thread(target=worker, args=("r2",))
+    t1.start()
+    assert runner.entered.wait(timeout=5.0)
+    t2.start()
+    time.sleep(0.05)
+    assert t2.is_alive(), "second caller must block on the same venv lock"
+    runner.release.set()
+    t1.join(timeout=10.0)
+    t2.join(timeout=10.0)
+
+    assert not errors, errors
+    assert len(results) == 2
+    assert runner.count("venv") == 1
+    assert results[0].venv == results[1].venv
+    assert results[0].wheel_sha256 == results[1].wheel_sha256
+    lock_file = Path(kwargs["envs_root"]) / f"{results[0].venv.name}{pe.VENV_LOCK_SUFFIX}"
+    assert lock_file.is_file(), "lockfile must remain on disk to avoid inode-swap races"
+
+
+def test_concurrent_prepare_pinned_run_for_different_pins_do_not_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = _BlockingRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    pin = pe.TorchPin("torch==2.11.0", _CU128)
+    cpu_results: list[pe.PinnedEnv] = []
+    errors: list[BaseException] = []
+
+    def cpu_worker() -> None:
+        try:
+            cpu_results.append(pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs))
+        except BaseException as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=cpu_worker)
+    t1.start()
+    assert runner.entered.wait(timeout=5.0)
+
+    gpu_env = pe.prepare_pinned_run(
+        "0123456789abcdef",
+        tmp_path / "r2",
+        torch_pin=pin,
+        lock_timeout_s=5.0,
+        **kwargs,
+    )
+    assert gpu_env.torch_pin == pin
+    assert t1.is_alive(), "different torch_pin must not block behind CPU venv build"
+
+    runner.release.set()
+    t1.join(timeout=10.0)
+    assert not errors, errors
+    assert len(cpu_results) == 1
+    assert cpu_results[0].venv != gpu_env.venv
+
+
+def test_venv_lock_os_contention_timeout_and_invalid_bounds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    envs_root = Path(kwargs["envs_root"])
+    envs_root.mkdir(parents=True, exist_ok=True)
+    lock_path = envs_root / f"0123456789ab{pe.VENV_LOCK_SUFFIX}"
+
+    for bad_timeout in (-0.1, float("nan"), float("inf"), True):
+        bad_run = tmp_path / f"bad_{bad_timeout}"
+        with pytest.raises(pe.PinnedEnvError, match="lock_timeout_s"):
+            pe.prepare_pinned_run("0123456789abcdef", bad_run, lock_timeout_s=bad_timeout, **kwargs)
+        assert not (bad_run / "src").exists()
+
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR, 0o600)
+    pe._try_lock_fd(fd)
+    try:
+        with caplog.at_level(logging.INFO, logger=pe.logger.name):
+            with pytest.raises(pe.PinnedEnvError, match="timed out"):
+                pe.prepare_pinned_run(
+                    "0123456789abcdef", tmp_path / "r1", lock_timeout_s=0.15, **kwargs
+                )
+        assert "waiting for pinned venv lock" in caplog.text
+    finally:
+        pe._release_file_lock(fd)
+        os.close(fd)
+
+    env = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", lock_timeout_s=1.0, **kwargs)
+    assert env.venv.is_dir()
+
+
+@pytest.mark.parametrize(
+    "corrupt_payload",
+    [
+        "{not json",
+        "[]",
+        json.dumps(
+            {
+                "sha": "0123456789abcdef0123456789abcdef01234567",
+                "torch": None,
+                "wheel_sha256": None,
+            }
+        ),
+    ],
+)
+def test_corrupt_or_incomplete_marker_is_rebuilt_under_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    corrupt_payload: str,
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+    first = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+    marker_path = first.venv / pe.MARKER_NAME
+    marker_path.write_text(corrupt_payload, encoding="utf-8")
+
+    with caplog.at_level(logging.WARNING, logger=pe.logger.name):
+        rebuilt = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", **kwargs)
+
+    assert runner.count("venv") == 2
+    assert "corrupt pinned venv marker" in caplog.text
+    restored = json.loads((rebuilt.venv / pe.MARKER_NAME).read_text(encoding="utf-8"))
+    assert restored["wheel_sha256"] == rebuilt.wheel_sha256
+
+
+def test_failed_atomic_marker_write_leaves_no_partial_marker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runner = FakeRunner()
+    kwargs = _pinned_kwargs(tmp_path, runner, monkeypatch)
+
+    class _MarkerWriteError(RuntimeError):
+        pass
+
+    def _boom(_tmp: Path, _text: str, _encoding: str) -> None:
+        raise _MarkerWriteError("simulated crash during marker write")
+
+    with monkeypatch.context() as mp:
+        mp.setattr(atomic_io, "_write_text", _boom)
+        with pytest.raises(_MarkerWriteError):
+            pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r1", **kwargs)
+
+    venv = Path(kwargs["envs_root"]) / "0123456789ab"
+    assert not (venv / pe.MARKER_NAME).exists()
+    assert not list(venv.glob("*.tmp"))
+
+    rebuilt = pe.prepare_pinned_run("0123456789abcdef", tmp_path / "r2", **kwargs)
+    assert runner.count("venv") == 2
+    assert (rebuilt.venv / pe.MARKER_NAME).is_file()

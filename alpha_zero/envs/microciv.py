@@ -35,6 +35,13 @@ except ImportError:  # pragma: no cover
 
 logger = logging.getLogger(__name__)
 
+#: Rules version recorded in checkpoint provenance. Bump when a change alters what
+#: a recorded game means (mask semantics, rewards, turn structure), so a
+#: checkpoint can be told apart from one trained under different rules.
+#: 1 = before LF-B1; 2 = the move mask agrees with the executor (occupied tiles
+#: are masked out), which changes every seeded action sequence.
+ENV_VERSION = 2
+
 
 @dataclass
 class Unit:

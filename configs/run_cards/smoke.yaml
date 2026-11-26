@@ -1,0 +1,19 @@
+# Run card: the smallest real end-to-end exercise of the run-card driver.
+#
+#   python scripts/run_card.py configs/run_cards/smoke.yaml --price_only
+#   CIV6AZ_DATA_ROOT=E:\civ6az-data python scripts/run_card.py configs/run_cards/smoke.yaml
+#
+# Builds (or reuses) the pinned venv for `sha`, preflights it, then runs one
+# `training_civ6 --dry_run` (priced at 8 games) from the pinned source. A run
+# directory is single-use: to run this card again, change `card_id`.
+#
+# The pinned SHA must contain alpha_zero/local/pinned_env.py: the preflight
+# imports the PINNED assert_running_pinned, so an older SHA fails closed.
+card_id: smoke-20261111-r2
+sha: f2be40c9f44d6584b4d071866b8e2bb3221e9789
+max_games: 8
+description: One training_civ6 --dry_run from pinned source (LF-E6 smoke).
+invocations:
+  - name: train-dry-run
+    runner: training_civ6
+    argv: ["--dry_run", "--run_id", "smoke-20261111-r2", "--seed", "42"]

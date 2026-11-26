@@ -387,6 +387,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Base RNG seed for the baseline evaluation, so a probe can be repeated",
     )
     p.add_argument("--log_level", default="INFO", choices=["DEBUG", "INFO", "WARNING", "ERROR"])
+    from alpha_zero.utils.game_budget import add_budget_arguments
+
+    add_budget_arguments(p)
     return p.parse_args(argv)
 
 
@@ -397,6 +400,24 @@ def main(argv: list[str] | None = None) -> int:
         level=getattr(logging, args.log_level),
         format="%(asctime)s [%(levelname)s] %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
+    )
+
+    # Game budget: round-robin pairs x games, plus two baseline batches.
+    from alpha_zero.utils.game_budget import enforce_cli
+
+    enforce_cli(
+        "post_run_evaluation",
+        {
+            "num_models": len(
+                select_model_versions(args.model_start, args.model_end, args.model_stride)
+            ),
+            "tournament_games": args.tournament_games,
+            "baseline_games": args.baseline_games,
+            "skip_tournament": args.skip_tournament,
+            "skip_baseline_eval": args.skip_baseline_eval,
+            "dry_run": args.dry_run,
+        },
+        args,
     )
 
     # Set GCP env vars

@@ -86,6 +86,7 @@ def load_civ6az_env(
     """
     # --- Locate .env file ---
     candidate_paths: list[Path] = []
+    skip_dotenv = os.environ.get("CIV6AZ_SKIP_DOTENV") == "1"
     if dotenv_path is not None:
         candidate_paths.append(Path(dotenv_path).resolve())
 
@@ -98,7 +99,7 @@ def load_civ6az_env(
         candidate_paths.append(root_env)
 
     loaded_from: Path | None = None
-    for candidate in candidate_paths:
+    for candidate in [] if skip_dotenv else candidate_paths:
         if candidate.is_file():
             loaded_from = candidate
             break

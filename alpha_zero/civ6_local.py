@@ -15,344 +15,61 @@ Usage:
     python -m alpha_zero.civ6_local --checkpoint checkpoints/best.pt
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
 import sys
-import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-import yaml
-
-# Safe to import at module scope: alpha_zero.utils.device defers its own torch
-# import, so --help still works without paying for torch.
-from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE
-from alpha_zero.utils.device import resolve_device, resolve_device_str
+# Safe to import at module scope: alpha_zero.local.gameplay_config and
+# alpha_zero.utils.device defer torch imports, so --help stays fast.
+from alpha_zero.local.gameplay_config import (
+    DEFAULT_DEMO_MAX_CITIES,
+    DEFAULT_DEMO_MAX_UNITS,
+    DEFAULT_DEMO_NUM_PRODUCTION_ITEMS,
+    ENV_PREFIX,
+    SEARCH_MODE_GAP_ID,
+    SEARCH_TRANSLATOR_GAP_ID,
+    VALID_DEVICES,
+    VALID_LOG_LEVELS,
+    VALID_MODES,
+    Civ6LocalConfig,
+    _get_default_bridge_ipc_dir,
+    _get_default_civ6_log_path,
+    search_mode_refusal,
+)
+from alpha_zero.utils.constants import DEFAULT_ACTION_SPACE_SIZE, discrete_action_count
+from alpha_zero.utils.device import resolve_device
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-VALID_MODES = ("microciv", "civ6", "web")
-VALID_LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR")
-VALID_DEVICES = ("auto", "cpu", "cuda")  # "cuda:N" also accepted; see resolve_device_str
-
-ENV_PREFIX = "CIV6AZ_LOCAL_"
-
-
-def _get_default_bridge_ipc_dir() -> Path:
-    """Return the default IPC directory for the Civ6 bridge.
-
-    Delegates to ``alpha_zero.bridge.config._get_default_comm_dir`` which
-    already handles OneDrive-redirected *Documents* folders on Windows.
-    Falls back to ``%TEMP%/civ6az_bridge`` when the bridge package is not
-    importable (e.g., during unit tests that stub out the bridge layer).
-    """
-    try:
-        from alpha_zero.bridge.config import _get_default_comm_dir
-
-        return _get_default_comm_dir()
-    except Exception:
-        return Path(tempfile.gettempdir()) / "civ6az_bridge"
-
-
-def _get_default_civ6_log_path() -> Path:
-    """Return the default path to Civilization VI's ``Lua.log`` file.
-
-    Computed from ``%LOCALAPPDATA%`` on Windows, matching the standard
-    Firaxis install layout: ``Firaxis Games/Sid Meier's Civilization
-    VI/Logs/Lua.log``. Non-default install locations (e.g. Epic Games
-    Store, a redirected ``LOCALAPPDATA``) can override this via
-    ``Civ6LocalConfig.civ6_log_path`` / ``CIV6AZ_LOCAL_LOG_PATH`` /
-    ``--civ6-log-path``.
-    """
-    return (
-        Path(os.getenv("LOCALAPPDATA", ""))
-        / "Firaxis Games"
-        / "Sid Meier's Civilization VI"
-        / "Logs"
-        / "Lua.log"
-    )
-
-
-# ---------------------------------------------------------------------------
-# Configuration dataclass
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class Civ6LocalConfig:
-    """Configuration for local Civ6 gameplay.
-
-    Attributes:
-        mode: Play mode — microciv | civ6 | web
-        checkpoint_path: Path to a trained model checkpoint (None = use random/heuristic AI)
-        board_size: Board size for MicroCiv environment
-        num_players: Number of players (2-8, MicroCiv only)
-        num_simulations: MCTS simulations per move
-        device: PyTorch inference device (cpu | cuda)
-        use_mcts: Use MCTS policy instead of greedy argmax
-        web_host: Bind address for web mode
-        web_port: Port for web mode
-        bridge_ipc_dir: IPC directory for civ6 bridge mode
-        civ6_log_path: Path to Civilization VI's Lua.log, watched by the
-            bridge in civ6 mode
-        log_level: Logging verbosity (DEBUG | INFO | WARNING | ERROR)
-        dry_run: Validate config and exit without starting gameplay
-    """
-
-    mode: str = "microciv"
-    checkpoint_path: str | None = None
-    board_size: int = 16
-    num_players: int = 2
-    num_simulations: int = 50
-    device: str = "cpu"
-    use_mcts: bool = False
-    use_eval_harness: bool = False
-    web_host: str = "127.0.0.1"
-    web_port: int = 8080
-    bridge_ipc_dir: str = field(default_factory=lambda: str(_get_default_bridge_ipc_dir()))
-    civ6_log_path: str = field(default_factory=lambda: str(_get_default_civ6_log_path()))
-    log_level: str = "INFO"
-    dry_run: bool = False
-
-    def __post_init__(self) -> None:
-        """Validate configuration after initialization."""
-        if self.mode not in VALID_MODES:
-            raise ValueError(f"mode must be one of {VALID_MODES}, got {self.mode!r}")
-        if self.board_size < 4 or self.board_size > 64:
-            raise ValueError(f"board_size must be 4-64, got {self.board_size}")
-        if self.num_players < 2 or self.num_players > 8:
-            raise ValueError(f"num_players must be 2-8, got {self.num_players}")
-        if self.num_simulations < 1:
-            raise ValueError(f"num_simulations must be >= 1, got {self.num_simulations}")
-        # Resolve to a concrete device here so every downstream consumer sees
-        # the same value. Previously validate() warned about falling back to
-        # cpu without mutating self.device, so run_civ6_bridge kept handing the
-        # unresolved "cuda" to the policy and WebConfig while the network had
-        # already been placed on cpu.
-        self.device = resolve_device_str(self.device)
-        if self.web_port < 1 or self.web_port > 65535:
-            raise ValueError(f"web_port must be 1-65535, got {self.web_port}")
-        log_level_upper = self.log_level.upper()
-        if log_level_upper not in VALID_LOG_LEVELS:
-            raise ValueError(f"log_level must be one of {VALID_LOG_LEVELS}, got {self.log_level!r}")
-        self.log_level = log_level_upper
-
-    # ------------------------------------------------------------------
-    # Factory methods
-    # ------------------------------------------------------------------
-
-    @classmethod
-    def from_yaml(cls, path: str) -> "Civ6LocalConfig":
-        """Load configuration from a YAML file.
-
-        Args:
-            path: Path to the YAML config file.
-
-        Returns:
-            Civ6LocalConfig with values from the file.
-
-        Raises:
-            FileNotFoundError: If the file does not exist.
-            ValueError: If the YAML structure is invalid.
-        """
-        config_path = Path(path)
-        if not config_path.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
-
-        with config_path.open() as f:
-            raw = yaml.safe_load(f)
-
-        if raw is None:
-            return cls()
-
-        # Support both top-level keys and a nested "civ6_local" section
-        data: dict[str, Any] = raw.get("civ6_local", raw)
-
-        known_fields = {f.name for f in cls.__dataclass_fields__.values()}
-        filtered = {k: v for k, v in data.items() if k in known_fields}
-
-        unknown = set(data.keys()) - known_fields
-        if unknown:
-            logger.warning("Ignoring unknown config keys: %s", sorted(unknown))
-
-        return cls(**filtered)
-
-    @classmethod
-    def from_env(cls) -> "Civ6LocalConfig":
-        """Create configuration from CIV6AZ_LOCAL_ environment variables.
-
-        Supported variables (all optional):
-            CIV6AZ_LOCAL_MODE              — play mode
-            CIV6AZ_LOCAL_CHECKPOINT_PATH   — checkpoint file path
-            CIV6AZ_LOCAL_BOARD_SIZE        — board size (int)
-            CIV6AZ_LOCAL_NUM_PLAYERS       — number of players (int)
-            CIV6AZ_LOCAL_NUM_SIMULATIONS   — MCTS simulations (int)
-            CIV6AZ_LOCAL_DEVICE            — inference device
-            CIV6AZ_LOCAL_USE_MCTS          — use MCTS for bridge mode (1/true/yes)
-            CIV6AZ_LOCAL_WEB_HOST          — web server bind address
-            CIV6AZ_LOCAL_WEB_PORT          — web server port (int)
-            CIV6AZ_LOCAL_BRIDGE_IPC_DIR    — bridge IPC directory
-            CIV6AZ_LOCAL_LOG_PATH          — Civ6 Lua.log path (civ6 mode)
-            CIV6AZ_LOCAL_LOG_LEVEL         — logging level
-            CIV6AZ_LOCAL_DRY_RUN           — dry run flag (1/true/yes)
-
-        Returns:
-            Civ6LocalConfig with environment overrides applied.
-        """
-        base = cls()
-        kwargs: dict[str, Any] = {}
-
-        def _get(suffix: str) -> str | None:
-            return os.environ.get(f"{ENV_PREFIX}{suffix}")
-
-        def _get_bool(suffix: str, default: bool) -> bool:
-            val = (_get(suffix) or "").lower()
-            if val in ("1", "true", "yes"):
-                return True
-            if val in ("0", "false", "no"):
-                return False
-            return default
-
-        if (v := _get("MODE")) is not None:
-            kwargs["mode"] = v
-        if (v := _get("CHECKPOINT_PATH")) is not None:
-            kwargs["checkpoint_path"] = v if v else None
-        if (v := _get("BOARD_SIZE")) is not None:
-            kwargs["board_size"] = int(v)
-        if (v := _get("NUM_PLAYERS")) is not None:
-            kwargs["num_players"] = int(v)
-        if (v := _get("NUM_SIMULATIONS")) is not None:
-            kwargs["num_simulations"] = int(v)
-        if (v := _get("DEVICE")) is not None:
-            kwargs["device"] = v
-        if (v := _get("USE_MCTS")) is not None:
-            kwargs["use_mcts"] = _get_bool("USE_MCTS", False)
-        if (v := _get("USE_EVAL_HARNESS")) is not None:
-            kwargs["use_eval_harness"] = _get_bool("USE_EVAL_HARNESS", False)
-        if (v := _get("WEB_HOST")) is not None:
-            kwargs["web_host"] = v
-        if (v := _get("WEB_PORT")) is not None:
-            kwargs["web_port"] = int(v)
-        if (v := _get("BRIDGE_IPC_DIR")) is not None:
-            kwargs["bridge_ipc_dir"] = v
-        if (v := _get("LOG_PATH")) is not None:
-            kwargs["civ6_log_path"] = v
-        if (v := _get("LOG_LEVEL")) is not None:
-            kwargs["log_level"] = v
-
-        # dry_run is additive — env can enable it but not disable an already-set flag
-        if _get_bool("DRY_RUN", False):
-            kwargs["dry_run"] = True
-
-        if kwargs:
-            from dataclasses import replace
-
-            return replace(base, **kwargs)
-        return base
-
-    @classmethod
-    def from_preset(cls, preset: str) -> "Civ6LocalConfig":
-        """Create configuration from a named preset.
-
-        Presets:
-            microciv_fast  — MicroCiv with 8x8 board, 10 simulations (quick games)
-            microciv_full  — MicroCiv with 16x16 board, 50 simulations (full quality)
-            civ6           — Real Civ6 via bridge, 200 simulations
-
-        Args:
-            preset: Preset name.
-
-        Returns:
-            Civ6LocalConfig for the named preset.
-
-        Raises:
-            ValueError: If the preset is unknown.
-        """
-        presets: dict[str, dict[str, Any]] = {
-            "microciv_fast": {
-                "mode": "microciv",
-                "board_size": 8,
-                "num_simulations": 10,
-                "log_level": "WARNING",
-            },
-            "microciv_full": {
-                "mode": "microciv",
-                "board_size": 16,
-                "num_simulations": 50,
-                "log_level": "INFO",
-            },
-            "civ6": {
-                "mode": "civ6",
-                "num_simulations": 200,
-                "log_level": "INFO",
-            },
-        }
-
-        if preset not in presets:
-            valid = sorted(presets.keys())
-            raise ValueError(f"Unknown preset {preset!r}. Valid presets: {valid}")
-
-        return cls(**presets[preset])
-
-    def to_dict(self) -> dict[str, Any]:
-        """Serialise config to a plain dictionary.
-
-        Returns:
-            Dictionary representation of all config fields.
-        """
-        return {
-            "mode": self.mode,
-            "checkpoint_path": self.checkpoint_path,
-            "board_size": self.board_size,
-            "num_players": self.num_players,
-            "num_simulations": self.num_simulations,
-            "device": self.device,
-            "use_mcts": self.use_mcts,
-            "use_eval_harness": self.use_eval_harness,
-            "web_host": self.web_host,
-            "web_port": self.web_port,
-            "bridge_ipc_dir": self.bridge_ipc_dir,
-            "civ6_log_path": self.civ6_log_path,
-            "log_level": self.log_level,
-            "dry_run": self.dry_run,
-        }
-
-    def validate(self) -> list[str]:
-        """Return a list of non-fatal warning strings.
-
-        Returns:
-            List of warning messages (empty if everything looks fine).
-        """
-        warnings: list[str] = []
-
-        if self.checkpoint_path is not None and not Path(self.checkpoint_path).exists():
-            warnings.append(
-                f"checkpoint_path does not exist: {self.checkpoint_path!r} — AI will use random play"
-            )
-
-        if self.mode == "civ6":
-            bridge_dir = Path(self.bridge_ipc_dir)
-            if not bridge_dir.exists():
-                warnings.append(
-                    f"bridge_ipc_dir does not exist: {bridge_dir} — "
-                    "Civ6 must create it before the bridge starts"
-                )
-
-        if self.mode == "web" and self.web_host == "0.0.0.0":  # noqa: S104
-            warnings.append(
-                "web_host is 0.0.0.0 — server will accept connections from any interface"
-            )
-
-        # Device fallback is handled in __post_init__, which resolves and
-        # reports it rather than warning here and leaving self.device stale.
-
-        return warnings
+__all__ = [
+    "DEFAULT_DEMO_MAX_CITIES",
+    "DEFAULT_DEMO_MAX_UNITS",
+    "DEFAULT_DEMO_NUM_PRODUCTION_ITEMS",
+    "ENV_PREFIX",
+    "SEARCH_MODE_GAP_ID",
+    "SEARCH_TRANSLATOR_GAP_ID",
+    "VALID_DEVICES",
+    "VALID_LOG_LEVELS",
+    "VALID_MODES",
+    "Civ6LocalConfig",
+    "_build_bridge_policy",
+    "_build_network_for_bridge",
+    "_get_default_bridge_ipc_dir",
+    "_get_default_civ6_log_path",
+    "build_config",
+    "create_parser",
+    "main",
+    "run_civ6_bridge",
+    "run_microciv",
+    "run_web",
+    "search_mode_refusal",
+    "setup_logging",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -379,16 +96,14 @@ def run_microciv(config: Civ6LocalConfig) -> int:
     device = resolve_device(config.device)
 
     env = MicroCivEnv(board_size=config.board_size)
-    # ``Discrete.n`` may surface as numpy int / float depending on gym version;
-    # cast to plain int for the network constructor's typed signature.
-    action_size = int(env.action_space.n)
+    action_size = discrete_action_count(env.action_space)
     obs_sample, _ = env.reset()
     spatial_channels = int(obs_sample["spatial"].shape[0])
 
     net = MicroCivNetwork(
         board_size=config.board_size,
         action_space_size=action_size,
-        in_channels=spatial_channels,
+        spatial_channels=spatial_channels,
     ).to(device)
 
     if config.checkpoint_path:
@@ -503,15 +218,22 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
 
     Returns:
         Exit code: 0 = success / clean game end, 1 = setup failure (missing
-        bridge module / config), 2 = heartbeat lost with on_disconnect=exit,
-        130 = cancelled (Ctrl-C).
+        bridge module / config) or a refused search mode
+        (:func:`search_mode_refusal`), 2 = heartbeat lost with
+        on_disconnect=exit, 130 = cancelled (Ctrl-C).
     """
+    # Before anything is created or connected.
+    refusal = search_mode_refusal(config)
+    if refusal is not None:
+        logger.error(refusal)
+        return 1
+
     try:
+        import alpha_zero.bridge.config as bridge_config_mod
         from alpha_zero.bridge.action_converter import ActionConverter
         from alpha_zero.bridge.agent_loop import (
             AgentLoopConfig,
             BridgeAgentLoop,
-            GreedyNetworkPolicy,
             PolicyEngine,
         )
         from alpha_zero.bridge.config import BridgeConfig
@@ -525,13 +247,27 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     # Command transport: "file" (default) writes commands.json for a FireTuner
     # .ltp panel to relay; "socket" injects commands directly over the FireTuner
     # TCP protocol (no GUI panel needed). Selected via CIV6_BRIDGE_TRANSPORT.
-    transport = os.getenv("CIV6_BRIDGE_TRANSPORT", "file").lower()
-    bridge_cfg = BridgeConfig(
-        comm_dir=Path(config.bridge_ipc_dir),
-        log_level=config.log_level,
-        command_transport=transport,
-        tuner_host=os.getenv("CIV6_BRIDGE_TUNER_HOST", "127.0.0.1"),
-        tuner_port=int(os.getenv("CIV6_BRIDGE_TUNER_PORT", "4318")),
+    from_live_env = getattr(BridgeConfig, "from_live_env", None)
+    if callable(from_live_env) and isinstance(BridgeConfig, type):
+        bridge_cfg = from_live_env(
+            comm_dir=Path(config.bridge_ipc_dir),
+            log_level=config.log_level,
+        )
+    else:
+        # Mocked BridgeConfig in isolated unit tests skips from_live_env.
+        bridge_cfg = BridgeConfig(
+            comm_dir=Path(config.bridge_ipc_dir),
+            log_level=config.log_level,
+        )
+    default_transport = (
+        bridge_config_mod.DEFAULT_COMMAND_TRANSPORT
+        if isinstance(getattr(bridge_config_mod, "DEFAULT_COMMAND_TRANSPORT", None), str)
+        else "file"
+    )
+    transport = (
+        bridge_cfg.command_transport
+        if isinstance(getattr(bridge_cfg, "command_transport", None), str)
+        else (os.getenv("CIV6_BRIDGE_TRANSPORT", "").strip().lower() or default_transport)
     )
     bridge_cfg.ensure_comm_dir()
 
@@ -539,7 +275,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     logger.info("Command transport: %s", transport)
     if transport == "socket":
         logger.info(
-            "Injecting commands via FireTuner socket %s:%d (no GUI panel needed).",
+            "Injecting commands via FireTuner socket %s:%s (no GUI panel needed).",
             bridge_cfg.tuner_host,
             bridge_cfg.tuner_port,
         )
@@ -556,9 +292,9 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     # for the Steam demo, large enough to still express meaningful play.
     demo_action_space = ActionSpaceConfig(
         board_size=config.board_size,
-        max_units=20,
-        max_cities=5,
-        num_production_items=20,
+        max_units=DEFAULT_DEMO_MAX_UNITS,
+        max_cities=DEFAULT_DEMO_MAX_CITIES,
+        num_production_items=DEFAULT_DEMO_NUM_PRODUCTION_ITEMS,
     )
     action_converter = ActionConverter(
         board_size=config.board_size,
@@ -569,20 +305,7 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
     network = _build_network_for_bridge(
         config, action_space_size=action_converter.action_space_size
     )
-    policy: PolicyEngine
-    if config.use_mcts:
-        from alpha_zero.bridge.mcts_policy import Civ6MctsPolicy
-        from alpha_zero.core.civ6_mcts import GumbelMCTSConfig
-
-        gumbel_cfg = GumbelMCTSConfig(
-            num_simulations=config.num_simulations,
-            num_sampled_actions=min(config.num_simulations, 16),
-        )
-        policy = Civ6MctsPolicy(network=network, config=gumbel_cfg, device=config.device)
-        logger.info("Bridge using Civ6MctsPolicy (sims=%d)", config.num_simulations)
-    else:
-        policy = GreedyNetworkPolicy(network=network, device=config.device)
-        logger.info("Bridge using GreedyNetworkPolicy")
+    policy: PolicyEngine = _build_bridge_policy(config, network)
 
     agent_cfg = AgentLoopConfig.from_env()
 
@@ -638,84 +361,25 @@ def run_civ6_bridge(config: Civ6LocalConfig) -> int:
         return 130
 
 
+def _build_bridge_policy(config: Civ6LocalConfig, network: Any) -> Any:
+    """The policy the bridge agent loop runs: the search, or the greedy network.
+
+    ``run_civ6_bridge`` never gets here with ``use_mcts`` set: it refuses that
+    first (:func:`search_mode_refusal`). The body lives in
+    ``alpha_zero.bridge.policy_factory``.
+    """
+    from alpha_zero.bridge.policy_factory import build_bridge_policy
+
+    return build_bridge_policy(config, network, log=logger)
+
+
 def _build_network_for_bridge(
     config: Civ6LocalConfig, action_space_size: int = DEFAULT_ACTION_SPACE_SIZE
 ) -> Any:
-    """Construct (and optionally load) the policy network for the bridge.
+    """Construct (and optionally load) the policy network for the bridge."""
+    from alpha_zero.bridge.policy_factory import build_network_for_bridge
 
-    Extracted for testability and to keep ``run_civ6_bridge`` focused on
-    composition. Returns a ``MicroCivNetwork`` instance.
-    """
-    from alpha_zero.core.checkpoint_utils import safe_torch_load
-    from alpha_zero.core.civ6_network import MicroCivNetwork
-    from alpha_zero.envs.civ6_encoder import EncoderConfig
-
-    device = resolve_device(config.device)
-    # MicroCivNetwork picks the right value head (scalar vs N-player) based
-    # on num_players; the bridge currently targets 2-player real Civ6.
-    #
-    # StateConverter (used by BridgeAgentLoop) encodes states through the
-    # full Civ6StateEncoder, which emits EncoderConfig's spatial_channels=84
-    # / vector_dim=512 tensors - NOT MicroCivNetwork's own 13-channel/64-dim
-    # "MicroCiv default". Passing these explicitly here (rather than
-    # changing MicroCivNetwork's defaults, which are still used elsewhere
-    # e.g. the microciv/web training modes) keeps the bridge network's
-    # input dims matched to what StateConverter.convert_and_encode actually
-    # produces.
-    encoder_defaults = EncoderConfig()
-    network = MicroCivNetwork(
-        board_size=config.board_size,
-        num_players=config.num_players,
-        action_space_size=action_space_size,
-        spatial_channels=encoder_defaults.spatial_channels,
-        vector_dim=encoder_defaults.vector_dim,
-    ).to(device)
-
-    if config.checkpoint_path:
-        try:
-            from alpha_zero.storage.config import StorageConfig
-            from alpha_zero.storage.factory import create_storage_backend
-
-            ckpt_path = Path(config.checkpoint_path)
-            # Two supported layouts:
-            # 1. Direct .pt file - safe torch.load (weights_only=True; legacy
-            #    pickles need CIV6AZ_ALLOW_UNSAFE_CHECKPOINT=1)
-            # 2. Storage base dir containing models/champion/model.pt - use
-            #    LocalStorageBackend so metadata + future GCS storage work.
-            if ckpt_path.is_file():
-                state_dict = safe_torch_load(ckpt_path, map_location=device)
-                if isinstance(state_dict, dict) and "model_state_dict" in state_dict:
-                    state_dict = state_dict["model_state_dict"]
-                network.load_state_dict(state_dict)
-                logger.info("Loaded checkpoint from file: %s", ckpt_path)
-            elif ckpt_path.is_dir():
-                storage = create_storage_backend(StorageConfig.for_local(str(ckpt_path)))
-                state_dict, metadata = storage.load_champion(map_location=device)
-                network.load_state_dict(state_dict)
-                logger.info(
-                    "Loaded champion v%d from storage: %s",
-                    metadata.version,
-                    ckpt_path,
-                )
-            else:
-                logger.warning(
-                    "Checkpoint path %s does not exist - using synthetic weights",
-                    ckpt_path,
-                )
-        except Exception as exc:
-            logger.warning(
-                "Failed to load checkpoint %s: %s - falling back to synthetic weights",
-                config.checkpoint_path,
-                exc,
-            )
-    else:
-        logger.warning(
-            "No --checkpoint supplied; bridge will run with synthetic weights "
-            "(agent will play poorly). Pass --checkpoint <path> to load a real "
-            "trained model."
-        )
-
-    return network
+    return build_network_for_bridge(config, action_space_size, log=logger)
 
 
 def run_web(config: Civ6LocalConfig) -> int:
@@ -860,7 +524,11 @@ Examples:
         action="store_true",
         dest="use_mcts",
         default=None,
-        help="Use MCTS policy in civ6 mode (W2.2+)",
+        help=(
+            "Use the MCTS policy. Refused in civ6 mode until a translator from the "
+            f"search's actions to live commands exists ({SEARCH_MODE_GAP_ID}, "
+            f"{SEARCH_TRANSLATOR_GAP_ID})"
+        ),
     )
     mcts_group.add_argument(
         "--no-mcts",
@@ -900,7 +568,7 @@ Examples:
         type=str,
         dest="bridge_ipc_dir",
         metavar="DIR",
-        help="IPC directory for Civ6 bridge (default: /tmp/civ6az_bridge)",
+        help="IPC directory for Civ6 bridge (default: auto-detected Civ6 mod comm directory)",
     )
     parser.add_argument(
         "--civ6-log-path",
@@ -998,17 +666,14 @@ def build_config(args: argparse.Namespace) -> Civ6LocalConfig:
 
 
 def setup_logging(log_level: str) -> None:
-    """Configure root logger.
-
-    Args:
-        log_level: One of DEBUG / INFO / WARNING / ERROR.
-    """
+    """Configure root logger level and default stdout stream handler."""
     numeric = getattr(logging, log_level.upper(), logging.INFO)
     logging.basicConfig(
         level=numeric,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
+    logging.getLogger().setLevel(numeric)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1035,10 +700,23 @@ def main(argv: list[str] | None = None) -> int:
 
     # Update logging to final level
     setup_logging(config.log_level)
+    logger.debug(
+        "Resolved Civ6LocalConfig: mode=%s device=%s log_level=%s",
+        config.mode,
+        config.device,
+        config.log_level,
+    )
 
     # Print non-fatal warnings
     for warning in config.validate():
         logger.warning("Config: %s", warning)
+
+    # A config that cannot start is not a valid one, so this comes before the
+    # dry run reports "Configuration valid".
+    refusal = search_mode_refusal(config)
+    if refusal is not None:
+        logger.error(refusal)
+        return 1
 
     if config.dry_run:
         print("Configuration valid:")

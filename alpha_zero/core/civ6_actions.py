@@ -608,6 +608,11 @@ class MicroCivActionSpace:
         cities = game_state.get("cities", [])
         terrain = game_state.get("terrain", {})
 
+        # Every occupied tile, own or enemy. The executor
+        # (``MicroCivEnv._is_valid_move``) rejects a move onto ANY unit and then
+        # zeroes the mover's ``moves_remaining``, so the mask must exclude them.
+        occupied_positions = {tuple(u.get("position", (-1, -1))) for u in units}
+
         # Get enemy positions for attack checking
         enemy_positions = {
             tuple(u.get("position", (-1, -1))) for u in units if u.get("player") != current_player
@@ -631,7 +636,7 @@ class MicroCivActionSpace:
                     if 0 <= nx < self.board_size and 0 <= ny < self.board_size:
                         # Check terrain is passable
                         tile = terrain.get((nx, ny), {})
-                        if tile.get("type") != "mountain":
+                        if tile.get("type") != "mountain" and (nx, ny) not in occupied_positions:
                             mask[self.move_offset + own_unit_idx * 8 + dir_idx] = 1.0
 
                 # Attacks

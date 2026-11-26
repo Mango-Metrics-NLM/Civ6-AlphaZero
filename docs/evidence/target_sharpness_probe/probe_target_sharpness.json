@@ -1,0 +1,2595 @@
+{
+  "evidence": {
+    "claims": [
+      "sharpness (entropy, max-p, share above greedy_threshold) of the Gumbel policy target at k=8, n=24 on 200 random-play positions per seed, for 10 untrained networks (one per seed), under the current settings and the paper's"
+    ],
+    "command": "python scripts/probe_target_sharpness.py --positions 200 --seeds 0 1 2 3 4 5 6 7 42 1234 --out_dir docs/evidence/target_sharpness_probe",
+    "games_total": 0,
+    "generated_utc": "2026-11-12T06:38:28Z",
+    "git_sha": "4edefa5d17d68d72999aa45a3458cc7ac33ebef9",
+    "hardware": {
+      "cpu_model": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "gpu_model": null,
+      "logical_cores": 24,
+      "omp_num_threads": "2"
+    },
+    "non_claims": [
+      "not evidence of playing strength or of learning",
+      "untrained networks only; a trained network's targets may be sharper or flatter",
+      "positions come from random play, not from self-play",
+      "interior (non-root) selection is this repository's PUCT in every variant",
+      "the paper does not state how Go/chess Q is normalised; paper_affine is one reading of it, mctx_minmax_c1 is mctx's rescale at the paper's c_scale",
+      "the seed field is the first of several; every seed is listed under seeds",
+      "per-position rows are omitted; they are regenerated from the seeds"
+    ],
+    "numpy": "1.26.4",
+    "python": "3.11.9",
+    "schema_version": 1,
+    "search_epoch": "post-2026-09-04",
+    "seed": 0,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      42,
+      1234
+    ],
+    "torch": "2.11.0+cu128"
+  },
+  "games_played": 0,
+  "per_seed": [
+    {
+      "abs_root_network_value": {
+        "mean": 0.013572,
+        "median": 0.013672,
+        "p10": 0.010902,
+        "p90": 0.016082
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.918039,
+            "median": 1.993466,
+            "p10": 1.845403,
+            "p90": 2.031187
+          },
+          "max_p": {
+            "mean": 0.211108,
+            "median": 0.182392,
+            "p10": 0.168041,
+            "p90": 0.210595
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.03,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 7.845,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.565,
+          "entropy_nats": {
+            "mean": 1.14583,
+            "median": 1.268658,
+            "p10": 0.70483,
+            "p90": 1.385613
+          },
+          "max_p": {
+            "mean": 0.416617,
+            "median": 0.346723,
+            "p10": 0.263669,
+            "p90": 0.720344
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.23,
+          "share_max_p_above_greedy_threshold": 0.035,
+          "support": {
+            "mean": 16.965,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 28.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.935,
+          "entropy_nats": {
+            "mean": 2.656353,
+            "median": 2.763914,
+            "p10": 1.925221,
+            "p90": 3.325514
+          },
+          "max_p": {
+            "mean": 0.110942,
+            "median": 0.077665,
+            "p10": 0.043256,
+            "p90": 0.169348
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.02,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 16.965,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 28.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.655,
+          "entropy_nats": {
+            "mean": 2.294592,
+            "median": 2.333236,
+            "p10": 1.654391,
+            "p90": 2.988568
+          },
+          "max_p": {
+            "mean": 0.207492,
+            "median": 0.186651,
+            "p10": 0.127316,
+            "p90": 0.268299
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.015,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 16.965,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 28.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.42,
+          "entropy_nats": {
+            "mean": 1.121224,
+            "median": 1.099589,
+            "p10": 0.800048,
+            "p90": 1.38495
+          },
+          "max_p": {
+            "mean": 0.395197,
+            "median": 0.356212,
+            "p10": 0.275568,
+            "p90": 0.53339
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.175,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 16.965,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 28.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.905,
+          "entropy_nats": {
+            "mean": 2.659249,
+            "median": 2.765624,
+            "p10": 1.910139,
+            "p90": 3.324087
+          },
+          "max_p": {
+            "mean": 0.109848,
+            "median": 0.077665,
+            "p10": 0.043256,
+            "p90": 0.178071
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.02,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 16.965,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 28.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.92,
+          "entropy_nats": {
+            "mean": 1.925623,
+            "median": 1.987159,
+            "p10": 1.884436,
+            "p90": 2.030947
+          },
+          "max_p": {
+            "mean": 0.210559,
+            "median": 0.190916,
+            "p10": 0.169305,
+            "p90": 0.225749
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.010989,
+          "share_max_p_above_0_5": 0.02,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 7.845,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.83,
+        "mctx_minmax_c1": 0.665,
+        "paper_affine": 0.97,
+        "sigma_halving": 0.925
+      },
+      "current_visited_q_spread": {
+        "mean": 0.043643,
+        "median": 0.025603,
+        "p10": 0.010331,
+        "p90": 0.037256
+      },
+      "legal_actions": {
+        "mean": 16.965,
+        "median": 16.0,
+        "p10": 8.0,
+        "p90": 28.0
+      },
+      "positions_forced": 0,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.722071,
+          "median": 2.771255,
+          "p10": 2.07816,
+          "p90": 3.330884
+        },
+        "max_p": {
+          "mean": 0.079789,
+          "median": 0.067671,
+          "p10": 0.039481,
+          "p90": 0.13389
+        }
+      },
+      "seed": 0,
+      "temperature_phase_positions": 91
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.046129,
+        "median": 0.045902,
+        "p10": 0.040236,
+        "p90": 0.051969
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 0.948536,
+            "median": 0.859808,
+            "p10": 0.294855,
+            "p90": 1.548844
+          },
+          "max_p": {
+            "mean": 0.666575,
+            "median": 0.70423,
+            "p10": 0.377362,
+            "p90": 0.946831
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.018868,
+          "share_max_p_above_0_5": 0.635,
+          "share_max_p_above_greedy_threshold": 0.025,
+          "support": {
+            "mean": 7.77,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.795,
+          "entropy_nats": {
+            "mean": 0.108508,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.516768
+          },
+          "max_p": {
+            "mean": 0.951675,
+            "median": 1.0,
+            "p10": 0.787867,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.820755,
+          "share_max_p_above_0_5": 0.995,
+          "share_max_p_above_greedy_threshold": 0.78,
+          "support": {
+            "mean": 16.315,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 27.1
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.875,
+          "entropy_nats": {
+            "mean": 2.376955,
+            "median": 2.499308,
+            "p10": 1.423187,
+            "p90": 3.253367
+          },
+          "max_p": {
+            "mean": 0.293017,
+            "median": 0.303953,
+            "p10": 0.048661,
+            "p90": 0.547545
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.018868,
+          "share_max_p_above_0_5": 0.17,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 16.315,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 27.1
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.675,
+          "entropy_nats": {
+            "mean": 0.913277,
+            "median": 0.742212,
+            "p10": 0.245403,
+            "p90": 1.63092
+          },
+          "max_p": {
+            "mean": 0.713123,
+            "median": 0.847598,
+            "p10": 0.447239,
+            "p90": 0.960341
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.735,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 16.315,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 27.1
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.63,
+          "entropy_nats": {
+            "mean": 0.179204,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.676118
+          },
+          "max_p": {
+            "mean": 0.910332,
+            "median": 1.0,
+            "p10": 0.644717,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.660377,
+          "share_max_p_above_0_5": 0.99,
+          "share_max_p_above_greedy_threshold": 0.65,
+          "support": {
+            "mean": 16.315,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 27.1
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.86,
+          "entropy_nats": {
+            "mean": 2.40671,
+            "median": 2.561744,
+            "p10": 1.465281,
+            "p90": 3.255431
+          },
+          "max_p": {
+            "mean": 0.275837,
+            "median": 0.281239,
+            "p10": 0.048605,
+            "p90": 0.51416
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.018868,
+          "share_max_p_above_0_5": 0.115,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 16.315,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 27.1
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.945,
+          "entropy_nats": {
+            "mean": 0.859629,
+            "median": 0.784787,
+            "p10": 0.178292,
+            "p90": 1.548239
+          },
+          "max_p": {
+            "mean": 0.686284,
+            "median": 0.676165,
+            "p10": 0.377981,
+            "p90": 0.970691
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.018868,
+          "share_max_p_above_0_5": 0.61,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 7.77,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.355,
+        "mctx_minmax_c1": 0.175,
+        "paper_affine": 0.74,
+        "sigma_halving": 0.57
+      },
+      "current_visited_q_spread": {
+        "mean": 0.078594,
+        "median": 0.070199,
+        "p10": 0.01242,
+        "p90": 0.095273
+      },
+      "legal_actions": {
+        "mean": 16.315,
+        "median": 16.0,
+        "p10": 8.0,
+        "p90": 27.1
+      },
+      "positions_forced": 2,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.670124,
+          "median": 2.770302,
+          "p10": 2.078066,
+          "p90": 3.29789
+        },
+        "max_p": {
+          "mean": 0.09056,
+          "median": 0.06893,
+          "p10": 0.04022,
+          "p90": 0.132705
+        }
+      },
+      "seed": 1,
+      "temperature_phase_positions": 106
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.03765,
+        "median": 0.037958,
+        "p10": 0.03247,
+        "p90": 0.042048
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.225207,
+            "median": 1.238319,
+            "p10": 0.668772,
+            "p90": 1.773151
+          },
+          "max_p": {
+            "mean": 0.568621,
+            "median": 0.60646,
+            "p10": 0.234862,
+            "p90": 0.84485
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.615,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 7.715,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.795,
+          "entropy_nats": {
+            "mean": 0.255414,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.693053
+          },
+          "max_p": {
+            "mean": 0.842483,
+            "median": 1.0,
+            "p10": 0.506893,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.727273,
+          "share_max_p_above_0_5": 0.99,
+          "share_max_p_above_greedy_threshold": 0.655,
+          "support": {
+            "mean": 15.755,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.81,
+          "entropy_nats": {
+            "mean": 2.415935,
+            "median": 2.556893,
+            "p10": 1.462419,
+            "p90": 3.222896
+          },
+          "max_p": {
+            "mean": 0.255463,
+            "median": 0.222073,
+            "p10": 0.057092,
+            "p90": 0.51985
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.11,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 15.755,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 26.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.755,
+          "entropy_nats": {
+            "mean": 0.890195,
+            "median": 0.800619,
+            "p10": 0.354254,
+            "p90": 1.406485
+          },
+          "max_p": {
+            "mean": 0.710722,
+            "median": 0.845576,
+            "p10": 0.443757,
+            "p90": 0.930905
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.66,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.755,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.725,
+          "entropy_nats": {
+            "mean": 0.271087,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.693037
+          },
+          "max_p": {
+            "mean": 0.833024,
+            "median": 1.0,
+            "p10": 0.507408,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.757576,
+          "share_max_p_above_0_5": 0.98,
+          "share_max_p_above_greedy_threshold": 0.65,
+          "support": {
+            "mean": 15.755,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.795,
+          "entropy_nats": {
+            "mean": 2.440095,
+            "median": 2.609515,
+            "p10": 1.557734,
+            "p90": 3.231874
+          },
+          "max_p": {
+            "mean": 0.23932,
+            "median": 0.207799,
+            "p10": 0.054927,
+            "p90": 0.455393
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.075,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 15.755,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 26.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.955,
+          "entropy_nats": {
+            "mean": 1.163055,
+            "median": 1.094116,
+            "p10": 0.527519,
+            "p90": 1.762152
+          },
+          "max_p": {
+            "mean": 0.590461,
+            "median": 0.590118,
+            "p10": 0.236047,
+            "p90": 0.890988
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.605,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 7.715,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.495,
+        "mctx_minmax_c1": 0.39,
+        "paper_affine": 0.82,
+        "sigma_halving": 0.635
+      },
+      "current_visited_q_spread": {
+        "mean": 0.067677,
+        "median": 0.056338,
+        "p10": 0.010313,
+        "p90": 0.078659
+      },
+      "legal_actions": {
+        "mean": 15.755,
+        "median": 15.0,
+        "p10": 7.0,
+        "p90": 26.0
+      },
+      "positions_forced": 1,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.629909,
+          "median": 2.707067,
+          "p10": 1.944803,
+          "p90": 3.256863
+        },
+        "max_p": {
+          "mean": 0.090188,
+          "median": 0.070419,
+          "p10": 0.041828,
+          "p90": 0.15023
+        }
+      },
+      "seed": 2,
+      "temperature_phase_positions": 99
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.057131,
+        "median": 0.057159,
+        "p10": 0.051607,
+        "p90": 0.063314
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.676282,
+            "median": 1.773298,
+            "p10": 1.53071,
+            "p90": 1.840442
+          },
+          "max_p": {
+            "mean": 0.263459,
+            "median": 0.225862,
+            "p10": 0.207461,
+            "p90": 0.287567
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.03,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 7.855,
+            "median": 8.0,
+            "p10": 7.9,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.4,
+          "entropy_nats": {
+            "mean": 0.893696,
+            "median": 0.655983,
+            "p10": 0.0,
+            "p90": 1.928751
+          },
+          "max_p": {
+            "mean": 0.619144,
+            "median": 0.669839,
+            "p10": 0.188598,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.291667,
+          "share_max_p_above_0_5": 0.525,
+          "share_max_p_above_greedy_threshold": 0.4,
+          "support": {
+            "mean": 16.925,
+            "median": 16.0,
+            "p10": 7.9,
+            "p90": 27.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.36,
+          "entropy_nats": {
+            "mean": 2.603945,
+            "median": 2.770177,
+            "p10": 1.766171,
+            "p90": 3.25615
+          },
+          "max_p": {
+            "mean": 0.117785,
+            "median": 0.076239,
+            "p10": 0.045832,
+            "p90": 0.207267
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.025,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 16.925,
+            "median": 16.0,
+            "p10": 7.9,
+            "p90": 27.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.375,
+          "entropy_nats": {
+            "mean": 2.134372,
+            "median": 2.167715,
+            "p10": 1.335366,
+            "p90": 2.953974
+          },
+          "max_p": {
+            "mean": 0.310756,
+            "median": 0.244071,
+            "p10": 0.085484,
+            "p90": 0.660411
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.205,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 16.925,
+            "median": 16.0,
+            "p10": 7.9,
+            "p90": 27.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.335,
+          "entropy_nats": {
+            "mean": 0.894372,
+            "median": 0.694079,
+            "p10": 0.0,
+            "p90": 1.931787
+          },
+          "max_p": {
+            "mean": 0.615385,
+            "median": 0.636877,
+            "p10": 0.185102,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.28125,
+          "share_max_p_above_0_5": 0.535,
+          "share_max_p_above_greedy_threshold": 0.385,
+          "support": {
+            "mean": 16.925,
+            "median": 16.0,
+            "p10": 7.9,
+            "p90": 27.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.365,
+          "entropy_nats": {
+            "mean": 2.603056,
+            "median": 2.770177,
+            "p10": 1.738196,
+            "p90": 3.25615
+          },
+          "max_p": {
+            "mean": 0.118894,
+            "median": 0.076278,
+            "p10": 0.045832,
+            "p90": 0.223529
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.025,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 16.925,
+            "median": 16.0,
+            "p10": 7.9,
+            "p90": 27.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.905,
+          "entropy_nats": {
+            "mean": 1.650347,
+            "median": 1.745706,
+            "p10": 1.455289,
+            "p90": 1.831941
+          },
+          "max_p": {
+            "mean": 0.271668,
+            "median": 0.245083,
+            "p10": 0.210642,
+            "p90": 0.306972
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.035,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 7.855,
+            "median": 8.0,
+            "p10": 7.9,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.57,
+        "mctx_minmax_c1": 0.415,
+        "paper_affine": 0.865,
+        "sigma_halving": 0.86
+      },
+      "current_visited_q_spread": {
+        "mean": 0.094971,
+        "median": 0.055262,
+        "p10": 0.001546,
+        "p90": 0.127143
+      },
+      "legal_actions": {
+        "mean": 16.925,
+        "median": 16.0,
+        "p10": 7.9,
+        "p90": 27.0
+      },
+      "positions_forced": 0,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.731698,
+          "median": 2.771231,
+          "p10": 2.064353,
+          "p90": 3.293883
+        },
+        "max_p": {
+          "mean": 0.080727,
+          "median": 0.070037,
+          "p10": 0.042739,
+          "p90": 0.139884
+        }
+      },
+      "seed": 3,
+      "temperature_phase_positions": 96
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.071808,
+        "median": 0.071973,
+        "p10": 0.069816,
+        "p90": 0.074016
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.63519,
+            "median": 1.724444,
+            "p10": 1.464269,
+            "p90": 1.759105
+          },
+          "max_p": {
+            "mean": 0.25546,
+            "median": 0.230536,
+            "p10": 0.217515,
+            "p90": 0.289204
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.012195,
+          "share_max_p_above_0_5": 0.01,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 7.83,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.37,
+          "entropy_nats": {
+            "mean": 1.055036,
+            "median": 1.385115,
+            "p10": 0.0,
+            "p90": 1.961083
+          },
+          "max_p": {
+            "mean": 0.524897,
+            "median": 0.281538,
+            "p10": 0.155312,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.182927,
+          "share_max_p_above_0_5": 0.44,
+          "share_max_p_above_greedy_threshold": 0.295,
+          "support": {
+            "mean": 16.3,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.385,
+          "entropy_nats": {
+            "mean": 2.599607,
+            "median": 2.70678,
+            "p10": 1.787773,
+            "p90": 3.256717
+          },
+          "max_p": {
+            "mean": 0.107069,
+            "median": 0.078592,
+            "p10": 0.043932,
+            "p90": 0.195909
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.005,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 16.3,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 26.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.39,
+          "entropy_nats": {
+            "mean": 2.227164,
+            "median": 2.262208,
+            "p10": 1.481022,
+            "p90": 2.906995
+          },
+          "max_p": {
+            "mean": 0.252247,
+            "median": 0.196603,
+            "p10": 0.086788,
+            "p90": 0.503603
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.105,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 16.3,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.345,
+          "entropy_nats": {
+            "mean": 1.046531,
+            "median": 1.115562,
+            "p10": 0.0,
+            "p90": 1.961365
+          },
+          "max_p": {
+            "mean": 0.521817,
+            "median": 0.350011,
+            "p10": 0.154778,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.182927,
+          "share_max_p_above_0_5": 0.445,
+          "share_max_p_above_greedy_threshold": 0.275,
+          "support": {
+            "mean": 16.3,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 26.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.385,
+          "entropy_nats": {
+            "mean": 2.592408,
+            "median": 2.70678,
+            "p10": 1.760978,
+            "p90": 3.256717
+          },
+          "max_p": {
+            "mean": 0.110887,
+            "median": 0.078592,
+            "p10": 0.043932,
+            "p90": 0.200634
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.005,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 16.3,
+            "median": 16.0,
+            "p10": 8.0,
+            "p90": 26.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.915,
+          "entropy_nats": {
+            "mean": 1.587479,
+            "median": 1.600996,
+            "p10": 1.314923,
+            "p90": 1.749066
+          },
+          "max_p": {
+            "mean": 0.270311,
+            "median": 0.269975,
+            "p10": 0.222595,
+            "p90": 0.328049
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.01,
+          "share_max_p_above_greedy_threshold": 0.0,
+          "support": {
+            "mean": 7.83,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.59,
+        "mctx_minmax_c1": 0.425,
+        "paper_affine": 0.885,
+        "sigma_halving": 0.86
+      },
+      "current_visited_q_spread": {
+        "mean": 0.084586,
+        "median": 0.140886,
+        "p10": 0.000395,
+        "p90": 0.149098
+      },
+      "legal_actions": {
+        "mean": 16.3,
+        "median": 16.0,
+        "p10": 8.0,
+        "p90": 26.0
+      },
+      "positions_forced": 0,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.692118,
+          "median": 2.771324,
+          "p10": 2.078407,
+          "p90": 3.256696
+        },
+        "max_p": {
+          "mean": 0.081702,
+          "median": 0.06788,
+          "p10": 0.042129,
+          "p90": 0.135254
+        }
+      },
+      "seed": 4,
+      "temperature_phase_positions": 82
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.028207,
+        "median": 0.028806,
+        "p10": 0.019368,
+        "p90": 0.03627
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.211863,
+            "median": 1.098482,
+            "p10": 0.531913,
+            "p90": 1.950803
+          },
+          "max_p": {
+            "mean": 0.586437,
+            "median": 0.635201,
+            "p10": 0.251431,
+            "p90": 0.888963
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.017857,
+          "share_max_p_above_0_5": 0.615,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 7.68,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.7,
+          "entropy_nats": {
+            "mean": 0.060611,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.041544
+          },
+          "max_p": {
+            "mean": 0.974806,
+            "median": 1.0,
+            "p10": 0.993028,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.946429,
+          "share_max_p_above_0_5": 0.985,
+          "share_max_p_above_greedy_threshold": 0.905,
+          "support": {
+            "mean": 15.385,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.1
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.73,
+          "entropy_nats": {
+            "mean": 2.375449,
+            "median": 2.481712,
+            "p10": 1.519366,
+            "p90": 3.217183
+          },
+          "max_p": {
+            "mean": 0.261061,
+            "median": 0.256497,
+            "p10": 0.04749,
+            "p90": 0.454173
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.017857,
+          "share_max_p_above_0_5": 0.08,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 15.385,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.1
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.69,
+          "entropy_nats": {
+            "mean": 1.05471,
+            "median": 0.701582,
+            "p10": 0.203784,
+            "p90": 2.500413
+          },
+          "max_p": {
+            "mean": 0.707227,
+            "median": 0.860491,
+            "p10": 0.256389,
+            "p90": 0.968097
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.017857,
+          "share_max_p_above_0_5": 0.735,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 15.385,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.1
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.69,
+          "entropy_nats": {
+            "mean": 0.081398,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.222696
+          },
+          "max_p": {
+            "mean": 0.964011,
+            "median": 1.0,
+            "p10": 0.942682,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.892857,
+          "share_max_p_above_0_5": 0.985,
+          "share_max_p_above_greedy_threshold": 0.86,
+          "support": {
+            "mean": 15.385,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.1
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.73,
+          "entropy_nats": {
+            "mean": 2.376632,
+            "median": 2.482484,
+            "p10": 1.553598,
+            "p90": 3.217183
+          },
+          "max_p": {
+            "mean": 0.259532,
+            "median": 0.263758,
+            "p10": 0.04749,
+            "p90": 0.463964
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.017857,
+          "share_max_p_above_0_5": 0.08,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 15.385,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.1
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.96,
+          "entropy_nats": {
+            "mean": 1.1197,
+            "median": 1.075621,
+            "p10": 0.346887,
+            "p90": 1.949673
+          },
+          "max_p": {
+            "mean": 0.618201,
+            "median": 0.660537,
+            "p10": 0.251431,
+            "p90": 0.937429
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.017857,
+          "share_max_p_above_0_5": 0.635,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 7.68,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.27,
+        "mctx_minmax_c1": 0.14,
+        "paper_affine": 0.705,
+        "sigma_halving": 0.555
+      },
+      "current_visited_q_spread": {
+        "mean": 0.071225,
+        "median": 0.058357,
+        "p10": 0.00184,
+        "p90": 0.077112
+      },
+      "legal_actions": {
+        "mean": 15.385,
+        "median": 15.0,
+        "p10": 7.0,
+        "p90": 25.1
+      },
+      "positions_forced": 3,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.592849,
+          "median": 2.706755,
+          "p10": 1.945314,
+          "p90": 3.221604
+        },
+        "max_p": {
+          "mean": 0.10074,
+          "median": 0.072414,
+          "p10": 0.043335,
+          "p90": 0.152169
+        }
+      },
+      "seed": 5,
+      "temperature_phase_positions": 112
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.096825,
+        "median": 0.096824,
+        "p10": 0.092154,
+        "p90": 0.10182
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.501104,
+            "median": 1.606715,
+            "p10": 1.157678,
+            "p90": 1.695395
+          },
+          "max_p": {
+            "mean": 0.291106,
+            "median": 0.250462,
+            "p10": 0.22673,
+            "p90": 0.353662
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.017094,
+          "share_max_p_above_0_5": 0.04,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 7.815,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.505,
+          "entropy_nats": {
+            "mean": 1.209325,
+            "median": 1.37365,
+            "p10": 3e-05,
+            "p90": 1.928434
+          },
+          "max_p": {
+            "mean": 0.461622,
+            "median": 0.356189,
+            "p10": 0.195614,
+            "p90": 0.999998
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.102564,
+          "share_max_p_above_0_5": 0.285,
+          "share_max_p_above_greedy_threshold": 0.17,
+          "support": {
+            "mean": 15.79,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.575,
+          "entropy_nats": {
+            "mean": 2.452315,
+            "median": 2.624969,
+            "p10": 1.563959,
+            "p90": 3.217488
+          },
+          "max_p": {
+            "mean": 0.151701,
+            "median": 0.102425,
+            "p10": 0.046121,
+            "p90": 0.294984
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.017094,
+          "share_max_p_above_0_5": 0.025,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 15.79,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.525,
+          "entropy_nats": {
+            "mean": 2.243853,
+            "median": 2.359847,
+            "p10": 1.54203,
+            "p90": 2.941147
+          },
+          "max_p": {
+            "mean": 0.233053,
+            "median": 0.174705,
+            "p10": 0.088559,
+            "p90": 0.461686
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.008547,
+          "share_max_p_above_0_5": 0.065,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.79,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.42,
+          "entropy_nats": {
+            "mean": 1.199695,
+            "median": 1.36289,
+            "p10": 0.001211,
+            "p90": 1.932312
+          },
+          "max_p": {
+            "mean": 0.455106,
+            "median": 0.371981,
+            "p10": 0.188749,
+            "p90": 0.999879
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.102564,
+          "share_max_p_above_0_5": 0.265,
+          "share_max_p_above_greedy_threshold": 0.145,
+          "support": {
+            "mean": 15.79,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.555,
+          "entropy_nats": {
+            "mean": 2.437364,
+            "median": 2.624423,
+            "p10": 1.534036,
+            "p90": 3.217488
+          },
+          "max_p": {
+            "mean": 0.159424,
+            "median": 0.103071,
+            "p10": 0.046121,
+            "p90": 0.2979
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.017094,
+          "share_max_p_above_0_5": 0.025,
+          "share_max_p_above_greedy_threshold": 0.015,
+          "support": {
+            "mean": 15.79,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.93,
+          "entropy_nats": {
+            "mean": 1.422105,
+            "median": 1.497272,
+            "p10": 1.142197,
+            "p90": 1.674285
+          },
+          "max_p": {
+            "mean": 0.311656,
+            "median": 0.294293,
+            "p10": 0.234768,
+            "p90": 0.366261
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.017094,
+          "share_max_p_above_0_5": 0.05,
+          "share_max_p_above_greedy_threshold": 0.02,
+          "support": {
+            "mean": 7.815,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.59,
+        "mctx_minmax_c1": 0.425,
+        "paper_affine": 0.75,
+        "sigma_halving": 0.71
+      },
+      "current_visited_q_spread": {
+        "mean": 0.141033,
+        "median": 0.17224,
+        "p10": 0.001807,
+        "p90": 0.213543
+      },
+      "legal_actions": {
+        "mean": 15.79,
+        "median": 15.0,
+        "p10": 8.0,
+        "p90": 25.0
+      },
+      "positions_forced": 2,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.645694,
+          "median": 2.706488,
+          "p10": 2.077484,
+          "p90": 3.217469
+        },
+        "max_p": {
+          "mean": 0.092709,
+          "median": 0.072759,
+          "p10": 0.044089,
+          "p90": 0.13876
+        }
+      },
+      "seed": 6,
+      "temperature_phase_positions": 117
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.152788,
+        "median": 0.153575,
+        "p10": 0.147911,
+        "p90": 0.15642
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.37196,
+            "median": 1.392254,
+            "p10": 1.103442,
+            "p90": 1.569147
+          },
+          "max_p": {
+            "mean": 0.300576,
+            "median": 0.265401,
+            "p10": 0.245775,
+            "p90": 0.351677
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.045,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 7.75,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.705,
+          "entropy_nats": {
+            "mean": 1.650413,
+            "median": 1.784739,
+            "p10": 1.097055,
+            "p90": 1.986376
+          },
+          "max_p": {
+            "mean": 0.251346,
+            "median": 0.194638,
+            "p10": 0.151651,
+            "p90": 0.357466
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.040816,
+          "share_max_p_above_0_5": 0.08,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 15.53,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 24.1
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.715,
+          "entropy_nats": {
+            "mean": 2.313414,
+            "median": 2.576424,
+            "p10": 1.308737,
+            "p90": 3.141427
+          },
+          "max_p": {
+            "mean": 0.171464,
+            "median": 0.118181,
+            "p10": 0.058007,
+            "p90": 0.332146
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.01,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.53,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 24.1
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.69,
+          "entropy_nats": {
+            "mean": 2.293053,
+            "median": 2.47937,
+            "p10": 1.424251,
+            "p90": 3.048201
+          },
+          "max_p": {
+            "mean": 0.187679,
+            "median": 0.120853,
+            "p10": 0.060807,
+            "p90": 0.322519
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.035,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.53,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 24.1
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.685,
+          "entropy_nats": {
+            "mean": 1.627833,
+            "median": 1.777309,
+            "p10": 1.043993,
+            "p90": 1.986376
+          },
+          "max_p": {
+            "mean": 0.258745,
+            "median": 0.204155,
+            "p10": 0.151651,
+            "p90": 0.43421
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.040816,
+          "share_max_p_above_0_5": 0.1,
+          "share_max_p_above_greedy_threshold": 0.025,
+          "support": {
+            "mean": 15.53,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 24.1
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.7,
+          "entropy_nats": {
+            "mean": 2.292551,
+            "median": 2.576424,
+            "p10": 1.29265,
+            "p90": 3.141427
+          },
+          "max_p": {
+            "mean": 0.180443,
+            "median": 0.118784,
+            "p10": 0.058007,
+            "p90": 0.336478
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.015,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.53,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 24.1
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.93,
+          "entropy_nats": {
+            "mean": 1.316339,
+            "median": 1.354247,
+            "p10": 1.101631,
+            "p90": 1.565658
+          },
+          "max_p": {
+            "mean": 0.318422,
+            "median": 0.3199,
+            "p10": 0.248845,
+            "p90": 0.358401
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.0,
+          "share_max_p_above_0_5": 0.07,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 7.75,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.845,
+        "mctx_minmax_c1": 0.765,
+        "paper_affine": 0.85,
+        "sigma_halving": 0.82
+      },
+      "current_visited_q_spread": {
+        "mean": 0.20343,
+        "median": 0.296813,
+        "p10": 0.00033,
+        "p90": 0.308071
+      },
+      "legal_actions": {
+        "mean": 15.53,
+        "median": 15.0,
+        "p10": 7.0,
+        "p90": 24.1
+      },
+      "positions_forced": 1,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.622054,
+          "median": 2.706075,
+          "p10": 1.944384,
+          "p90": 3.180636
+        },
+        "max_p": {
+          "mean": 0.091545,
+          "median": 0.072917,
+          "p10": 0.044727,
+          "p90": 0.152822
+        }
+      },
+      "seed": 7,
+      "temperature_phase_positions": 98
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.163592,
+        "median": 0.163579,
+        "p10": 0.157243,
+        "p90": 0.170149
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 1.293161,
+            "median": 1.386626,
+            "p10": 1.100465,
+            "p90": 1.510339
+          },
+          "max_p": {
+            "mean": 0.308673,
+            "median": 0.274512,
+            "p10": 0.254965,
+            "p90": 0.363415
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.035,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 7.86,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.62,
+          "entropy_nats": {
+            "mean": 1.294268,
+            "median": 1.368243,
+            "p10": 1.093816,
+            "p90": 1.581795
+          },
+          "max_p": {
+            "mean": 0.329485,
+            "median": 0.316353,
+            "p10": 0.262242,
+            "p90": 0.383727
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.04,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.515,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.885,
+          "entropy_nats": {
+            "mean": 1.962173,
+            "median": 1.942428,
+            "p10": 1.285194,
+            "p90": 2.715892
+          },
+          "max_p": {
+            "mean": 0.242802,
+            "median": 0.223881,
+            "p10": 0.139802,
+            "p90": 0.339878
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.02,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.515,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.615,
+          "entropy_nats": {
+            "mean": 2.048547,
+            "median": 2.027017,
+            "p10": 1.534488,
+            "p90": 2.637179
+          },
+          "max_p": {
+            "mean": 0.240939,
+            "median": 0.22606,
+            "p10": 0.171679,
+            "p90": 0.309951
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.015,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.515,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.465,
+          "entropy_nats": {
+            "mean": 1.187154,
+            "median": 1.097599,
+            "p10": 1.086918,
+            "p90": 1.384076
+          },
+          "max_p": {
+            "mean": 0.350466,
+            "median": 0.352592,
+            "p10": 0.270159,
+            "p90": 0.394861
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.055,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.515,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.83,
+          "entropy_nats": {
+            "mean": 1.858154,
+            "median": 1.801303,
+            "p10": 1.243153,
+            "p90": 2.702594
+          },
+          "max_p": {
+            "mean": 0.273315,
+            "median": 0.287017,
+            "p10": 0.148326,
+            "p90": 0.343846
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.035,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.515,
+            "median": 15.0,
+            "p10": 8.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.91,
+          "entropy_nats": {
+            "mean": 1.189423,
+            "median": 1.103437,
+            "p10": 1.098491,
+            "p90": 1.388751
+          },
+          "max_p": {
+            "mean": 0.336033,
+            "median": 0.343832,
+            "p10": 0.261815,
+            "p90": 0.369546
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.010417,
+          "share_max_p_above_0_5": 0.055,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 7.86,
+            "median": 8.0,
+            "p10": 8.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.76,
+        "mctx_minmax_c1": 0.61,
+        "paper_affine": 0.8,
+        "sigma_halving": 0.77
+      },
+      "current_visited_q_spread": {
+        "mean": 0.255363,
+        "median": 0.224176,
+        "p10": 0.141017,
+        "p90": 0.343738
+      },
+      "legal_actions": {
+        "mean": 15.515,
+        "median": 15.0,
+        "p10": 8.0,
+        "p90": 25.0
+      },
+      "positions_forced": 1,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.637472,
+          "median": 2.705482,
+          "p10": 2.076465,
+          "p90": 3.216465
+        },
+        "max_p": {
+          "mean": 0.090197,
+          "median": 0.075405,
+          "p10": 0.04449,
+          "p90": 0.137039
+        }
+      },
+      "seed": 42,
+      "temperature_phase_positions": 96
+    },
+    {
+      "abs_root_network_value": {
+        "mean": 0.045224,
+        "median": 0.045354,
+        "p10": 0.041013,
+        "p90": 0.049662
+      },
+      "cells": {
+        "current": {
+          "argmax_agrees_with_current": 1.0,
+          "entropy_nats": {
+            "mean": 0.99792,
+            "median": 0.838764,
+            "p10": 0.258521,
+            "p90": 1.673019
+          },
+          "max_p": {
+            "mean": 0.644221,
+            "median": 0.671687,
+            "p10": 0.341824,
+            "p90": 0.956171
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.009804,
+          "share_max_p_above_0_5": 0.6,
+          "share_max_p_above_greedy_threshold": 0.03,
+          "support": {
+            "mean": 7.735,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        },
+        "current_search_mctx_minmax_c1_target": {
+          "argmax_agrees_with_current": 0.685,
+          "entropy_nats": {
+            "mean": 0.076753,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.212394
+          },
+          "max_p": {
+            "mean": 0.96391,
+            "median": 1.0,
+            "p10": 0.945205,
+            "p90": 1.0
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.901961,
+          "share_max_p_above_0_5": 0.995,
+          "share_max_p_above_greedy_threshold": 0.85,
+          "support": {
+            "mean": 15.965,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "current_search_paper_affine_target": {
+          "argmax_agrees_with_current": 0.68,
+          "entropy_nats": {
+            "mean": 2.349475,
+            "median": 2.480029,
+            "p10": 1.337869,
+            "p90": 3.177038
+          },
+          "max_p": {
+            "mean": 0.288307,
+            "median": 0.29081,
+            "p10": 0.045817,
+            "p90": 0.564742
+          },
+          "search": "current",
+          "share_above_threshold_in_temperature_phase": 0.009804,
+          "share_max_p_above_0_5": 0.165,
+          "share_max_p_above_greedy_threshold": 0.01,
+          "support": {
+            "mean": 15.965,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "mctx_default": {
+          "argmax_agrees_with_current": 0.65,
+          "entropy_nats": {
+            "mean": 1.120986,
+            "median": 0.728026,
+            "p10": 0.258772,
+            "p90": 2.483988
+          },
+          "max_p": {
+            "mean": 0.688375,
+            "median": 0.7145,
+            "p10": 0.269355,
+            "p90": 0.957466
+          },
+          "search": "mctx_default",
+          "share_above_threshold_in_temperature_phase": 0.009804,
+          "share_max_p_above_0_5": 0.71,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.965,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "mctx_minmax_c1": {
+          "argmax_agrees_with_current": 0.63,
+          "entropy_nats": {
+            "mean": 0.078693,
+            "median": 0.0,
+            "p10": 0.0,
+            "p90": 0.286557
+          },
+          "max_p": {
+            "mean": 0.964581,
+            "median": 1.0,
+            "p10": 0.922367,
+            "p90": 1.0
+          },
+          "search": "mctx_minmax_c1",
+          "share_above_threshold_in_temperature_phase": 0.852941,
+          "share_max_p_above_0_5": 1.0,
+          "share_max_p_above_greedy_threshold": 0.815,
+          "support": {
+            "mean": 15.965,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.0
+          },
+          "target": "minmax"
+        },
+        "paper_affine": {
+          "argmax_agrees_with_current": 0.68,
+          "entropy_nats": {
+            "mean": 2.345525,
+            "median": 2.482893,
+            "p10": 1.255115,
+            "p90": 3.179891
+          },
+          "max_p": {
+            "mean": 0.286423,
+            "median": 0.28837,
+            "p10": 0.045817,
+            "p90": 0.554339
+          },
+          "search": "paper_affine",
+          "share_above_threshold_in_temperature_phase": 0.009804,
+          "share_max_p_above_0_5": 0.17,
+          "share_max_p_above_greedy_threshold": 0.005,
+          "support": {
+            "mean": 15.965,
+            "median": 15.0,
+            "p10": 7.0,
+            "p90": 25.0
+          },
+          "target": "affine"
+        },
+        "sigma_halving": {
+          "argmax_agrees_with_current": 0.965,
+          "entropy_nats": {
+            "mean": 0.871025,
+            "median": 0.797612,
+            "p10": 0.173149,
+            "p90": 1.673019
+          },
+          "max_p": {
+            "mean": 0.68293,
+            "median": 0.665555,
+            "p10": 0.342357,
+            "p90": 0.972917
+          },
+          "search": "sigma_halving",
+          "share_above_threshold_in_temperature_phase": 0.009804,
+          "share_max_p_above_0_5": 0.615,
+          "share_max_p_above_greedy_threshold": 0.035,
+          "support": {
+            "mean": 7.735,
+            "median": 8.0,
+            "p10": 7.0,
+            "p90": 8.0
+          },
+          "target": "repo"
+        }
+      },
+      "chosen_move_agreement_with_current": {
+        "mctx_default": 0.395,
+        "mctx_minmax_c1": 0.16,
+        "paper_affine": 0.715,
+        "sigma_halving": 0.58
+      },
+      "current_visited_q_spread": {
+        "mean": 0.0813,
+        "median": 0.077949,
+        "p10": 0.001368,
+        "p90": 0.092239
+      },
+      "legal_actions": {
+        "mean": 15.965,
+        "median": 15.0,
+        "p10": 7.0,
+        "p90": 25.0
+      },
+      "positions_forced": 1,
+      "prior": {
+        "entropy_nats": {
+          "mean": 2.649201,
+          "median": 2.706839,
+          "p10": 1.945144,
+          "p90": 3.217597
+        },
+        "max_p": {
+          "mean": 0.091492,
+          "median": 0.07228,
+          "p10": 0.043904,
+          "p90": 0.154565
+        }
+      },
+      "seed": 1234,
+      "temperature_phase_positions": 102
+    }
+  ],
+  "pooled": {
+    "cells": {
+      "current": {
+        "argmax_agrees_with_current": 1.0,
+        "entropy_nats": {
+          "mean": 1.377926,
+          "median": 1.518487,
+          "p10": 0.650605,
+          "p90": 1.931373
+        },
+        "max_p": {
+          "mean": 0.409624,
+          "median": 0.288677,
+          "p10": 0.203318,
+          "p90": 0.848621
+        },
+        "search": "current",
+        "share_above_threshold_in_temperature_phase": 0.011011,
+        "share_across_seeds": {
+          "max": 0.03,
+          "mean": 0.019,
+          "min": 0.005,
+          "se": 0.003145
+        },
+        "share_max_p_above_0_5": 0.2655,
+        "share_max_p_above_greedy_threshold": 0.019,
+        "support": {
+          "mean": 7.7855,
+          "median": 8.0,
+          "p10": 7.0,
+          "p90": 8.0
+        },
+        "target": "repo"
+      },
+      "current_search_mctx_minmax_c1_target": {
+        "argmax_agrees_with_current": 0.614,
+        "entropy_nats": {
+          "mean": 0.774985,
+          "median": 0.692401,
+          "p10": 0.0,
+          "p90": 1.839846
+        },
+        "max_p": {
+          "mean": 0.633598,
+          "median": 0.563449,
+          "p10": 0.18907,
+          "p90": 1.0
+        },
+        "search": "current",
+        "share_above_threshold_in_temperature_phase": 0.418418,
+        "share_across_seeds": {
+          "max": 0.905,
+          "mean": 0.413,
+          "min": 0.01,
+          "se": 0.113108
+        },
+        "share_max_p_above_0_5": 0.5565,
+        "share_max_p_above_greedy_threshold": 0.413,
+        "support": {
+          "mean": 16.0445,
+          "median": 15.0,
+          "p10": 7.0,
+          "p90": 26.0
+        },
+        "target": "minmax"
+      },
+      "current_search_paper_affine_target": {
+        "argmax_agrees_with_current": 0.695,
+        "entropy_nats": {
+          "mean": 2.410562,
+          "median": 2.563848,
+          "p10": 1.458373,
+          "p90": 3.217233
+        },
+        "max_p": {
+          "mean": 0.199961,
+          "median": 0.127258,
+          "p10": 0.048071,
+          "p90": 0.433755
+        },
+        "search": "current",
+        "share_above_threshold_in_temperature_phase": 0.009009,
+        "share_across_seeds": {
+          "max": 0.03,
+          "mean": 0.014,
+          "min": 0.0,
+          "se": 0.002667
+        },
+        "share_max_p_above_0_5": 0.063,
+        "share_max_p_above_greedy_threshold": 0.014,
+        "support": {
+          "mean": 16.0445,
+          "median": 15.0,
+          "p10": 7.0,
+          "p90": 26.0
+        },
+        "target": "affine"
+      },
+      "mctx_default": {
+        "argmax_agrees_with_current": 0.602,
+        "entropy_nats": {
+          "mean": 1.722075,
+          "median": 1.81585,
+          "p10": 0.441151,
+          "p90": 2.833054
+        },
+        "max_p": {
+          "mean": 0.425161,
+          "median": 0.296378,
+          "p10": 0.10424,
+          "p90": 0.923737
+        },
+        "search": "mctx_default",
+        "share_above_threshold_in_temperature_phase": 0.005005,
+        "share_across_seeds": {
+          "max": 0.015,
+          "mean": 0.0055,
+          "min": 0.0,
+          "se": 0.001572
+        },
+        "share_max_p_above_0_5": 0.328,
+        "share_max_p_above_greedy_threshold": 0.0055,
+        "support": {
+          "mean": 16.0445,
+          "median": 15.0,
+          "p10": 7.0,
+          "p90": 26.0
+        },
+        "target": "minmax"
+      },
+      "mctx_minmax_c1": {
+        "argmax_agrees_with_current": 0.5345,
+        "entropy_nats": {
+          "mean": 0.768719,
+          "median": 0.692867,
+          "p10": 0.0,
+          "p90": 1.84111
+        },
+        "max_p": {
+          "mean": 0.626867,
+          "median": 0.529826,
+          "p10": 0.192022,
+          "p90": 1.0
+        },
+        "search": "mctx_minmax_c1",
+        "share_above_threshold_in_temperature_phase": 0.392392,
+        "share_across_seeds": {
+          "max": 0.86,
+          "mean": 0.383,
+          "min": 0.01,
+          "se": 0.106862
+        },
+        "share_max_p_above_0_5": 0.553,
+        "share_max_p_above_greedy_threshold": 0.383,
+        "support": {
+          "mean": 16.0445,
+          "median": 15.0,
+          "p10": 7.0,
+          "p90": 26.0
+        },
+        "target": "minmax"
+      },
+      "paper_affine": {
+        "argmax_agrees_with_current": 0.6805,
+        "entropy_nats": {
+          "mean": 2.401174,
+          "median": 2.571258,
+          "p10": 1.419592,
+          "p90": 3.217306
+        },
+        "max_p": {
+          "mean": 0.201392,
+          "median": 0.127453,
+          "p10": 0.048058,
+          "p90": 0.435787
+        },
+        "search": "paper_affine",
+        "share_above_threshold_in_temperature_phase": 0.009009,
+        "share_across_seeds": {
+          "max": 0.03,
+          "mean": 0.0135,
+          "min": 0.0,
+          "se": 0.002794
+        },
+        "share_max_p_above_0_5": 0.0565,
+        "share_max_p_above_greedy_threshold": 0.0135,
+        "support": {
+          "mean": 16.0445,
+          "median": 15.0,
+          "p10": 7.0,
+          "p90": 26.0
+        },
+        "target": "affine"
+      },
+      "sigma_halving": {
+        "argmax_agrees_with_current": 0.9335,
+        "entropy_nats": {
+          "mean": 1.310472,
+          "median": 1.468623,
+          "p10": 0.372432,
+          "p90": 1.921512
+        },
+        "max_p": {
+          "mean": 0.429652,
+          "median": 0.328962,
+          "p10": 0.2123,
+          "p90": 0.92892
+        },
+        "search": "sigma_halving",
+        "share_above_threshold_in_temperature_phase": 0.009009,
+        "share_across_seeds": {
+          "max": 0.035,
+          "mean": 0.0185,
+          "min": 0.0,
+          "se": 0.003578
+        },
+        "share_max_p_above_0_5": 0.2705,
+        "share_max_p_above_greedy_threshold": 0.0185,
+        "support": {
+          "mean": 7.7855,
+          "median": 8.0,
+          "p10": 7.0,
+          "p90": 8.0
+        },
+        "target": "repo"
+      }
+    },
+    "positions": 2000,
+    "positions_forced": 11,
+    "temperature_phase_positions": 999
+  },
+  "probe": "probe_target_sharpness",
+  "probe_schema_version": 1,
+  "settings": {
+    "board_size": 8,
+    "current": {
+      "c_scale": 1.0,
+      "c_visit": 50.0,
+      "greedy_threshold": 0.99,
+      "halving_score": "g + log pi + completedQ_raw (no sigma)",
+      "interior_c_puct": 1.0,
+      "policy_target": "completed_q",
+      "temperature": 1.0,
+      "temperature_threshold": 30
+    },
+    "device": "cpu",
+    "gumbel_k": 8,
+    "gumbel_sims": 24,
+    "max_turns": 60,
+    "network": "MicroCivNetwork, random init (torch.manual_seed(seed)), 0 games trained",
+    "paper": {
+      "c_scale": 1.0,
+      "c_visit": 50.0,
+      "completion": "visited: own Q; unvisited: v_mix",
+      "halving_score": "g + log pi + sigma(completedQ_normalised)",
+      "mctx_default_c_scale": 0.1,
+      "normalisation": {
+        "mctx_default": "per-node min-max with mctx's value_scale 0.1",
+        "mctx_minmax_c1": "per-node min-max (mctx) with the paper's c_scale 1.0",
+        "paper_affine": "(q + 1) / 2 (paper: 'normalized to [0, 1]', method unstated)"
+      },
+      "target": "softmax(log pi + sigma) over all legal actions"
+    },
+    "position_source": "seeded uniform-random play to a uniform target turn",
+    "positions_per_seed": 200,
+    "seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      42,
+      1234
+    ]
+  }
+}

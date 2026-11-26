@@ -155,7 +155,9 @@ class LiveBridge:
 
         Args:
             timeout: Maximum seconds to wait. Defaults to config timeout.
-            require_new: If True, waits for a new state even if one exists.
+            require_new: If True, a state newer than the last one this bridge
+                handed out (at once if one has already arrived). If False, the
+                latest state when there is one.
 
         Returns:
             Game state object.
@@ -166,11 +168,21 @@ class LiveBridge:
         if timeout is None:
             timeout = self._config.command_timeout_ms / 1000.0
 
-        if not require_new and self._tailer.latest_state is not None:
-            return StateMessage.from_dict(self._tailer.latest_state).state
+        if not require_new:
+            current = self._tailer.current_state()
+            if current is not None:
+                return StateMessage.from_dict(current).state
 
         raw = await self._tailer.wait_for_state(timeout=timeout)
         return StateMessage.from_dict(raw).state
+
+    def backlog_state(self) -> GameStateData | None:
+        """The state found in the log at start, while no heartbeat has confirmed it.
+
+        For a tool that wants to act on it without waiting for a heartbeat.
+        """
+        raw = self._tailer.backlog_state
+        return None if raw is None else StateMessage.from_dict(raw).state
 
     def check_heartbeat(self, max_age: float | None = None) -> bool:
         """Check if a recent heartbeat was received.

@@ -1,28 +1,26 @@
 {
-    "last_session_id": "session_01CXusP6jtsBXpQcjpC9W3b8",
-    "last_timestamp": "2026-11-10T06:06:16Z",
-    "current_focus": "Public-release readiness implemented and pushed (PR #132, v2.0.0 roll); handed off to Pre-PR",
-    "resume_pointers": {
-        "current_task": "Pre-PR review of PR #132; then the maintainer checklist (review \u00a79) before flipping the repository public",
-        "blocked_on": [
-            "maintainer: rotate the W&B key (commit is the head of closed PR #72; branch deletion does nothing)",
-            "maintainer: remove the four allUsers IAM bindings / confirm services undeployed",
-            "maintainer: merge P5 before renaming the default branch to main; protection with required checks and zero approvals",
-            "maintainer: make ianshank/Agents public or remove the eval extra from make verify",
-            "maintainer: ratify the charter commit c66f12b; tag v2.0.0 on the merge commit"
-        ],
-        "next_steps": [
-            "Pre-PR: independent review of PR #132 per .claude/skills/pre-pr-handoff",
-            "After merge: openspec-archive for public-release-readiness, harden-governance-gates and reproducible-runs",
-            "Milestone v2.1: first post-fix learning run per docs/EVALUATION.md \u00a77; CONFIRM-FIRST hunks for coordinator.py / vertex_orchestrator.py (E5, seeding)",
-            "Open the public backlog issues from the review \u00a710 (security items stay private)"
-        ]
-    },
-    "context_files": [
-        "kb/specs/20261110-public-release-readiness.md",
-        "docs/audits/2026-11-10-public-release-review.md",
-        "openspec/changes/public-release-readiness/tasks.md",
-        "docs/EVALUATION.md",
-        "kb/handoffs/20261110-devsqe-to-prepr-public-release-readiness.md"
+  "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
+  "last_timestamp": "2026-11-26T18:59:00Z",
+  "current_focus": "PR #182 merged into dev (6348548b). Release prep chore/release-v2.1.0 open for dev ahead of dev -> qa promotion, v2.1.0-rc.1 tag, and A1 (980g) / A1-R (980g) confirmation runs on quiet dual GPUs.",
+  "resume_pointers": {
+    "current_task": "Merge chore/release-v2.1.0 PR into dev, promote dev -> qa, tag v2.1.0-rc.1, and run A1 / A1-R",
+    "blocked_on": [
+      "Maintainer: review & merge chore/release-v2.1.0 PR into dev",
+      "Maintainer: promote dev -> qa (merge commit) and run python -m scripts.maintainer.tag_release v2.1.0-rc.1 --execute",
+      "Maintainer: provision civ6az-agent machine user & run 4 identity verification checks"
+    ],
+    "next_steps": [
+      "Merge chore/release-v2.1.0 into dev",
+      "Promote dev -> qa and tag v2.1.0-rc.1",
+      "Run a1.yaml (980g) -> a1r.yaml (980g) on quiet dual GPUs, build release bundle, and verify release evidence"
     ]
+  },
+  "context_files": [
+    "docs/evidence/t0b_calibration/README.md",
+    "docs/EVALUATION.md",
+    "alpha_zero/evaluation/a1_registration.py",
+    "docs/evidence/live_civ6_baseline/README.md",
+    "docs/runbooks/branching-and-release.md",
+    "CLAUDE.md"
+  ]
 }

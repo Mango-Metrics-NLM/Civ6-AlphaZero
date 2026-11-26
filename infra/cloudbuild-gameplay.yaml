@@ -43,17 +43,15 @@ steps:
       - lint
 
   # ---------- Python version guard (inside the built image) ----------
-  # Same base as the training image (nvcr.io/nvidia/pytorch:24.09-py3, which
-  # NGC documents as Python 3.10 despite the Dockerfile comment); the image is
-  # assembled with PYTHONPATH, so `requires-python` is never checked. Report the
-  # version and warn below 3.11; report-only until the base image moves to a
-  # Python 3.11+ release (Dependabot #130, a maintainer decision).
+  # Same base as the training image (nvcr.io/nvidia/pytorch:26.10-py3, Python
+  # 3.12); the image is assembled with PYTHONPATH, so `requires-python` is never
+  # checked by pip. Fail the build if the image's Python is below 3.11.
   - name: '${_INFERENCE_IMAGE}:${_TAG}'
     id: check-python-version
     entrypoint: python
     args:
       - -c
-      - 'import sys; v = sys.version_info; print("python", sys.version); v >= (3, 11) or print("WARNING: image Python", f"{v.major}.{v.minor}", "is below requires-python >=3.11; the base-image bump (Dependabot #130) is pending a maintainer decision")'
+      - 'import sys; print("python", sys.version); sys.version_info >= (3, 11) or sys.exit("image Python is below requires-python >=3.11")'
     waitFor:
       - build-inference
 

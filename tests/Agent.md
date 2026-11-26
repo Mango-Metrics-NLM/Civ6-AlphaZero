@@ -13,25 +13,41 @@ You are the **Quality Assurance Engineer**. You own the test infrastructure: uni
 ## Module Purpose
 
 This directory provides comprehensive testing:
-- **Unit tests** (322 files): One test file per module, isolated with mocks
-- **Integration tests** (51 files): Cross-module scenarios (training loops, pipelines)
-- **Cloud tests** (54 unit + 2 smoke): GCP component tests — these import cleanly with no
+- **Unit tests** (325 files): One test file per module, isolated with mocks
+- **Integration tests** (49 files): Cross-module scenarios (training loops, pipelines)
+- **Cloud tests** (46 unit + 2 smoke): GCP component tests — these import cleanly with no
   Google SDK present, so CI runs them on `.[dev]` alone
 - **E2E tests** (8 files): Full pipeline and live GCS tests
-- **Regression tests** (5 files): known bug reproductions (hex encoder), repository-hygiene
+- **Regression tests** (23 files): known bug reproductions (hex encoder, CUDA determinism, dual-mode GPU/E2E & worktree AQA), repository-hygiene
   invariants (tracked-but-ignored files, secret-scan allowlist scoping), the AQA meta-gate that
-  every suite under `tests/` is actually run by CI, self-play seeding determinism, and the
+  every suite under `tests/` is actually run by CI, debt/coverage ratchets, and the
   governance validators' CLI contract
 - **Structural / contract tests**: pin an interface rather than a behaviour — import-shim
   identity, `mock.patch` reachability through a shim, and package layering asserted by parsing
   ASTs (`tests/unit/test_mcts_split_backcompat.py`)
-- **Governance tests** (5 files): the deterministic validators (openspec, kb, skills, agents,
-  doc-sync). Run with their own `pytest.ini` and `--confcutdir` so they load neither the root
+- **Governance tests** (19 files): the deterministic validators (`openspec`, `kb`, `skills`, `agents`,
+  `doc-sync`), harness hook guards, and cross-file tool pins. Run with their own `pytest.ini` and `--confcutdir` so they load neither the root
   `addopts` nor the torch-importing `tests/conftest.py`
-- **Script tests** (8 files): entry points under `scripts/`
-- **Smoke tests**: Quick sanity checks for critical paths
-- **Security tests**: Security vulnerability checks + secret scanning (`make security-secrets`)
-- **Sanity tests**: Import and basic functionality verification
+- **Script tests** (30 files): entry points under `scripts/`
+- **Smoke tests** (3 files): Quick sanity checks for critical paths
+- **Security tests** (3 files): Security vulnerability checks + secret scanning (`make security-secrets`)
+- **Sanity tests** (1 file): Import and basic functionality verification
+
+---
+
+## Key Files
+
+| Path | Responsibility |
+|------|---------------|
+| `conftest.py` | Root pytest fixtures and torch environment setup |
+| `governance/pytest.ini` | Isolated governance suite pytest config (`--confcutdir=tests/governance`) |
+| `governance/agent_warning_baseline.json` | Ratchet baseline (`max_warnings`) for `scripts/validate_agents.py` |
+| `regression/test_gpu_e2e_and_worktree_aqa.py` | Dual-mode (live GPU + mocked) AQA suite & worktree/venv/RAG hardening |
+| `regression/test_gpu_skip_gate_aqa.py` | AQA gate verifying opt-in `CIV6AZ_REQUIRE_GPU` skip-to-failure plugin behavior |
+| `regression/test_post_sync_defects_regression.py` | Regression tests for post-sync defects including bidirectional `cd -P` physical resolution across NTFS junctions |
+| `fixtures/gpu_skip_gate.py` | Opt-in pytest plugin (`CIV6AZ_REQUIRE_GPU`) enforcing device count and failing CUDA/GPU/device skips |
+| `regression/test_suite_wiring_regression.py` | Enforces CI + `Makefile` wiring across all test directories |
+| `regression/test_repo_hygiene_regression.py` | Validates `.gitignore` and `.gitleaks.toml` invariants |
 
 ---
 
@@ -51,20 +67,19 @@ This directory provides comprehensive testing:
 
 ```
 tests/
-├── unit/              # 322 files — isolated module tests
-├── integration/       # 51 files — cross-module tests
+├── unit/              # 325 files — isolated module tests
+├── integration/       # 49 files — cross-module tests
 ├── cloud/
-│   ├── unit/          # 54 files — GCP component tests
+│   ├── unit/          # 46 files — GCP component tests
 │   └── smoke/         # 2 files — cloud smoke tests
 ├── e2e/               # 8 files — end-to-end pipeline tests
-├── governance/        # 5 files — validator tests (own pytest.ini, --confcutdir)
-├── scripts/           # 8 files — scripts/ entry-point tests
-├── inference/         # inference service tests
-├── regression/        # Known bug reproductions, repo-hygiene invariants,
-│                     #   and the AQA meta-gate that every suite is actually run
-├── sanity/            # Import sanity checks (auto-discovers new modules)
-├── security/          # Security vulnerability checks
-├── smoke/             # Quick sanity checks
+├── governance/        # 19 files — validator & harness tests (own pytest.ini, --confcutdir)
+├── scripts/           # 30 files — scripts/ entry-point tests
+├── inference/         # 1 file — inference service tests
+├── regression/        # 23 files — Known bug reproductions, repo-hygiene, ratchets & AQA gates
+├── sanity/            # 1 file — Import sanity checks (auto-discovers new modules)
+├── security/          # 3 files — Security vulnerability checks
+├── smoke/             # 3 files — Quick sanity checks
 ├── mocks/             # Shared mock objects
 ├── fixtures/          # Test fixtures and game states
 └── conftest.py        # Shared fixtures (imports torch at module scope)

@@ -1,0 +1,19 @@
+{
+  "name": "legacy-name",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/claude/civ6-alphazero-implementation-vMnun"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "creation"
+    }
+  ]
+}

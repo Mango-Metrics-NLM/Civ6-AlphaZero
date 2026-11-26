@@ -25,13 +25,9 @@ from typing import Any
 
 import pytest
 
+from tests.regression.branch_policy import protected_branches
+
 FLOORS_PATH = Path("coverage-floors.json")
-# Branches the base may live on when the event gives no better answer: the
-# repository's default branch today and the name it is being renamed to.
-_DEFAULT_BRANCH_CANDIDATES = (
-    "claude/civ6-alphazero-implementation-vMnun",
-    "main",
-)
 
 
 def _load(text: str) -> dict[str, Any]:
@@ -80,17 +76,27 @@ def _candidate_refs() -> list[str]:
     """Where the base branch may be, most specific first.
 
     On a ``pull_request`` event GitHub sets ``GITHUB_BASE_REF`` to the branch
-    the PR targets; that is the right base by definition and comes first. Then
-    ``origin/HEAD`` (set by a normal clone, not by actions/checkout), then the
-    known default-branch names.
+    the PR targets; that is the right base by definition and comes first.
+    Otherwise, on a push to a protected branch, ``GITHUB_REF_NAME`` is that
+    branch: a push to ``qa`` must be judged against ``qa``'s previous state,
+    not against ``dev`` (the first protected candidate). It is used only when
+    it names a protected branch -- on a feature-branch push its own ref would
+    reduce the comparison to ``HEAD~1``, weaker than the fork point from the
+    default branch the remaining candidates give. Then ``origin/HEAD`` (set by
+    a normal clone, not by actions/checkout), then every protected branch
+    (``branch_policy.protected_branches``).
     """
     refs: list[str] = []
+    protected = protected_branches()
     base_ref = os.environ.get("GITHUB_BASE_REF", "").strip()
+    ref_name = os.environ.get("GITHUB_REF_NAME", "").strip()
     if base_ref:
         refs.append(f"origin/{base_ref}")
+    elif ref_name in protected:
+        refs.append(f"origin/{ref_name}")
     refs.append("origin/HEAD")
-    refs.extend(f"origin/{branch}" for branch in _DEFAULT_BRANCH_CANDIDATES)
-    return refs
+    refs.extend(f"origin/{branch}" for branch in protected)
+    return list(dict.fromkeys(refs))
 
 
 def _comparison_point(ref: str) -> tuple[str, str] | None:
@@ -220,6 +226,8 @@ def test_pull_request_base_ref_is_preferred(monkeypatch: pytest.MonkeyPatch) -> 
     must lead the candidate list; without it, it must not appear at all (an
     empty value must not produce a bogus ``origin/`` candidate).
     """
+    # A push event in CI also sets GITHUB_REF_NAME; isolate the PR case from it.
+    monkeypatch.delenv("GITHUB_REF_NAME", raising=False)
     monkeypatch.setenv("GITHUB_BASE_REF", "release/next")
     assert _candidate_refs()[0] == "origin/release/next"
     monkeypatch.setenv("GITHUB_BASE_REF", "")
@@ -227,6 +235,35 @@ def test_pull_request_base_ref_is_preferred(monkeypatch: pytest.MonkeyPatch) -> 
     assert all(not ref.endswith("origin/") for ref in _candidate_refs())
     monkeypatch.delenv("GITHUB_BASE_REF")
     assert _candidate_refs()[0] == "origin/HEAD"
+
+
+def test_push_to_a_protected_branch_compares_against_that_branch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """On push, GITHUB_REF_NAME leads -- but only for a protected branch."""
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.setenv("CIV6AZ_PROTECTED_BRANCHES", "dev qa main legacy-default")
+    monkeypatch.setenv("GITHUB_REF_NAME", "qa")
+    assert _candidate_refs()[0] == "origin/qa"
+    # A feature-branch push keeps the fork-point comparison.
+    monkeypatch.setenv("GITHUB_REF_NAME", "claude/some-feature")
+    assert _candidate_refs()[0] == "origin/HEAD"
+    assert "origin/claude/some-feature" not in _candidate_refs()
+    # A PR's base still wins over the ref name.
+    monkeypatch.setenv("GITHUB_BASE_REF", "dev")
+    monkeypatch.setenv("GITHUB_REF_NAME", "qa")
+    assert _candidate_refs()[0] == "origin/dev"
+
+
+def test_candidates_cover_every_protected_branch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The candidate list is read from the protected list, not hardcoded."""
+    monkeypatch.delenv("GITHUB_BASE_REF", raising=False)
+    monkeypatch.delenv("GITHUB_REF_NAME", raising=False)
+    monkeypatch.setenv("CIV6AZ_PROTECTED_BRANCHES", "dev qa main legacy-default")
+    refs = _candidate_refs()
+    for branch in ("dev", "qa", "main", "legacy-default"):
+        assert f"origin/{branch}" in refs
+    assert len(refs) == len(set(refs)), "candidates must not repeat"
 
 
 def test_a_missing_base_is_a_failure_in_ci_and_a_skip_elsewhere(

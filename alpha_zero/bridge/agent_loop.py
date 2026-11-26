@@ -29,11 +29,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import time
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol, cast
 
 import numpy as np
 
@@ -42,6 +40,10 @@ from alpha_zero.bridge.action_converter import (
     InvalidActionError,
     NoLegalActionsError,
 )
+from alpha_zero.bridge.agent_loop_config import ENV_PREFIX as ENV_PREFIX
+from alpha_zero.bridge.agent_loop_config import AgentLoopConfig as AgentLoopConfig
+from alpha_zero.bridge.agent_loop_config import DisconnectStrategy as DisconnectStrategy
+from alpha_zero.bridge.command_policy import choose, diagnostics_of, is_command_policy
 from alpha_zero.bridge.file_bridge import (
     AckTimeoutError,
     ConnectionLostError,
@@ -51,23 +53,20 @@ from alpha_zero.bridge.health_checker import (
     CircuitBreakerOpenError,
     GameBridgeHealthChecker,
 )
+from alpha_zero.bridge.offer_filter import first_to_unblock, sendable, vetoed
 from alpha_zero.bridge.protocol import (
+    END_TURN_BLOCKED,
+    AckMessage,
     CommandMessage,
     GameStateData,
     LuaCommand,
     create_end_turn_command,
 )
 from alpha_zero.bridge.state_converter import GameNotStartedError, StateConverter
-from alpha_zero.bridge.utils import extract_scalar_value, parse_bool_env
+from alpha_zero.bridge.turn_ledger import LedgerLimits, TurnLedger
+from alpha_zero.bridge.utils import extract_scalar_value
 
 logger = logging.getLogger(__name__)
-
-# Env-var prefix for AgentLoopConfig overrides. Matches the Civ6LocalConfig
-# CIV6AZ_LOCAL_ pattern - see alpha_zero/civ6_local.py:48.
-ENV_PREFIX = "CIV6AZ_AGENT_"
-
-_DISCONNECT_LITERAL = ("exit", "reconnect")
-DisconnectStrategy = Literal["exit", "reconnect"]
 
 # Reconnect backoff bounds (seconds). Kept as module constants instead of
 # magic numbers per the "no hardcoded values" plan constraint - tests can
@@ -216,108 +215,59 @@ class GreedyNetworkPolicy:
         return action_idx, value_scalar
 
 
-@dataclass
-class AgentLoopConfig:
-    """Runtime knobs for :class:`BridgeAgentLoop`.
+def _others_left(mask: Any, action_idx: Any) -> bool:
+    """Whether the mask offers anything besides ``action_idx``."""
+    try:
+        offered = int(np.count_nonzero(mask))
+        return offered - (1 if mask[action_idx] else 0) > 0
+    except Exception:  # a mask or an index that cannot be read offers nothing else
+        return False
 
-    All fields are overridable via ``CIV6AZ_AGENT_*`` env vars so the loop
-    can be tuned without code changes - see :meth:`from_env`.
 
-    Attributes:
-        max_turns: Hard cap on turns played in a single session. ``0`` means
-            unlimited. Default 500 matches the v2.0 spec turn budget.
-        per_turn_timeout_s: Maximum time to wait for a single state message
-            before raising ``StateTimeoutError``.
-        on_disconnect: ``"exit"`` returns from :meth:`BridgeAgentLoop.run`
-            with code 2 on a heartbeat loss. ``"reconnect"`` polls
-            ``bridge.check_heartbeat`` with exponential backoff up to
-            :attr:`reconnect_window_s` before giving up.
-        reconnect_window_s: Total time budget for reconnect attempts.
-        snapshot_log_dir: When set, dump the offending state / commands /
-            ack triplet to this directory on any unhandled exception. The
-            loop *continues* to the next turn after dumping.
-        mcts_in_thread: Reserved for W2.2 - whether the MCTS policy
-            offloads ``search`` to ``asyncio.to_thread``. Always ``True``
-            in this release; kept as a config knob for future profiling.
+def _is_offered(mask: Any, action_idx: Any) -> bool:
+    """Whether ``action_idx`` is in the mask (a policy may answer outside it)."""
+    try:
+        return bool(mask[action_idx])
+    except Exception:
+        return False
+
+
+def _as_ack_message(ack: Any) -> AckMessage:
+    """The transport's acknowledgement as an :class:`AckMessage`.
+
+    ``FileBridge`` returns an ``AckMessage``; ``LiveBridge`` returns the parsed
+    ``AZ_ACK`` JSON as a dict. Reading ``.success`` on the dict raised, and the
+    step's catch-all then sent a second ``end_turn`` after every acknowledged
+    command on the socket transport.
+
+    Raises:
+        TypeError: If the transport returned neither shape.
     """
+    if isinstance(ack, AckMessage):
+        return ack
+    if isinstance(ack, dict):
+        return AckMessage.from_dict(ack)
+    if hasattr(ack, "success"):
+        # A test double or a transport's own ack type that reads like one.
+        return cast(AckMessage, ack)
+    raise TypeError(f"unusable acknowledgement of type {type(ack).__name__}")
 
-    max_turns: int = 500
-    per_turn_timeout_s: float = 30.0
-    on_disconnect: DisconnectStrategy = "reconnect"
-    reconnect_window_s: float = 60.0
-    snapshot_log_dir: Path | None = None
-    mcts_in_thread: bool = True
-    # Observation-fallback shape used when the StateConverter encoding path
-    # raises. Defaults match the 2-player MicroCiv encoder convention; bump
-    # ``fallback_spatial_channels`` to 84 when targeting Civ6StateEncoder
-    # and ``fallback_board_size`` to whatever the trained network expects.
-    fallback_spatial_channels: int = 13
-    fallback_vector_dim: int = 64
-    fallback_board_size: int = 8
 
-    def __post_init__(self) -> None:
-        if self.max_turns < 0:
-            raise ValueError(f"max_turns must be >= 0, got {self.max_turns}")
-        if self.per_turn_timeout_s <= 0:
-            raise ValueError(f"per_turn_timeout_s must be > 0, got {self.per_turn_timeout_s}")
-        if self.on_disconnect not in _DISCONNECT_LITERAL:
-            raise ValueError(
-                f"on_disconnect must be one of {_DISCONNECT_LITERAL}, got {self.on_disconnect!r}"
-            )
-        if self.reconnect_window_s < 0:
-            raise ValueError(f"reconnect_window_s must be >= 0, got {self.reconnect_window_s}")
-        if self.fallback_spatial_channels <= 0:
-            raise ValueError(
-                f"fallback_spatial_channels must be > 0, got {self.fallback_spatial_channels}"
-            )
-        if self.fallback_vector_dim <= 0:
-            raise ValueError(f"fallback_vector_dim must be > 0, got {self.fallback_vector_dim}")
-        if self.fallback_board_size < 4:
-            raise ValueError(f"fallback_board_size must be >= 4, got {self.fallback_board_size}")
-        if self.snapshot_log_dir is not None:
-            self.snapshot_log_dir = Path(self.snapshot_log_dir)
+def _blocked_end_turn_message(ack: Any) -> str | None:
+    """The mod's message when ``ack`` reports a blocked end of turn, else None.
 
-    @classmethod
-    def from_env(cls, env: dict[str, str] | None = None) -> AgentLoopConfig:
-        """Build a config from environment variables.
-
-        Recognised keys (all optional):
-            CIV6AZ_AGENT_MAX_TURNS
-            CIV6AZ_AGENT_PER_TURN_TIMEOUT_S
-            CIV6AZ_AGENT_ON_DISCONNECT
-            CIV6AZ_AGENT_RECONNECT_WINDOW_S
-            CIV6AZ_AGENT_SNAPSHOT_LOG_DIR
-            CIV6AZ_AGENT_MCTS_IN_THREAD  ("1"/"0"/"true"/"false")
-            CIV6AZ_AGENT_FALLBACK_SPATIAL_CHANNELS
-            CIV6AZ_AGENT_FALLBACK_VECTOR_DIM
-            CIV6AZ_AGENT_FALLBACK_BOARD_SIZE
-        """
-        source = env if env is not None else os.environ
-        kwargs: dict[str, Any] = {}
-        if (raw := source.get(ENV_PREFIX + "MAX_TURNS")) is not None:
-            kwargs["max_turns"] = int(raw)
-        if (raw := source.get(ENV_PREFIX + "PER_TURN_TIMEOUT_S")) is not None:
-            kwargs["per_turn_timeout_s"] = float(raw)
-        if (raw := source.get(ENV_PREFIX + "ON_DISCONNECT")) is not None:
-            kwargs["on_disconnect"] = raw.lower()
-        if (raw := source.get(ENV_PREFIX + "RECONNECT_WINDOW_S")) is not None:
-            kwargs["reconnect_window_s"] = float(raw)
-        if (raw := source.get(ENV_PREFIX + "SNAPSHOT_LOG_DIR")) is not None:
-            kwargs["snapshot_log_dir"] = Path(raw)
-        if (raw := source.get(ENV_PREFIX + "MCTS_IN_THREAD")) is not None:
-            # Shares vocabulary with BridgeConfig.from_env / Civ6LocalConfig.from_env
-            # (1/true/yes -> True, 0/false/no -> False) via parse_bool_env, so
-            # CIV6_BRIDGE_*, CIV6AZ_LOCAL_*, and CIV6AZ_AGENT_* env vars all agree
-            # on truthy/falsy spelling. Falls back to False for anything else
-            # (matches this flag's prior behaviour for unrecognised strings).
-            kwargs["mcts_in_thread"] = parse_bool_env(raw, default=False)
-        if (raw := source.get(ENV_PREFIX + "FALLBACK_SPATIAL_CHANNELS")) is not None:
-            kwargs["fallback_spatial_channels"] = int(raw)
-        if (raw := source.get(ENV_PREFIX + "FALLBACK_VECTOR_DIM")) is not None:
-            kwargs["fallback_vector_dim"] = int(raw)
-        if (raw := source.get(ENV_PREFIX + "FALLBACK_BOARD_SIZE")) is not None:
-            kwargs["fallback_board_size"] = int(raw)
-        return cls(**kwargs)
+    The code arrives per command, in ``ack.executed``; the ack's own
+    ``error_code`` is a generic one. A blocked report without a message still
+    counts, so it yields a placeholder.
+    """
+    executed = getattr(ack, "executed", None)
+    if not isinstance(executed, list):
+        return None
+    for entry in executed:
+        if isinstance(entry, dict) and entry.get("error_code") == END_TURN_BLOCKED:
+            message = entry.get("message")
+            return message if isinstance(message, str) and message else END_TURN_BLOCKED
+    return None
 
 
 @dataclass
@@ -331,6 +281,20 @@ class _SessionStats:
     reconnects: int = 0
     fallback_end_turns: int = 0
     fallback_zero_observations: int = 0
+    # end_turn commands the game refused because a pending choice blocks the
+    # turn (the mod's END_TURN_BLOCKED). Not an invalid action: the command was
+    # well-formed and the mod keeps listening.
+    blocked_end_turns: int = 0
+    last_end_turn_blocker: str | None = None
+    # Commands sent (several per game turn), choices the policy was asked to
+    # make again, and game turns given up as stalled (GM-B7c-2).
+    commands_sent: int = 0
+    reselections: int = 0
+    stalled_turns: int = 0
+    # A command policy (GM-B6b): times asked, named nothing, raised.
+    search_decisions: int = 0
+    search_fallbacks: int = 0
+    search_failures: int = 0
     turn_latencies_ms: list[float] = field(default_factory=list)
     last_error: str | None = None
 
@@ -350,6 +314,14 @@ class _SessionStats:
             "reconnects": self.reconnects,
             "fallback_end_turns": self.fallback_end_turns,
             "fallback_zero_observations": self.fallback_zero_observations,
+            "blocked_end_turns": self.blocked_end_turns,
+            "last_end_turn_blocker": self.last_end_turn_blocker,
+            "commands_sent": self.commands_sent,
+            "reselections": self.reselections,
+            "stalled_turns": self.stalled_turns,
+            "search_decisions": self.search_decisions,
+            "search_fallbacks": self.search_fallbacks,
+            "search_failures": self.search_failures,
             "mean_turn_latency_ms": mean,
             "p95_turn_latency_ms": p95,
             "last_error": self.last_error,
@@ -379,11 +351,13 @@ class BridgeAgentLoop:
     Exit codes returned by :meth:`run`:
         - ``0`` - game ended cleanly (state.is_game_over or max_turns).
         - ``2`` - heartbeat lost and on_disconnect == "exit".
+        - ``3`` - a game turn could neither be ended nor unblocked (a stall).
         - ``130`` - cancelled (e.g. KeyboardInterrupt propagated).
     """
 
     EXIT_OK = 0
     EXIT_DISCONNECTED = 2
+    EXIT_STALLED = 3
     EXIT_CANCELLED = 130
 
     def __init__(
@@ -405,6 +379,12 @@ class BridgeAgentLoop:
         self.eval_harness = eval_harness
         self._stats = _SessionStats()
         self._stopped = False
+        # What the game did with this game turn's commands (GM-B7c-2).
+        self._ledger = TurnLedger(LedgerLimits(max_commands_per_turn=config.max_commands_per_turn))
+        self._current_state: GameStateData | None = None
+        self._stall_exit = False
+        self._stalled_turn: Any = None
+        self._stall_deadline = 0.0
 
         logger.debug(
             "BridgeAgentLoop initialised: max_turns=%d per_turn_timeout_s=%.1f on_disconnect=%s",
@@ -419,7 +399,13 @@ class BridgeAgentLoop:
 
     def stats(self) -> dict[str, Any]:
         """Return a snapshot of per-session statistics for the eval harness."""
-        return self._stats.as_dict()
+        stats = self._stats.as_dict()
+        ledger = self._ledger.stats()
+        for key in ("game_turns_played", "refused_commands", "no_effect_commands"):
+            stats[key] = ledger[key]
+        # The ledger also sees a fallback end_turn blocked (from the next state).
+        stats["blocked_end_turns"] = max(stats["blocked_end_turns"], ledger["blocked_end_turns"])
+        return stats
 
     async def run(self) -> int:
         """Drive turn-by-turn play until the game ends or a stop is requested.
@@ -443,6 +429,9 @@ class BridgeAgentLoop:
                 if self.config.max_turns and self._stats.turns_played >= self.config.max_turns:
                     logger.info("Reached max_turns=%d; stopping", self.config.max_turns)
                     return self.EXIT_OK
+                if self._stalled_turn is not None and time.monotonic() > self._stall_deadline:
+                    logger.error("Stalled turn was not ended by hand in time; stopping")
+                    return self.EXIT_STALLED
 
                 try:
                     if self.health_checker is not None:
@@ -488,7 +477,21 @@ class BridgeAgentLoop:
                         state.winner_id,
                     )
                     return self.EXIT_OK
+
+                self._ledger.observe(state)
+                finished = self._ledger.game_turns_finished
+                if self.config.max_game_turns and finished >= self.config.max_game_turns:
+                    logger.info("Reached max_game_turns=%d; stopping", self.config.max_game_turns)
+                    return self.EXIT_OK
+                if self._stalled_turn is not None:
+                    if state.turn_id == self._stalled_turn:
+                        continue  # on_stall="wait": nothing more is sent this turn
+                    self._stalled_turn = None
+                self._current_state = state
                 await self._step_once(state)
+                self._check_stall(state)
+                if self._stall_exit:
+                    return self.EXIT_STALLED
 
         except asyncio.CancelledError:
             logger.info("BridgeAgentLoop cancelled")
@@ -559,67 +562,162 @@ class BridgeAgentLoop:
             converted_state,
         )
 
-        # Build the observation in the encoder's format. Networks consume
-        # spatial + vector + action_mask; the converter has already produced
-        # the structural inputs.
-        obs = self._build_observation(converted_state, legal_mask)
+        lua_command = await self._choose_command(state, converted_state, legal_mask)
+        if lua_command is not None:
+            await self._send_and_account(state, lua_command)
 
-        try:
-            action_idx, diagnostics = await self.policy.select_action(
-                obs, legal_mask, converted_state
+    async def _choose_command(
+        self,
+        state: GameStateData,
+        converted_state: dict[str, Any],
+        legal_mask: np.ndarray,
+    ) -> LuaCommand | None:
+        """The command to send for ``state``; None when a failure was already handled.
+
+        The policy's choice is not sent, and the policy is asked again with
+        that action masked out, when the converter rejects it, when the game
+        refused it (or ignored it) earlier this game turn, or when it is
+        ``end_turn`` while the game is blocking the end of turn and something
+        else is offered. Past the turn's command cap only ``end_turn`` is sent.
+        """
+        end_turn = LuaCommand.from_dict({"action_type": "end_turn"})
+        unblocking_only = False
+        if self._ledger.over_cap():
+            if not self._ledger.may_unblock():
+                logger.warning(
+                    "Turn %s: %d commands sent, the cap; only end_turn from here",
+                    state.turn_id,
+                    self._ledger.commands_this_turn,
+                )
+                return end_turn
+            # The game is blocking end_turn: what could unblock it still goes.
+            unblocking_only = True
+
+        def convert(index: int) -> LuaCommand:
+            return self.action_converter.convert(
+                index, converted_state, legal_actions=state.legal_actions, validate=True
             )
-        except NoLegalActionsError as exc:
-            self._stats.invalid_actions += 1
-            logger.warning(
-                "No legal actions available for turn %d (%s); safely ending turn",
+
+        mask, ready = sendable(self._ledger, convert, legal_mask, unblocking_only)
+        if not np.any(mask):
+            return end_turn
+        if is_command_policy(self.policy):
+            chosen = await self._ask_command_policy(state, converted_state, unblocking_only)
+            return chosen if chosen is not None else self._unanswered(ready, end_turn)
+
+        for attempt in range(self.config.max_reselections + 1):
+            # Networks consume spatial + vector + action_mask; the converter
+            # has already produced the structural inputs.
+            obs = self._build_observation(converted_state, mask)
+            try:
+                action_idx, diagnostics = await self.policy.select_action(
+                    obs, mask, converted_state
+                )
+            except NoLegalActionsError as exc:
+                self._stats.invalid_actions += 1
+                logger.warning(
+                    "No legal actions available for turn %d (%s); safely ending turn",
+                    state.turn_id,
+                    exc,
+                )
+                await self._send_safe_end_turn()
+                return None
+            except Exception as exc:
+                self._stats.last_error = f"policy: {exc}"
+                logger.error("Policy selection failed: %s", exc, exc_info=True)
+                self._maybe_log_snapshot(state, None, None, exc)
+                await self._send_safe_end_turn()
+                return None
+
+            logger.debug(
+                "Turn %d: policy chose action_idx=%d diagnostics=%s",
                 state.turn_id,
-                exc,
+                action_idx,
+                diagnostics,
             )
-            await self._send_safe_end_turn()
-            return
-        except Exception as exc:
-            self._stats.last_error = f"policy: {exc}"
-            logger.error("Policy selection failed: %s", exc, exc_info=True)
-            self._maybe_log_snapshot(state, None, None, exc)
-            await self._send_safe_end_turn()
-            return
+            if self.eval_harness and attempt == 0:
+                self.eval_harness.on_turn_end(state.turn_id, diagnostics)
 
+            if action_idx in ready:
+                return cast(LuaCommand, ready[action_idx])
+            # Convert action -> Lua command.
+            try:
+                lua_command = self.action_converter.convert(
+                    action_idx,
+                    converted_state,
+                    legal_actions=state.legal_actions,
+                    validate=True,
+                )
+            except InvalidActionError as exc:
+                self._stats.invalid_actions += 1
+                why = f"invalid ({exc})"
+            except Exception as exc:
+                self._stats.last_error = f"action_converter: {exc}"
+                logger.error("Action conversion failed: %s", exc, exc_info=True)
+                self._maybe_log_snapshot(state, None, None, exc)
+                await self._send_safe_end_turn()
+                return None
+            else:
+                others = _others_left(mask, action_idx)
+                if not vetoed(self._ledger, lua_command, unblocking_only, others):
+                    return lua_command
+                why = "not to be sent again this turn"
+
+            if (
+                attempt >= self.config.max_reselections
+                or not _is_offered(mask, action_idx)
+                or not _others_left(mask, action_idx)
+            ):
+                logger.warning("Action %d not sent (%s); no further choice", action_idx, why)
+                break
+            logger.info("Action %d not sent (%s); choosing again", action_idx, why)
+            self._stats.reselections += 1
+            mask = mask.copy()
+            mask[action_idx] = 0
+
+        return self._unanswered(ready, end_turn)
+
+    def _unanswered(self, ready: dict[int, Any], end_turn: LuaCommand) -> LuaCommand:
+        """What goes out when the policy named nothing sendable."""
+        # While the game blocks the end of turn, anything that may still be
+        # sent beats an end_turn that will be refused (and answers a choice the
+        # search's simulator cannot express, such as research).
+        command = first_to_unblock(ready.values()) if self._ledger.end_turn_withheld() else None
+        return end_turn if command is None else cast(LuaCommand, command)
+
+    async def _ask_command_policy(
+        self, state: GameStateData, converted_state: dict[str, Any], unblocking_only: bool
+    ) -> LuaCommand | None:
+        """Ask a policy that answers with a command; None when it named nothing."""
+        choice = await choose(
+            self.policy,
+            self._ledger,
+            converted_state,
+            unblocking_only=unblocking_only,
+            turn_id=state.turn_id,
+            offers=state.legal_actions,
+        )
+        self._stats.search_decisions += 1
+        if choice.failed:
+            self._stats.search_failures += 1
+            self._stats.last_error = choice.reason
+        elif choice.command is None:
+            self._stats.search_fallbacks += 1
         logger.debug(
-            "Turn %d: policy chose action_idx=%d diagnostics=%s",
-            state.turn_id,
-            action_idx,
-            diagnostics,
+            "Turn %s: command policy: %s (%s)", state.turn_id, choice.record, choice.reason
         )
         if self.eval_harness:
-            self.eval_harness.on_turn_end(state.turn_id, diagnostics)
+            self.eval_harness.on_turn_end(state.turn_id, diagnostics_of(choice))
+        return choice.command
 
-        # Convert action -> Lua command, falling back to end_turn on invalid.
-        try:
-            lua_command = self.action_converter.convert(
-                action_idx,
-                converted_state,
-                legal_actions=state.legal_actions,
-                validate=True,
-            )
-        except InvalidActionError as exc:
-            self._stats.invalid_actions += 1
-            logger.warning(
-                "Policy chose invalid action %d (%s); falling back to end_turn",
-                action_idx,
-                exc,
-            )
-            lua_command = LuaCommand.from_dict({"action_type": "end_turn"})
-        except Exception as exc:
-            self._stats.last_error = f"action_converter: {exc}"
-            logger.error("Action conversion failed: %s", exc, exc_info=True)
-            self._maybe_log_snapshot(state, None, None, exc)
-            await self._send_safe_end_turn()
-            return
-
+    async def _send_and_account(self, state: GameStateData, lua_command: LuaCommand) -> None:
+        """Send one command, read the mod's answer and record what it was."""
         command = CommandMessage.create_single(
             msg_id=self.bridge.next_msg_id(),
             command=lua_command,
         )
+        self._ledger.sent(lua_command, state)
+        self._stats.commands_sent += 1
 
         try:
             if self.health_checker is not None:
@@ -629,12 +727,15 @@ class BridgeAgentLoop:
                 )
             else:
                 ack = await self.bridge.send_and_wait_with_retry(command)
+            ack = _as_ack_message(ack)
         except CircuitBreakerOpenError as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"circuit_open: {exc}"
             logger.warning("Circuit breaker open on send (%s); skipping ack", exc)
             self._maybe_log_snapshot(state, command, None, exc)
         except (AckTimeoutError, ConnectionLostError) as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"ack: {exc}"
             logger.warning(
@@ -644,19 +745,56 @@ class BridgeAgentLoop:
             )
             self._maybe_log_snapshot(state, command, None, exc)
         except Exception as exc:
+            self._ledger.send_failed()
             self._stats.ack_failures += 1
             self._stats.last_error = f"send: {exc}"
             logger.error("send_and_wait_with_retry raised: %s", exc, exc_info=True)
             self._maybe_log_snapshot(state, command, None, exc)
         else:
+            self._ledger.answered(lua_command, ack)
             if not ack.success:
-                self._stats.invalid_actions += 1
-                logger.warning(
-                    "Lua mod returned ack.success=False (msg_id=%d, code=%s): %s",
-                    ack.msg_id,
-                    ack.error_code,
-                    ack.error_message,
-                )
+                blocker = _blocked_end_turn_message(ack)
+                if blocker is not None:
+                    # The game will not end the turn until a pending choice is
+                    # made. The mod sent nothing to the game, exports the state
+                    # again (with end_turn_blocking set) and keeps listening,
+                    # so the next step sees the blocker; until the state
+                    # changes, end_turn is not chosen while anything else is.
+                    self._stats.blocked_end_turns += 1
+                    self._stats.last_end_turn_blocker = blocker
+                    logger.warning(
+                        "End turn blocked by the game (#%d, msg_id=%s): %s",
+                        self._stats.blocked_end_turns,
+                        getattr(ack, "msg_id", None),
+                        blocker,
+                    )
+                else:
+                    self._stats.invalid_actions += 1
+                    logger.warning(
+                        "Lua mod returned ack.success=False (msg_id=%d, code=%s): %s",
+                        ack.msg_id,
+                        ack.error_code,
+                        ack.error_message,
+                    )
+
+    def _check_stall(self, state: GameStateData) -> None:
+        """Give a game turn up when it can neither be ended nor unblocked."""
+        if not self._ledger.stalled() or self._stalled_turn == state.turn_id or self._stall_exit:
+            return
+        self._stats.stalled_turns += 1
+        self._stats.last_error = f"stalled: {self._stats.last_end_turn_blocker}"
+        logger.error(
+            "Turn %s is stalled: the game keeps blocking the end of turn (%s) and nothing "
+            "sent has changed that. on_stall=%s",
+            state.turn_id,
+            self._stats.last_end_turn_blocker or getattr(state, "end_turn_blocking", None),
+            self.config.on_stall,
+        )
+        if self.config.on_stall == "exit":
+            self._stall_exit = True
+        else:
+            self._stalled_turn = state.turn_id
+            self._stall_deadline = time.monotonic() + self.config.stall_wait_s
 
     async def _handle_disconnect(self, exc: ConnectionLostError) -> bool:
         """Apply the configured disconnect strategy. Returns True if recovered."""
@@ -688,11 +826,17 @@ class BridgeAgentLoop:
     async def _send_safe_end_turn(self) -> None:
         """Send an end_turn fallback. Best-effort; never raises."""
         self._stats.fallback_end_turns += 1
+        # Counted against the turn; its answer is not read, so a blocked one
+        # shows only in the next state (the ledger reads it there).
+        self._ledger.sent({"action_type": "end_turn"}, self._current_state)
+        self._stats.commands_sent += 1
         try:
             cmd = create_end_turn_command(self.bridge.next_msg_id())
             await self.bridge.send_command(cmd)
             logger.debug("Sent safe end_turn fallback (count=%d)", self._stats.fallback_end_turns)
         except Exception as exc:
+            # It never went out: a blocker in the next state is not its answer.
+            self._ledger.send_failed()
             logger.error("Even end_turn fallback failed: %s", exc, exc_info=True)
             self._stats.last_error = f"fallback_end_turn: {exc}"
 

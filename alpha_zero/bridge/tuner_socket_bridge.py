@@ -34,8 +34,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
+import os
 import socket
 import struct
+import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -45,8 +49,21 @@ if TYPE_CHECKING:  # pragma: no cover - typing only
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "DEFAULT_APP_MAX_DURATION_S",
+    "DEFAULT_APP_QUIET_AFTER_S",
+    "DEFAULT_APP_WAIT_FIRST_S",
+    "DEFAULT_HANDSHAKE_QUIET_S",
+    "DEFAULT_INITIAL_DRAIN_CAP_S",
+    "DEFAULT_INITIAL_DRAIN_QUIET_S",
+    "DEFAULT_LSQ_MAX_DURATION_S",
+    "DEFAULT_LSQ_QUIET_AFTER_S",
+    "DEFAULT_LSQ_WAIT_FIRST_S",
+    "DEFAULT_TUNER_HOST",
+    "DEFAULT_TUNER_PORT",
+    "ENV_TUNER_HANDSHAKE_QUIET_S",
     "FireTunerClient",
     "FireTunerError",
+    "FireTunerTimingConfig",
     "SocketTunerBridge",
     "lua_longstring",
 ]
@@ -77,9 +94,97 @@ ERROR_PREFIX = "ERR:"
 DEFAULT_TUNER_HOST = "127.0.0.1"
 DEFAULT_TUNER_PORT = 4318
 
+#: Named defaults for FireTuner handshake windows (seconds).
+DEFAULT_HANDSHAKE_QUIET_S = 1.0
+DEFAULT_INITIAL_DRAIN_QUIET_S = 0.2
+DEFAULT_INITIAL_DRAIN_CAP_S = 0.25
+DEFAULT_APP_WAIT_FIRST_S = 2.0
+DEFAULT_APP_QUIET_AFTER_S = 0.15
+DEFAULT_APP_MAX_DURATION_S = 3.0
+DEFAULT_LSQ_WAIT_FIRST_S = 2.5
+DEFAULT_LSQ_QUIET_AFTER_S = 0.25
+DEFAULT_LSQ_MAX_DURATION_S = 5.0
+ENV_TUNER_HANDSHAKE_QUIET_S = "CIV6_BRIDGE_TUNER_HANDSHAKE_QUIET_S"
+
 #: Lua contexts to target for the command global, most-preferred first. The
 #: proven ``.ltp`` panel used ``GameCore_Tuner``; ``InGame`` is the fallback.
 PREFERRED_STATES = ("GameCore_Tuner", "InGame")
+
+
+def _validate_positive_finite(name: str, value: float) -> float:
+    """Validate that ``value`` is strictly positive and finite."""
+    if not math.isfinite(value) or value <= 0.0:
+        raise ValueError(f"{name} must be positive and finite, got {value}")
+    return value
+
+
+@dataclass(frozen=True)
+class FireTunerTimingConfig:
+    """Validated monotonic timing windows for the FireTuner TCP handshake.
+
+    All durations are in seconds and must be strictly positive and finite. Allows
+    overriding quiet/cap windows dynamically without hardcoded inline magic constants.
+    """
+
+    initial_drain_quiet_s: float = DEFAULT_INITIAL_DRAIN_QUIET_S
+    initial_drain_cap_s: float = DEFAULT_INITIAL_DRAIN_CAP_S
+    app_wait_first_s: float = DEFAULT_APP_WAIT_FIRST_S
+    app_quiet_after_s: float = DEFAULT_APP_QUIET_AFTER_S
+    app_max_duration_s: float = DEFAULT_APP_MAX_DURATION_S
+    lsq_wait_first_s: float = DEFAULT_LSQ_WAIT_FIRST_S
+    lsq_quiet_after_s: float = DEFAULT_LSQ_QUIET_AFTER_S
+    lsq_max_duration_s: float = DEFAULT_LSQ_MAX_DURATION_S
+
+    def __post_init__(self) -> None:
+        for field_name in (
+            "initial_drain_quiet_s",
+            "initial_drain_cap_s",
+            "app_wait_first_s",
+            "app_quiet_after_s",
+            "app_max_duration_s",
+            "lsq_wait_first_s",
+            "lsq_quiet_after_s",
+            "lsq_max_duration_s",
+        ):
+            _validate_positive_finite(field_name, getattr(self, field_name))
+
+    @classmethod
+    def from_handshake_quiet(cls, handshake_quiet: float, timeout: float) -> FireTunerTimingConfig:
+        """Derive consistent handshake windows from a base quiet window and socket timeout."""
+        _validate_positive_finite("handshake_quiet", handshake_quiet)
+        _validate_positive_finite("timeout", timeout)
+        return cls(
+            initial_drain_quiet_s=min(handshake_quiet, DEFAULT_INITIAL_DRAIN_QUIET_S),
+            initial_drain_cap_s=min(handshake_quiet, DEFAULT_INITIAL_DRAIN_CAP_S),
+            app_wait_first_s=max(handshake_quiet, min(timeout, DEFAULT_APP_WAIT_FIRST_S)),
+            app_quiet_after_s=min(handshake_quiet, DEFAULT_APP_QUIET_AFTER_S),
+            app_max_duration_s=max(handshake_quiet * 2.0, min(timeout, DEFAULT_APP_MAX_DURATION_S)),
+            lsq_wait_first_s=max(handshake_quiet * 1.5, min(timeout, DEFAULT_LSQ_WAIT_FIRST_S)),
+            lsq_quiet_after_s=min(handshake_quiet, DEFAULT_LSQ_QUIET_AFTER_S),
+            lsq_max_duration_s=max(handshake_quiet * 3.0, min(timeout, DEFAULT_LSQ_MAX_DURATION_S)),
+        )
+
+    @classmethod
+    def from_env(
+        cls,
+        *,
+        handshake_quiet: float | None = None,
+        timeout: float = 5.0,
+    ) -> FireTunerTimingConfig:
+        """Build timing configuration from ``CIV6_BRIDGE_TUNER_HANDSHAKE_QUIET_S`` when set."""
+        resolved_quiet = handshake_quiet
+        if resolved_quiet is None:
+            raw = os.environ.get(ENV_TUNER_HANDSHAKE_QUIET_S, "").strip()
+            if raw:
+                try:
+                    resolved_quiet = float(raw)
+                except ValueError as exc:
+                    raise ValueError(
+                        f"{ENV_TUNER_HANDSHAKE_QUIET_S} must be a positive number, got {raw!r}"
+                    ) from exc
+            else:
+                resolved_quiet = DEFAULT_HANDSHAKE_QUIET_S
+        return cls.from_handshake_quiet(resolved_quiet, timeout)
 
 
 class FireTunerError(Exception):
@@ -125,17 +230,28 @@ class FireTunerClient:
         port: int = DEFAULT_TUNER_PORT,
         timeout: float = 5.0,
         preferred_states: tuple[str, ...] = PREFERRED_STATES,
-        handshake_quiet: float = 1.0,
+        handshake_quiet: float | None = None,
+        timing: FireTunerTimingConfig | None = None,
     ) -> None:
+        _validate_positive_finite("timeout", timeout)
+        if handshake_quiet is not None:
+            _validate_positive_finite("handshake_quiet", handshake_quiet)
         self.host = host
         self.port = port
         self.timeout = timeout
         self.preferred_states = preferred_states
-        # Quiet-timeout used to bound the handshake drains (which have no
-        # completion sentinel). Lowered in tests to keep them fast.
-        self._handshake_quiet = handshake_quiet
+        # Quiet-timeout override used to bound handshake waits when provided.
+        # ``None`` defers to ``CIV6_BRIDGE_TUNER_HANDSHAKE_QUIET_S`` or default.
+        self._handshake_quiet: float | None = handshake_quiet
+        self._timing = timing
         self._sock: socket.socket | None = None
         self.states: dict[str, int] = {}
+
+    def _require_socket(self) -> socket.socket:
+        """Return the connected socket or raise ``FireTunerError`` (never ``assert``)."""
+        if self._sock is None:
+            raise FireTunerError("FireTunerClient is not connected")
+        return self._sock
 
     # --- lifecycle -----------------------------------------------------------
 
@@ -187,16 +303,15 @@ class FireTunerClient:
     # --- low-level framing ---------------------------------------------------
 
     def _send(self, tag: int, text: str) -> None:
-        if self._sock is None:
-            raise FireTunerError("FireTunerClient is not connected")
+        sock = self._require_socket()
         payload = text.encode("utf-8") + b"\x00"  # NUL is counted in the length
-        self._sock.sendall(struct.pack(HEADER_FMT, len(payload), tag) + payload)
+        sock.sendall(struct.pack(HEADER_FMT, len(payload), tag) + payload)
 
     def _recv_exact(self, n: int) -> bytes:
-        assert self._sock is not None
+        sock = self._require_socket()
         buf = bytearray()
         while len(buf) < n:
-            chunk = self._sock.recv(n - len(buf))
+            chunk = sock.recv(n - len(buf))
             if not chunk:
                 raise FireTunerError("FireTuner closed the connection")
             buf += chunk
@@ -229,43 +344,118 @@ class FireTunerClient:
         ctx_split = after_nul.split(": ", 1)
         return ctx_split[1] if len(ctx_split) > 1 else after_nul
 
-    def _drain(self, quiet: float = 0.4) -> list[tuple[int, bytes]]:
-        """Read and return any pending frames until a short quiet timeout."""
-        assert self._sock is not None
-        prev = self._sock.gettimeout()
-        self._sock.settimeout(quiet)
+    def _drain(
+        self, quiet: float = 0.4, max_duration: float | None = None
+    ) -> list[tuple[int, bytes]]:
+        """Read and return any pending frames until a short quiet timeout or cap."""
+        _validate_positive_finite("quiet", quiet)
+        if max_duration is not None:
+            _validate_positive_finite("max_duration", max_duration)
+        sock = self._require_socket()
+        prev = sock.gettimeout()
+        hard_deadline = (time.monotonic() + max_duration) if max_duration is not None else None
+        sock.settimeout(quiet)
         frames: list[tuple[int, bytes]] = []
         try:
             while True:
+                if hard_deadline is not None:
+                    remaining = hard_deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    sock.settimeout(min(quiet, remaining))
                 frames.append(self._recv_frame())
-        except (TimeoutError, FireTunerError, OSError):
-            pass
+        except (TimeoutError, FireTunerError, OSError) as exc:
+            logger.debug("FireTuner drain stopped on %s: %s", type(exc).__name__, exc)
         finally:
-            self._sock.settimeout(prev)
+            sock.settimeout(prev)
         return frames
+
+    def _recv_query_frames(
+        self,
+        *,
+        wait_first: float,
+        quiet_after: float,
+        max_duration: float,
+    ) -> list[bytes]:
+        """Collect ``TAG_QUERY`` reply frames without being starved by output chatter.
+
+        Live Civ6 games emit 1 Hz ``AZ_HB:`` heartbeats (and Lua ``print()`` lines)
+        as ``TAG_OUTPUT`` (``tag=-1``) frames on FireTuner. Only ``TAG_QUERY`` frames
+        are collected and allowed to advance the post-reply quiet window; non-query
+        frames are skipped without extending any deadline, and a hard monotonic cap
+        bounds total wait time. Broken connections propagate rather than returning
+        empty states silently.
+        """
+        _validate_positive_finite("wait_first", wait_first)
+        _validate_positive_finite("quiet_after", quiet_after)
+        _validate_positive_finite("max_duration", max_duration)
+        sock = self._require_socket()
+        prev = sock.gettimeout()
+        start = time.monotonic()
+        hard_deadline = start + max_duration
+        idle_deadline = start + wait_first
+        replies: list[bytes] = []
+        skipped = 0
+        try:
+            while True:
+                remaining = min(hard_deadline, idle_deadline) - time.monotonic()
+                if remaining <= 0:
+                    break
+                sock.settimeout(remaining)
+                try:
+                    tag, frame = self._recv_frame()
+                except TimeoutError:
+                    break
+                if tag == TAG_QUERY:
+                    replies.append(frame)
+                    idle_deadline = time.monotonic() + quiet_after
+                else:
+                    skipped += 1
+        finally:
+            sock.settimeout(prev)
+            if skipped > 0:
+                logger.debug("Ignored %d non-query FireTuner frame(s) during handshake", skipped)
+        return replies
 
     # --- handshake / discovery ----------------------------------------------
 
     def _handshake(self) -> None:
         """Identify to the game and discover Lua state indices via ``LSQ:``."""
-        self._drain(quiet=self._handshake_quiet)
+        started = time.monotonic()
+        timing = self._timing or FireTunerTimingConfig.from_env(
+            handshake_quiet=self._handshake_quiet,
+            timeout=self.timeout,
+        )
+        self._drain(
+            quiet=timing.initial_drain_quiet_s,
+            max_duration=timing.initial_drain_cap_s,
+        )
         self._send(TAG_QUERY, "APP:alphazero")
-        self._drain(quiet=self._handshake_quiet)  # identity string; unused
+        self._recv_query_frames(
+            wait_first=timing.app_wait_first_s,
+            quiet_after=timing.app_quiet_after_s,
+            max_duration=timing.app_max_duration_s,
+        )
 
         self._send(TAG_QUERY, "LSQ:")
-        raw = b""
-        for _tag, frame in self._drain(quiet=self._handshake_quiet * 1.5):
-            raw += frame
+        frames = self._recv_query_frames(
+            wait_first=timing.lsq_wait_first_s,
+            quiet_after=timing.lsq_quiet_after_s,
+            max_duration=timing.lsq_max_duration_s,
+        )
+        raw = b"".join(frames)
         self.states = self._parse_states(raw)
+        elapsed_ms = (time.monotonic() - started) * 1000.0
         if self.states:
             logger.info(
-                "FireTuner connected; %d Lua states (GameCore_Tuner=%s, InGame=%s)",
+                "FireTuner connected in %.0fms; %d Lua states (GameCore_Tuner=%s, InGame=%s)",
+                elapsed_ms,
                 len(self.states),
                 self.states.get("GameCore_Tuner"),
                 self.states.get("InGame"),
             )
         else:
-            logger.warning("FireTuner LSQ returned no parseable states")
+            logger.warning("FireTuner LSQ returned no parseable states after %.0fms", elapsed_ms)
 
     @staticmethod
     def _parse_states(raw: bytes) -> dict[str, int]:
@@ -319,23 +509,28 @@ class FireTunerClient:
         Args:
             code: Lua source to execute.
             context: Target Lua state name (defaults to preferred states).
-            timeout: Per-read timeout in seconds.
+            timeout: Total deadline in seconds (must be positive).
 
         Returns:
             Newline-joined output text from ``print()`` calls.
 
         Raises:
             FireTunerError: On execution error or lost connection.
+            ValueError: If ``timeout`` is not positive.
         """
-        if self._sock is None:
-            raise FireTunerError("FireTunerClient is not connected")
+        _validate_positive_finite("timeout", timeout)
+        sock = self._require_socket()
         idx = self.resolve_index(context)
-        prev = self._sock.gettimeout()
-        self._sock.settimeout(timeout)
+        prev = sock.gettimeout()
+        deadline = time.monotonic() + timeout
         outputs: list[str] = []
         try:
             self._send(TAG_COMMAND, f"CMD:{idx}:{code}")
             while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                sock.settimeout(remaining)
                 try:
                     tag, frame = self._recv_frame()
                 except TimeoutError:
@@ -349,7 +544,7 @@ class FireTunerClient:
                     raise FireTunerError(f"Lua error in {context or idx}: {payload}")
                 outputs.append(payload)
         finally:
-            self._sock.settimeout(prev)
+            sock.settimeout(prev)
         return "\n".join(outputs)
 
     def set_command(self, command_json: str, context: str | None = None) -> None:

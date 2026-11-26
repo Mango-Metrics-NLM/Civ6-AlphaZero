@@ -97,3 +97,52 @@ defaults SHALL describe what the run will actually do.
 - **WHEN** the orchestrator warns about an unusable parallelism request
 - **THEN** the configured MCTS variant is left unchanged, so the evaluation,
   arena and tournament phases are unaffected
+
+### Requirement: The move mask agrees with the executor
+
+The MicroCiv action mask SHALL mark a move legal only if the executor would
+accept it: the target is on the board, is not a mountain, and holds no unit of
+any player. A move the mask marks legal MUST NOT be rejected by the executor,
+because masked policy loss and search treat the mask as ground truth and a
+rejected move forfeits the unit's remaining moves.
+
+#### Scenario: Seeded random play over legal actions is never rejected
+
+- **WHEN** 200 seeded games are played choosing only mask-legal actions
+- **THEN** every step reports `action_success` true and no "Invalid move" occurs
+
+#### Scenario: A unit blocks a move onto its tile
+
+- **WHEN** a mover has an own or enemy unit on the adjacent target tile
+- **THEN** the move action toward that tile is masked out
+
+### Requirement: Checkpoints record their provenance
+
+Every checkpoint written by the trainer SHALL carry primitive-only metadata
+(`board_size`, `max_turns`, `num_players`, `mcts`, `gumbel_k`, `gumbel_sims`,
+`c_scale`, `policy_target`, `bootstrap`, `seed`, `git_sha`, `env_version`) that
+loads under `weights_only=True`. A reader that supplies a horizon MUST refuse a
+checkpoint recorded at a different `max_turns`; a checkpoint with no metadata
+MUST load with a warning.
+
+#### Scenario: Horizon mismatch on resume
+
+- **WHEN** a checkpoint trained at `max_turns` 30 is resumed at `max_turns` 60
+- **THEN** `HorizonMismatch` is raised before any weight is loaded
+
+#### Scenario: Legacy file
+
+- **WHEN** a checkpoint without metadata is loaded with a horizon supplied
+- **THEN** a WARNING is logged and the load succeeds
+
+### Requirement: Iteration 0 is switchable and its starting network is pinned
+
+`--bootstrap simple_mcts` (default) SHALL play iteration 0 with SimpleMCTS;
+`--bootstrap none` SHALL play it with the configured search and construct no
+SimpleMCTS. A fresh run SHALL write `checkpoint_0.pt` before any training, and a
+resumed run MUST NOT rewrite it.
+
+#### Scenario: Resuming from checkpoint_0
+
+- **WHEN** a run resumes from `checkpoint_0.pt`
+- **THEN** `checkpoint_0.pt` is byte-identical afterwards

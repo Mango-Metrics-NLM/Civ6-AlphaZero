@@ -201,12 +201,20 @@ function AlphaZeroFileIO.Append(path, content)
 end
 
 -- Delete a file
+-- True when the file is gone afterwards (or was never there); false and why
+-- when it is still there. The removal is attempted first and the file looked
+-- for afterwards: os.remove reports a failure by returning nil, which is not
+-- an error pcall sees, and a file that cannot be read can often still be
+-- removed. Limit: a file that can be neither read nor removed looks absent.
 function AlphaZeroFileIO.Delete(path)
-    if not os or not os.remove then return true, nil end
-    local ok, err = pcall(os.remove, path)
-    if not ok then
+    local reason = "os.remove not available"
+    if os and os.remove then
+        local ok, removed, err = pcall(os.remove, path)
+        reason = (not ok and removed) or err or "os.remove failed"
+    end
+    if fileExists(path) then
         if Log then Log.Warn("Could not delete file: %s", path) end
-        return false, err
+        return false, tostring(reason)
     end
     return true, nil
 end
@@ -329,6 +337,88 @@ function AlphaZeroFileIO.WriteState(state)
         end
         return true, nil
     end
+end
+
+-- Adler-32 of a string, as zlib computes it. The snapshot's END line carries
+-- it, so the reader can tell a whole snapshot from pieces of two.
+local function adler32(text)
+    local a, b = 1, 0
+    for i = 1, #text do
+        a = (a + string.byte(text, i)) % 65521
+        b = (b + a) % 65521
+    end
+    return b * 65536 + a
+end
+
+-- Announce a snapshot attempt (GM-B4), before any table is read: an attempt
+-- that then exports nothing must not leave the previous game load's snapshot
+-- looking current. Removes the previous file, or prints a line the reader
+-- takes as "a newer export started".
+function AlphaZeroFileIO.BeginGameInfo()
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = nil
+    end
+    if HAS_IO then
+        -- Overwritten, not deleted: a delete can fail without a word, and the
+        -- previous load's snapshot would then stand as this load's. The
+        -- capture refuses a file that holds only this marker.
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if not path then return false end
+        local ok, err = AlphaZeroFileIO.Write(path, "AZ_GAMEINFO_BEGIN")
+        if ok then return true end
+        -- A read-only file cannot take the marker but can often be removed.
+        local deleted, deleteErr = AlphaZeroFileIO.Delete(path)
+        if deleted then return true end
+        if Log then
+            Log.Error("The previous GameInfo snapshot could not be marked (%s) or removed (%s)",
+                tostring(err), tostring(deleteErr))
+        end
+        return false
+    end
+    print("AZ_GAMEINFO_BEGIN")
+    return true
+end
+
+-- Write the rule-table snapshot (GM-B4): a file when file access exists,
+-- otherwise printed like a state, under its own prefixes so the state reader
+-- does not take it for one.
+function AlphaZeroFileIO.WriteGameInfo(document)
+    if not AlphaZeroJson then
+        return false, "JSON encoder not available"
+    end
+
+    local json, err = AlphaZeroJson.Encode(document, false)
+    if not json then
+        return false, err
+    end
+
+    if HAS_IO then
+        local path = AlphaZeroConfig and AlphaZeroConfig.Get("GAMEINFO_PATH")
+        if not path then return false, "GAMEINFO_PATH not configured" end
+        return AlphaZeroFileIO.Write(path, json)
+    end
+
+    -- Lua.log truncates long lines, so a long snapshot is cut into pieces:
+    -- AZ_GAMEINFO_CHUNK:seq/total:data ... AZ_GAMEINFO_END:total:checksum
+    -- The checksum is printed with %.0f: it can exceed 2^31, which %d does
+    -- not print on every build of Lua 5.1.
+    local MAX_CHUNK = 1800
+    local jsonLen = #json
+    if jsonLen <= MAX_CHUNK then
+        print("AZ_GAMEINFO:" .. json)
+    else
+        local totalChunks = math.ceil(jsonLen / MAX_CHUNK)
+        for i = 1, totalChunks do
+            local startPos = (i - 1) * MAX_CHUNK + 1
+            local endPos = math.min(i * MAX_CHUNK, jsonLen)
+            print("AZ_GAMEINFO_CHUNK:" .. i .. "/" .. totalChunks .. ":" .. json:sub(startPos, endPos))
+        end
+        print("AZ_GAMEINFO_END:" .. totalChunks .. ":" .. string.format("%.0f", adler32(json)))
+    end
+    if ExposedMembers then
+        ExposedMembers.AlphaZeroGameInfo = json
+    end
+    return true, nil
 end
 
 -- Read commands from either file or ExposedMembers

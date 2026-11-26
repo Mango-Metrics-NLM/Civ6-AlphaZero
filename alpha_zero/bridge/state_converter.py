@@ -26,19 +26,25 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 import torch
 
 from alpha_zero.bridge.config import GameConstants, MapSizeConfig, get_map_config
+from alpha_zero.bridge.other_players import renumbered, shown_to_the_agent
 from alpha_zero.bridge.protocol import (
     GameStateData,
 )
+from alpha_zero.bridge.tech_registry import ResearchRegistry, choose_registry
 from alpha_zero.envs.civ6_encoder import Civ6StateEncoder, EncoderConfig
 
 __all__ = ["StateConverter", "TerrainMapping", "UnitMapping"]
 
 logger = logging.getLogger(__name__)
+
+#: The encoder has this many positions for technologies and as many for civics;
+#: it ignores an id at or above it (``alpha_zero/envs/civ6_encoder.py``).
+ENCODER_RESEARCH_SLOTS = 100
 
 
 @dataclass
@@ -241,6 +247,7 @@ class StateConverter:
         terrain_mapping: TerrainMapping | None = None,
         unit_mapping: UnitMapping | None = None,
         create_encoder: bool = True,
+        research_registry: ResearchRegistry | Literal[False] | None = None,
     ) -> None:
         """Initialize the state converter.
 
@@ -250,9 +257,33 @@ class StateConverter:
             terrain_mapping: Custom terrain mappings (uses defaults if None).
             unit_mapping: Custom unit mappings (uses defaults if None).
             create_encoder: Whether to create an internal encoder.
+            research_registry: Which encoder slot each technology and civic has.
+                None asks the environment (``CIV6AZ_BRIDGE_RULESET``); False
+                means none, without asking. With no registry the encoder's
+                research positions stay zero.
+
+        Raises:
+            ResearchRegistryError: If the environment names a registry that
+                cannot be loaded.
         """
         self.board_size = board_size
         self.num_players = num_players
+        self.research_registry = choose_registry(research_registry)
+        self._research_stats = {
+            "conversions_without_registry": 0,
+            "unmapped_techs": 0,
+            "unmapped_civics": 0,
+            "slots_out_of_range": 0,
+        }
+        self._warned_no_registry = False
+        self._warned_lost_research = False
+        # What the counters last counted, so that converting one state twice
+        # (the agent loop converts, then converts again to encode) counts once.
+        self._last_counted_research: tuple[Any, ...] | None = None
+        if self.research_registry is None:
+            logger.info("StateConverter: no research registry; research positions stay zero")
+        else:
+            logger.info("StateConverter research slots: %s", self.research_registry.describe())
         self.terrain_mapping = terrain_mapping or TerrainMapping()
         self.unit_mapping = unit_mapping or UnitMapping()
 
@@ -284,25 +315,25 @@ class StateConverter:
         else:
             state = civ6_state
 
-        # Validate map size before scaling
         if state.map_data.width <= 0 or state.map_data.height <= 0:
             raise GameNotStartedError(
                 f"Invalid map size: {state.map_data.width}x{state.map_data.height}. "
                 "Map dimensions must be positive."
             )
 
-        # Set up coordinate scaling
         self._setup_scaling(state.map_data.width, state.map_data.height)
 
-        # Convert each component
         terrain = self._convert_terrain(state)
-        units = self._convert_units(state)
-        cities = self._convert_cities(state)
+        shown, others = shown_to_the_agent(state)
+        units = self._convert_units(shown)
+        cities = self._convert_cities(shown)
         visibility = self._convert_visibility(state)
 
         # Build player info
         current_player = self._get_current_player_id(state)
         player_data = self._extract_player_data(state, current_player)
+
+        technologies, civics = self._encode_research(state)
 
         return {
             "turn": state.turn_id,
@@ -324,13 +355,24 @@ class StateConverter:
             # Era and progress
             "era": state.era,
             "resources": self._extract_resources(state),
-            "technologies": self._extract_technologies(state),
-            "civics": self._extract_civics(state),
-            "victory_progress": self._extract_victory_progress(state),
+            # Research the encoder can read: slot numbers when a registry is
+            # configured, the normalised names (which it skips) when not.
+            "technologies": technologies,
+            "civics": civics,
+            "victory_progress": self._extract_victory_progress(shown),
             # Store original legal actions for action mask generation
             "_legal_actions": state.legal_actions,
+            # Which registry numbered the research above (None: none), so the
+            # action converter can refuse to work with a different one.
+            "_research_fingerprint": (
+                self.research_registry.fingerprint if self.research_registry else None
+            ),
             "_map_size": (state.map_data.width, state.map_data.height),
+            # The board every position above is scaled onto. ``_map_size`` is
+            # the game's own map; the two differ on any map that is scaled.
+            "_board_size": self.board_size,
             "_player_id": state.player_id,
+            "_others": others,
             # Pass-through reference to the original GameStateData so downstream
             # callers (e.g. agent_loop._build_observation) can re-encode without
             # re-running convert() on a dict that no longer has the raw schema.
@@ -384,8 +426,6 @@ class StateConverter:
         Returns:
             Scaled (x, y) coordinates clamped to valid range.
         """
-        # Use round() for proper rounding instead of int() truncation
-        # This avoids systematic error where entities cluster toward origin
         scaled_x = round(x * self._scale_x)
         scaled_y = round(y * self._scale_y)
 
@@ -394,6 +434,8 @@ class StateConverter:
         scaled_y = max(0, min(self.board_size - 1, scaled_y))
 
         return (scaled_x, scaled_y)
+
+    cell_of = _scale_coords  #: Public name. Valid only after ``convert`` on the same map.
 
     def _convert_terrain(self, state: GameStateData) -> dict[tuple[int, int], dict]:
         """Convert terrain data with collision handling.
@@ -680,7 +722,17 @@ class StateConverter:
         return visibility
 
     def _get_current_player_id(self, state: GameStateData) -> int:
-        """Get the current player index (0-based for encoder).
+        """The acting player's index among the converted units and cities.
+
+        This is the index :meth:`_resolve_player_index` gives the acting
+        player's own units, not the game's player id: with two players the
+        acting player is always index 0, whatever its id in the game setup.
+        The encoder, the action converter and the search simulator all pick
+        "own" units by comparing a unit's index with this value, so the two
+        must be the same number. (They were not when the acting player was not
+        game player 0: its units were index 0 and this was its game id, so the
+        encoder saw its units as the enemy's and no unit action was legal.)
+        The game's player id stays available as ``_player_id``.
 
         Args:
             state: Game state data.
@@ -688,8 +740,7 @@ class StateConverter:
         Returns:
             Player index.
         """
-        # For the encoder, return the actual player ID from the state.
-        return state.player_id
+        return self._resolve_player_index(state.player_id, state.player_id)
 
     def _extract_player_data(
         self,
@@ -766,6 +817,90 @@ class StateConverter:
             if name.startswith(prefix):
                 name = name[len(prefix) :]
         return name
+
+    @property
+    def research_stats(self) -> dict[str, int]:
+        """Counters of research the encoder did not get, since construction.
+
+        ``conversions_without_registry``: states that had research to encode
+        and no registry. ``unmapped_techs`` / ``unmapped_civics``: researched
+        items the registry has no slot for. ``slots_out_of_range``: items whose
+        slot the encoder has no position for. A state converted again straight
+        after itself (same turn, player and research) is counted once.
+        """
+        return dict(self._research_stats)
+
+    def _encode_research(self, state: GameStateData) -> tuple[list[Any], list[Any]]:
+        """The local player's researched technologies and civics, for the encoder.
+
+        With a registry: lists of slot numbers. Without one: the normalised
+        names, as before, which the encoder skips; that is counted, and warned
+        about once per converter.
+        """
+        tech_types: list[str] = []
+        civic_types: list[str] = []
+        for player in state.players:
+            if player.id == state.player_id:
+                tech_types = list(player.techs_researched)
+                civic_types = list(player.civics_researched)
+                break
+
+        counted_key = (state.turn_id, state.player_id, tuple(tech_types), tuple(civic_types))
+        count = counted_key != self._last_counted_research
+        self._last_counted_research = counted_key
+
+        registry = self.research_registry
+        if registry is None:
+            if tech_types or civic_types:
+                if count:
+                    self._research_stats["conversions_without_registry"] += 1
+                if not self._warned_no_registry:
+                    self._warned_no_registry = True
+                    logger.warning(
+                        "No research registry is configured (CIV6AZ_BRIDGE_RULESET): the "
+                        "encoder's technology and civic positions stay zero. Warned once; "
+                        "see StateConverter.research_stats for the count."
+                    )
+            return (
+                [self._normalize_tech_name(tech) for tech in tech_types],
+                [self._normalize_civic_name(civic) for civic in civic_types],
+            )
+
+        return (
+            self._research_slots(tech_types, registry.tech_slot, "unmapped_techs", count),
+            self._research_slots(civic_types, registry.civic_slot, "unmapped_civics", count),
+        )
+
+    def _research_slots(
+        self, type_names: list[str], slot_of: Any, unmapped_counter: str, count: bool
+    ) -> list[int]:
+        """Slots of ``type_names``; what has none or does not fit the encoder is left out.
+
+        The loss is counted when ``count`` is set, and warned about once per converter.
+        """
+        slots: list[int] = []
+        for type_name in type_names:
+            slot = slot_of(type_name)
+            if slot is not None and slot < ENCODER_RESEARCH_SLOTS:
+                slots.append(slot)
+                continue
+            counter = unmapped_counter if slot is None else "slots_out_of_range"
+            if count:
+                self._research_stats[counter] += 1
+            if not self._warned_lost_research:
+                self._warned_lost_research = True
+                reason = (
+                    "has no slot in the research registry"
+                    if slot is None
+                    else f"has slot {slot}, beyond the encoder's {ENCODER_RESEARCH_SLOTS}"
+                )
+                logger.warning(
+                    "Researched %s %s and is not encoded. Warned once; "
+                    "see StateConverter.research_stats for the counts.",
+                    type_name,
+                    reason,
+                )
+        return slots
 
     def _extract_technologies(self, state: GameStateData) -> list[str]:
         """Extract researched technologies for the current player.
@@ -938,42 +1073,18 @@ class StateConverter:
         Returns:
             A new state dictionary with remapped IDs.
         """
-        import copy as _copy
+        remapped = dict(raw_state)
 
-        remapped = _copy.copy(raw_state)
-
-        # Remap players
-        if "players" in remapped:
-            new_players = []
-            for p in remapped["players"]:
-                p_copy = dict(p)
-                old_id = p_copy.get("id")
-                if old_id is not None and old_id in player_mapping:
-                    p_copy["id"] = player_mapping[old_id]
-                new_players.append(p_copy)
-            remapped["players"] = new_players
-
-        # Remap unit owner_id
-        if "units" in remapped:
-            new_units = []
-            for u in remapped["units"]:
-                u_copy = dict(u)
-                old_owner = u_copy.get("owner_id")
-                if old_owner is not None and old_owner in player_mapping:
-                    u_copy["owner_id"] = player_mapping[old_owner]
-                new_units.append(u_copy)
-            remapped["units"] = new_units
-
-        # Remap city owner_id
-        if "cities" in remapped:
-            new_cities = []
-            for c in remapped["cities"]:
-                c_copy = dict(c)
-                old_owner = c_copy.get("owner_id")
-                if old_owner is not None and old_owner in player_mapping:
-                    c_copy["owner_id"] = player_mapping[old_owner]
-                new_cities.append(c_copy)
-            remapped["cities"] = new_cities
+        # Players and other_players are keyed by ``id``; units and cities name
+        # their owner as ``owner`` (the mod) or ``owner_id``.
+        for section, keys in (
+            ("players", ("id",)),
+            ("other_players", ("id",)),
+            ("units", ("owner", "owner_id")),
+            ("cities", ("owner", "owner_id")),
+        ):
+            if isinstance(remapped.get(section), list):
+                remapped[section] = renumbered(remapped[section], keys, player_mapping)
 
         # Remap top-level player_id if present
         if "player_id" in remapped:

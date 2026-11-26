@@ -16,10 +16,14 @@ local buildingTypeCache = {}
 -- Sentinel value for invalid Civ6 type IDs (features, resources, improvements)
 local INVALID_TYPE_ID = -1
 
--- Hex-grid neighbor offsets (Civ6 uses offset coordinates).
--- Neighbor positions differ based on whether the row (y) is even or odd.
-local HEX_EVEN_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {-1, 1}}
-local HEX_ODD_ROW_OFFSETS = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, -1}, {-1, -1}}
+-- Version of the exported state's shape; a state without it is version 1.
+-- 2: researched techs by name, current research and civic with cost, progress
+--    and boost, city buildings and districts, research legal actions, and the
+--    notification that blocks ending the turn.
+local STATE_SCHEMA_VERSION = 2
+
+-- GameInfo row type names by row Index, one table per GameInfo table name.
+local typeNameCaches = {}
 
 -- ----------------------------------------------------------------------------
 -- Helper Functions
@@ -126,6 +130,164 @@ local function getImprovementTypeName(improvementTypeId)
     return nil
 end
 
+-- Call a method on a game object. Returns nil when the object or the method is
+-- missing, or when the call raises: which methods exist depends on the Lua
+-- context the game runs this script in, and a missing one must cost one field,
+-- not the whole export.
+local function safeCall(object, methodName, ...)
+    if object == nil then return nil end
+    local okMethod, method = pcall(function() return object[methodName] end)
+    if not okMethod or not method then return nil end
+    local okCall, result = pcall(method, object, ...)
+    if okCall then return result end
+    return nil
+end
+
+-- Type name of a GameInfo row by its Index; nil when the table or row is missing.
+local function typeNameByIndex(tableName, typeField, index)
+    local cache = typeNameCaches[tableName]
+    if not cache then
+        cache = {}
+        local gameTable = GameInfo and GameInfo[tableName]
+        if gameTable then
+            pcall(function()
+                for row in gameTable() do
+                    cache[row.Index] = row[typeField]
+                end
+            end)
+        end
+        -- Keep an empty result out of the cache: the table may not be ready yet.
+        if next(cache) ~= nil then
+            typeNameCaches[tableName] = cache
+        end
+    end
+    return cache[index]
+end
+
+local productionHashCache = nil
+local PRODUCTION_HASH_TABLES = {
+    { "Units", "UnitType" },
+    { "Buildings", "BuildingType" },
+    { "Districts", "DistrictType" },
+    { "Projects", "ProjectType" },
+}
+
+-- Lazy hash-to-type lookup for city build queues when CurrentlyBuilding() returns nil
+-- (live InGame UI context exposes GetCurrentProductionTypeHash() instead).
+local function typeNameByHash(hash)
+    if type(hash) ~= "number" or hash == 0 then
+        return nil
+    end
+    if not productionHashCache then
+        local cache = {}
+        if GameInfo then
+            for _, entry in ipairs(PRODUCTION_HASH_TABLES) do
+                local gameTable = GameInfo[entry[1]]
+                if gameTable then
+                    pcall(function()
+                        for row in gameTable() do
+                            if row.Hash ~= nil and row[entry[2]] then
+                                cache[row.Hash] = row[entry[2]]
+                            end
+                        end
+                    end)
+                end
+            end
+        end
+        if next(cache) ~= nil then
+            productionHashCache = cache
+        end
+    end
+    return productionHashCache and productionHashCache[hash] or nil
+end
+
+-- Resolve a city's active production item name across stub and live UI contexts.
+local function getCurrentProductionName(buildQueue)
+    local current = safeCall(buildQueue, "CurrentlyBuilding")
+    if type(current) == "string" and current ~= "" then
+        return current
+    end
+    local hash = safeCall(buildQueue, "GetCurrentProductionTypeHash")
+    if type(hash) == "number" and hash ~= 0 then
+        local resolved = typeNameByHash(hash)
+        if resolved then
+            if Log and Log.Debug then
+                Log.Debug("Resolved production hash %.0f -> %s", hash, resolved)
+            end
+            return resolved
+        end
+        if Log and Log.Debug then
+            Log.Debug("Unmapped production hash %.0f; falling back to PRODUCTION_HASH_", hash)
+        end
+        return "PRODUCTION_HASH_" .. string.format("%.0f", hash)
+    end
+    return nil
+end
+
+local gameInfoYieldCache = nil
+local function yieldIndexFromGameInfo(prefixedKey)
+    if not gameInfoYieldCache and GameInfo and GameInfo.Yields then
+        local cache = {}
+        pcall(function()
+            for row in GameInfo.Yields() do
+                if row.YieldType and row.Index ~= nil then
+                    cache[row.YieldType] = row.Index
+                end
+            end
+        end)
+        if next(cache) ~= nil then
+            gameInfoYieldCache = cache
+        end
+    end
+    return gameInfoYieldCache and gameInfoYieldCache[prefixedKey] or nil
+end
+
+-- Live Civ6 YieldTypes uses short keys (FOOD=0..FAITH=5), whereas unit stubs
+-- and XML types use YIELD_FOOD..YIELD_FAITH.
+local function resolveYieldIndex(shortKey, prefixedKey)
+    if YieldTypes then
+        if YieldTypes[shortKey] ~= nil then return YieldTypes[shortKey] end
+        if YieldTypes[prefixedKey] ~= nil then return YieldTypes[prefixedKey] end
+    end
+    return yieldIndexFromGameInfo(prefixedKey)
+end
+
+local function readPlotYield(plot, shortKey, prefixedKey)
+    local idx = resolveYieldIndex(shortKey, prefixedKey)
+    if idx == nil then return 0 end
+    return plot:GetYield(idx) or 0
+end
+
+-- Type names of the GameInfo rows for which owner:<hasMethod>(row.Index) is
+-- true, in GameInfo order (the techs a player has, the buildings in a city).
+local function collectOwnedTypes(tableName, typeField, owner, hasMethod)
+    local names = {}
+    local gameTable = GameInfo and GameInfo[tableName]
+    if not gameTable or owner == nil then
+        return names
+    end
+    pcall(function()
+        for row in gameTable() do
+            if safeCall(owner, hasMethod, row.Index) then
+                table.insert(names, row[typeField])
+            end
+        end
+    end)
+    return names
+end
+
+-- Name of an EndTurnBlockingTypes value.
+local function endTurnBlockingName(blocking)
+    if EndTurnBlockingTypes then
+        for name, value in pairs(EndTurnBlockingTypes) do
+            if value == blocking then
+                return name
+            end
+        end
+    end
+    return "ENDTURN_BLOCKING_UNKNOWN_" .. tostring(blocking)
+end
+
 -- Get civic type name from index
 local function getCivicTypeName(civicId)
     if GameInfo and GameInfo.Civics then
@@ -138,12 +300,27 @@ local function getCivicTypeName(civicId)
     return "CIVIC_UNKNOWN_" .. tostring(civicId)
 end
 
--- Get hex grid neighbors (Civ6 uses offset coordinates)
+-- The plots one step from (x, y), from the game's own adjacency (which also
+-- knows where the map wraps). No table of offsets is kept here: the one this
+-- file used to carry was wrong for both row parities. Where the game's call
+-- is missing there are no neighbours, and so no moves are offered.
+local DIRECTION_NAMES = {
+    "DIRECTION_NORTHEAST", "DIRECTION_EAST", "DIRECTION_SOUTHEAST",
+    "DIRECTION_SOUTHWEST", "DIRECTION_WEST", "DIRECTION_NORTHWEST",
+}
 local function getHexNeighbors(x, y)
     local neighbors = {}
-    local offsets = (y % 2 == 0) and HEX_EVEN_ROW_OFFSETS or HEX_ODD_ROW_OFFSETS
-    for _, offset in ipairs(offsets) do
-        table.insert(neighbors, {x + offset[1], y + offset[2]})
+    if not Map or not Map.GetAdjacentPlot or not DirectionTypes then
+        return neighbors
+    end
+    for _, name in ipairs(DIRECTION_NAMES) do
+        local direction = DirectionTypes[name]
+        if direction ~= nil then
+            local ok, plot = pcall(Map.GetAdjacentPlot, x, y, direction)
+            if ok and plot then
+                table.insert(neighbors, {plot:GetX(), plot:GetY()})
+            end
+        end
     end
     return neighbors
 end
@@ -175,34 +352,140 @@ local function getHexTilesInRange(cx, cy, range)
     return tiles
 end
 
--- Get observable player IDs (own player + optionally all others)
+-- Whether other players are exported at all (OBSERVE_ALL_PLAYERS).
+local function observesOthers()
+    return (AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")) == true
+end
+
+-- The ids of the other living players, as the game's own UI finds them:
+-- Game.GetPlayers{Alive = true}, else every id below GameDefines.MAX_PLAYERS
+-- that has a living player. Barbarians and city-states have high ids, so a
+-- count is never used as an id. Nobody when neither can be asked.
+local function otherPlayerIds(playerId)
+    local ids, seen = {}, {}
+    local function add(id)
+        if type(id) == "number" and id ~= playerId and not seen[id] then
+            seen[id] = true
+            table.insert(ids, id)
+        end
+    end
+    local listed = pcall(function()
+        for _, player in ipairs(Game.GetPlayers({ Alive = true })) do
+            add(player:GetID())
+        end
+    end)
+    if not listed then
+        if Log then Log.Info("Game.GetPlayers could not be asked; walking the player ids") end
+        ids, seen = {}, {}
+        pcall(function()
+            for id = 0, GameDefines.MAX_PLAYERS - 1 do
+                local player = Players[id]
+                if player and player:IsAlive() then add(id) end
+            end
+        end)
+    end
+    table.sort(ids)
+    return ids
+end
+
+-- Get observable player IDs (own player first, then the others when observed)
 local function getObservablePlayerIds(playerId)
     local playerIds = {playerId}
-    local observeAll = AlphaZeroConfig and AlphaZeroConfig.Get("OBSERVE_ALL_PLAYERS")
-    if observeAll and PlayerManager and PlayerManager.GetWasEverAliveCount then
-        for i = 0, PlayerManager.GetWasEverAliveCount() - 1 do
-            if i ~= playerId then
-                table.insert(playerIds, i)
-            end
+    if observesOthers() then
+        for _, id in ipairs(otherPlayerIds(playerId)) do
+            table.insert(playerIds, id)
         end
     end
     return playerIds
 end
 
--- Get producible items from a GameInfo table (Units, Buildings, or Districts)
--- Returns items appended to the provided items/itemTypes tables
-local function collectProducibleItems(buildQueue, gameInfoTable, typeField, itemCategory, items, itemTypes)
-    if not gameInfoTable or not buildQueue or not buildQueue.CanProduce then
+-- The player's visibility table, or nil when the game cannot be asked.
+local function visibilityOf(playerId)
+    local ok, visibility = pcall(function()
+        return PlayersVisibility and PlayersVisibility[playerId]
+    end)
+    return ok and visibility or nil
+end
+
+-- Whether the player sees the tile now. False when the game cannot say.
+local function seesTile(visibility, x, y)
+    if not visibility then return false end
+    local ok, visible = pcall(function() return visibility:IsVisible(x, y) end)
+    return ok and visible == true
+end
+
+-- Whether the player sees this unit: its tile and the unit itself, as the
+-- game's UI asks (a stealth unit on a visible tile is not seen). False when
+-- either cannot be asked.
+local function seesUnit(visibility, unit, x, y)
+    if not seesTile(visibility, x, y) then return false end
+    local ok, visible = pcall(function() return visibility:IsUnitVisible(unit) end)
+    return ok and visible == true
+end
+
+-- What another player is to this one: { id, kind, at_war, met }. at_war and
+-- met are left out when the game cannot be asked (unknown, never "at peace").
+local function describeOtherPlayer(playerId, otherId)
+    local entry = { id = otherId, kind = "unknown" }
+    local other = Players and Players[otherId]
+    -- true / false as the game answers; nil when the method raises or gives
+    -- no boolean. IsFreeCities does not exist without the expansions, which
+    -- is an answer (no), not a failure.
+    local function is(method, absentMeans)
+        if other and other[method] == nil then return absentMeans end
+        local ok, value = pcall(function() return other[method](other) end)
+        if ok and type(value) == "boolean" then return value end
+        return nil
+    end
+    local barbarian, free, major = is("IsBarbarian"), is("IsFreeCities", false), is("IsMajor")
+    if barbarian == true then
+        entry.kind = "barbarian"
+    elseif free == true then
+        entry.kind = "free"
+    elseif major == true and barbarian == false then
+        entry.kind = "major"
+    elseif major == false and barbarian == false and free == false then
+        entry.kind = "minor"
+    end
+    if entry.kind == "barbarian" then
+        entry.at_war = true
+    end
+    pcall(function()
+        local diplomacy = Players[playerId]:GetDiplomacy()
+        local okWar, atWar = pcall(function() return diplomacy:IsAtWarWith(otherId) end)
+        if okWar and type(atWar) == "boolean" and entry.at_war == nil then
+            entry.at_war = atWar
+        end
+        local okMet, met = pcall(function() return diplomacy:HasMet(otherId) end)
+        if okMet and type(met) == "boolean" then
+            entry.met = met
+        end
+    end)
+    return entry
+end
+
+-- Whether the executor would carry this command out now. The executor's
+-- own check, so an offered action is one that will not be refused.
+local function wouldBeAccepted(playerId, command)
+    if not AlphaZeroActionExecutor or not AlphaZeroActionExecutor.Check then
+        return false
+    end
+    local ok, accepted = pcall(AlphaZeroActionExecutor.Check, playerId, command)
+    return ok and accepted == true
+end
+
+-- The items of one GameInfo table a city could start now, by type name.
+-- Asked through the executor's check: by the row's Hash, the strict form,
+-- and nothing that needs a plot.
+local function collectProducibleItems(playerId, cityId, gameInfoTable, typeField, itemCategory, items, itemTypes)
+    if not gameInfoTable then
         return
     end
     for row in gameInfoTable() do
-        local ok, canProd = pcall(function()
-            return buildQueue:CanProduce(row.Index, true)
-        end)
-        if ok and canProd then
-            local key = row[typeField] or row.Index
-            table.insert(items, key)
-            itemTypes[key] = itemCategory
+        local name = row[typeField]
+        if name and wouldBeAccepted(playerId, { action_type = "city_produce", city_id = cityId, item_id = name }) then
+            table.insert(items, name)
+            itemTypes[name] = itemCategory
         end
     end
 end
@@ -232,11 +515,7 @@ local function exportMap(playerId)
     local tileCount = 0
     local includeFog = AlphaZeroConfig and AlphaZeroConfig.Get("INCLUDE_FOG_OF_WAR")
 
-    local visibilityPlayer = Players and Players[playerId]
-    local playerVisibility = nil
-    if visibilityPlayer and PlayersVisibility then
-        playerVisibility = PlayersVisibility[playerId]
-    end
+    local playerVisibility = visibilityOf(playerId)
 
     for x = 0, mapData.width - 1 do
         for y = 0, mapData.height - 1 do
@@ -246,12 +525,14 @@ local function exportMap(playerId)
 
             local plot = Map.GetPlot(x, y)
             if plot then
-                local isVisible = true
-                local isRevealed = true
-
+                -- Nothing is visible when the game cannot be asked.
+                local isVisible = seesTile(playerVisibility, x, y)
+                local isRevealed = false
                 if playerVisibility then
-                    isVisible = playerVisibility:IsVisible(x, y)
-                    isRevealed = playerVisibility:IsRevealed(x, y)
+                    local okRevealed, revealed = pcall(function()
+                        return playerVisibility:IsRevealed(x, y)
+                    end)
+                    isRevealed = okRevealed and revealed == true
                 end
 
                 if isRevealed or not includeFog then
@@ -260,13 +541,17 @@ local function exportMap(playerId)
                         y = y,
                         terrain = getTerrainTypeName(plot:GetTerrainType()),
                         features = {},
-                        resource = getResourceTypeName(plot:GetResourceType()),
-                        improvement = getImprovementTypeName(plot:GetImprovementType()),
-                        owner_id = plot:GetOwner(),
                         is_visible = isVisible,
                         is_revealed = isRevealed,
                         yields = {},
                     }
+                    -- Who owns a tile, what is built on it and what it holds
+                    -- are facts of now: only for a tile the player sees now.
+                    if isVisible then
+                        tile.resource = getResourceTypeName(plot:GetResourceType())
+                        tile.improvement = getImprovementTypeName(plot:GetImprovementType())
+                        tile.owner_id = plot:GetOwner()
+                    end
 
                     -- Add features
                     local featureType = plot:GetFeatureType()
@@ -287,15 +572,15 @@ local function exportMap(playerId)
                         table.insert(tile.features, "FEATURE_MOUNTAIN")
                     end
 
-                    -- Add yields if visible (with nil guard on YieldTypes)
-                    if isVisible and YieldTypes then
+                    -- Add yields if visible (with nil guard on YieldTypes / GameInfo.Yields)
+                    if isVisible and (YieldTypes or (GameInfo and GameInfo.Yields)) then
                         tile.yields = {
-                            food = plot:GetYield(YieldTypes.YIELD_FOOD or 0) or 0,
-                            production = plot:GetYield(YieldTypes.YIELD_PRODUCTION or 0) or 0,
-                            gold = plot:GetYield(YieldTypes.YIELD_GOLD or 0) or 0,
-                            science = plot:GetYield(YieldTypes.YIELD_SCIENCE or 0) or 0,
-                            culture = plot:GetYield(YieldTypes.YIELD_CULTURE or 0) or 0,
-                            faith = plot:GetYield(YieldTypes.YIELD_FAITH or 0) or 0,
+                            food = readPlotYield(plot, "FOOD", "YIELD_FOOD"),
+                            production = readPlotYield(plot, "PRODUCTION", "YIELD_PRODUCTION"),
+                            gold = readPlotYield(plot, "GOLD", "YIELD_GOLD"),
+                            science = readPlotYield(plot, "SCIENCE", "YIELD_SCIENCE"),
+                            culture = readPlotYield(plot, "CULTURE", "YIELD_CULTURE"),
+                            faith = readPlotYield(plot, "FAITH", "YIELD_FAITH"),
                         }
                     end
 
@@ -318,24 +603,47 @@ local function exportUnits(playerId)
         return units
     end
 
-    local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
+    local playerVisibility = visibilityOf(playerId)
     local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
-        if player then
-            local playerUnits = player:GetUnits()
-            if playerUnits then
+        local okUnits, playerUnits = pcall(function() return player and player:GetUnits() end)
+        if okUnits and playerUnits then
+            local function walk()
                 for i, unit in playerUnits:Members() do
                     local x, y = unit:GetX(), unit:GetY()
+                    local own = (pid == playerId)
 
-                    -- Check visibility for non-own units
-                    local canSee = (pid == playerId)
-                    if not canSee and playerVisibility then
-                        canSee = playerVisibility:IsVisible(x, y)
+                    -- Another player's unit only when this player sees it.
+                    local canSee = own
+                    if not own then
+                        canSee = x ~= -9999
+                            and safeCall(unit, "IsDead") ~= true
+                            and safeCall(unit, "IsDelayedDeath") ~= true
+                            and seesUnit(playerVisibility, unit, x, y)
                     end
 
-                    if canSee then
+                    if canSee and not own then
+                        -- Only what the game shows of somebody else's unit:
+                        -- no moves left, attacks left or promotions.
+                        local typeInfo = getUnitTypeInfo(unit:GetUnitType())
+                        local dmg = safeCall(unit, "GetDamage") or 0
+                        table.insert(units, {
+                            id = unit:GetID(),
+                            type_name = typeInfo.type_name,
+                            owner = pid,
+                            x = x,
+                            y = y,
+                            hp = 100 - dmg,
+                            max_hp = 100,
+                            damage = dmg,
+                            combat_strength = safeCall(unit, "GetCombat") or 0,
+                            ranged_strength = safeCall(unit, "GetRangedCombat") or 0,
+                            range = safeCall(unit, "GetRange") or 0,
+                            is_civilian = typeInfo.is_civilian,
+                        })
+                    elseif canSee then
                         local typeInfo = getUnitTypeInfo(unit:GetUnitType())
 
                         -- Wrap unit data construction in pcall — some methods
@@ -390,6 +698,9 @@ local function exportUnits(playerId)
                     end
                 end
             end
+            -- Somebody else's unit that cannot be read must not cost the
+            -- player its own: only the own walk may fail the export.
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 
@@ -405,24 +716,38 @@ local function exportCities(playerId)
         return cities
     end
 
-    local playerVisibility = PlayersVisibility and PlayersVisibility[playerId]
+    local playerVisibility = visibilityOf(playerId)
     local playerIds = getObservablePlayerIds(playerId)
 
     for _, pid in ipairs(playerIds) do
         local player = Players[pid]
-        if player then
-            local playerCities = player:GetCities()
-            if playerCities then
+        local okCities, playerCities = pcall(function() return player and player:GetCities() end)
+        if okCities and playerCities then
+            local function walk()
                 for i, city in playerCities:Members() do
                     local x, y = city:GetX(), city:GetY()
+                    local own = (pid == playerId)
 
-                    -- Check visibility
-                    local canSee = (pid == playerId)
-                    if not canSee and playerVisibility then
-                        canSee = playerVisibility:IsRevealed(x, y)
-                    end
+                    -- Another player's city only while its tile is seen now:
+                    -- a city seen once and now in fog would give away who
+                    -- holds it today.
+                    local canSee = own or seesTile(playerVisibility, x, y)
 
-                    if canSee then
+                    if canSee and not own then
+                        local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
+                        table.insert(cities, {
+                            id = city:GetID(),
+                            name = safeCall(city, "GetName") or "Unknown",
+                            owner = pid,
+                            x = x,
+                            y = y,
+                            population = safeCall(city, "GetPopulation") or 1,
+                            is_capital = (ok_cap and is_cap) or false,
+                            buildings = {},
+                            districts = {},
+                            available_production = {},
+                        })
+                    elseif canSee then
                         -- pcall wrappers for city methods that may not exist in all contexts
                         local ok_cap, is_cap = pcall(function() return city:IsCapital() end)
                         local ok_str, str_val = pcall(function() return city:GetStrengthValue() end)
@@ -445,10 +770,32 @@ local function exportCities(playerId)
 
                         -- Only include detailed info for own cities
                         if pid == playerId then
+                            local cityBuildings = safeCall(city, "GetBuildings")
+                            if cityBuildings then
+                                cityData.buildings = collectOwnedTypes(
+                                    "Buildings", "BuildingType", cityBuildings, "HasBuilding")
+                            end
+
+                            local cityDistricts = safeCall(city, "GetDistricts")
+                            if cityDistricts then
+                                pcall(function()
+                                    for _, district in cityDistricts:Members() do
+                                        local districtType = safeCall(district, "GetType")
+                                        local districtName = districtType ~= nil
+                                            and typeNameByIndex("Districts", "DistrictType", districtType)
+                                        -- A district is listed once placed; only a finished
+                                        -- one counts. Without IsComplete it is listed.
+                                        if districtName and safeCall(district, "IsComplete") ~= false then
+                                            table.insert(cityData.districts, districtName)
+                                        end
+                                    end
+                                end)
+                            end
+
                             local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
                             if ok_bq and buildQueue then
-                                local ok_cb, currentProduction = pcall(function() return buildQueue:CurrentlyBuilding() end)
-                                if ok_cb and currentProduction then
+                                local currentProduction = getCurrentProductionName(buildQueue)
+                                if currentProduction then
                                     cityData.current_production = currentProduction
                                 end
                                 local ok_tl, turnsLeft = pcall(function() return buildQueue:GetTurnsLeft() end)
@@ -460,6 +807,7 @@ local function exportCities(playerId)
                     end
                 end
             end
+            if pid == playerId then walk() else pcall(walk) end
         end
     end
 
@@ -521,8 +869,27 @@ local function exportPlayer(playerId)
             end
         end
 
-        -- Export researched civics
-        if playerCulture.GetResearchedCivics then
+        -- Cost, progress and boost of the civic in progress
+        local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
+        if type(currentCivic) == "number" and currentCivic >= 0 then
+            playerData.civic_status = {
+                type = getCivicTypeName(currentCivic),
+                index = currentCivic,
+                cost = safeCall(playerCulture, "GetCultureCost", currentCivic),
+                progress = safeCall(playerCulture, "GetCulturalProgress", currentCivic),
+                turns_left = safeCall(playerCulture, "GetTurnsToProgressCivic", currentCivic)
+                    or safeCall(playerCulture, "GetTurnsLeftOnCurrentCivic"),
+                boost_triggered = safeCall(playerCulture, "HasBoostBeenTriggered", currentCivic),
+            }
+        end
+
+        -- Export researched civics: ask per civic; fall back to the list call
+        -- where HasCivic does not exist.
+        local okHasCivic, hasCivic = pcall(function() return playerCulture.HasCivic end)
+        if okHasCivic and hasCivic then
+            playerData.civics_researched = collectOwnedTypes(
+                "Civics", "CivicType", playerCulture, "HasCivic")
+        elseif playerCulture.GetResearchedCivics then
             local civics = playerCulture:GetResearchedCivics()
             if civics then
                 for _, civicId in ipairs(civics) do
@@ -535,8 +902,23 @@ local function exportPlayer(playerId)
     local playerTech = player:GetTechs()
     if playerTech then
         playerData.science_per_turn = playerTech:GetScienceYield() or 0
-        if playerTech.GetResearchingTech then
-            playerData.current_research = playerTech:GetResearchingTech()
+        playerData.techs_researched = collectOwnedTypes(
+            "Technologies", "TechnologyType", playerTech, "HasTech")
+
+        -- Current research by type name, with its cost, progress and boost
+        local currentTech = safeCall(playerTech, "GetResearchingTech")
+        if type(currentTech) == "number" and currentTech >= 0 then
+            local techName = typeNameByIndex("Technologies", "TechnologyType", currentTech)
+                or ("TECH_UNKNOWN_" .. tostring(currentTech))
+            playerData.current_research = techName
+            playerData.research_status = {
+                type = techName,
+                index = currentTech,
+                cost = safeCall(playerTech, "GetResearchCost", currentTech),
+                progress = safeCall(playerTech, "GetResearchProgress", currentTech),
+                turns_left = safeCall(playerTech, "GetTurnsToResearch", currentTech),
+                boost_triggered = safeCall(playerTech, "HasBoostBeenTriggered", currentTech),
+            }
         end
     end
 
@@ -550,6 +932,83 @@ local function exportPlayer(playerId)
     playerData.score = player:GetScore() or 0
 
     return playerData
+end
+
+-- Research choices open to the player now, as legal actions. `items` holds
+-- GameInfo row indexes (what the research commands take) and `item_names` the
+-- matching type names. The tech or civic already in progress is left out:
+-- choosing it again changes nothing.
+local function appendResearchActions(player, actions)
+    -- Technologies: the game answers directly.
+    local playerTech = safeCall(player, "GetTechs")
+    local techTable = GameInfo and GameInfo.Technologies
+    if playerTech and techTable then
+        local currentTech = safeCall(playerTech, "GetResearchingTech")
+        local items, names = {}, {}
+        for row in techTable() do
+            if row.Index ~= currentTech
+               and safeCall(playerTech, "CanResearch", row.Index)
+               and not safeCall(playerTech, "HasTech", row.Index) then
+                table.insert(items, row.Index)
+                table.insert(names, row.TechnologyType)
+            end
+        end
+        if #items > 0 then
+            table.insert(actions, { action = "research_tech", items = items, item_names = names })
+        end
+    end
+
+    -- Civics: the game answers directly (CanProgress, as its own civics chooser
+    -- asks). Where that method is missing, a civic is open when the player
+    -- lacks it and has every prerequisite listed for it.
+    local playerCulture = safeCall(player, "GetCulture")
+    local civicTable = GameInfo and GameInfo.Civics
+    local okHasCivic, hasCivicMethod = pcall(function() return playerCulture.HasCivic end)
+    if playerCulture and civicTable and okHasCivic and hasCivicMethod then
+        local okCanProgress, canProgressMethod = pcall(function() return playerCulture.CanProgress end)
+        local askTheGame = okCanProgress and canProgressMethod ~= nil
+        local prereqTable = GameInfo.CivicPrereqs
+
+        local indexByType, prereqs = {}, {}
+        if not askTheGame and prereqTable then
+            for row in civicTable() do
+                indexByType[row.CivicType] = row.Index
+            end
+            for row in prereqTable() do
+                prereqs[row.Civic] = prereqs[row.Civic] or {}
+                table.insert(prereqs[row.Civic], row.PrereqCivic)
+            end
+        end
+
+        local currentCivic = safeCall(playerCulture, "GetProgressingCivic")
+        local items, names = {}, {}
+        if askTheGame or prereqTable then
+            for row in civicTable() do
+                if row.Index ~= currentCivic and not safeCall(playerCulture, "HasCivic", row.Index) then
+                    local open
+                    if askTheGame then
+                        open = safeCall(playerCulture, "CanProgress", row.Index) and true or false
+                    else
+                        open = true
+                        for _, prereqType in ipairs(prereqs[row.CivicType] or {}) do
+                            local prereqIndex = indexByType[prereqType]
+                            if prereqIndex ~= nil and not safeCall(playerCulture, "HasCivic", prereqIndex) then
+                                open = false
+                                break
+                            end
+                        end
+                    end
+                    if open then
+                        table.insert(items, row.Index)
+                        table.insert(names, row.CivicType)
+                    end
+                end
+            end
+        end
+        if #items > 0 then
+            table.insert(actions, { action = "research_civic", items = items, item_names = names })
+        end
+    end
 end
 
 -- Export legal actions (with hex-grid neighbors and actual production items)
@@ -569,97 +1028,56 @@ local function exportLegalActions(playerId)
     if playerUnits then
         for _, unit in playerUnits:Members() do
             local unitId = unit:GetID()
-            local movesRemaining = unit:GetMovementMovesRemaining() or 0
+            local ux, uy = unit:GetX(), unit:GetY()
+            local neighbors = getHexNeighbors(ux, uy)
 
-            if movesRemaining > 0 then
-                -- Get valid move targets using hex-grid neighbors
+            -- Every action below is offered exactly when the executor's own
+            -- check accepts the command it stands for.
+            local function accepted(actionType, target)
+                local command = { action_type = actionType, unit_id = unitId }
+                if target then command.target = { x = target[1], y = target[2] } end
+                return wouldBeAccepted(playerId, command)
+            end
+            local function acceptedTargets(actionType, candidates)
                 local targets = {}
-                local ux, uy = unit:GetX(), unit:GetY()
-                local neighbors = getHexNeighbors(ux, uy)
-
-                for _, neighbor in ipairs(neighbors) do
-                    local tx, ty = neighbor[1], neighbor[2]
-                    if tx >= 0 and ty >= 0 then
-                        local plot = Map and Map.GetPlot(tx, ty)
-                        if plot and not plot:IsImpassable() then
-                            table.insert(targets, {tx, ty})
-                        end
+                for _, candidate in ipairs(candidates) do
+                    if accepted(actionType, candidate) then
+                        table.insert(targets, {candidate[1], candidate[2]})
                     end
                 end
-
-                if #targets > 0 then
-                    table.insert(actions, {
-                        action = "move",
-                        unit_id = unitId,
-                        targets = targets,
-                    })
-                end
-
-                -- Fortify action (available if unit has movement)
-                if not unit:IsCivilian() then
-                    table.insert(actions, {
-                        action = "fortify",
-                        unit_id = unitId,
-                    })
-                end
-
-                -- Skip action (always available if has movement)
-                table.insert(actions, {
-                    action = "skip",
-                    unit_id = unitId,
-                })
-
-                -- Found city (if settler)
-                local typeInfo = getUnitTypeInfo(unit:GetUnitType())
-                if typeInfo.type_name == "UNIT_SETTLER" or
-                   (typeInfo.is_civilian and string.find(typeInfo.type_name, "SETTLER")) then
-                    table.insert(actions, {
-                        action = "found_city",
-                        unit_id = unitId,
-                    })
-                end
+                return targets
             end
 
-            -- Attack actions (check for enemy units in range)
-            if (unit:GetAttacksRemaining() or 0) > 0 then
-                local ux, uy = unit:GetX(), unit:GetY()
-                local range = unit:GetRange() or 1
-                local attackTargets = {}
+            local moveTargets = acceptedTargets("unit_move", neighbors)
+            if #moveTargets > 0 then
+                table.insert(actions, { action = "move", unit_id = unitId, targets = moveTargets })
+            end
+            if accepted("unit_fortify") then
+                table.insert(actions, { action = "fortify", unit_id = unitId })
+            end
+            if accepted("unit_skip") then
+                table.insert(actions, { action = "skip", unit_id = unitId })
+            end
+            if accepted("unit_found_city") then
+                table.insert(actions, { action = "found_city", unit_id = unitId })
+            end
 
-                -- Get tiles in attack range
-                local tilesInRange
-                if range <= 1 then
-                    tilesInRange = getHexNeighbors(ux, uy)
-                else
-                    tilesInRange = getHexTilesInRange(ux, uy, range)
-                end
-
-                for _, tilePos in ipairs(tilesInRange) do
-                    local tx, ty = tilePos[1], tilePos[2]
-                    if tx >= 0 and ty >= 0 then
-                        local plot = Map and Map.GetPlot(tx, ty)
-                        if plot then
-                            -- Check for enemy units on this tile
-                            local plotUnits = Units and Units.GetUnitsInPlot(plot)
-                            if plotUnits then
-                                for _, enemyUnit in plotUnits:Members() do
-                                    if enemyUnit:GetOwner() ~= playerId then
-                                        table.insert(attackTargets, {tx, ty})
-                                        break
-                                    end
-                                end
-                            end
-                        end
-                    end
-                end
-
-                if #attackTargets > 0 then
-                    local attackAction = range > 1 and "ranged_attack" or "attack"
-                    table.insert(actions, {
-                        action = attackAction,
-                        unit_id = unitId,
-                        targets = attackTargets,
-                    })
+            -- An attack is offered only on what the same state shows. With
+            -- OBSERVE_ALL_PLAYERS off the state holds no foreign unit or city,
+            -- so no attack is offered; the executor still carries one out when
+            -- it is sent by hand.
+            local attackTargets = {}
+            if observesOthers() then
+                attackTargets = acceptedTargets("unit_attack", neighbors)
+            end
+            if #attackTargets > 0 then
+                table.insert(actions, { action = "attack", unit_id = unitId, targets = attackTargets })
+            end
+            local range = unit:GetRange() or 0
+            if range >= 1 and observesOthers() then
+                local rangedTargets = acceptedTargets("unit_ranged_attack", getHexTilesInRange(ux, uy, range))
+                if #rangedTargets > 0 then
+                    table.insert(actions, { action = "ranged_attack", unit_id = unitId, targets = rangedTargets })
                 end
             end
         end
@@ -671,16 +1089,16 @@ local function exportLegalActions(playerId)
         for _, city in playerCities:Members() do
             local ok_bq, buildQueue = pcall(function() return city:GetBuildQueue() end)
             if ok_bq and buildQueue then
-                local ok_cb, currentlyBuilding = pcall(function() return buildQueue:CurrentlyBuilding() end)
-                local needsProduction = ok_cb and not currentlyBuilding
+                local currentlyBuilding = getCurrentProductionName(buildQueue)
+                local needsProduction = not currentlyBuilding
                 -- Always export available production for each city
                 local items = {}
                 local itemTypes = {}
 
                 if GameInfo then
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Units, "UnitType", "unit", items, itemTypes)
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
-                    pcall(collectProducibleItems, buildQueue, GameInfo.Districts, "DistrictType", "district", items, itemTypes)
+                    local cityId = city:GetID()
+                    pcall(collectProducibleItems, playerId, cityId, GameInfo.Units, "UnitType", "unit", items, itemTypes)
+                    pcall(collectProducibleItems, playerId, cityId, GameInfo.Buildings, "BuildingType", "building", items, itemTypes)
                 end
 
                 if #items > 0 or needsProduction then
@@ -693,6 +1111,13 @@ local function exportLegalActions(playerId)
                 end
             end
         end
+    end
+
+    -- Research choices. Guarded as a whole: a failure here must not cost the
+    -- unit and city actions above.
+    local okResearch, researchErr = pcall(appendResearchActions, player, actions)
+    if not okResearch and Log then
+        Log.Warn("Research legal actions failed: %s", tostring(researchErr))
     end
 
     if Log then Log.Debug("Exported %d legal actions", #actions) end
@@ -710,11 +1135,90 @@ function AlphaZeroStateExporter.Init()
     end
 end
 
+-- A notification's message as text, or nil.
+local function notificationMessage(entry)
+    local text = safeCall(entry, "GetMessage")
+    if type(text) == "string" and text ~= "" then
+        return text
+    end
+    return nil
+end
+
+-- Whether an EndTurnBlockingTypes value means "something blocks".
+local function isBlocking(blocking)
+    if blocking == nil or blocking == 0 then
+        return false
+    end
+    return not (EndTurnBlockingTypes and blocking == EndTurnBlockingTypes.NO_ENDTURN_BLOCKING)
+end
+
+-- The reason the player's turn cannot end, if any.
+-- Returns the name of the EndTurnBlockingTypes value (for example
+-- "ENDTURN_BLOCKING_RESEARCH") and the blocking notification's message, or nil
+-- when nothing blocks. Asks the game the way its own action panel does
+-- (GetFirstEndTurnBlocking); where that call is missing or fails, scans the
+-- notification list instead.
+-- The third value is true when the game could not be asked at all (no
+-- NotificationManager, or neither way of asking worked). "Could not ask" is
+-- not "nothing blocks": an end of turn sent while a blocker is active
+-- deactivates the turn (LF-H1), so the caller has to refuse.
+AlphaZeroStateExporter.UNKNOWN_BLOCKER = "ENDTURN_BLOCKING_NOT_ASKABLE"
+
+function AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    if not NotificationManager then
+        return nil, nil, true
+    end
+
+    if NotificationManager.GetFirstEndTurnBlocking then
+        local okFirst, blocking = pcall(NotificationManager.GetFirstEndTurnBlocking, playerId)
+        -- The game answers with a number (NO_ENDTURN_BLOCKING when nothing
+        -- blocks). Anything else is not an answer: the list is scanned.
+        if okFirst and type(blocking) == "number" then
+            if not isBlocking(blocking) then
+                return nil, nil, false
+            end
+            local message = nil
+            if NotificationManager.FindEndTurnBlocking then
+                local okFind, entry = pcall(NotificationManager.FindEndTurnBlocking, blocking, playerId)
+                if okFind and entry then
+                    message = notificationMessage(entry)
+                end
+            end
+            return endTurnBlockingName(blocking), message, false
+        end
+    end
+
+    -- Each entry is read under the same pcall: one that cannot be read makes
+    -- the whole scan a failure, not "this one does not block".
+    local ok, blockerName, message = pcall(function()
+        local list = NotificationManager.GetList(playerId)
+        if not list then
+            return nil, nil
+        end
+        for _, notificationId in ipairs(list) do
+            local entry = NotificationManager.Find(playerId, notificationId)
+            if entry and not entry:IsDismissed() then
+                local blocking = entry:GetEndTurnBlocking()
+                if isBlocking(blocking) then
+                    return endTurnBlockingName(blocking), notificationMessage(entry)
+                end
+            end
+        end
+        return nil, nil
+    end)
+
+    if ok then
+        return blockerName, message, false
+    end
+    return nil, nil, true
+end
+
 -- Export full game state for a player
 function AlphaZeroStateExporter.ExportState(playerId)
     local startTime = os.clock and os.clock() or 0
 
     local state = {
+        schema_version = STATE_SCHEMA_VERSION,
         turn_id = 0,
         player_id = playerId,
         current_player = "",
@@ -759,6 +1263,28 @@ function AlphaZeroStateExporter.ExportState(playerId)
     ok, result = pcall(exportCities, playerId)
     state.cities = ok and result or {}
 
+    -- Who the other owners in this state are to the player (GM-B8a).
+    state.observes_others = observesOthers()
+    state.other_players = {}
+    pcall(function()
+        local owners, seen = {}, {}
+        local function note(list)
+            for _, item in ipairs(list) do
+                local owner = item.owner
+                if type(owner) == "number" and owner ~= playerId and not seen[owner] then
+                    seen[owner] = true
+                    table.insert(owners, owner)
+                end
+            end
+        end
+        note(state.units)
+        note(state.cities)
+        table.sort(owners)
+        for _, owner in ipairs(owners) do
+            table.insert(state.other_players, describeOtherPlayer(playerId, owner))
+        end
+    end)
+
     ok, result = pcall(exportPlayer, playerId)
     state.player = ok and result or {id = playerId}
     state.players = { state.player }
@@ -770,6 +1296,15 @@ function AlphaZeroStateExporter.ExportState(playerId)
             print("[AlphaZero] WARN: exportLegalActions failed: " .. tostring(result))
         end
     end
+
+    -- What stops the turn from ending, so the agent can clear it before it
+    -- asks to end the turn. Absent when nothing does.
+    local blocking, blockingMessage, blockingUnknown = AlphaZeroStateExporter.GetEndTurnBlocker(playerId)
+    if blockingUnknown then
+        blocking = AlphaZeroStateExporter.UNKNOWN_BLOCKER
+        blockingMessage = "The game could not be asked what blocks the end of turn"
+    end
+    state.end_turn_blocking, state.end_turn_blocking_message = blocking, blockingMessage
 
     -- Check game end
     if Game then

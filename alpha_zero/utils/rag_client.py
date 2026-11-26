@@ -15,9 +15,11 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 try:
     import chromadb
@@ -36,6 +38,8 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+_FATAL_BASE_EXCEPTIONS = (KeyboardInterrupt, SystemExit, GeneratorExit)
+_T = TypeVar("_T")
 
 
 @dataclass
@@ -63,6 +67,8 @@ class RAGClient:
 
     def __init__(self, config: RAGConfig | None = None) -> None:
         self.config = config or RAGConfig.from_env()
+        self.client: Any = None
+        self.collection: Any = None
 
         if not CHROMA_AVAILABLE:
             logger.warning("chromadb not installed. RAG features disabled.")
@@ -73,32 +79,38 @@ class RAGClient:
 
         self._init_db()
 
+    def _call_safely(self, label: str, fn: Callable[[], _T], default: _T) -> _T:
+        try:
+            return fn()
+        except _FATAL_BASE_EXCEPTIONS:
+            raise
+        except BaseException as e:
+            logger.error("%s: %s", label, e)
+            return default
+
     def _init_db(self) -> None:
         """Initialize ChromaDB client and collection."""
-        try:
-            # Ensure persist directory exists
+
+        def _connect() -> bool:
             Path(self.config.persist_directory).mkdir(parents=True, exist_ok=True)
-
             self.client = chromadb.PersistentClient(path=self.config.persist_directory)
-
-            # Use sentence-transformers if available, otherwise default
-            embedding_func = None
+            embedding_func: Any = None
             if SENTENCE_TRANSFORMERS_AVAILABLE:
                 embedding_func = embedding_functions.SentenceTransformerEmbeddingFunction(
                     model_name=self.config.embedding_model,
                 )
-
             self.collection = self.client.get_or_create_collection(
                 name=self.config.collection_name,
                 embedding_function=embedding_func,
             )
             logger.info(
-                f"RAG initialized at {self.config.persist_directory}, "
-                f"collection: {self.config.collection_name}"
+                "RAG initialized at %s, collection: %s",
+                self.config.persist_directory,
+                self.config.collection_name,
             )
+            return True
 
-        except Exception as e:
-            logger.error(f"Failed to initialize RAG client: {e}")
+        if not self._call_safely("Failed to initialize RAG client", _connect, False):
             self.client = None
             self.collection = None
 
@@ -122,27 +134,16 @@ class RAGClient:
             logger.warning("RAG collection not initialized.")
             return False
 
-        try:
-            count = len(documents)
-            if ids is None:
-                # Simple auto-ID generation based on existing count could be better
-                # but for now rely on caller or simple hashing if strictly needed.
-                # Chroma requires IDs. Let's generate simple string IDs based on current time/idx
-                import time
-
+        def _add() -> bool:
+            doc_ids = ids
+            if doc_ids is None:
                 base_id = int(time.time() * 1000)
-                ids = [f"doc_{base_id}_{i}" for i in range(count)]
-
-            self.collection.add(
-                documents=documents,
-                metadatas=metadatas,
-                ids=ids,
-            )
-            logger.info(f"Added {count} documents to RAG.")
+                doc_ids = [f"doc_{base_id}_{i}" for i in range(len(documents))]
+            self.collection.add(documents=documents, metadatas=metadatas, ids=doc_ids)
+            logger.info("Added %d documents to RAG.", len(documents))
             return True
-        except Exception as e:
-            logger.error(f"Error adding documents: {e}")
-            return False
+
+        return self._call_safely("Error adding documents", _add, False)
 
     def query(self, query_text: str, n_results: int | None = None) -> list[str]:
         """Query the knowledge base.
@@ -157,24 +158,19 @@ class RAGClient:
         if not self.collection:
             return []
 
-        try:
+        def _query() -> list[str]:
             k = n_results or self.config.top_k
-            results = self.collection.query(
-                query_texts=[query_text],
-                n_results=k,
-            )
-
-            # results['documents'] is list of list of str
+            results = self.collection.query(query_texts=[query_text], n_results=k)
             if results and results["documents"]:
                 return list(results["documents"][0])
             return []
 
-        except Exception as e:
-            logger.error(f"Error querying RAG: {e}")
-            return []
+        return self._call_safely("Error querying RAG", _query, [])
 
     def count(self) -> int:
         """Get number of documents in collection."""
         if not self.collection:
             return 0
-        return int(self.collection.count())
+        return self._call_safely(
+            "Error counting RAG documents", lambda: int(self.collection.count()), 0
+        )

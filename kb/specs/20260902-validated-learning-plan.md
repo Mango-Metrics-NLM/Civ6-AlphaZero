@@ -2,7 +2,8 @@
 
 **Role:** Planning → DEV-SQE (with maintainer-only items called out)
 **Session:** session_01AQAVGXog3wGfPaqu4XHfXX, branch `claude/dev-roadmap-next-steps-fk867n`, PR #117
-**Status:** v2, supersedes v1 after an independent adversarial review (§0.1). Built from four
+**Status:** amended 2026-11-11: WS-L / L1 are superseded by the A1 protocol registered in
+`docs/EVALUATION.md` section 7.1, and E4 by LF-A2 (see the notes at L1, WS-L and E4). Originally: v2, supersedes v1 after an independent adversarial review (§0.1). Built from four
 verification passes over the repository, one measurement (`docs/evidence/draw_rate_sweep/`),
 a literature check, and that review, which re-ran the measurement with different seeds and
 re-derived the estimates. Supersedes the "Recommended Plan" of
@@ -194,6 +195,12 @@ change. No new training environment (NG-1). No LLM in the loop (NG-2).
 **Done when** (each with the gate that verifies it, and how the gate could pass vacuously
 ruled out):
 
+> **AMENDED 2026-11-11 — L1 is superseded by A1** (`docs/EVALUATION.md` section 7.1,
+> `kb/specs/20261111-local-first-and-branching-plan.md` §5.2). A1 is 20 iterations × 24 games at
+> board 8 / 60 turns with `--save_interval 5` and no in-loop evaluation; learning is judged by a
+> pre-registered arena verdict (final checkpoint vs `checkpoint_0`, hull interval, symmetry and
+> positive controls), not by a slope. The trend checker is descriptive only (LF-A2; E4 below).
+
 - [ ] **L1.** A seeded local run of ≥ 20 iterations with `--save_interval 1` at board 8 /
       60 turns, committed under `docs/evidence/validation_iteration_one/` with a
       `VALIDATION-RUN` ledger event, and `scripts/check_learning_trend.py`'s verdict
@@ -255,6 +262,11 @@ Ordered by dependency, not by size. Sizes: S ≤ 1 day, M ≤ 1 week, L > 1 week
 
 ### WS-L — Validation Iteration One (local, CPU, ~~day 1~~, no sign-off needed)
 
+> **AMENDED 2026-11-11 — WS-L is superseded by A1.** The command below is not the registered run.
+> The registered commands, seeds (20261111, replication 20261112), verdict table and VOID rules are
+> in `docs/EVALUATION.md` section 7.1; the cards are `configs/run_cards/a1.yaml` and `a1r.yaml`.
+> The 2026-09-04 note below is kept as history.
+>
 > **AMENDED 2026-09-04 — WS-L is re-sequenced behind WS-S.** See
 > [`20260904-correctness-first-plan.md`](20260904-correctness-first-plan.md) §1. On the code as it
 > stands this run cannot produce the evidence it is designed to produce: the default search negates
@@ -340,6 +352,13 @@ the summariser output (after E2, or re-parse `run.log` once E2 lands) and the E4
   `scoring.summarize()`. Give `run_baseline_eval.py` / `post_run_evaluation.py` a
   `--checkpoint PATH` alternative to `--model_version` and route their rates through
   `scoring.py`.
+- **E4 — AMENDED 2026-11-11 (LF-A2): descriptive only.** `scripts/check_learning_trend.py` landed
+  reading `iterations.jsonl`, `eval_*.json` and benchmark `result.json` (not E2's JSON). It reports
+  least-squares slopes and the Option E trigger and decides nothing: exit 0 = a trend was computed
+  (a score-rate series with ≥ 3 points), 1 = malformed input, 2 = fewer than 3 points. The
+  "exit 1 = no positive slope with a bootstrap CI" reading below is withdrawn; the A1 verdict is
+  section 7.1's table. Gate 4 of §8 holds as written (a 2-point fixture exits 2,
+  `tests/scripts/test_check_learning_trend.py`). Original text:
 - **E4 (S).** `scripts/check_learning_trend.py` over E2's JSON: slope of score rate vs
   iteration with a bootstrap CI; exit 0/1, **exit 2 below 3 points**. Replaces
   `validate_convergence.py` for local runs (which stays as the cloud harness, gaining

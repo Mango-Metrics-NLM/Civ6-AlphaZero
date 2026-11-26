@@ -40,6 +40,7 @@ from alpha_zero.distributed.shared_storage import (
     SharedStorage,
 )
 from alpha_zero.envs.microciv import MicroCivEnv
+from alpha_zero.utils.constants import discrete_action_count
 
 if TYPE_CHECKING:
     pass
@@ -374,15 +375,14 @@ class DDPLearner(Learner):
 
         # Initialize environment to get action space size
         env = MicroCivEnv(board_size=config.board_size)
-        self.action_space_size = env.action_space.n
-
+        self.action_space_size = discrete_action_count(env.action_space)
         # Create or use provided network
         if network is not None:
             self.network = network.to(config.device)
         else:
             self.network = MicroCivNetwork(
                 board_size=config.board_size,
-                action_space_size=int(self.action_space_size),
+                action_space_size=self.action_space_size,
                 num_res_blocks=config.num_res_blocks,
                 num_filters=config.num_filters,
             ).to(config.device)

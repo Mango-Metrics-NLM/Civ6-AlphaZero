@@ -7,9 +7,255 @@ depend on the Gumbel variant.
 
 from __future__ import annotations
 
+import logging
+import math
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
+
 import numpy as np
 
 from alpha_zero.core.mcts_constants import EPSILON
+
+logger = logging.getLogger(__name__)
+
+#: Policy-target modes for every Gumbel search (``GumbelMCTS``,
+#: ``BatchGumbelMCTS``, ``MuZeroMCTS``).
+#:
+#: ``COMPLETED_Q`` is Danihelka's ``softmax(logits + sigma(completedQ))``
+#: (:func:`build_completed_q_policy`). ``VISIT_COUNTS`` returns the normalised
+#: root visit distribution -- the AlphaZero policy-improvement target, which is
+#: near-uniform under sequential halving. ``ONE_HOT`` reproduces the pre-2026-09
+#: behaviour, which returned a delta on the selected action; that discarded the
+#: search's own improvement signal and trained the policy head by cloning a
+#: single argmax, and it also kept the temperature schedule permanently inert
+#: because a delta always trips the greedy short-circuit. Retained so an
+#: existing run can be reproduced exactly.
+#:
+#: Defined here rather than in ``gumbel`` so ``muzero`` can use them without
+#: depending on the Gumbel variant; ``gumbel`` re-exports them.
+POLICY_TARGET_COMPLETED_Q = "completed_q"
+POLICY_TARGET_VISIT_COUNTS = "visit_counts"
+POLICY_TARGET_ONE_HOT = "one_hot"
+VALID_POLICY_TARGETS = frozenset(
+    {POLICY_TARGET_COMPLETED_Q, POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT}
+)
+
+#: Sequential halving never narrows below two survivors: the last round is a
+#: comparison, and a single survivor has nothing to be compared with. Matches
+#: ``mctx``'s ``max(2, num_considered // 2)``.
+MIN_HALVING_SURVIVORS = 2
+
+
+@dataclass(frozen=True, slots=True)
+class SearchStats:
+    """What one ``search()`` call actually spent, measured by the search itself.
+
+    Every Gumbel search exposes the stats of its most recent call as
+    ``last_search_stats``; the return types of ``search`` are unchanged.
+
+    Attributes:
+        root_evals: Network evaluations of the root position (1 per search).
+        sim_evals: Simulations that ended in a leaf evaluation -- a network
+            evaluation of a newly reached leaf, or the game's own outcome when
+            the simulation reached a terminal state. This is the realised
+            simulation budget, and for a sequential-halving search it must
+            equal :func:`planned_halving_sims`.
+    """
+
+    root_evals: int
+    sim_evals: int
+
+
+@dataclass(frozen=True, slots=True)
+class HalvingRound:
+    """One round of sequential halving.
+
+    Attributes:
+        survivors: How many of the top-ranked candidates this round visits.
+        simulations: Simulations spent in this round: ``full_passes`` complete
+            passes over the survivors, then ``remainder`` odd visits.
+
+    The searches deal the full passes in the ranking the round started with
+    (within a full pass the order changes no visit count), then **re-rank the
+    survivors by completed Q plus Gumbel score** and give the ``remainder`` odd
+    visits to the top of that fresh ranking. That is what ``mctx`` gets by
+    re-scoring before every simulation: the odd visit -- and so, through
+    :func:`choose_among_most_visited`, the returned move -- follows the
+    round's own evidence rather than a ranking made before the round began.
+    """
+
+    survivors: int
+    simulations: int
+
+    @property
+    def full_passes(self) -> int:
+        """Complete passes over every survivor in this round."""
+        return self.simulations // self.survivors
+
+    @property
+    def remainder(self) -> int:
+        """Odd visits left after the full passes, dealt to the then-best survivors."""
+        return self.simulations % self.survivors
+
+    def visits(self) -> list[int]:
+        """Visits each survivor receives this round, by rank at the time it is dealt."""
+        base, extra = divmod(self.simulations, self.survivors)
+        return [base + (1 if rank < extra else 0) for rank in range(self.survivors)]
+
+    def order(self) -> Iterator[int]:
+        """Survivor ranks in execution order (pass-major), for a fixed ranking.
+
+        The searches re-rank before the ``remainder`` visits, so for them the
+        ranks of the final partial pass refer to that fresh ranking.
+        """
+        for sim in range(self.simulations):
+            yield sim % self.survivors
+
+
+def halving_schedule(
+    k: int,
+    n: int,
+    num_legal: int,
+    *,
+    min_survivors: int = MIN_HALVING_SURVIVORS,
+) -> tuple[HalvingRound, ...]:
+    """The sequential-halving schedule every Gumbel search follows.
+
+    This is the single definition of the schedule. ``GumbelMCTS``,
+    ``BatchGumbelMCTS`` and ``MuZeroMCTS`` each iterate it rather than computing
+    their own per-round allocation, so their realised budgets are identical by
+    construction (and :class:`SearchStats` checks that they are).
+
+    The rule (Danihelka et al., 2022, as implemented by ``mctx``'s
+    ``get_sequence_of_considered_visits``):
+
+    * ``k_eff = min(k, num_legal)`` candidates enter.
+    * **Forced move.** With ``num_legal <= 1`` the schedule is empty: **no
+      simulations are spent**. This is the one deliberate deviation from
+      ``mctx``, which spends the whole budget on a lone legal action; searching
+      a forced move cannot change the move or its policy target.
+    * **Lone candidate.** With ``k_eff == 1`` but two or more legal moves
+      (``k = 1``) the move is *not* forced, so -- as in ``mctx`` -- all ``n``
+      simulations go to the one candidate, in a single round. The spend
+      refines the root and candidate values, but neither the move nor the
+      policy target: ``build_completed_q_policy`` puts mass only on visited
+      actions, so with one candidate the completed-Q target is a one-hot on it
+      (a recorded deviation from the paper, whose improved policy spans the
+      whole action set).
+    * There are ``R = ceil(log2(k_eff))`` halving rounds. Round ``r`` visits
+      ``m_r`` survivors, ``m_0 = k_eff`` and
+      ``m_{r+1} = max(floor, m_r // 2)`` with ``floor = min(k_eff,
+      max(2, min_survivors))``.
+    * Each survivor gets ``max(1, n // (R * m_r))`` visits in round ``r``.
+    * **Truncation.** The budget is a hard ceiling: a round that would overrun
+      ``n`` is cut to what remains and any later round is dropped.
+    * **Leftover.** If the ``R`` rounds spend less than ``n``, the remainder is
+      added to the final round, i.e. spent on the final survivors -- exactly
+      what ``mctx`` does by continuing to cycle over its last two candidates.
+
+    * **Dealing.** A round is ``full_passes`` passes over its survivors, then
+      ``remainder`` odd visits to the top of a ranking refreshed after those
+      passes (see :class:`HalvingRound`). The refreshed ranking can change
+      *which* survivors get the odd visits, never how many simulations there are.
+
+    Consequently the realised total is exactly ``n`` whenever ``num_legal >= 2``,
+    and 0 for a forced move; ``min_survivors`` changes the shape of the schedule
+    but never its total.
+
+    The move a search *returns* is chosen by :func:`choose_among_most_visited`,
+    not by the ranking alone: a truncated round leaves some candidates unvisited.
+
+    Args:
+        k: Configured number of Gumbel-sampled candidates.
+        n: Configured simulation budget.
+        num_legal: Legal actions at the root.
+        min_survivors: Lower bound on survivors per round (values below 2 act
+            as 2). Searches pass their ``min_actions_after_halving`` here.
+
+    Returns:
+        The rounds, in order. Empty when no simulation is to be spent.
+
+    Raises:
+        ValueError: If ``k < 1``, ``n < 0`` or ``num_legal < 0``.
+    """
+    if k < 1:
+        raise ValueError(f"k must be >= 1; got {k}")
+    if n < 0:
+        raise ValueError(f"n must be >= 0; got {n}")
+    if num_legal < 0:
+        raise ValueError(f"num_legal must be >= 0; got {num_legal}")
+
+    k_eff = min(k, num_legal)
+    if num_legal <= 1 or n == 0:
+        return ()
+    if k_eff == 1:
+        return (HalvingRound(survivors=1, simulations=n),)
+
+    num_rounds = math.ceil(math.log2(k_eff))
+    floor = min(k_eff, max(MIN_HALVING_SURVIVORS, min_survivors))
+    remaining = n
+    survivors = k_eff
+    sims: list[int] = []
+    sizes: list[int] = []
+    for _ in range(num_rounds):
+        if remaining == 0:
+            break
+        per_survivor = max(1, n // (num_rounds * survivors))
+        spent = min(remaining, per_survivor * survivors)
+        sizes.append(survivors)
+        sims.append(spent)
+        remaining -= spent
+        survivors = max(floor, survivors // 2)
+    if remaining:
+        sims[-1] += remaining
+    return tuple(HalvingRound(m, s) for m, s in zip(sizes, sims, strict=True))
+
+
+def planned_halving_sims(k: int, n: int, num_legal: int) -> int:
+    """Simulations a sequential-halving search spends for ``(k, n, num_legal)``.
+
+    The total of :func:`halving_schedule`: ``n`` when ``num_legal >= 2``, else 0
+    (a forced move). It does not depend on a search's ``min_actions_after_halving``,
+    which only reshapes the rounds. Every search's
+    ``last_search_stats.sim_evals`` must equal this.
+
+    Raises:
+        ValueError: As :func:`halving_schedule`.
+    """
+    return sum(r.simulations for r in halving_schedule(k, n, num_legal))
+
+
+def choose_among_most_visited(ranked_actions: Sequence[int], visit_counts: Sequence[int]) -> int:
+    """The best-ranked action among those with the maximum visit count.
+
+    ``mctx``'s ``score_considered`` restricts the final choice to the actions
+    holding the maximum visit count. Without that restriction a truncated round
+    -- at ``(k=16, n=8)``, half the candidates are never visited -- leaves
+    unvisited candidates in the ranking with a completed Q equal to the root
+    value, and one of them can be returned: a move the search never looked at.
+
+    Args:
+        ranked_actions: Candidates, best first by completed Q plus Gumbel score.
+        visit_counts: Root visit count of each action, aligned with
+            ``ranked_actions``.
+
+    Returns:
+        The first action in ``ranked_actions`` whose visit count is maximal.
+
+    Raises:
+        ValueError: If ``ranked_actions`` is empty or the lengths differ.
+    """
+    if not ranked_actions:
+        raise ValueError("ranked_actions must not be empty")
+    if len(ranked_actions) != len(visit_counts):
+        raise ValueError(
+            f"visit_counts has {len(visit_counts)} entries for {len(ranked_actions)} actions"
+        )
+    most = max(visit_counts)
+    for action, visits in zip(ranked_actions, visit_counts, strict=True):
+        if visits == most:
+            return int(action)
+    raise AssertionError("unreachable: max() is attained")  # pragma: no cover
 
 
 def gumbel_sample_actions(
@@ -101,9 +347,11 @@ def compute_completed_q(
       visited actions in proportion to how far they sit below the best-visited
       one. At equal visit counts (sequential halving's survivors) the two
       agree; elsewhere they do not.
-    * **No Q normalisation.** The paper's ``sigma`` is applied to Q values
-      min-max normalised over the tree (their Appendix); here raw Q in
-      ``[-1, 1]`` is used, so ``c_scale`` acts on a different scale.
+    * **No Q normalisation.** The paper applies ``sigma`` to Q values
+      "normalized to be from the [0, 1] interval" (Appendix F) without saying
+      how for Go/chess; it shows a min-max form only for Atari (section 7),
+      and ``mctx`` rescales min-max per node. Here raw Q in ``[-1, 1]`` is
+      used, so ``c_scale`` acts on a different scale.
 
     Args:
         q_value: Current Q-value estimate for the action.
@@ -156,11 +404,22 @@ def build_completed_q_policy(
     is deliberately unchanged; each is a separate, measurable decision):
 
     * ``c_scale`` defaults to **1.0** (``utils/constants.py:GUMBEL_C_SCALE``)
-      where the paper uses **0.1** with ``c_visit = 50``. Combined with the
-      missing normalisation below, ``sigma`` is ~10x the reference, so the
-      searched values dominate the prior sooner than the paper's targets do.
-    * **No min-max Q normalisation** before ``sigma`` (see
-      :func:`compute_completed_q`).
+      with ``c_visit = 50``: the same *constants* as the paper's Go and chess
+      setting (Appendix F). The paper's Atari runs, and ``mctx``'s default
+      ``value_scale``, use 0.1. (Corrected 2026-11-11; this note previously
+      said the paper uses 0.1. See ``kb/specs/20261111-completed-q-alignment-memo.md``.)
+      The *effective* scale differs: see the next item.
+    * **No Q normalisation** before ``sigma`` (see :func:`compute_completed_q`).
+      The paper's ``sigma`` acts on Q in [0, 1]; here it acts on raw Q in
+      [-1, 1]. If the paper's map is the fixed ``(q + 1) / 2``, the
+      coefficient per unit of raw Q here is **twice** the paper's
+      (``c_visit + max N`` against half that); if it is ``mctx``'s per-node
+      min-max, the paper's target depends only on the relative order of the
+      searched values. Either way, this target's sharpness depends on the
+      *absolute* spread of the searched values.
+    * **No ``sigma`` in sequential halving.** The searches rank survivors by
+      ``g + log pi + completedQ`` with a coefficient of 1 on Q, where the
+      paper ranks by ``g + logits + sigma(q)`` (LF-A12; decision pending).
     * **Non-convex completion** ``q + ((maxN - N) / maxN) * root_value`` for
       visited actions, where the paper keeps a visited action's own Q.
     * **Zero mass on unvisited actions.** The paper's improved policy is a
@@ -216,3 +475,70 @@ def build_completed_q_policy(
         return np.zeros_like(priors, dtype=np.float32)
     normalised: np.ndarray = (exp / total).astype(np.float32)
     return normalised
+
+
+def policy_target_from_root_stats(
+    *,
+    policy_target: str,
+    best_action: int,
+    priors: np.ndarray,
+    visit_counts: np.ndarray,
+    q_values: np.ndarray,
+    root_value: float,
+    c_visit: float,
+    c_scale: float,
+) -> np.ndarray:
+    """The policy target every Gumbel search reports, from its root statistics.
+
+    One definition for ``GumbelMCTS``, ``BatchGumbelMCTS`` and ``MuZeroMCTS``:
+    a trainer reading a rolling replay window cannot tell which search produced
+    a shard, so they must not emit different targets for the same evidence.
+    Each caller supplies only what differs between them -- how a root child's
+    Q is read (a perspective sign for the environment searches, reward plus
+    discounted value for MuZero).
+
+    Args:
+        policy_target: One of :data:`VALID_POLICY_TARGETS`.
+        best_action: The halving winner; the whole answer for ``one_hot``, and
+            the fallback when the search visited nothing.
+        priors: Root child priors over the action space.
+        visit_counts: Root child visit counts, aligned with ``priors``.
+        q_values: Root child Q values from the root mover's perspective.
+        root_value: The root's own value estimate.
+        c_visit: Visit constant of the completed-Q transform.
+        c_scale: Scale constant of the completed-Q transform.
+
+    Returns:
+        A probability vector over the action space, summing to 1.
+    """
+    if policy_target == POLICY_TARGET_COMPLETED_Q:
+        target = build_completed_q_policy(
+            priors=priors,
+            visit_counts=visit_counts,
+            q_values=q_values,
+            root_value=root_value,
+            c_visit=c_visit,
+            c_scale=c_scale,
+        )
+    elif policy_target == POLICY_TARGET_VISIT_COUNTS:
+        total = float(visit_counts.sum())
+        target = (visit_counts / total if total > 0.0 else visit_counts * 0.0).astype(np.float32)
+    else:
+        target = np.zeros_like(priors, dtype=np.float32)
+
+    if target.sum() <= 0.0:
+        # One-hot by request, or the search considered nothing (e.g. a
+        # one-simulation budget): the selected action is all there is.
+        target = np.zeros_like(priors, dtype=np.float32)
+        target[best_action] = 1.0
+        return target
+    logger.debug(
+        "%s policy target: %d non-zero of %d, max=%.4f, argmax=%d, chosen=%d",
+        policy_target,
+        int((target > 0).sum()),
+        target.size,
+        float(target.max()),
+        int(target.argmax()),
+        best_action,
+    )
+    return target

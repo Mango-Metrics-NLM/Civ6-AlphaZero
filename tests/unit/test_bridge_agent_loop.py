@@ -442,9 +442,9 @@ class TestBridgeAgentLoopRecovery:
 
         mock_bridge.wait_for_state.return_value = fake_state
 
-        # First call raises InvalidActionError (forcing the fallback path);
-        # the fallback uses LuaCommand.from_dict directly without re-calling
-        # convert, so the side_effect doesn't need a second entry.
+        # Every choice is invalid. Since GM-B7c-2 an invalid choice is masked
+        # out and the policy asked again; this policy answers with the masked
+        # index a second time, so the loop ends the turn (LuaCommand.from_dict).
         end_turn_cmd = LuaCommand.from_dict({"action_type": "end_turn"})
 
         def _convert(action_idx, _state, legal_actions=None, validate=True):
@@ -456,7 +456,7 @@ class TestBridgeAgentLoopRecovery:
         code = await loop.run()
 
         assert code == BridgeAgentLoop.EXIT_OK
-        assert loop.stats()["invalid_actions"] == 1
+        assert loop.stats()["invalid_actions"] == 2
         # The end_turn command is still sent via send_and_wait_with_retry.
         sent_command = mock_bridge.send_and_wait_with_retry.await_args.args[0]
         assert sent_command.commands[0].action_type == end_turn_cmd.action_type

@@ -10,7 +10,25 @@ produced. Contract: [`SCHEMA.md`](SCHEMA.md).
 | [`hexcrystal_ab/`](hexcrystal_ab/ab_report.md) | 2026-08-10 (`b14534a`) | pre-fix | 42 (280/800 arena games reused training seeds) | the A/B harness runs and is reproducible | **superseded** — not evidence that either encoder is stronger |
 | [`seeded_probe_reproducibility/`](seeded_probe_reproducibility/README.md) | 2026-08-30 (`0b75871`) | pre-fix | yes | seeded probes are identical; unseeded probes spread 0.30–0.45 | current (reproducibility only) |
 | [`validation_iteration_zero/`](validation_iteration_zero/validation_iteration_zero_report.md) | 2026-08-28 (`0c394f9`) | pre-fix | no | the local loop runs end to end on CPU; the checkpoint scores below parity against random | **superseded** as a learning measurement |
+| [`windows_baseline_20261111/`](windows_baseline_20261111/README.md) | 2026-11-11 (`0eb7596`) | post-fix | 20261111 | machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a harness smoke showing the calibration script runs; no throughput or ETA claim | current (harness smoke only; calibration is T0b) |
+| [`target_sharpness_probe/`](target_sharpness_probe/report.md) | 2026-11-12 (`4edefa5`) | post-fix | 0–7, 42, 1234 | sharpness of the Gumbel policy target (entropy, max-p, share above `greedy_threshold`) for untrained networks at A1's k=8 / n=24: current settings, the paper's Go/chess constants under an affine and a per-node min-max reading, and `mctx`'s defaults; 0 games played | current (untrained networks only; input to the LF-A5/A12 decision) |
+| [`live_civ6_baseline/`](live_civ6_baseline/README.md) | 2026-11-26 (`a3905895`) | post-fix | 0 (`census`) | Live Steam Civ6 Turns 1–41 bridge probes (Item 11/12a/13, `research_civic`, Item 29 10-turn exit-0 soak) and `GM-B11` MicroCiv expressivity census (`verdict: stop`, `E1=0.2667` at board 8 across 41 states / 11 after turn 30; 0 games) | current (wiring & census only; not strength evidence) |
+| [`t0b_calibration/`](t0b_calibration/README.md) | 2026-11-26 (`5138af23`) | post-fix | `1001–1003`, `20261114` | T0b dual-GPU calibration (`660` games): `REPRODUCED` determinism on `cuda:0`/`cuda:1`, throughput timings (`24.0s` / `22.7s` / `19.0s`), positive control `303/255/42` (`0.7175`), `P(40)=0.0166 [0.0030, 0.0493]`, `Branch in force: 40`, `6.1 h` A1 ETA | current (calibration precondition; not A1 learning) |
 | [`tech_debt_baseline/`](tech_debt_baseline/baseline.json) | rolling | n/a | n/a | code-metric ratchet (`tests/regression/test_debt_ratchet.py`) | current |
 
-No committed artifact was generated on post-2026-09-04 code. The first one is
-tracked under milestone v2.1 (`docs/EVALUATION.md` → "First post-fix run").
+No committed artifact measuring playing strength was generated on post-2026-09-04 code (`windows_baseline_20261111/` records a machine snapshot and a harness smoke only; `target_sharpness_probe/` measures search targets of untrained networks and plays no games). The first one is
+the A1 learning run of milestone v2.1, pre-registered in `docs/EVALUATION.md` section 7.1.
+
+## Recorded without a committed artifact
+
+| What | When | Where it is written down | What it supports | What it does not |
+|---|---|---|---|---|
+| First live session against the real game, turns 1 to 7 | 2026-11-21 | the maintainer's report of the session, summarised in [`../LIVE_CIV6.md`](../LIVE_CIV6.md); PR #166 records the code changes that followed, not the session itself | the socket connection, the schema-2 export and the GameInfo capture work; the game acknowledged `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` and a warrior build; five behaviours of the game differ from what the mod assumed | the effect of each command in the following state; that the five fixes work (the rebuilt mod has not been run); anything about attacks, other players, several turns in a row, or how well an agent plays. No log excerpt is committed |
+
+## Never measured
+
+- Playing strength on post-2026-09-04 code (A1 is the first, not yet run).
+- Anything about play in the real game: no trained policy has been loaded there.
+- Whether a decision made by the search in its MicroCiv stand-in for a live state is a good
+  decision in the real game, or how much of a real position that stand-in can express.
+- How long one state export takes in the middle of a game.

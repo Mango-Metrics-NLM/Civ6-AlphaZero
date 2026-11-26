@@ -457,10 +457,10 @@ class TestEvaluateAgainstRandom:
             num_filters=16,
         )
 
-        win_rate = evaluate_against_random(
+        summary = evaluate_against_random(
             network=network,
             config=config,
             num_games=2,
         )
 
-        assert 0.0 <= win_rate <= 1.0
+        assert 0.0 <= summary.score_rate <= 1.0

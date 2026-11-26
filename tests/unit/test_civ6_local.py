@@ -605,10 +605,15 @@ class TestValidateMethod:
         warnings = cfg.validate()
         assert any("bridge_ipc_dir" in w for w in warnings)
 
-    def test_web_mode_open_host_warns(self) -> None:
+    def test_web_mode_open_host_is_warned_once_by_webconfig(self, caplog) -> None:
+        """validate() stays silent; WebConfig emits the single non-loopback warning."""
         cfg = Civ6LocalConfig(mode="web", web_host="0.0.0.0")
-        warnings = cfg.validate()
-        assert any("0.0.0.0" in w for w in warnings)
+        assert not any("web_host" in w for w in cfg.validate())
+        from alpha_zero.web.config import WebConfig
+
+        with caplog.at_level(logging.WARNING):
+            WebConfig(host=cfg.web_host)
+        assert sum("non-loopback" in r.getMessage() for r in caplog.records) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -878,6 +883,36 @@ class TestRunMicrociv:
         ):
             rc = run_microciv(cfg)
         assert rc == 0
+
+    def test_run_microciv_passes_spatial_channels_not_in_channels(self) -> None:
+        """run_microciv must pass spatial_channels= (not in_channels=) to MicroCivNetwork."""
+        from alpha_zero.civ6_local import run_microciv
+
+        cfg = Civ6LocalConfig(mode="microciv", board_size=4, num_simulations=1)
+        action_size = 10
+        mock_env = self._make_mock_env(action_size)
+        mock_net = self._make_mock_network(action_size)
+        mock_net_cls = MagicMock(return_value=mock_net)
+        mock_mcts_instance = self._make_mock_mcts(action_size)
+
+        with patch.dict(
+            sys.modules,
+            {
+                "alpha_zero.envs.microciv": MagicMock(MicroCivEnv=MagicMock(return_value=mock_env)),
+                "alpha_zero.core.civ6_network": MagicMock(MicroCivNetwork=mock_net_cls),
+                "alpha_zero.core.civ6_mcts": MagicMock(
+                    GumbelMCTS=MagicMock(return_value=mock_mcts_instance),
+                    GumbelMCTSConfig=MagicMock(),
+                ),
+            },
+        ):
+            rc = run_microciv(cfg)
+
+        assert rc == 0
+        mock_net_cls.assert_called_once()
+        kwargs = mock_net_cls.call_args.kwargs
+        assert kwargs.get("spatial_channels") == 13
+        assert "in_channels" not in kwargs
 
 
 # ---------------------------------------------------------------------------

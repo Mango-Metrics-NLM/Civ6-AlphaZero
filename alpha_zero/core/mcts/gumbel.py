@@ -20,9 +20,16 @@ from alpha_zero.core.mcts.backup import (
     should_track_to_play,
 )
 from alpha_zero.core.mcts.gumbel_ops import (
-    build_completed_q_policy,
+    POLICY_TARGET_COMPLETED_Q,
+    POLICY_TARGET_ONE_HOT,
+    POLICY_TARGET_VISIT_COUNTS,
+    VALID_POLICY_TARGETS,
+    SearchStats,
+    choose_among_most_visited,
     compute_completed_q,
     gumbel_sample_actions,
+    halving_schedule,
+    policy_target_from_root_stats,
 )
 from alpha_zero.core.mcts.mcts_protocols import MCTSEnvironment, MCTSNetwork
 from alpha_zero.core.mcts_constants import (
@@ -36,21 +43,18 @@ from alpha_zero.utils.device import place_network
 
 logger = logging.getLogger(__name__)
 
-#: Policy-target modes for :class:`GumbelMCTS`.
-#:
-#: ``VISIT_COUNTS`` returns the normalised root visit distribution -- the
-#: AlphaZero policy-improvement target. ``ONE_HOT`` reproduces the pre-2026-09
-#: behaviour, which returned a delta on the selected action; that discarded the
-#: search's own improvement signal and trained the policy head by cloning a
-#: single argmax, and it also kept the temperature schedule permanently inert
-#: because a delta always trips the greedy short-circuit. Retained so an
-#: existing run can be reproduced exactly.
-POLICY_TARGET_COMPLETED_Q = "completed_q"
-POLICY_TARGET_VISIT_COUNTS = "visit_counts"
-POLICY_TARGET_ONE_HOT = "one_hot"
-VALID_POLICY_TARGETS = frozenset(
-    {POLICY_TARGET_COMPLETED_Q, POLICY_TARGET_VISIT_COUNTS, POLICY_TARGET_ONE_HOT}
-)
+# The policy-target modes live in gumbel_ops (MuZero uses them too) and are
+# re-exported here, their historical import path.
+__all__ = [
+    "POLICY_TARGET_COMPLETED_Q",
+    "POLICY_TARGET_ONE_HOT",
+    "POLICY_TARGET_VISIT_COUNTS",
+    "VALID_POLICY_TARGETS",
+    "GumbelMCTS",
+    "GumbelMCTSConfig",
+    "GumbelMCTSNode",
+    "build_root_policy_target",
+]
 
 
 @dataclass(slots=True)
@@ -68,12 +72,16 @@ class GumbelMCTSConfig:
         c_visit: Controls value vs visit count trade-off in completed Q.
         c_scale: Scale factor for value estimates.
         use_sequential_halving: Use sequential halving for simulation allocation.
-        min_actions_after_halving: Stop halving when this many actions remain.
+        min_actions_after_halving: Lower bound on survivors per halving round.
+            Values below 2 act as 2 (see
+            :func:`~alpha_zero.core.mcts.gumbel_ops.halving_schedule`); it
+            reshapes the rounds but never changes the total budget.
         temperature: Temperature for final action selection (usually 0 for greedy).
         temperature_threshold: Turn after which to use temperature=0.
         policy_target: How ``search`` reports the improved policy. One of
-            :data:`POLICY_TARGET_VISIT_COUNTS` (default) or
-            :data:`POLICY_TARGET_ONE_HOT` (legacy).
+            :data:`POLICY_TARGET_COMPLETED_Q` (default),
+            :data:`POLICY_TARGET_VISIT_COUNTS` or :data:`POLICY_TARGET_ONE_HOT`
+            (legacy).
         greedy_threshold: ``select_action`` ignores temperature once a single
             action holds at least this much probability mass. Configurable
             rather than a fixed module constant because the old one-hot target
@@ -244,6 +252,65 @@ class GumbelMCTSNode:
         backpropagate_path(leaf_to_root, value, reference=self.to_play)
 
 
+def build_root_policy_target(
+    root: GumbelMCTSNode,
+    best_action: int,
+    action_space_size: int,
+    *,
+    policy_target: str,
+    c_visit: float,
+    c_scale: float,
+) -> np.ndarray:
+    """Build the policy target a Gumbel search reports as its improvement.
+
+    Shared by :class:`GumbelMCTS` and
+    :class:`~alpha_zero.core.batch_mcts.BatchGumbelMCTS`: a trainer reading a
+    rolling replay window cannot tell which worker produced a shard, so the two
+    must not emit different targets for the same search.
+
+    The default, ``completed_q``, is Danihelka's ``softmax(logits +
+    sigma(completedQ))`` over the searched children; ``visit_counts`` is the
+    normalised root visit distribution; ``one_hot`` is the legacy delta on
+    ``best_action``, which discards the search's evidence.
+
+    Falls back to a one-hot when no child was visited (for example a
+    one-simulation budget), so the return is always a valid distribution.
+
+    Args:
+        root: Expanded root node.
+        best_action: Action the search selected.
+        action_space_size: Width of the returned vector.
+        policy_target: One of :data:`VALID_POLICY_TARGETS`.
+        c_visit: Visit constant of the completed-Q transform.
+        c_scale: Scale constant of the completed-Q transform.
+
+    Returns:
+        A probability vector over the action space, summing to 1.
+    """
+    priors = np.zeros(action_space_size, dtype=np.float32)
+    visits = np.zeros(action_space_size, dtype=np.float32)
+    qs = np.zeros(action_space_size, dtype=np.float32)
+    for action, child in root.children.items():
+        if not 0 <= action < action_space_size:
+            continue
+        priors[action] = child.prior
+        visits[action] = child.visit_count
+        # Same perspective rule the selector uses: a child's stored value is
+        # from ITS mover's point of view.
+        sign = perspective_sign(root.to_play, child.to_play)
+        qs[action] = sign * child.value if child.visit_count > 0 else 0.0
+    return policy_target_from_root_stats(
+        policy_target=policy_target,
+        best_action=best_action,
+        priors=priors,
+        visit_counts=visits,
+        q_values=qs,
+        root_value=root.value,
+        c_visit=c_visit,
+        c_scale=c_scale,
+    )
+
+
 class GumbelMCTS:
     """Gumbel MuZero MCTS - efficient search with very few simulations.
 
@@ -281,6 +348,11 @@ class GumbelMCTS:
         # different search on every run -- the defect that made a "seeded"
         # self-play run only half determined.
         self._rng = np.random.default_rng(self.config.seed)
+        # What the most recent `search` actually spent. Measured, never copied
+        # from the plan, so a test can hold it against `planned_halving_sims`.
+        self.last_search_stats = SearchStats(root_evals=0, sim_evals=0)
+        self._root_evals = 0
+        self._sim_evals = 0
 
     def search(
         self,
@@ -289,9 +361,10 @@ class GumbelMCTS:
     ) -> tuple[np.ndarray, float]:
         """Run Gumbel MCTS search from current state.
 
-        Unlike standard MCTS which returns visit-count-based probabilities,
-        Gumbel MCTS returns a one-hot policy for the selected action (when
-        using sequential halving) or softmax over completed Q-values.
+        Returns the policy target selected by ``config.policy_target``
+        (:func:`build_root_policy_target`): by default the completed-Q
+        distribution over the searched root children, not a one-hot on the
+        halving winner (``policy_target="one_hot"`` restores that).
 
         Args:
             env: Game environment (must support clone()).
@@ -312,7 +385,11 @@ class GumbelMCTS:
         vector = torch.from_numpy(obs["vector"]).float().to(self.device)
         action_mask = obs["action_mask"]
 
+        self._root_evals = 0
+        self._sim_evals = 0
         policy, value = self._evaluate(spatial, vector, action_mask)
+        self._root_evals += 1
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=0)
 
         # Expand root
         root.expand(policy, action_mask)
@@ -344,6 +421,7 @@ class GumbelMCTS:
         else:
             best_action = self._simple_search(env, root, sampled_actions)
 
+        self.last_search_stats = SearchStats(root_evals=self._root_evals, sim_evals=self._sim_evals)
         action_probs = self._build_policy_target(root, best_action, env.action_space.n)
         return action_probs, root.value
 
@@ -353,84 +431,15 @@ class GumbelMCTS:
         best_action: int,
         action_space_size: int,
     ) -> np.ndarray:
-        """Build the policy target this search reports as its improvement.
-
-        The visit distribution over the root's children is AlphaZero's
-        policy-improvement operator: it carries how the search apportioned its
-        budget, which is the signal the policy head is meant to learn. The
-        legacy one-hot discarded it.
-
-        Falls back to a one-hot when no child was visited (for example a
-        one-simulation budget), so the return is always a valid distribution.
-
-        Args:
-            root: Expanded root node.
-            best_action: Action the search selected.
-            action_space_size: Width of the returned vector.
-
-        Returns:
-            A probability vector over the action space, summing to 1.
-        """
-        action_probs = np.zeros(action_space_size, dtype=np.float32)
-
-        if self.config.policy_target == POLICY_TARGET_ONE_HOT:
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        if self.config.policy_target == POLICY_TARGET_COMPLETED_Q:
-            priors = np.zeros(action_space_size, dtype=np.float32)
-            visits = np.zeros(action_space_size, dtype=np.float32)
-            qs = np.zeros(action_space_size, dtype=np.float32)
-            for action, child in root.children.items():
-                if not 0 <= action < action_space_size:
-                    continue
-                priors[action] = child.prior
-                visits[action] = child.visit_count
-                # Same perspective rule the selector uses: a child's stored value
-                # is from ITS mover's point of view.
-                sign = perspective_sign(root.to_play, child.to_play)
-                qs[action] = sign * child.value if child.visit_count > 0 else 0.0
-            improved = build_completed_q_policy(
-                priors=priors,
-                visit_counts=visits,
-                q_values=qs,
-                root_value=root.value,
-                c_visit=self.config.c_visit,
-                c_scale=self.config.c_scale,
-            )
-            if improved.sum() > 0.0:
-                logger.debug(
-                    "completed-Q policy target: %d non-zero, max=%.4f, argmax=%d, chosen=%d",
-                    int((improved > 0).sum()),
-                    float(improved.max()),
-                    int(improved.argmax()),
-                    best_action,
-                )
-                return improved
-            # The search considered nothing (e.g. a one-simulation budget); the
-            # selected action is all the information there is.
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        for action, child in root.children.items():
-            if 0 <= action < action_space_size:
-                action_probs[action] = float(child.visit_count)
-
-        total = action_probs.sum()
-        if total <= 0.0:
-            # No child was visited; the selected action is all the information
-            # the search produced.
-            action_probs[best_action] = 1.0
-            return action_probs
-
-        action_probs /= total
-        logger.debug(
-            "policy target: %d non-zero of %d, max=%.4f",
-            int((action_probs > 0).sum()),
+        """Build this search's policy target; see :func:`build_root_policy_target`."""
+        return build_root_policy_target(
+            root,
+            best_action,
             action_space_size,
-            float(action_probs.max()),
+            policy_target=self.config.policy_target,
+            c_visit=self.config.c_visit,
+            c_scale=self.config.c_scale,
         )
-        return action_probs
 
     def _sequential_halving(
         self,
@@ -455,51 +464,62 @@ class GumbelMCTS:
         Returns:
             Best action index.
         """
-        actions = list(candidate_actions)
-        scores = dict(zip(candidate_actions, gumbel_scores, strict=False))
+        actions = [int(a) for a in candidate_actions]  # rank order: best Gumbel score first
+        scores = {int(a): float(g) for a, g in zip(candidate_actions, gumbel_scores, strict=False)}
 
         if len(actions) == 0:
             return 0
 
-        if len(actions) == 1:
-            return int(actions[0])
+        # The schedule is defined once, in gumbel_ops, for every Gumbel search.
+        # It spends exactly num_simulations whenever two or more candidates
+        # enter, and nothing for a forced move.
+        schedule = halving_schedule(
+            self.config.num_sampled_actions,
+            self.config.num_simulations,
+            len(root.children),
+            min_survivors=self.config.min_actions_after_halving,
+        )
 
-        # Calculate number of halving rounds
-        num_rounds = max(1, int(np.ceil(np.log2(len(actions)))))
-        sims_per_round = max(1, self.config.num_simulations // num_rounds)
-
-        for _round_idx in range(num_rounds):
-            if len(actions) <= self.config.min_actions_after_halving:
-                break
-
-            # Allocate simulations evenly among remaining actions
-            sims_per_action = max(1, sims_per_round // len(actions))
-
-            # Run simulations for each remaining action
-            for action in actions:
-                for _ in range(sims_per_action):
+        for halving_round in schedule:
+            survivors = actions[: halving_round.survivors]
+            for _ in range(halving_round.full_passes):
+                for action in survivors:
                     self._run_simulation_from_action(env, root, action)
+            if halving_round.remainder:
+                # The odd visits follow the evidence of the passes just run,
+                # not the ranking the round started with (mctx re-scores
+                # before every simulation).
+                survivors = self._rank_by_completed_q(root, survivors, scores, root_value)
+                for action in survivors[: halving_round.remainder]:
+                    self._run_simulation_from_action(env, root, action)
+            actions = self._rank_by_completed_q(root, survivors, scores, root_value)
 
-            # Compute completed Q-values
-            max_visits = max(root.children[a].visit_count for a in actions if a in root.children)
+        return choose_among_most_visited(
+            actions,
+            [root.children[a].visit_count if a in root.children else 0 for a in actions],
+        )
 
-            completed_qs = {}
-            for action in actions:
-                if action not in root.children:
-                    continue
-                child = root.children[action]
+    def _rank_by_completed_q(
+        self,
+        root: GumbelMCTSNode,
+        actions: list[int],
+        scores: dict[int, float],
+        root_value: float,
+    ) -> list[int]:
+        """Order ``actions`` best-first by completed Q plus Gumbel score."""
+        max_visits = max(
+            (root.children[a].visit_count for a in actions if a in root.children), default=0
+        )
+        combined: dict[int, float] = {}
+        for action in actions:
+            completed = 0.0
+            child = root.children.get(action)
+            if child is not None:
                 q_sign = perspective_sign(root.to_play, child.to_play)
                 q = q_sign * child.value if child.visit_count > 0 else 0.0
-                completed_qs[action] = compute_completed_q(
-                    q, child.visit_count, max_visits, root_value
-                )
-
-            # Combine with Gumbel scores and halve
-            combined = {a: completed_qs.get(a, 0.0) + scores.get(a, 0.0) for a in actions}
-            actions = sorted(actions, key=lambda a: -combined[a])
-            actions = actions[: max(len(actions) // 2, self.config.min_actions_after_halving)]
-
-        return int(actions[0])
+                completed = compute_completed_q(q, child.visit_count, max_visits, root_value)
+            combined[action] = completed + scores.get(action, 0.0)
+        return sorted(actions, key=lambda a: -combined[a])
 
     def _simple_search(
         self,
@@ -611,13 +631,14 @@ class GumbelMCTS:
                 action_mask = obs["action_mask"]
 
                 policy, value = self._evaluate(spatial, vector, action_mask)
+                self._sim_evals += 1
                 node.expand(policy, action_mask)
 
                 # Backpropagate
                 self._backpropagate(search_path, value)
                 return
 
-        # Terminal state
+        # Terminal state: the game's outcome is this simulation's leaf evaluation.
         info = sim_env.get_info()
         winner = info.get("winner")
         if winner is None:
@@ -627,6 +648,7 @@ class GumbelMCTS:
         else:
             value = -1.0
 
+        self._sim_evals += 1
         self._backpropagate(search_path, value)
 
     def _backpropagate(
@@ -680,8 +702,10 @@ class GumbelMCTS:
     ) -> int:
         """Select action from probabilities.
 
-        For Gumbel MCTS, action_probs is typically one-hot from search(),
-        so this usually just returns the argmax.
+        ``action_probs`` is the policy target ``search()`` returned: by
+        default the completed-Q distribution, so temperature applies unless one
+        action holds more than ``config.greedy_threshold`` of the mass (a
+        ``policy_target="one_hot"`` target always does, and is played greedily).
 
         Args:
             action_probs: Action probability distribution.

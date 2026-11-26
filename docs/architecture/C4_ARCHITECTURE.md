@@ -44,8 +44,9 @@ flowchart TB
 > still reach W&B-hosted history, and they are documented as deprecated.
 
 **Legend:**
+
 | Colour | Meaning |
-|--------|---------|
+| -------- | --------- |
 | Dark blue | Person (actor) |
 | Mid blue | Civ6-AlphaZero system boundary |
 | Grey | External system / service |
@@ -77,7 +78,7 @@ flowchart TB
 
     subgraph VertexAI["Vertex AI — one image: dockerfiles/Dockerfile.vertex"]
         Entry["Container entrypoint\nalpha_zero/cloud/gcp/entrypoint.py\n--mode routes to one worker\n(orchestrator mode is refused here)"]:::infra
-        SPWorker["--mode=selfplay\ncloud/gcp/selfplay_worker.py\n(Gumbel / BatchGumbel MCTS + MicroCiv)"]:::worker
+        SPWorker["--mode=selfplay\ncloud/gcp/selfplay_worker.py\n(Gumbel / BatchGumbel / MuZero MCTS\nSeedStream.SELF_PLAY_SEARCH)"]:::worker
         TrainWorker["--mode=training\ncloud/gcp/training_worker.py\n(gradient updates, champion promotion)"]:::worker
         TournWorker["--mode=tournament\ncloud/gcp/tournament_worker.py\n(round-robin ELO evaluation)"]:::worker
         EvalWorker["--mode=evaluation\ncloud/gcp/evaluation_worker.py\n(arena.py scoring vs incumbent)"]:::worker
@@ -87,7 +88,10 @@ flowchart TB
         VOrch["Vertex Orchestrator\ncloud/gcp/vertex_orchestrator.py\n(job sequencing + preemption recovery)\nruns LOCALLY, not in the image"]:::infra
         MonLayer["MLflow Monitoring Layer\nalpha_zero/monitoring/\nMLflowLogger · AlphaZeroMLflowEvaluator"]:::new
         WebUI["Web UI\nalpha_zero/web/\n(FastAPI + WebSocket game UI)"]:::worker
-        Bridge["Civ6 Bridge\nalpha_zero/bridge/\n(file IPC or FireTuner socket)"]:::worker
+        RulesKernel["Game Rules Kernel (off play path)\nalpha_zero/rules/\n(validated, sha256-pinned rule sets)"]:::new
+        LocalCfg["Local Gameplay Entry & Config\nalpha_zero/civ6_local.py (thin CLI/runners)\n← local/gameplay_config.py (torch-free config)"]:::worker
+        Bridge["Civ6 Bridge (GM-B0..B7c)\nalpha_zero/bridge/\n(TechRegistry · GameInfo · TurnLedger · --mcts refusal)"]:::worker
+        LuaMod["Civ6 Mod Bundle & Harness\nmod/AlphaZeroAI/ (AlphaZeroMain.lua)\nlupa Lua 5.1 fixture harness + --check parity"]:::new
         TrainLoop["Local training loop\nalpha_zero/training_civ6.py\n(--seed → utils/seeding.py streams)"]:::worker
     end
 
@@ -107,21 +111,24 @@ flowchart TB
     TrainWorker -->|"log training loss"| MonLayer
     MonLayer -->|"persist experiments"| MLiteDB
 
+    RulesKernel -->|"research slots"| Bridge
+    LuaMod <-->|"schema-2 state / commands"| Bridge
     Bridge -->|"game state / actions"| WebUI
 ```
 
 **Container responsibilities:**
 
 | Unit | `--mode` | Technology | Hosts |
-|------|----------|-----------|-------|
-| Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel or BatchGumbel MCTS over MicroCiv |
+| ------ | ---------- | ----------- | ------- |
+| Self-Play Worker | `selfplay` | Python / PyTorch / Docker (Vertex) | Gumbel, BatchGumbel, or MuZero MCTS over MicroCiv (`SeedStream.SELF_PLAY_SEARCH` when `seed` is set) |
 | Training Worker | `training` | Python / PyTorch / Docker (Vertex) | SGD updates, weight promotion |
-| Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent |
+| Evaluation Worker | `evaluation` | Python (Vertex) | Arena scoring vs the incumbent (`SeedStream.ARENA_SEARCH`) |
 | Tournament Worker | `tournament` | Python (Vertex) | Round-robin, ELO snapshots |
 | Vertex Orchestrator | — (local) | Python / google-cloud-aiplatform | Job sequencing, preemption recovery |
 | MLflow Monitoring Layer | — (local) | Python / MLflow / SQLite | Experiment tracking (sole tracker) |
 | Web UI | — (local) | FastAPI + WebSocket | Human-vs-AI browser interface |
-| Civ6 Bridge | — (local) | Python / Lua mod | File IPC or headless FireTuner socket |
+| Game Rules Kernel | — (local/leaf) | Python / PyYAML | Frozen integer-only rule sets, sha256 canonical hashing, pacing & GameInfo import (`alpha_zero/rules/`) |
+| Civ6 Bridge & Lua Mod | — (local/CI) | Python / Lua 5.1 (`lupa` test harness) | File IPC or headless FireTuner socket (`FireTunerTimingConfig`, `_require_socket()`); research registry, 6-table `GameInfo` capture, `--mcts` refusal (pending GM-B6), schema-2 exporter, `<1k` LOC `protocol.py` split (`protocol_validation` + `protocol_entities`), generated `AlphaZeroMain.lua` bundle |
 | Local training loop | — (local) | Python / PyTorch | Single-process self-play → train → evaluate; `--seed` determines the whole run |
 
 **Shared search internals.** The self-play worker, the arena inside the evaluation worker and
@@ -144,7 +151,7 @@ flowchart LR
     classDef util fill:#067D26,color:#fff,stroke:#055E1C
 
     subgraph Monitoring["alpha_zero/monitoring/"]
-        MLflowLogger["MLflowLogger\nmlflow_logger.py\n• start_run() / end_run()\n• log_evaluation_result() → 14 metrics\n• FINISHED / FAILED lifecycle"]:::comp
+        MLflowLogger["MLflowLogger\nmlflow_logger.py (<1k) + wandb_compat.py\n• start_run() / end_run()\n• log_evaluation_result() → 15 metrics\n• FINISHED / FAILED lifecycle"]:::comp
         MLflowConfig["MLflowConfig\nconfig.py\n(MonitoringConfig = back-compat alias)\n• tracking_uri, experiment_name\n• SQLite backend settings"]:::comp
         AZEvaluator["AlphaZeroMLflowEvaluator\nmlflow_evaluator.py\ncompute_metrics() →\npolicy_entropy · value_mae\npolicy_top1_acc · action_diversity"]:::comp
     end
@@ -183,13 +190,13 @@ flowchart LR
     MLflowConfig -->|"reads via"| EnvLoader
 ```
 
-**14 metrics logged by `log_evaluation_result()`:**
+**15 metrics logged by `log_evaluation_result()` (`{prefix}/<metric>`):**
 
 | Category | Metrics |
-|----------|---------|
-| Counts (4) | `n_games`, `n_wins`, `n_losses`, `n_draws` |
-| Normalised rates (3) | `win_rate` (0-1), `loss_rate`, `draw_rate` |
-| Game stats (7) | `avg_game_length`, `max_game_length`, `min_game_length`, `avg_score_diff`, `total_turns`, `games_per_second`, `eval_duration_s` |
+| ---------- | --------- |
+| Counts (4) | `wins`, `losses`, `draws`, `total_games` |
+| Normalised rates (4) | `win_rate`, `score_rate`, `draw_rate`, `loss_rate` (fractions 0–1) |
+| Game stats (7) | `avg_game_length`, `avg_cities_won`, `avg_cities_lost`, `avg_units_won`, `avg_units_lost`, `total_evaluation_time`, `value_correlation` |
 
 ---
 
@@ -270,7 +277,7 @@ flowchart TD
 Line counts below were re-measured on 2026-09-04 (`wc -l alpha_zero/core/mcts/*.py`).
 
 | Module | Lines | Contents | Depends on |
-|---|---:|---|---|
+| --- | ---: | --- | --- |
 | `backup.py` | 249 | `backpropagate_path`, `perspective_sign`, `should_track_to_play`, `env_current_player`, backup diagnostics | — |
 | `mcts_protocols.py` | 161 | `MCTSNetwork`, `MuZeroNetworkProtocol`, `ActionSpace`, `MCTSEnvironment` | — |
 | `gumbel_ops.py` | 186 | `gumbel_sample_actions`, `compute_completed_q`, `build_completed_q_policy` | — |
@@ -386,7 +393,7 @@ flowchart TD
     GCSCheckpoints -->|"load checkpoint"| EP
 
     subgraph MLflowLogging["MLflow Logging"]
-        LER["log_evaluation_result()\n14 metrics per run"]:::mlflow
+        LER["log_evaluation_result()\n15 metrics per run"]:::mlflow
         MLflowDB["MLflow SQLite DB\n(mlflow.db)\nexperiment per checkpoint"]:::mlflow
         LER --> MLflowDB
     end
@@ -399,6 +406,7 @@ flowchart TD
 ```
 
 **Key invariants:**
+
 - `WinRateResult.win_rate` is on a **0–100 scale**; `log_evaluation_result()` normalises to **0–1** before storing in MLflow.
 - Each MLflow run corresponds to one model checkpoint (one iteration).
 - `resolve_run_id()` auto-detects the latest champion from GCS — no hardcoded UUIDs.
@@ -421,7 +429,7 @@ flowchart TD
         Classify["classify_encoder_keys()"]:::logic
         Validate["validate_encoder_state()"]:::logic
         Warn["Log mismatch warning / error"]:::logic
-        
+
         Load --> Classify
         Classify --> Validate
         Validate -->|"mismatch detected"| Warn
@@ -432,7 +440,7 @@ flowchart TD
         Verify["Verify safe-tensors only"]:::logic
         ModelCard["Assemble Model Card README"]:::logic
         Publish["HfApi.upload_folder()"]:::logic
-        
+
         Extract --> Verify
         Verify --> ModelCard
         ModelCard --> Publish
@@ -445,10 +453,151 @@ flowchart TD
 
 ---
 
-*Last revised: 2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search package
-(one sign-correct value backup for all five variants), `utils/seeding.py` and the local
+## Level 3 — Component Diagram (Run Cards, Pinned Environment & Devices)
+
+> **Scope:** `alpha_zero/local/` — how a registered run executes on one machine. A run card
+> (`configs/run_cards/*.yaml`) names a commit, a game budget, a torch build, the GPUs it
+> expects and a list of invocations; `scripts/run_card.py` is the only way a card runs.
+
+A card is evidence about a named commit on named hardware, so every step either proves a claim
+or refuses. Nothing is launched until the pinned child has reported what it actually has, and
+the driver never substitutes another device: the runners themselves fall back to CPU with a
+warning, which is exactly what a card must not do silently.
+
+```mermaid
+flowchart TD
+    classDef util fill:#067D26,color:#fff,stroke:#055E1C
+    classDef comp fill:#1168BD,color:#fff,stroke:#0E5EA8
+    classDef ext fill:#999,color:#fff,stroke:#6B6B6B
+    classDef stop fill:#B42318,color:#fff,stroke:#7A1711
+
+    Card["Run card (YAML)\nsha · max_games · torch_spec + index\ncuda_visible_devices · gpus · invocations"]:::ext
+    Registration["docs/EVALUATION.md section 7.1\ncommands · a1-devices block · digest"]:::ext
+
+    subgraph Driver["alpha_zero/local/run_card.py"]
+        Price["price_card\neach argv through its runner's own parser\n(utils/game_budget.py)"]:::comp
+        Static["refuse_*\nplaceholder sha · MCTS_* override\nimplicit device on a pinned card"]:::comp
+        Preflight["preflight in the pinned child\nassert_running_pinned + TORCH_REPORT_CODE"]:::comp
+        Probe["rehearsal: every run, in a throwaway directory\nlaunches nothing; --probe stops here"]:::comp
+        Launch["claim runs/card_id, repeat the checks\nrun invocations in order\nrun.json (launched · rehearsal · torch_wheel) · logs"]:::comp
+    end
+
+    subgraph Pinned["alpha_zero/local/pinned_env.py"]
+        Src["git archive sha -> src (read-only)"]:::util
+        Venv["venv envs/sha12[-t pin]\ntorch pin first, then the wheel"]:::util
+    end
+
+    subgraph Devices["alpha_zero/local/devices.py"]
+        Env["apply_device_environment\nCUDA_VISIBLE_DEVICES · PCI_BUS_ID order\nCUBLAS_WORKSPACE_CONFIG -> device_plan"]:::util
+        Problem["device_problem\npin installed · ordinal exists · kernels for the GPU\none real CUDA op · driver readable · expected GPU at each ordinal"]:::util
+    end
+
+    Refuse["REFUSED / FAILED\nnothing launched"]:::stop
+    Runners["training_civ6 · evaluation.benchmark\ncalibrate_throughput · check_determinism\n(seeded GPU runs: utils/seeding\nenforce_deterministic_backend)"]:::ext
+    Verify["scripts/verify_release_evidence.py\nargv = registered commands\ndevice_plan = registered devices\nre-run rule recomputed (release_reproduction.py)"]:::comp
+
+    Registration -. "tests hold cards equal to it" .-> Card
+    Card --> Price --> Static
+    Static -->|"problem"| Refuse
+    Static --> Src --> Venv --> Env --> Preflight --> Problem
+    Problem -->|"problem"| Refuse
+    Problem -->|"ok"| Probe
+    Probe -->|"PROBED"| Launch --> Runners
+    Launch -->|"run.json"| Verify
+    Registration --> Verify
+```
+
+**Rehearsal first.** A run goes through the pin, the preflight and the device check twice: once
+in a throwaway `runs/probe-<card_id>-<stamp>` directory, and again after it has claimed
+`runs/<card_id>`. The venv is cached by commit and torch pin, so the second pass repeats only the
+source export and the checks. A card that is refused in the rehearsal has not used its `card_id`.
+
+**Why the device comes from the runner's parser.** `run_card.invocation_devices` reads the parsed
+namespace, not the argv tokens: argparse accepts `--dev cuda:1`, and the benchmark defaults to
+`cpu` while the trainer leaves its device unset. A token scan disagrees with the child in both
+cases. A card that pins a torch build must name every invocation's device explicitly.
+
+**Why `is_available()` is not enough.** A torch build can report CUDA as available and still have
+no kernels for the GPU's architecture. The preflight records the build's architecture list, each
+GPU's compute capability and the result of one real operation per device; `device_problem` reads
+all three.
+
+**Reproduction.** Seeded runs on a CUDA device enforce deterministic algorithms, which is what
+lets a re-run of an interrupted card be a *reproduction check* instead of a second draw:
+`alpha_zero/evaluation/reproduction.py` compares the two attempts' checkpoints tensor by tensor
+and their arena games one by one. `scripts/check_determinism.py` runs the same comparison on two
+fresh A1-shaped runs, each in its own process, as T0b's precondition for the GPU registration;
+live dual-GPU execution (`cuda:0` RTX 5060 Ti + `cuda:1` RTX 5060, `torch 2.11.0+cu128`)
+reported `REPRODUCED`, while formal single-use T0b/A1 run-card execution via
+`scripts/run_card.py` remains the maintainer gate.
+
+**Governance & AST Debt Auditing.** Static governance and hygiene checks (`scripts/validate_*.py`,
+`scripts/check_doc_sync.py`, `scripts/check_release_readiness.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
+canonical sorted `--json` (`sort_keys=True`) and `--verbose` structured stderr logging across the
+governance and readiness validators (eleven vetted checkers exposed via `readonly_shell_guard.sh`, sixteen skills incl. `public-release-audit` and `branch-hygiene-audit`, and synced `posttooluse_governance.sh` doc-sync globs), plus single-source tree discovery (`audit_import_graph.iter_python_files`,
+pruning PEP 405 virtual environments via `pyvenv.cfg` and linked git worktrees). Lua mod bundle
+parity (`scripts/build_lua_bundle.py --check`) is enforced across `make validate`, pre-commit,
+and `posttooluse_governance.sh`.
+
+---
+
+## Level 3 — Component Diagram (Game Rules Kernel & Live Bridge Research Wiring)
+
+> **Scope:** `alpha_zero/rules/` (GM-K1/K2) and `alpha_zero/bridge/` + `mod/AlphaZeroAI/` (GM-B0..GM-B5),
+> all kept outside `scripts/release_play_path.txt` so pre-v2.1.0 release evidence stays valid.
+
+```mermaid
+flowchart LR
+    classDef leaf fill:#e8f4ea,stroke:#2d6a4f,color:#1b4332
+    classDef bridge fill:#e7eefc,stroke:#1d4ed8,color:#1e3a8a
+    classDef lua fill:#fdf3e3,stroke:#b45309,color:#7c2d12
+    classDef test fill:#f3f4f6,stroke:#6b7280,color:#374151
+
+    subgraph Rules["alpha_zero/rules/ (leaf package)"]
+        Yaml["science_v1_draft.yaml\nand external RuleSet YAML"]:::leaf
+        Loader["loader.py + validate.py\nstrict YAML + canonical sha256"]:::leaf
+        Registry["registry.py + pacing.py + gameinfo.py\nvalidate | hash | pace | import-gameinfo"]:::leaf
+    end
+
+    subgraph BridgePy["alpha_zero/bridge/ (29 modules)"]
+        ConfigPy["config.py (torch-free paths & BridgeConfig.from_live_env)\n+ local/gameplay_config.py (Civ6LocalConfig)"]:::bridge
+        TechReg["tech_registry.py + gameinfo_capture.py\nfrom_ruleset() + GameInfo snapshot CLI"]:::bridge
+        Converters["state_converter.py + action_converter.py\nencoder tech/civic slots + offer mask"]:::bridge
+        ProxyRefusal["microciv_proxy.py + mcts_policy.py\nMicroCiv proxy (--mcts refused until GM-B6)"]:::bridge
+        Proto["protocol_validation.py + protocol_entities.py + protocol.py (<1k facade)\n+ tuner_socket_bridge.py (FireTunerTimingConfig) + turn_ledger.py"]:::bridge
+    end
+
+    subgraph ModLua["mod/AlphaZeroAI/Scripts/"]
+        SrcLua["Config / JsonEncoder (LLP64-safe) / StateExporter /\nGameInfoExporter / ActionExecutor / Main.lua"]:::lua
+        Bundler["scripts/build_lua_bundle.py --check\n+ scripts/install_civ6_mod.py --check (SHA-256)"]:::lua
+        Harness["tests/fixtures/lua_harness.py\nlupa Lua 5.1 sandbox + civ6_stub.lua"]:::test
+    end
+
+    Yaml --> Loader --> Registry --> TechReg
+    TechReg -->|"fingerprint + slot map"| Converters
+    Converters <-->|"GameStateData / LuaCommand"| Proto
+    Proto <--> ConfigPy
+    Converters -->|"scaled _board_size state"| ProxyRefusal
+    SrcLua --> Bundler -->|"AlphaZeroMain.lua"| Harness
+    Proto <-->|"TCP 4318 / Lua.log"| Harness
+```
+
+---
+
+*Last revised: 2026-11-26 — decomposed `vertex_orchestrator.main()` and `training_worker.main()` below 100 statements, removed the final two `PLR0915` ignores in `pyproject.toml` (`functions_over_max_statements: 2 -> 0`, `ruff_per_file_ignores: 25 -> 23`), building on PR #179 (`FireTunerTimingConfig`, `_require_socket()`, `protocol.py` 3-layer split, `.claude/skills/branch-hygiene-audit`, and `baseline.json` ratchet).*
+*Previously 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
+*Previously 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
+component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified
+all six governance validators on sorted `--json` / `--verbose` plus `check-lua-bundle` wiring.
+Previously 2026-11-18 — corrected `log_evaluation_result()` to 15 metrics (matching
+`alpha_zero/monitoring/mlflow_logger.py`), documented live dual-GPU `check_determinism.py`
+verification alongside single-use T0b/A1 pending status, and recorded shared PEP 405/worktree
+pruning and deterministic governance validator contracts. Previously 2026-11-14 — run cards, the
+pinned environment and the device check (`alpha_zero/local/`) added as a component view, with the
+reproduction check. Previously 2026-09-04 — `core/mcts/backup.py` added as layer 0 of the search
+package (one sign-correct value backup for all five variants), `utils/seeding.py` and the local
 training loop added to the container and component views. Previously 2026-09-02: Tier A
 dead-code removal (44 modules / 21,903 lines; the four per-role Dockerfiles and
 `docker-compose.yml` with them), W&B removed from the context diagram, one-image container
 model made explicit.*
-*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition*
+*Architecture version: Phase 21 (Hexcrystal Encoder, SpaceTimeDB, & Spaces Integrations) + MCTS package decomposition + GM Rules Kernel & Bridge Parity*

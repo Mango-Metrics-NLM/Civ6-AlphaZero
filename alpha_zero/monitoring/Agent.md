@@ -30,7 +30,7 @@ Install with `pip install -e '.[monitoring]'`.
 | **Null Object** | `mlflow_logger.py` — absent `mlflow` degrades every method to a no-op | Instrumentation must never be a hard dependency of training |
 | **Facade** | `tournament_dashboards.py` — `TournamentMlflowLogger` | One surface over match/round/leaderboard/head-to-head logging |
 | **Pure Function** | `metrics.py` — `compute_value_correlation`, `compute_elo_spread`, `compute_policy_entropy` | NaN-safe, backend-free, trivially testable |
-| **Adapter** | `mlflow_logger.py` — `WandbCompatAdapter` | Lets call sites written against the retired W&B API keep working against MLflow |
+| **Adapter** | `wandb_compat.py` — `WandbCompatAdapter` (re-exported by `mlflow_logger.py`) | Lets call sites written against the retired W&B API keep working against MLflow |
 | **Single Source of Truth** | `config.py` — `MLflowConfig` | No hardcoded URIs, experiment names, or tags anywhere else |
 
 ---
@@ -41,8 +41,9 @@ Install with `pip install -e '.[monitoring]'`.
 |------|---------------|
 | `config.py` | `MLflowConfig` dataclass + `CIV6AZ_MLFLOW_*` env parsing (standard `MLFLOW_*` honored as fallback) |
 | `metrics.py` | Stateless metric helpers; importable with no backend installed |
-| `mlflow_logger.py` | `MLflowLogger`, `WandbCompatAdapter` — optional import, nested runs, metric cleaning |
-| `mlflow_evaluator.py` | `AlphaZeroMLflowEvaluator` + `log_evaluation_result` (14 metrics per eval run) |
+| `mlflow_logger.py` | `MLflowLogger` + lazy re-export of `WandbCompatAdapter` — optional import, nested runs, metric cleaning |
+| `wandb_compat.py` | `WandbCompatAdapter` — legacy W&B compatibility adapter forwarding to `MLflowLogger` |
+| `mlflow_evaluator.py` | `AlphaZeroMLflowEvaluator` + `log_evaluation_result` (15 metrics per eval run, including `score_rate`) |
 | `tournament_dashboards.py` | `TournamentMlflowLogger` — match / round / leaderboard / head-to-head |
 
 ---

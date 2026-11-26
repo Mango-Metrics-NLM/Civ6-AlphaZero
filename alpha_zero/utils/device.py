@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "DEFAULT_MAX_INFERENCE_THREADS",
     "INFERENCE_THREADS_ENV_VAR",
+    "cuda_ordinal",
     "inference_thread_limit",
     "place_network",
     "resolve_device",
@@ -60,6 +61,36 @@ def _normalise(requested: str | None) -> str:
         return "auto"
     text = str(requested).strip().lower()
     return text or "auto"
+
+
+def cuda_ordinal(device: object) -> int | None:
+    """The CUDA ordinal a device string names, or ``None`` if it names no CUDA device.
+
+    Bare ``cuda`` is ordinal 0; ``cuda:N`` is ``N``; anything else -- ``cpu``,
+    ``auto``, ``mps``, a malformed ``cuda:x``, ``None`` -- is ``None``. Needs no
+    torch, so torch-free modules (the run-card driver, evidence records) can ask
+    which GPU a device string means without importing it.
+    """
+    name = str(device or "").strip().lower()
+    if name == "cuda":
+        return 0
+    if name.startswith("cuda:") and name[5:].isdigit():
+        return int(name[5:])
+    return None
+
+
+def torch_build_matches(installed: object, pinned_version: str) -> bool:
+    """Whether an installed torch (``torch.__version__``) is the pinned build.
+
+    A pin that names its build -- a local version tag, as in ``2.11.0+cu128`` --
+    is compared in full, so ``2.11.0+cu130`` and an untagged ``2.11.0`` are both
+    another build. A pin with no tag (``2.11.0``) says nothing about the build and
+    is compared on the public version alone, as it always was. Needs no torch.
+    """
+    installed_version = str(installed or "").strip()
+    if "+" in pinned_version:
+        return installed_version == pinned_version
+    return installed_version.split("+", 1)[0] == pinned_version
 
 
 def _resolve_name(requested: str | None) -> str:
@@ -98,7 +129,7 @@ def _resolve_name(requested: str | None) -> str:
                 raise ValueError(
                     f"Invalid device {requested!r}: expected 'cuda:N' with an integer N"
                 )
-            if int(index) >= torch.cuda.device_count():
+            if (cuda_ordinal(text) or 0) >= torch.cuda.device_count():
                 logger.warning(
                     "device %r requested but only %d CUDA device(s) present; using cpu",
                     text,

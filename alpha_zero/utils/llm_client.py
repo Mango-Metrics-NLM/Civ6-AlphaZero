@@ -59,7 +59,8 @@ try:
     from dotenv import load_dotenv
 
     _env_path = Path(__file__).parent.parent.parent / ".env"
-    if _env_path.exists():
+    # CIV6AZ_SKIP_DOTENV=1 is set by local-mode runs so .env cannot re-inject cloud settings.
+    if _env_path.exists() and os.environ.get("CIV6AZ_SKIP_DOTENV") != "1":
         load_dotenv(_env_path)
 except ImportError:
     pass

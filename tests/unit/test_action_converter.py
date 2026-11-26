@@ -634,6 +634,23 @@ class TestUnitActionConversion:
             converter.convert(idx, state, validate=False)
 
 
+def _offer(city_id: int, kind: str, slot: int) -> list[LegalAction]:
+    """A produce offer with enough items of ``kind`` that ``slot`` names one.
+
+    Since GM-B7b a production index is a position among the offered items, and a slot
+    nothing was offered at is refused: these tests supply the offer.
+    """
+    names = [f"ITEM_{i:02d}" for i in range(slot + 1)]
+    return [
+        LegalAction(
+            action_type="produce",
+            city_id=city_id,
+            items=names,
+            item_types=dict.fromkeys(names, kind),
+        )
+    ]
+
+
 class TestCityActionConversion:
     """Tests for _convert_city_action covering all city action types."""
 
@@ -665,28 +682,28 @@ class TestCityActionConversion:
     def test_convert_produce_unit(self, converter, state):
         """Test PRODUCE_UNIT city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_UNIT, 5)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "unit", 5), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "unit"
 
     def test_convert_produce_building(self, converter, state):
         """Test PRODUCE_BUILDING city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_BUILDING, 3)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "building", 3), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "building"
 
     def test_convert_produce_wonder(self, converter, state):
         """Test PRODUCE_WONDER city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_WONDER, 1)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "wonder", 1), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "wonder"
 
     def test_convert_produce_district(self, converter, state):
         """Test PRODUCE_DISTRICT city action conversion."""
         idx = self._encode_city_action(converter, 0, CityActionType.PRODUCE_DISTRICT, 2)
-        cmd = converter.convert(idx, state, validate=False)
+        cmd = converter.convert(idx, state, _offer(1, "district", 2), validate=False)
         assert cmd.action_type == ActionType.CITY_PRODUCE
         assert cmd.item_type == "district"
 
@@ -815,7 +832,7 @@ class TestActionLegalityChecking:
             category=ActionCategory.CITY_ACTION,
             selector=0,
             action_type=CityActionType.PRODUCE_UNIT.value,
-            target=5,
+            target=1,  # since GM-B7b: the item's position among the offered ones ([5, 10, 15])
         )
         legal = [LegalAction(action_type="produce", city_id=10, items=[5, 10, 15])]
         assert converter._is_action_legal(decoded, state, legal)
@@ -854,17 +871,12 @@ class TestActionLegalityChecking:
     def test_city_action_legal_with_string_item_id(self, converter):
         """Test city production is legal when items are raw string type names.
 
-        StateExporter.lua exports non-numeric production item ids (e.g.
-        "UNIT_WARRIOR") as strings. generate_action_mask() hashes those
-        strings via _convert_item_id_to_int() before encoding them into the
-        mask, so decoded.target on the policy-chosen action is always the
-        hashed int. _is_action_legal() must hash action.items the same way
-        before comparing, or legal string-keyed production is never
-        recognized as legal (regression for the always-False bug).
+        StateExporter.lua exports production items as type names ("UNIT_WARRIOR").
+        Since GM-B7b the mask marks an item at its position among the offered items
+        of its kind, and the legality check reads the same position, so a
+        name-keyed item the mask marked is recognised as legal (the regression this
+        test was written for: it used to be always False).
         """
-        from alpha_zero.bridge.action_converter import _convert_item_id_to_int
-
-        hashed_item_id = _convert_item_id_to_int("UNIT_WARRIOR")
         state = {
             "current_player": 0,
             "cities": [{"_id": 10, "player": 0}],
@@ -873,7 +885,7 @@ class TestActionLegalityChecking:
             category=ActionCategory.CITY_ACTION,
             selector=0,
             action_type=CityActionType.PRODUCE_UNIT.value,
-            target=hashed_item_id,
+            target=0,
         )
         legal = [LegalAction(action_type="produce", city_id=10, items=["UNIT_WARRIOR"])]
         assert converter._is_action_legal(decoded, state, legal)

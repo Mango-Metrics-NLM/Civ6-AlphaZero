@@ -1,7 +1,7 @@
 # Public-release peer review — Civ6-AlphaZero
 
 **Date:** 2026-11-10 · **Commit reviewed:** `96c9e57` (last change 2026-09-12) · **Branch:** `claude/cool-lovelace-o02vn9`
-**Method:** a panel of five role reviews (SDLC/CI-CD/DevSecOps, ML/AI science, Product + Scrum, architect, integration lead), each run as an independent agent against the tree, the GitHub API and the Hugging Face API, and reconciled by argument rather than by vote. Every decision in the plan is recorded as *thesis → counter-argument → rebuttal → decision + gate*. This report is the record of the review; the resulting change is `openspec/changes/public-release-readiness/`.
+**Method:** a panel of five role reviews (SDLC/CI-CD/DevSecOps, ML/AI science, Product + Scrum, architect, integration lead), each run as an independent agent against the tree, the GitHub API and the Hugging Face API, and reconciled by argument rather than by vote. Every decision in the plan is recorded as *thesis → counter-argument → rebuttal → decision + gate*. This report is the record of the review; the resulting change is `openspec/changes/public-release-readiness/` (merged; archived 2026-11-11 to `openspec/changes/archive/2026-11-11-public-release-readiness/`).
 
 Confidence tags: **[Certain]** reproduced by command in this session · **[Likely]** read in a file but not executed · **[Guessing]** inference.
 

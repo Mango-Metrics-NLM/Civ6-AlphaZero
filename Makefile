@@ -36,9 +36,10 @@ BASE_IMAGE ?= $(ARTIFACT_REGISTRY)/civ6-base:$(VERSION)
 # Local image names (for development)
 LOCAL_BASE_IMAGE ?= civ6-alphazero-base:$(VERSION)
 
-# Python
-PYTHON ?= python3
-PIP ?= pip3
+# Python — prefer a real Python >=3.11 interpreter (avoiding the Windows Store
+# alias on Windows while staying overridable with `PYTHON=... make ...`).
+PYTHON ?= $(shell python3 -c "import sys; sys.exit(0 if sys.version_info >= (3,11) and 'WindowsApps' not in sys.executable else 1)" 2>/dev/null && echo python3 || echo python)
+PIP ?= $(PYTHON) -m pip
 
 # Hugging Face namespace for `publish-spaces`. The maintainer's account unless
 # overridden; the Space names below are the ones .github/workflows/deploy_spaces.yml
@@ -84,6 +85,7 @@ help:
 	@echo ""
 	@echo "Development:"
 	@echo "  make install           Install the project with the dev extra (pip install -e '.[dev]')"
+	@echo "  make install-lua       The same plus the Lua runtime that 'make verify' requires"
 	@echo "  make install-dev       Alias of install"
 	@echo "  make lint              Run linting (ruff)"
 	@echo "  make typecheck         Run type checking (mypy)"
@@ -92,9 +94,15 @@ help:
 	@echo "  make test-regression   Run the repository-hygiene regression suite"
 	@echo "  make verify            Reproduce EVERY CI gate locally (run before a PR)"
 	@echo "  make verify-fast       Lint, types, governance + regression only (minutes, not an hour)"
+	@echo "  make verify-registration  A1 registration gate: digest, log row, constants, run cards"
 	@echo "  make test-all          Run all tests with coverage (global gate: 85%)"
 	@echo "  make test-cloud-coverage  Measure alpha_zero/cloud against coverage-floors.json"
-	@echo "  make validate          Run governance validators (openspec, kb, skills, agents, doc-sync)"
+	@echo "  make validate          Run governance validators (7 validators + Lua bundle sync)"
+	@echo "  make check-release-readiness  Run deterministic public-release readiness checks (R1-R6)"
+	@echo "  make check-lua-bundle  Verify mod/AlphaZeroAI/Scripts/AlphaZeroMain.lua is up to date"
+	@echo "  make check-mod-install Verify installed Steam Civ6 mod matches repo SHA-256"
+	@echo "  make test-lua          Run Lua 5.1 mod parity tests with CIV6AZ_REQUIRE_LUA=1"
+	@echo "  make test-gpu          Run the 21 GPU-gated suites under CIV6AZ_REQUIRE_GPU (default 2; skips fail)"
 	@echo "  make hooks-install     Install pre-commit + git hooks (self-installing)"
 	@echo "  make eval-llm          Run LLM eval-harness gate (StrategyAdvisor analyze + report, offline)"
 	@echo ""
@@ -131,6 +139,12 @@ install:
 
 .PHONY: install-dev
 install-dev: install
+
+# The dev extra plus the Lua runtime (lupa) that `make verify` and CI's test job
+# require for the Civ6 mod's Lua tests.
+.PHONY: install-lua
+install-lua:
+	$(PIP) install -e '.[dev,lua]'
 
 .PHONY: install-cloud
 install-cloud: install
@@ -352,12 +366,71 @@ test:
 # passing with the rule unenforced is what the 2026-09-04 audit found (G7).
 # `git fetch --unshallow` once, or run `scripts/validate_kb.py` without the flag
 # for the K1-K6 subset.
+.PHONY: check-lua-bundle
+check-lua-bundle:
+	$(PYTHON) scripts/build_lua_bundle.py --check
+
+.PHONY: check-mod-install
+check-mod-install:
+	$(PYTHON) scripts/install_civ6_mod.py --check
+
+.PHONY: test-lua
+test-lua:
+	CIV6AZ_REQUIRE_LUA=1 $(PYTHON) -m pytest tests/unit/test_lua_*.py -v --tb=short
+
+GPU_TEST_FILES := \
+	tests/cloud/unit/test_training_worker.py \
+	tests/integration/test_ddp_initialization.py \
+	tests/integration/test_ddp_multinode.py \
+	tests/regression/test_cuda_determinism_regression.py \
+	tests/regression/test_gm_bridge_and_gpu_e2e_aqa.py \
+	tests/regression/test_gpu_e2e_and_worktree_aqa.py \
+	tests/scripts/test_run_card.py \
+	tests/unit/test_checkpoint_contract.py \
+	tests/unit/test_civ6_local.py \
+	tests/unit/test_cuda_determinism_wiring.py \
+	tests/unit/test_hexcrystal_encoder_roundtrip.py \
+	tests/unit/test_imitation_pretraining.py \
+	tests/unit/test_inference_benchmark.py \
+	tests/unit/test_local_devices.py \
+	tests/unit/test_losses.py \
+	tests/unit/test_memory_guard_coverage.py \
+	tests/unit/test_run_muzero_training.py \
+	tests/unit/test_training_smoke.py \
+	tests/unit/test_web_config.py \
+	tests/unit/test_utils/test_device.py \
+	tests/unit/test_utils/test_device_contract.py
+
+.PHONY: test-gpu
+test-gpu:
+	CIV6AZ_REQUIRE_GPU=$${CIV6AZ_REQUIRE_GPU:-2} $(PYTHON) -m pytest $(GPU_TEST_FILES) -rs -v --tb=short
+
+.PHONY: check-release-readiness
+check-release-readiness:
+	$(PYTHON) scripts/check_release_readiness.py
+
 .PHONY: validate
 validate:
 	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/validate_kb.py --git
 	$(PYTHON) scripts/validate_skills.py
 	$(PYTHON) scripts/validate_agents.py
+	$(PYTHON) scripts/validate_claude_agents.py
+	$(PYTHON) scripts/check_doc_sync.py
+	$(PYTHON) scripts/check_release_readiness.py
+	$(PYTHON) scripts/build_lua_bundle.py --check
+
+# The A1 registration gate (.claude/skills/a1-reregister): section 7.1's digest, the
+# registration log's last row and REGISTRATION_DIGEST agree; the run cards equal the
+# registered commands and devices; the validators that read the same files pass.
+.PHONY: verify-registration
+verify-registration:
+	$(PYTHON) -m alpha_zero.evaluation.a1_protocol digest
+	$(PYTHON) -m pytest -q -p no:cacheprovider \
+		tests/regression/test_a1_registration_digest_regression.py \
+		tests/scripts/test_a1_registration.py \
+		tests/scripts/test_t0b_calibration.py
+	$(PYTHON) scripts/validate_openspec.py
 	$(PYTHON) scripts/check_doc_sync.py
 
 # Self-installing: pre-commit is not a declared dependency, so the bare
@@ -377,6 +450,12 @@ hooks-install:
 # anything, which is the failure this target exists to prevent. It previously
 # omitted the coverage job, the bandit scan and the eval gate while claiming to
 # reproduce everything.
+# CI's test job requires the Lua runtime for the mod's Lua tests (it sets
+# CIV6AZ_REQUIRE_LUA=1), so `verify` does too: without it those tests would skip
+# here and pass there for a different reason. Plain `make test` and plain pytest
+# leave it optional. Install it with `make install-lua`.
+verify: export CIV6AZ_REQUIRE_LUA = 1
+
 .PHONY: verify
 verify: lint-check typecheck test test-security security-secrets test-governance validate test-all test-cloud-coverage eval-llm
 	@echo "verify: reproduced CI's lint, type, test, security, governance, coverage (global + cloud floor) and eval gates"

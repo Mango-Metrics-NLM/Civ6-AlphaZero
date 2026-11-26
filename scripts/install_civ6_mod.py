@@ -15,6 +15,7 @@ Usage:
 
 import argparse
 import hashlib
+import logging
 import os
 import shutil
 import sys
@@ -197,13 +198,45 @@ def install_mod(source_path: Path, target_path: Path) -> int:
     return 0
 
 
+def verify_mod_installation(source_path: Path, target_path: Path) -> tuple[bool, list[str]]:
+    """Verify SHA-256 parity between ``source_path`` and installed ``target_path``.
+
+    Returns:
+        ``(ok, problems)`` where ``problems`` lists missing files, unexpected
+        extra files, or SHA-256 digest mismatches in deterministic sorted order.
+    """
+    if not source_path.is_dir():
+        return False, [f"missing source directory: {source_path}"]
+    if not target_path.is_dir():
+        return False, [f"missing installed mod directory: {target_path}"]
+
+    source_files = _relative_files(source_path)
+    target_files = _relative_files(target_path)
+    problems: list[str] = []
+
+    for rel in sorted(source_files - target_files):
+        problems.append(f"missing installed file: {rel.as_posix()}")
+    for rel in sorted(target_files - source_files):
+        problems.append(f"unexpected extra file: {rel.as_posix()}")
+    for rel in sorted(source_files & target_files):
+        src_digest = _sha256(source_path / rel)
+        dst_digest = _sha256(target_path / rel)
+        logger.debug("Verified %s: src=%s dst=%s", rel.as_posix(), src_digest[:12], dst_digest[:12])
+        if src_digest != dst_digest:
+            problems.append(
+                f"SHA256 mismatch for {rel.as_posix()} "
+                f"(source={src_digest[:12]}, installed={dst_digest[:12]})"
+            )
+
+    return not problems, problems
+
+
 def _log_success() -> None:
     logger.info("Mod installed successfully.")
     logger.info("Please enable 'AlphaZeroAI' in the Civilization VI Additional Content menu.")
 
 
-def main() -> int:
-    setup_logging()
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Install the Civ6 AlphaZero Lua Mod.")
     parser.add_argument(
         "--mod-dir",
@@ -216,7 +249,21 @@ def main() -> int:
         default=_DEFAULT_SOURCE_DIR,
         help=f"Path to the mod source directory (default: {_DEFAULT_SOURCE_DIR}).",
     )
-    args = parser.parse_args()
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Verify installed mod files match the repository by SHA256 without modifying disk.",
+    )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Emit per-file SHA256 verification debug logs.",
+    )
+    args = parser.parse_args(argv)
+    log_level = logging.DEBUG if args.verbose else logging.INFO
+    setup_logging(level=log_level)
+    logger.setLevel(log_level)
 
     source_path = Path(args.source_dir).resolve()
     if not source_path.exists() or not source_path.is_dir():
@@ -229,6 +276,20 @@ def main() -> int:
     else:
         target_mods_dir = get_default_mod_dir()
 
+    target_path = target_mods_dir / MOD_NAME
+    if args.check:
+        ok, problems = verify_mod_installation(source_path, target_path)
+        if not ok:
+            for issue in problems:
+                logger.error("Mod verification failed: %s", issue)
+            return 1
+        logger.info(
+            "Mod installation verified (%d file(s) match SHA256): %s",
+            len(_relative_files(source_path)),
+            target_path,
+        )
+        return 0
+
     if not target_mods_dir.exists():
         logger.warning(f"Mods directory does not exist: {target_mods_dir}")
         try:
@@ -237,8 +298,6 @@ def main() -> int:
         except OSError as e:
             logger.error(f"Failed to create Mods directory: {e}")
             return 1
-
-    target_path = target_mods_dir / MOD_NAME
 
     return install_mod(source_path, target_path)
 

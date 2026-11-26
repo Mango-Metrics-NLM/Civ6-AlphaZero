@@ -295,3 +295,89 @@ class TestCli:
         validate_envelope(envelope)
         assert envelope["protocol"]["mcts_type"] == "gumbel"
         assert "# Benchmark report" in (out / "report.md").read_text(encoding="utf-8")
+
+
+class TestDevicePlacementAndStateDict:
+    @pytest.mark.parametrize(
+        "state_key",
+        ["state_dict", "model_state_dict", "network_state_dict"],
+    )
+    def test_load_network_uses_extract_state_dict_and_moves_to_device(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state_key: str
+    ) -> None:
+        import torch
+
+        from alpha_zero.core.civ6_network import MicroCivNetwork
+
+        net = MicroCivNetwork(board_size=6, action_space_size=376, num_res_blocks=1, num_filters=8)
+        ckpt_path = tmp_path / f"{state_key}.pt"
+        torch.save(
+            {
+                state_key: net.state_dict(),
+                "config": {
+                    "spatial_channels": 13,
+                    "spatial_size": 6,
+                    "vector_dim": 64,
+                    "num_res_blocks": 1,
+                    "num_filters": 8,
+                    "fc_hidden_dim": 128,
+                    "action_space_size": 376,
+                    "value_head_hidden": 64,
+                    "num_players": 2,
+                },
+            },
+            ckpt_path,
+        )
+
+        to_calls: list[Any] = []
+        orig_to = MicroCivNetwork.to
+
+        def _spy_to(self, *args, **kwargs):
+            to_calls.append(args[0] if args else kwargs.get("device"))
+            return orig_to(self, "cpu")
+
+        monkeypatch.setattr(MicroCivNetwork, "to", _spy_to)
+        monkeypatch.setattr(
+            "alpha_zero.evaluation.benchmark.resolve_device_str",
+            lambda _dev: "cpu",
+        )
+
+        loaded = bench._load_network(ckpt_path, "auto", expected_max_turns=None)
+        assert to_calls == ["cpu"]
+        assert not loaded.training
+
+    def test_load_network_invalid_checkpoint_raises_key_error(self, tmp_path: Path) -> None:
+        import torch
+
+        ckpt_path = tmp_path / "invalid.pt"
+        torch.save(
+            {"config": {"spatial_size": 6, "num_res_blocks": 1, "num_filters": 8}}, ckpt_path
+        )
+
+        with pytest.raises(KeyError, match="Could not find model state dict"):
+            bench._load_network(ckpt_path, "cpu", expected_max_turns=None)
+
+    def test_candidate_untrained_moves_to_resolved_device(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from alpha_zero.core.civ6_network import MicroCivNetwork
+
+        to_calls: list[Any] = []
+        orig_to = MicroCivNetwork.to
+
+        def _spy_to(self, *args, **kwargs):
+            to_calls.append(args[0] if args else kwargs.get("device"))
+            return orig_to(self, "cpu")
+
+        monkeypatch.setattr(MicroCivNetwork, "to", _spy_to)
+        monkeypatch.setattr(
+            "alpha_zero.evaluation.benchmark.resolve_device_str",
+            lambda _dev: "cpu",
+        )
+        args = bench._parse_args(["--device", "auto", "--board-size", "6", "--out", "out"])
+        protocol = BenchmarkProtocol(board_size=6, max_turns=4, num_simulations=2, n_games=2)
+        network, factory, cid = bench._candidate(args, protocol)
+        assert factory is None
+        assert cid.startswith("untrained-network:")
+        assert to_calls == ["cpu"]
+        assert not network.training

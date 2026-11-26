@@ -38,6 +38,7 @@ MAKEFILE = REPO_ROOT / "Makefile"
 # PostToolUse hook calls them.
 PATH_VALIDATORS = (
     "validate_agents.py",
+    "validate_claude_agents.py",
     "validate_kb.py",
     "validate_openspec.py",
     "validate_skills.py",
@@ -125,6 +126,7 @@ class TestMisnamedPathIsAnError:
     # validator -> a tracked file that exists but is not what it validates
     WRONG_FILE = {
         "validate_agents.py": "README.md",
+        "validate_claude_agents.py": "README.md",
         "validate_skills.py": "README.md",
     }
 
@@ -147,6 +149,7 @@ class TestMisnamedPathIsAnError:
         satisfy the assertions above."""
         targets = {
             "validate_agents.py": "tests/Agent.md",
+            "validate_claude_agents.py": ".claude/agents/sdlc-architect.md",
             "validate_skills.py": ".claude/skills/verify/SKILL.md",
         }
         result = _run(script, "--path", targets[script])
@@ -170,6 +173,32 @@ class TestValidatorsShareOneContract:
         result = _run(script, "--help")
         assert result.returncode == 0, f"{script} --help exited {result.returncode}"
         assert result.stdout.strip(), f"{script} --help printed nothing"
+
+    @pytest.mark.parametrize("script", ALL_VALIDATORS)
+    def test_json_output_is_valid_json(self, script: str) -> None:
+        import json
+
+        extra = ("--no-git", "--json") if script == "validate_kb.py" else ("--json",)
+        result = _run(script, *extra)
+        assert result.returncode == 0, f"{script} --json exited {result.returncode}"
+        parsed = json.loads(result.stdout)
+        assert isinstance(parsed, (list, dict))
+        assert json.dumps(parsed, indent=2, sort_keys=True) == result.stdout.strip(), (
+            f"{script} --json output must be formatted with indent=2, sort_keys=True"
+        )
+
+    @pytest.mark.parametrize("script", ALL_VALIDATORS)
+    def test_verbose_flag_is_accepted_and_logs_to_stderr(self, script: str) -> None:
+        extra = ("--no-git", "--verbose") if script == "validate_kb.py" else ("--verbose",)
+        result = _run(script, *extra)
+        assert result.returncode == 0, (
+            f"{script} {' '.join(extra)} exited {result.returncode}:\n"
+            f"{result.stdout}\n{result.stderr}"
+        )
+        logger_name = script.removesuffix(".py")
+        assert f"{logger_name} DEBUG " in result.stderr, (
+            f"{script} --verbose did not emit structured stderr DEBUG logs:\n{result.stderr}"
+        )
 
     def test_every_path_validator_is_listed_here(self) -> None:
         """Keeps PATH_VALIDATORS honest as validators are added.

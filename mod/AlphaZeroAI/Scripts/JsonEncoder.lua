@@ -26,11 +26,25 @@ local escapeChars = {
     ["\f"] = "\\f",
 }
 
+-- One pass over the characters JSON does not allow raw in a string: the quote,
+-- the backslash and the control characters. The short forms come from
+-- escapeChars; any other control character is written as \u00XX.
+--
+-- The control characters are written out as bytes 0 to 31 and 127 (%z is the
+-- zero byte, which a Lua 5.1 pattern cannot hold literally). The class %c is
+-- not used: it asks the C library, and under the Windows C runtime that
+-- answers "control" for bytes at and above 0x80, which broke every non-ASCII
+-- character into \u00XX pieces.
+--
+-- This used to be two passes, the second with the pattern '[\x00-\x1f]'. Lua
+-- 5.1 has no \x escape, so that was the class "x, 0 to x, 1, f": it rewrote
+-- most letters, every digit and the underscore as \u00XX (six times the
+-- length), and re-escaped the backslashes the first pass had just written, so
+-- a newline came back as the two characters "\n" and a quote ended the string
+-- early.
 local function escapeString(str)
-    str = string.gsub(str, '[\\"\n\r\t\b\f]', escapeChars)
-    -- Escape control characters
-    str = string.gsub(str, '[\x00-\x1f]', function(c)
-        return string.format("\\u%04x", string.byte(c))
+    str = string.gsub(str, '[%z\1-\31\127"\\]', function(c)
+        return escapeChars[c] or string.format("\\u%04x", string.byte(c))
     end)
     return str
 end
@@ -51,9 +65,13 @@ local function encodeNumber(num)
         return "-1e308"
     end
 
-    -- Use integer format if whole number
+    -- Use integer format if whole number (%.0f avoids 32-bit C long truncation
+    -- of %d on Windows LLP64 for safe IEEE-754 integers >= 2^31).
     if math.floor(num) == num and math.abs(num) < 2^53 then
-        return string.format("%d", num)
+        if num == 0 then
+            return "0"
+        end
+        return string.format("%.0f", num)
     end
 
     return string.format("%.14g", num)

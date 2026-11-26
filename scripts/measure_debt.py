@@ -45,7 +45,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.audit_import_graph import audit  # noqa: E402
+from scripts.audit_import_graph import SKIP_PARTS, audit, iter_python_files  # noqa: E402
 
 logger = logging.getLogger("measure_debt")
 
@@ -56,7 +56,6 @@ GOD_FILE_LINES = 1000
 #: linter cannot drift apart; see :func:`_max_statements`.
 DEFAULT_MAX_STATEMENTS = 100
 SKIP_SITE_PATTERN = re.compile(r"@pytest\.mark\.(skip|skipif|xfail)|pytest\.(skip|importorskip)\(")
-SKIP_PARTS = {"__pycache__", ".git", "alpha_zero.egg-info"}
 
 #: Metrics the ratchet enforces. Everything else `measure` emits is context.
 RATCHETED_METRICS: frozenset[str] = frozenset(
@@ -83,7 +82,7 @@ RATCHETED_METRICS: frozenset[str] = frozenset(
 
 
 def _py_files(root: Path, subdir: str) -> list[Path]:
-    return sorted(p for p in (root / subdir).rglob("*.py") if not (SKIP_PARTS & set(p.parts)))
+    return iter_python_files(root / subdir, skip_parts=SKIP_PARTS)
 
 
 def _line_count(path: Path) -> int:
@@ -108,9 +107,8 @@ def coverage_omit_patterns(pyproject: dict[str, Any]) -> list[str]:
 
 def is_omitted(rel_path: str, patterns: list[str]) -> bool:
     """The rule the plan states: fnmatch of each pattern against the repo-relative path."""
-    return any(
-        fnmatch.fnmatch(rel_path, p) or fnmatch.fnmatch(rel_path, "*/" + p) for p in patterns
-    )
+    norm = rel_path.replace("\\", "/")
+    return any(fnmatch.fnmatch(norm, p) or fnmatch.fnmatch(norm, "*/" + p) for p in patterns)
 
 
 def _max_statements(pyproject: dict[str, Any]) -> int:
@@ -198,7 +196,7 @@ def measure(root: Path = REPO_ROOT) -> dict[str, int | None]:
     max_statements = _max_statements(pyproject)
 
     pkg_lines = {p: _line_count(p) for p in pkg_files}
-    omitted = [p for p in pkg_files if is_omitted(str(p.relative_to(root)), patterns)]
+    omitted = [p for p in pkg_files if is_omitted(p.relative_to(root).as_posix(), patterns)]
 
     reports = audit(root)
     dead = [r for r in reports if not r.entry_point and not r.deploy_refs]

@@ -1,0 +1,80 @@
+{
+  "name": "qa",
+  "target": "branch",
+  "enforcement": "active",
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "include": [
+        "refs/heads/qa"
+      ],
+      "exclude": []
+    }
+  },
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    },
+    {
+      "type": "pull_request",
+      "parameters": {
+        "allowed_merge_methods": [
+          "merge"
+        ],
+        "dismiss_stale_reviews_on_push": false,
+        "require_code_owner_review": false,
+        "require_last_push_approval": false,
+        "required_approving_review_count": 0,
+        "required_review_thread_resolution": true
+      }
+    },
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "do_not_enforce_on_create": false,
+        "strict_required_status_checks_policy": false,
+        "required_status_checks": [
+          {
+            "context": "Lint & Type Check",
+            "integration_id": 15368
+          },
+          {
+            "context": "Test (Python 3.11)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Test (Python 3.12)",
+            "integration_id": 15368
+          },
+          {
+            "context": "Cloud Unit Tests",
+            "integration_id": 15368
+          },
+          {
+            "context": "Security Scan",
+            "integration_id": 15368
+          },
+          {
+            "context": "Governance Gates",
+            "integration_id": 15368
+          },
+          {
+            "context": "LLM Eval Harness",
+            "integration_id": 15368
+          },
+          {
+            "context": "Coverage Report",
+            "integration_id": 15368
+          },
+          {
+            "context": "Branch Direction",
+            "integration_id": 15368
+          }
+        ]
+      }
+    }
+  ]
+}
