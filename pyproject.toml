@@ -228,12 +228,6 @@ max-statements = 100
 "tests/unit/test_curriculum.py" = ["E402"]  # same
 "tests/integration/test_chess_*.py" = ["E402"]  # pytest.importorskip guards precede imports
 "scripts/*" = ["ANN", "S603", "S607", "S310", "S105", "E741"]  # Scripts use subprocess, URL calls, and short var names
-# PLR0915 burndown (max-statements = 100). Two `main` functions exceed it, at 248
-# and 168 statements; both are known decomposition targets, deferred with the rest
-# of the cloud-worker work. Delete an entry -- do not raise the threshold -- when its
-# function is split.
-"alpha_zero/cloud/gcp/vertex_orchestrator.py" = ["PLR0915"]  # main(): 248 statements
-"alpha_zero/cloud/gcp/training_worker.py" = ["PLR0915"]  # main(): 168 statements
 "alpha_zero/cloud/gcp/container_validator.py" = ["S603"]  # Internal subprocess call with validated input
 "alpha_zero/cloud/gcp/preemption.py" = ["S310"]  # GCP preemption handler metadata URL is intentional
 "scripts/run_*.py" = ["ANN"]  # Skip annotations in run scripts

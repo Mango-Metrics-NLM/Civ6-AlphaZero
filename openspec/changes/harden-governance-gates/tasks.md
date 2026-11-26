@@ -26,9 +26,9 @@
 ## 4. Function-size guard
 - [x] 4.1 Enable ruff `PLR0915` at `max-statements = 100`
 - [x] 4.2 Record the three over-limit `main` functions as an explicit burndown list
-- [ ] 4.3 Split `vertex_orchestrator.main` (248 stmts) and remove its entry
-- [ ] 4.4 Split `training_worker.main` (168 stmts) and remove its entry
-- [ ] 4.5 Split `run_enhanced_training.main` (134 stmts) and remove its entry
+- [x] 4.3 Split `vertex_orchestrator.main` (248 stmts) and remove its entry
+- [x] 4.4 Split `training_worker.main` (168 stmts) and remove its entry
+- [x] 4.5 Split `run_enhanced_training.main` (134 stmts) and remove its entry
 
 ## 5. Repository hygiene
 - [x] 5.1 Add `tests/regression/test_repo_hygiene_regression.py`

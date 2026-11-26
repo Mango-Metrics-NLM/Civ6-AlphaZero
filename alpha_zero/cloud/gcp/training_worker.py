@@ -24,7 +24,7 @@ import logging
 import os
 import sys
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.distributed as dist
@@ -922,27 +922,12 @@ def save_final_model(
     return uri, new_version
 
 
-def main() -> int:
-    """Main entry point."""
-    args = parse_args()
-    setup_logging()
-
-    trajectory_iterations = [int(x) for x in args.trajectory_iterations.split(",")]
-    logger.info("Starting training for iteration %d", args.iteration)
-    logger.info(
-        "Config: trajectories from %s, %d epochs, board=%dx%d",
-        trajectory_iterations,
-        args.epochs,
-        args.board_size,
-        args.board_size,
-    )
-
-    # Initialize tracking (disabled by default; opt-in via CIV6AZ_MLFLOW_ENABLED / MLFLOW_ENABLED)
-    wandb_logger = None
+def _init_training_tracker(args: argparse.Namespace, trajectory_iterations: list[int]) -> Any:
+    """Initialize opt-in MLflow/WandbCompatAdapter tracking for a training worker."""
     try:
-        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as WandbLogger
+        from alpha_zero.monitoring.mlflow_logger import WandbCompatAdapter as _WandbLogger
 
-        wandb_logger = WandbLogger.from_env()
+        wandb_logger = _WandbLogger.from_env()
         if wandb_logger.is_enabled:
             wandb_logger.init(
                 config_dict={
@@ -961,10 +946,331 @@ def main() -> int:
                 }
             )
             logger.info("W&B logging enabled")
+        return wandb_logger
     except ImportError:
         logger.debug("W&B not available")
+        return None
 
-    # DDP setup
+
+def _build_training_model_and_optimizer(
+    args: argparse.Namespace,
+    device: torch.device,
+    local_rank: int,
+    world_size: int,
+    is_main_process: bool,
+    wandb_logger: Any,
+) -> tuple[torch.nn.Module, torch.nn.Module, torch.optim.Optimizer, bool]:
+    """Build the training network (AlphaZero or MuZero), wrap DDP, and construct AdamW."""
+    is_muzero = getattr(args, "algorithm", "alphazero") == "muzero"
+    if is_muzero:
+        model: torch.nn.Module = create_muzero_model(
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            num_res_blocks=args.num_res_blocks,
+            num_filters=args.num_filters,
+        )
+        if is_main_process:
+            logger.info("Using MuZero algorithm for training")
+    else:
+        model = create_model(
+            board_size=args.board_size,
+            action_space_size=args.action_space_size,
+            num_res_blocks=args.num_res_blocks,
+            num_filters=args.num_filters,
+            num_heads=getattr(args, "num_heads", 8),
+            policy_hidden_dim=getattr(args, "policy_hidden_dim", 128),
+            value_head_dim=getattr(args, "value_head_dim", 64),
+            encoder_type=getattr(args, "encoder_type", "patch_embed"),
+        )
+    model = model.to(device)
+    raw_model = model
+    if world_size > 1:
+        model = DDP(model, device_ids=[local_rank])
+
+    if wandb_logger is not None and getattr(wandb_logger, "is_enabled", False):
+        try:
+            wandb_logger.watch_model(raw_model, log="gradients", log_freq=100)
+            logger.info("W&B model gradient watching enabled")
+        except Exception as exc:
+            logger.debug("Failed to enable W&B model watching: %s", exc)
+
+    lr_schedule_type = getattr(args, "lr_schedule_type", "constant")
+    base_lr = (
+        getattr(args, "lr_initial", args.learning_rate)
+        if lr_schedule_type != "constant"
+        else args.learning_rate
+    )
+    if is_muzero:
+        param_groups: list[dict[str, Any]] = [
+            {
+                "params": list(raw_model.parameters()),
+                "lr": base_lr,
+                "base_lr_ratio": 1.0,
+                "name": "muzero_all",
+            },
+        ]
+    else:
+        param_groups = [
+            {
+                "params": list(raw_model.encoder.parameters()),  # type: ignore[union-attr]
+                "lr": base_lr,
+                "base_lr_ratio": 1.0,
+                "name": "encoder",
+            },
+            {
+                "params": list(raw_model.policy_head.parameters()),  # type: ignore[union-attr]
+                "lr": base_lr * args.policy_lr_multiplier,
+                "base_lr_ratio": args.policy_lr_multiplier,
+                "name": "policy_head",
+            },
+            {
+                "params": list(raw_model.value_head.parameters()),  # type: ignore[union-attr]
+                "lr": base_lr * args.value_lr_multiplier,
+                "base_lr_ratio": args.value_lr_multiplier,
+                "name": "value_head",
+            },
+        ]
+    optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
+    return model, raw_model, optimizer, is_muzero
+
+
+def _init_optional_training_tools(
+    args: argparse.Namespace,
+    num_batches: int,
+    is_main_process: bool,
+) -> tuple[Any, Any, Any, Any]:
+    """Initialize optional LR scheduler, diagnostics, training report, and profiler."""
+    lr_scheduler = None
+    try:
+        from alpha_zero.orchestrator.config import ScheduleConfig
+        from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
+
+        if args.lr_schedule_type != "constant":
+            lr_schedule_config = ScheduleConfig(
+                schedule_type=args.lr_schedule_type,
+                initial_value=args.lr_initial,
+                final_value=args.lr_final,
+                warmup_steps=args.lr_warmup_steps,
+                decay_steps=(
+                    args.lr_decay_steps if args.lr_decay_steps > 0 else (args.epochs * num_batches)
+                ),
+            )
+            lr_scheduler = HyperparameterScheduler(lr_schedule=lr_schedule_config)
+            if is_main_process:
+                logger.info(
+                    "LR schedule: %s (%.6f -> %.6f, warmup=%d, decay=%d steps)",
+                    args.lr_schedule_type,
+                    args.lr_initial,
+                    args.lr_final,
+                    args.lr_warmup_steps,
+                    lr_schedule_config.decay_steps,
+                )
+    except ImportError:
+        logger.debug("HyperparameterScheduler not available, using constant LR")
+
+    diagnostics = None
+    try:
+        from alpha_zero.training.diagnostics import TrainingDiagnostics
+
+        diagnostics = TrainingDiagnostics(window_size=args.diagnostic_window)
+        if is_main_process:
+            logger.info("Training diagnostics enabled (window=%d)", args.diagnostic_window)
+    except ImportError:
+        logger.debug("TrainingDiagnostics not available")
+
+    report = None
+    try:
+        from alpha_zero.training.training_report import TrainingReport, TrainingReportConfig
+
+        report = TrainingReport(TrainingReportConfig(report_interval=max(num_batches, 1)))
+        if is_main_process:
+            logger.info("Training report enabled (interval=%d steps)", max(num_batches, 1))
+    except ImportError:
+        logger.debug("TrainingReport not available")
+
+    profiler = None
+    try:
+        from alpha_zero.utils.logging_config import PerformanceProfiler
+
+        profiler = PerformanceProfiler()
+        if is_main_process:
+            logger.info("Performance profiler enabled")
+    except ImportError:
+        logger.debug("PerformanceProfiler not available")
+
+    return lr_scheduler, diagnostics, report, profiler
+
+
+def _maybe_resume_from_checkpoint(
+    args: argparse.Namespace,
+    config: GCPConfig,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    is_main_process: bool,
+) -> tuple[int, int]:
+    """Load resume checkpoint from GCS when ``args.resume_from`` is set."""
+    if not args.resume_from or args.dry_run:
+        return 0, 0
+    checkpoint_storage = GCSCheckpointStorage(config)
+    step_to_load: int | None = None
+    if args.resume_from.isdigit():
+        step_to_load = int(args.resume_from)
+    elif "training_step_" in args.resume_from:
+        try:
+            step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
+            step_to_load = int(step_str)
+        except (IndexError, ValueError):
+            logger.warning(
+                "Failed to parse resume_from value '%s'; loading latest checkpoint",
+                args.resume_from,
+            )
+
+    checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
+    if not checkpoint:
+        return 0, 0
+    model.load_state_dict(checkpoint["model_state_dict"])
+    optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+    global_step = int(checkpoint.get("step", 0))
+    start_epoch = int(checkpoint.get("epoch", 0))
+    if is_main_process:
+        logger.info("Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch)
+    return start_epoch, global_step
+
+
+def _log_profiler_summary(profiler: Any, is_main_process: bool, wandb_logger: Any) -> None:
+    """Flush profiler section timing metrics to the active tracker."""
+    if profiler is None or not is_main_process:
+        return
+    if wandb_logger is None or not getattr(wandb_logger, "is_enabled", False):
+        return
+    for section_name in ("forward_pass", "backward_pass"):
+        summary = profiler.get_summary(section_name)
+        if summary:
+            wandb_logger.log(
+                {f"profiler/{section_name}_mean_ms": summary["mean"] * 1000},
+                commit=False,
+            )
+
+
+def _run_training_epochs(
+    args: argparse.Namespace,
+    config: GCPConfig,
+    model: torch.nn.Module,
+    optimizer: torch.optim.Optimizer,
+    dataloader: DataLoader[Any],
+    sampler: DistributedSampler[Any] | None,
+    device: torch.device,
+    *,
+    is_muzero: bool,
+    is_main_process: bool,
+    start_epoch: int,
+    global_step: int,
+    wandb_logger: Any,
+    lr_scheduler: Any,
+    diagnostics: Any,
+    report: Any,
+    profiler: Any,
+) -> None:
+    """Execute the configured range of training epochs and periodic checkpoints."""
+    spatial_channels = ENCODER_SPATIAL_CHANNELS
+    spatial_size = args.board_size
+    for epoch in range(start_epoch, args.epochs):
+        if sampler is not None:
+            sampler.set_epoch(epoch)
+        epoch_start = time.time()
+        if is_muzero:
+            loss, policy_loss, value_loss, _reward_loss, num_batches = train_muzero_epoch(
+                model,
+                dataloader,
+                optimizer,
+                device,
+                unroll_steps=getattr(args, "muzero_unroll_steps", 5),
+                discount=getattr(args, "muzero_discount", 0.997),
+                global_step=global_step,
+                wandb_logger=wandb_logger,
+                wandb_log_interval=args.wandb_log_interval,
+                lr_scheduler=lr_scheduler,
+            )
+        else:
+            loss, policy_loss, value_loss, num_batches = train_epoch(
+                model,
+                dataloader,
+                optimizer,
+                device,
+                global_step=global_step,
+                wandb_logger=wandb_logger,
+                spatial_channels=spatial_channels,
+                spatial_size=spatial_size,
+                wandb_log_interval=args.wandb_log_interval,
+                lr_scheduler=lr_scheduler,
+                diagnostics=diagnostics,
+                report=report,
+                profiler=profiler,
+            )
+
+        epoch_time = time.time() - epoch_start
+        _log_profiler_summary(profiler, is_main_process, wandb_logger)
+        prev_step = global_step
+        global_step += num_batches
+        if is_main_process:
+            logger.info(
+                "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
+                "time=%.2fs, steps %d-%d",
+                epoch + 1,
+                args.epochs,
+                loss,
+                policy_loss,
+                value_loss,
+                epoch_time,
+                prev_step + 1,
+                global_step,
+            )
+            report_tuning_metric(
+                {"loss": loss, "policy_loss": policy_loss, "value_loss": value_loss},
+                step=global_step,
+            )
+        if is_main_process and (global_step // args.checkpoint_interval) > (
+            prev_step // args.checkpoint_interval
+        ):
+            save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
+
+
+def _save_and_cleanup_final_model(
+    config: GCPConfig,
+    model: torch.nn.Module,
+    iteration: int,
+    start_time: float,
+    dry_run: bool,
+) -> None:
+    """Save final unwrapped model weights and prune old GCS checkpoints."""
+    total_time = time.time() - start_time
+    logger.info("Training complete in %.1f seconds", total_time)
+    model_to_save: torch.nn.Module = model.module if isinstance(model, DDP) else model
+    uri, version = save_final_model(config, model_to_save, iteration, dry_run)
+    logger.info("Saved final model version %d to %s", version, uri)
+    if not dry_run:
+        deleted = GCSCheckpointStorage(config).cleanup_old_checkpoints(
+            keep_last=CHECKPOINT_RETENTION
+        )
+        if deleted:
+            logger.info("Cleaned up %d old checkpoints", deleted)
+
+
+def main() -> int:
+    """Main entry point."""
+    args = parse_args()
+    setup_logging()
+    trajectory_iterations = [int(x) for x in args.trajectory_iterations.split(",")]
+    logger.info("Starting training for iteration %d", args.iteration)
+    logger.info(
+        "Config: trajectories from %s, %d epochs, board=%dx%d",
+        trajectory_iterations,
+        args.epochs,
+        args.board_size,
+        args.board_size,
+    )
+
+    wandb_logger = _init_training_tracker(args, trajectory_iterations)
     rank, local_rank, world_size = setup_ddp()
     is_main_process = rank == 0
 
@@ -974,23 +1280,13 @@ def main() -> int:
             config.paths.agent_id = args.agent_id
             if is_main_process:
                 logger.info("Using Agent ID: %s", args.agent_id)
-
         if not args.dry_run and is_main_process:
             config.validate()
 
-        if torch.cuda.is_available():
-            device = torch.device(f"cuda:{local_rank}")
-        else:
-            device = torch.device("cpu")
-
+        device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
         if is_main_process:
             logger.info("Using device: %s (World size: %d)", device, world_size)
 
-        # Load trajectories (only on main process or cached?)
-        # For simplicity, all processes load data. In data-parallel, this is fine for small datasets.
-        # For huge datasets, we'd want to shard reading.
-        # GCS storage might be slow if 8 GPUs hit it at once.
-        # But for now assuming each node caches it independently or it's fast enough.
         trajectories = load_trajectories(
             config,
             trajectory_iterations,
@@ -998,8 +1294,6 @@ def main() -> int:
             action_space_size=args.action_space_size,
             dry_run=args.dry_run,
         )
-
-        # Validate we have data to train on
         if not trajectories:
             logger.error(
                 "No trajectories found for iterations %s. "
@@ -1010,9 +1304,7 @@ def main() -> int:
             )
             return 1
 
-        # Prepare dataset
         dataset = prepare_dataset(trajectories)
-
         if len(dataset) == 0:
             logger.error(
                 "Dataset is empty after processing trajectories. "
@@ -1020,324 +1312,56 @@ def main() -> int:
             )
             return 1
 
-        # Distributed sampler
-        sampler: DistributedSampler | None = DistributedSampler(dataset) if world_size > 1 else None
-        dataloader = DataLoader(
+        sampler: DistributedSampler[Any] | None = (
+            DistributedSampler(dataset) if world_size > 1 else None
+        )
+        dataloader: DataLoader[Any] = DataLoader(
             dataset,
             batch_size=args.batch_size,
             shuffle=(sampler is None),
             sampler=sampler,
-            # num_workers=0 avoids multiprocessing issues inside containers
             num_workers=0,
             pin_memory=device.type == "cuda",
         )
-
         if is_main_process:
             logger.info("Dataset size: %d examples, %d batches", len(dataset), len(dataloader))
 
-        # Create model (AlphaZero or MuZero based on --algorithm)
-        is_muzero = getattr(args, "algorithm", "alphazero") == "muzero"
-
-        if is_muzero:
-            model = create_muzero_model(
-                board_size=args.board_size,
-                action_space_size=args.action_space_size,
-                num_res_blocks=args.num_res_blocks,
-                num_filters=args.num_filters,
-            )
-            if is_main_process:
-                logger.info("Using MuZero algorithm for training")
-        else:
-            model = create_model(
-                board_size=args.board_size,
-                action_space_size=args.action_space_size,
-                num_res_blocks=args.num_res_blocks,
-                num_filters=args.num_filters,
-                num_heads=getattr(args, "num_heads", 8),
-                policy_hidden_dim=getattr(args, "policy_hidden_dim", 128),
-                value_head_dim=getattr(args, "value_head_dim", 64),
-                encoder_type=getattr(args, "encoder_type", "patch_embed"),
-            )
-        model = model.to(device)
-        raw_model = model  # Keep reference before DDP for param group construction
-
-        # Wrap DDP
-        if world_size > 1:
-            model = DDP(model, device_ids=[local_rank])
-
-        # Enable W&B model watching for automatic gradient histograms
-        if (
-            wandb_logger is not None
-            and hasattr(wandb_logger, "is_enabled")
-            and wandb_logger.is_enabled
-        ):
-            try:
-                wandb_logger.watch_model(raw_model, log="gradients", log_freq=100)
-                logger.info("W&B model gradient watching enabled")
-            except Exception as e:
-                logger.debug("Failed to enable W&B model watching: %s", e)
-
-        # Determine effective base LR: use lr_initial when a schedule is active,
-        # otherwise fall back to --learning_rate. This prevents an abrupt LR jump
-        # on the first scheduler step when lr_initial != learning_rate.
-        lr_schedule_type = getattr(args, "lr_schedule_type", "constant")
-        base_lr = (
-            getattr(args, "lr_initial", args.learning_rate)
-            if lr_schedule_type != "constant"
-            else args.learning_rate
+        model, _raw_model, optimizer, is_muzero = _build_training_model_and_optimizer(
+            args, device, local_rank, world_size, is_main_process, wandb_logger
         )
-
-        # Create optimizer with per-head learning rate multipliers
-        if is_muzero:
-            # MuZero uses simpler param groups (representation, dynamics, prediction)
-            param_groups = [
-                {
-                    "params": list(raw_model.parameters()),
-                    "lr": base_lr,
-                    "base_lr_ratio": 1.0,
-                    "name": "muzero_all",
-                },
-            ]
-        else:
-            param_groups = [
-                {
-                    "params": list(raw_model.encoder.parameters()),  # type: ignore[union-attr]
-                    "lr": base_lr,
-                    "base_lr_ratio": 1.0,
-                    "name": "encoder",
-                },
-                {
-                    "params": list(raw_model.policy_head.parameters()),  # type: ignore[union-attr]
-                    "lr": base_lr * args.policy_lr_multiplier,
-                    "base_lr_ratio": args.policy_lr_multiplier,
-                    "name": "policy_head",
-                },
-                {
-                    "params": list(raw_model.value_head.parameters()),  # type: ignore[union-attr]
-                    "lr": base_lr * args.value_lr_multiplier,
-                    "base_lr_ratio": args.value_lr_multiplier,
-                    "name": "value_head",
-                },
-            ]
-        optimizer = torch.optim.AdamW(param_groups, weight_decay=args.weight_decay)
-
-        # Create LR scheduler (backwards-compatible: constant=no change)
-        lr_scheduler = None
-        try:
-            from alpha_zero.orchestrator.config import ScheduleConfig
-            from alpha_zero.orchestrator.scheduler import HyperparameterScheduler
-
-            if args.lr_schedule_type != "constant":
-                lr_schedule_config = ScheduleConfig(
-                    schedule_type=args.lr_schedule_type,
-                    initial_value=args.lr_initial,
-                    final_value=args.lr_final,
-                    warmup_steps=args.lr_warmup_steps,
-                    decay_steps=args.lr_decay_steps
-                    if args.lr_decay_steps > 0
-                    else (args.epochs * len(dataloader)),
-                )
-                lr_scheduler = HyperparameterScheduler(lr_schedule=lr_schedule_config)
-                if is_main_process:
-                    logger.info(
-                        "LR schedule: %s (%.6f -> %.6f, warmup=%d, decay=%d steps)",
-                        args.lr_schedule_type,
-                        args.lr_initial,
-                        args.lr_final,
-                        args.lr_warmup_steps,
-                        lr_schedule_config.decay_steps,
-                    )
-        except ImportError:
-            logger.debug("HyperparameterScheduler not available, using constant LR")
-
-        # Initialize training diagnostics
-        diagnostics = None
-        try:
-            from alpha_zero.training.diagnostics import TrainingDiagnostics
-
-            diagnostics = TrainingDiagnostics(window_size=args.diagnostic_window)
-            if is_main_process:
-                logger.info("Training diagnostics enabled (window=%d)", args.diagnostic_window)
-        except ImportError:
-            logger.debug("TrainingDiagnostics not available")
-
-        # Initialize training report
-        report = None
-        try:
-            from alpha_zero.training.training_report import TrainingReport, TrainingReportConfig
-
-            report = TrainingReport(TrainingReportConfig(report_interval=max(len(dataloader), 1)))
-            if is_main_process:
-                logger.info("Training report enabled (interval=%d steps)", max(len(dataloader), 1))
-        except ImportError:
-            logger.debug("TrainingReport not available")
-
-        # Initialize performance profiler
-        profiler = None
-        try:
-            from alpha_zero.utils.logging_config import PerformanceProfiler
-
-            profiler = PerformanceProfiler()
-            if is_main_process:
-                logger.info("Performance profiler enabled")
-        except ImportError:
-            logger.debug("PerformanceProfiler not available")
-
-        # Log trajectory quality before training
+        lr_scheduler, diagnostics, report, profiler = _init_optional_training_tools(
+            args, len(dataloader), is_main_process
+        )
         if diagnostics is not None and is_main_process:
             traj_quality = diagnostics.analyze_trajectory_quality(trajectories)
-            if (
-                wandb_logger is not None
-                and hasattr(wandb_logger, "is_enabled")
-                and wandb_logger.is_enabled
-            ):
-                wandb_logger.log(
-                    {f"train/{k}": v for k, v in traj_quality.items()},
-                    commit=False,
-                )
+            if wandb_logger is not None and getattr(wandb_logger, "is_enabled", False):
+                wandb_logger.log({f"train/{k}": v for k, v in traj_quality.items()}, commit=False)
 
-        # Resume from checkpoint if specified
-        start_epoch = 0
-        global_step = 0
-        if args.resume_from and not args.dry_run:
-            checkpoint_storage = GCSCheckpointStorage(config)
-            step_to_load: int | None = None
-            if args.resume_from.isdigit():
-                step_to_load = int(args.resume_from)
-            elif "training_step_" in args.resume_from:
-                try:
-                    step_str = args.resume_from.split("training_step_")[1].replace(".pt", "")
-                    step_to_load = int(step_str)
-                except (IndexError, ValueError):
-                    logger.warning(
-                        "Failed to parse resume_from value '%s'; loading latest checkpoint",
-                        args.resume_from,
-                    )
-
-            checkpoint = checkpoint_storage.load_checkpoint(step=step_to_load)
-            if checkpoint:
-                model.load_state_dict(checkpoint["model_state_dict"])
-                optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
-                global_step = checkpoint.get("step", 0)
-                start_epoch = checkpoint.get("epoch", 0)
-                if is_main_process:
-                    logger.info(
-                        "Resumed from checkpoint at step %d, epoch %d", global_step, start_epoch
-                    )
-
-        # Training loop
+        start_epoch, global_step = _maybe_resume_from_checkpoint(
+            args, config, model, optimizer, is_main_process
+        )
         start_time = time.time()
-
-        for epoch in range(start_epoch, args.epochs):
-            if sampler is not None:
-                sampler.set_epoch(epoch)
-
-            epoch_start = time.time()
-
-            # Spatial dims must match encoder output, NOT model embed_dim
-            spatial_channels = ENCODER_SPATIAL_CHANNELS
-            spatial_size = args.board_size
-
-            if is_muzero:
-                loss, policy_loss, value_loss, _reward_loss, num_batches = train_muzero_epoch(
-                    model,
-                    dataloader,
-                    optimizer,
-                    device,
-                    unroll_steps=getattr(args, "muzero_unroll_steps", 5),
-                    discount=getattr(args, "muzero_discount", 0.997),
-                    global_step=global_step,
-                    wandb_logger=wandb_logger,
-                    wandb_log_interval=args.wandb_log_interval,
-                    lr_scheduler=lr_scheduler,
-                )
-            else:
-                loss, policy_loss, value_loss, num_batches = train_epoch(
-                    model,
-                    dataloader,
-                    optimizer,
-                    device,
-                    global_step=global_step,
-                    wandb_logger=wandb_logger,
-                    spatial_channels=spatial_channels,
-                    spatial_size=spatial_size,
-                    wandb_log_interval=args.wandb_log_interval,
-                    lr_scheduler=lr_scheduler,
-                    diagnostics=diagnostics,
-                    report=report,
-                    profiler=profiler,
-                )
-
-            epoch_time = time.time() - epoch_start
-
-            # Log profiler timing summary
-            if (
-                profiler is not None
-                and is_main_process
-                and wandb_logger is not None
-                and hasattr(wandb_logger, "is_enabled")
-                and wandb_logger.is_enabled
-            ):
-                for section_name in ["forward_pass", "backward_pass"]:
-                    summary = profiler.get_summary(section_name)
-                    if summary:
-                        wandb_logger.log(
-                            {f"profiler/{section_name}_mean_ms": summary["mean"] * 1000},
-                            commit=False,
-                        )
-
-            prev_step = global_step
-            global_step += num_batches
-
-            if is_main_process:
-                logger.info(
-                    "Epoch %d/%d completed: loss=%.4f (policy=%.4f, value=%.4f), "
-                    "time=%.2fs, steps %d-%d",
-                    epoch + 1,
-                    args.epochs,
-                    loss,
-                    policy_loss,
-                    value_loss,
-                    epoch_time,
-                    prev_step + 1,
-                    global_step,
-                )
-
-                # Report to Vizier
-                report_tuning_metric(
-                    {
-                        "loss": loss,
-                        "policy_loss": policy_loss,
-                        "value_loss": value_loss,
-                    },
-                    step=global_step,
-                )
-
-            # Checkpoint if we crossed an interval boundary
-            if is_main_process and (global_step // args.checkpoint_interval) > (
-                prev_step // args.checkpoint_interval
-            ):
-                save_checkpoint(config, model, optimizer, global_step, epoch + 1, args.dry_run)
-
-        # Save final model
-        total_time = time.time() - start_time
+        _run_training_epochs(
+            args,
+            config,
+            model,
+            optimizer,
+            dataloader,
+            sampler,
+            device,
+            is_muzero=is_muzero,
+            is_main_process=is_main_process,
+            start_epoch=start_epoch,
+            global_step=global_step,
+            wandb_logger=wandb_logger,
+            lr_scheduler=lr_scheduler,
+            diagnostics=diagnostics,
+            report=report,
+            profiler=profiler,
+        )
         if is_main_process:
-            logger.info("Training complete in %.1f seconds", total_time)
-
-            # Unwrap model if DDP
-            model_to_save: torch.nn.Module = model.module if isinstance(model, DDP) else model
-            uri, version = save_final_model(config, model_to_save, args.iteration, args.dry_run)
-            logger.info("Saved final model version %d to %s", version, uri)
-
-            # Cleanup old checkpoints
-            if not args.dry_run:
-                checkpoint_storage = GCSCheckpointStorage(config)
-                deleted = checkpoint_storage.cleanup_old_checkpoints(keep_last=CHECKPOINT_RETENTION)
-                if deleted:
-                    logger.info("Cleaned up %d old checkpoints", deleted)
-
+            _save_and_cleanup_final_model(config, model, args.iteration, start_time, args.dry_run)
         return 0
-
     except KeyboardInterrupt:
         logger.warning("Training interrupted")
         return 130
