@@ -57,7 +57,7 @@
 # -H/--header X-GitHub-Api-Version:*. Anything else (--output, --ext-diff,
 # --textconv, --filters, -X, -f, --input, --web, ...) is denied by default. The
 # request method of `gh api` cannot be changed, so it is gh's default, GET.
-# Scripts are an EXACT, case-sensitive allowlist of ten filenames, not a glob. The
+# Scripts are an EXACT, case-sensitive allowlist of eleven filenames, not a glob. The
 # three scripts a glob used to admit are deliberately absent -- check_build.py (Cloud
 # Build API with ADC), validate_gcp_credentials.py (GCS/Vertex/Logging) and
 # validate_convergence.py (an uncapped training loop) -- and a casefold match to one

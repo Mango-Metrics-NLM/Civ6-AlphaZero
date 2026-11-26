@@ -17,6 +17,8 @@ import pytest
 
 from alpha_zero.bridge.config import BridgeConfig
 from alpha_zero.bridge.tuner_socket_bridge import (
+    DEFAULT_HANDSHAKE_QUIET_S,
+    ENV_TUNER_HANDSHAKE_QUIET_S,
     HEADER_FMT,
     HEADER_SIZE,
     TAG_COMMAND,
@@ -24,6 +26,7 @@ from alpha_zero.bridge.tuner_socket_bridge import (
     TAG_QUERY,
     FireTunerClient,
     FireTunerError,
+    FireTunerTimingConfig,
     SocketTunerBridge,
     lua_longstring,
 )
@@ -80,11 +83,15 @@ class MockTunerServer:
         chatter_interval_s: float | None = None,
         split_lsq: bool = False,
         omit_cmd_completion: bool = False,
+        empty_lsq: bool = False,
+        drop_on_lsq: bool = False,
     ) -> None:
         self._error_on_cmd = error_on_cmd
         self._chatter_interval_s = chatter_interval_s
         self._split_lsq = split_lsq
         self._omit_cmd_completion = omit_cmd_completion
+        self._empty_lsq = empty_lsq
+        self._drop_on_lsq = drop_on_lsq
         self._stop = threading.Event()
         self._send_lock = threading.Lock()
         self.received_cmds: list[str] = []
@@ -159,7 +166,13 @@ class MockTunerServer:
                 if text.startswith("APP:"):
                     self._send_bytes(conn, _frame(TAG_QUERY, "Civ6"))
                 elif text.startswith("LSQ:"):
-                    if self._split_lsq:
+                    if self._drop_on_lsq:
+                        conn.close()
+                        self._stop.set()
+                        return
+                    if self._empty_lsq:
+                        self._send_bytes(conn, _frame_raw(TAG_QUERY, b"\x00"))
+                    elif self._split_lsq:
                         # Split LSQ payload across two TAG_QUERY frames with
                         # non-query frames interleaved to simulate slow LSQ.
                         p1 = b"0\x00Main State\x002\x00GameCore_Tuner\x00"
@@ -397,6 +410,153 @@ class TestFireTunerClientLive:
                 assert "ok" in out
         finally:
             srv.close()
+
+    def test_clear_command_clears_exposed_members(self, mock_server) -> None:
+        with _client_for(mock_server) as client:
+            client.clear_command()
+        assert "ExposedMembers.AlphaZeroCommand = nil" in mock_server.received_cmds[-1]
+
+    def test_resolve_index_raises_when_missing(self, mock_server) -> None:
+        with _client_for(mock_server) as client:
+            client.states = {"UnrelatedState": 1}
+            with pytest.raises(FireTunerError, match="No usable Lua context"):
+                client.resolve_index("MissingState")
+
+    def test_empty_lsq_reply_leaves_states_empty(self, caplog) -> None:
+        srv = MockTunerServer(empty_lsq=True)
+        try:
+            with caplog.at_level("WARNING"):
+                with _client_for(srv) as client:
+                    assert client.states == {}
+            assert "no parseable states" in caplog.text
+        finally:
+            srv.close()
+
+    def test_dropped_connection_during_lsq_closes_socket_and_raises(self) -> None:
+        srv = MockTunerServer(drop_on_lsq=True)
+        try:
+            client = _client_for(srv)
+            with pytest.raises(FireTunerError):
+                client.connect()
+            assert client.connected is False
+        finally:
+            srv.close()
+
+    def test_disconnected_guards_and_invalid_timeouts(self) -> None:
+        with pytest.raises(ValueError, match="timeout"):
+            FireTunerClient(timeout=0)
+        with pytest.raises(ValueError, match="handshake_quiet"):
+            FireTunerClient(handshake_quiet=0)
+        client = FireTunerClient()
+        with pytest.raises(FireTunerError, match="not connected"):
+            client._send(TAG_QUERY, "APP:x")
+        with pytest.raises(FireTunerError, match="not connected"):
+            client._recv_exact(4)
+        with pytest.raises(FireTunerError, match="not connected"):
+            client._drain()
+        with pytest.raises(FireTunerError, match="not connected"):
+            client._recv_query_frames(wait_first=0.1, quiet_after=0.1, max_duration=0.2)
+        with pytest.raises(ValueError, match="must be positive"):
+            client._recv_query_frames(wait_first=0.0, quiet_after=0.1, max_duration=0.2)
+        with pytest.raises(ValueError, match="timeout must be positive"):
+            client.run_lua("print(1)", timeout=0)
+
+
+class TestFireTunerTimingConfig:
+    def test_defaults_and_validation(self) -> None:
+        cfg = FireTunerTimingConfig()
+        assert cfg.app_wait_first_s > 0
+        with pytest.raises(ValueError, match="must be positive"):
+            FireTunerTimingConfig(app_max_duration_s=0)
+        with pytest.raises(ValueError, match="handshake_quiet"):
+            FireTunerTimingConfig.from_handshake_quiet(0, 5.0)
+        with pytest.raises(ValueError, match="timeout"):
+            FireTunerTimingConfig.from_handshake_quiet(1.0, 0)
+
+    def test_from_env_uses_override_and_rejects_bad_values(self, monkeypatch) -> None:
+        monkeypatch.delenv(ENV_TUNER_HANDSHAKE_QUIET_S, raising=False)
+        default_cfg = FireTunerTimingConfig.from_env(timeout=5.0)
+        assert default_cfg == FireTunerTimingConfig.from_handshake_quiet(
+            DEFAULT_HANDSHAKE_QUIET_S, 5.0
+        )
+
+        monkeypatch.setenv(ENV_TUNER_HANDSHAKE_QUIET_S, "0.25")
+        custom_cfg = FireTunerTimingConfig.from_env(timeout=5.0)
+        assert custom_cfg == FireTunerTimingConfig.from_handshake_quiet(0.25, 5.0)
+
+        monkeypatch.setenv(ENV_TUNER_HANDSHAKE_QUIET_S, "not-a-float")
+        with pytest.raises(ValueError, match=ENV_TUNER_HANDSHAKE_QUIET_S):
+            FireTunerTimingConfig.from_env(timeout=5.0)
+
+    def test_client_accepts_explicit_timing(self, mock_server) -> None:
+        timing = FireTunerTimingConfig.from_handshake_quiet(0.15, 2.0)
+        with FireTunerClient(
+            host=mock_server.host, port=mock_server.port, timeout=2.0, timing=timing
+        ) as client:
+            assert client.states["GameCore_Tuner"] == 2
+
+    def test_client_default_handshake_quiet_honors_env(self, mock_server, monkeypatch) -> None:
+        monkeypatch.setenv(ENV_TUNER_HANDSHAKE_QUIET_S, "0.15")
+        with FireTunerClient(host=mock_server.host, port=mock_server.port, timeout=2.0) as client:
+            assert client._handshake_quiet is None
+            assert client.states["GameCore_Tuner"] == 2
+
+        # Explicit handshake_quiet takes precedence even when env is invalid.
+        # MockTunerServer accepts one client per instance, so create fresh servers.
+        monkeypatch.setenv(ENV_TUNER_HANDSHAKE_QUIET_S, "bad-float")
+        srv2 = MockTunerServer()
+        try:
+            with FireTunerClient(
+                host=srv2.host,
+                port=srv2.port,
+                timeout=2.0,
+                handshake_quiet=0.15,
+            ) as client:
+                assert client.states["GameCore_Tuner"] == 2
+        finally:
+            srv2.close()
+
+        srv3 = MockTunerServer()
+        try:
+            with pytest.raises(ValueError, match=ENV_TUNER_HANDSHAKE_QUIET_S):
+                FireTunerClient(host=srv3.host, port=srv3.port, timeout=2.0).connect()
+        finally:
+            srv3.close()
+
+    @pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), -1.0])
+    def test_non_finite_or_non_positive_values_rejected(
+        self, bad_value: float, monkeypatch
+    ) -> None:
+        with pytest.raises(ValueError, match="must be positive and finite"):
+            FireTunerTimingConfig(app_wait_first_s=bad_value)
+        with pytest.raises(ValueError, match="must be positive and finite"):
+            FireTunerClient(timeout=bad_value)
+        client = FireTunerClient()
+        with pytest.raises(ValueError, match="must be positive and finite"):
+            client.run_lua("print(1)", timeout=bad_value)
+        monkeypatch.setenv(ENV_TUNER_HANDSHAKE_QUIET_S, str(bad_value))
+        with pytest.raises(ValueError, match="must be positive and finite"):
+            FireTunerTimingConfig.from_env(timeout=5.0)
+
+    async def test_socket_bridge_async_context_and_lock_timeout_stop(
+        self, mock_server, caplog
+    ) -> None:
+        bridge = SocketTunerBridge(
+            BridgeConfig(command_transport="socket", command_timeout_ms=100),
+            host=mock_server.host,
+            port=mock_server.port,
+        )
+        bridge._client._handshake_quiet = 0.15
+        async with bridge:
+            assert bridge.stats["running"] is True
+        assert bridge.stats["running"] is False
+
+        # Simulate stuck worker holding self._lock when stop() runs
+        bridge._client.timeout = 0.05
+        await bridge._lock.acquire()
+        with caplog.at_level("WARNING"):
+            await bridge.stop()
+        assert "closing without lock" in caplog.text
 
 
 # --- SocketTunerBridge async surface -----------------------------------------

@@ -1,17 +1,18 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-23T21:30:00Z",
-  "current_focus": "Bridge close-out. All of GM-B0 to B8b is merged. A live session ran on 2026-11-21 (the maintainer's, #166): commands were acknowledged for turns 1 to 7; attacks, other players and a multi-turn run have not been seen live.",
+  "last_timestamp": "2026-11-26T02:55:00Z",
+  "current_focus": "PR #179 (fix/ws1-firetuner-handshake-chatter -> claude/civ6-alphazero-implementation-vMnun): FireTuner handshake chatter fix verified live on Win64 Civ6 (Turns 1-5, 6-table GameInfo capture) plus Option A hygiene hardening (FireTunerTimingConfig, _require_socket(), protocol.py 3-layer split, branch-hygiene-audit skill, doc/harness sync, debt ratchet).",
   "resume_pointers": {
-    "current_task": "Zero-game measurements on claude/gm-b11-zero-game-measurements: the expressivity census and the three-arm probe",
+    "current_task": "PR #179 awaiting maintainer review / Tier C merge on fix/ws1-firetuner-handshake-chatter; live combat, diplomacy, and clean Turn 1 soak next on WS-2/WS-3",
     "blocked_on": [
       "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
-      "Maintainer: the live checklist in docs/LIVE_CIV6.md; attacks and the war check first, after B9",
-      "Maintainer: cut-over, civ6az-agent, W&B key revocation; deleting merged remote branches"
+      "Maintainer: fresh Turn 1 soak, live combat/attack and diplomacy probes in docs/LIVE_CIV6.md",
+      "Maintainer: cut-over (WS-0 creating origin/main), civ6az-agent, W&B key revocation; deleting merged remote branches"
     ],
     "next_steps": [
-      "Open the measurements PR when a slot frees (two PRs open at most)",
-      "Harness: negative-control restores from a backup; push guard asks on a merged branch"
+      "Merge PR #179 after CI confirms debt ratchet, protocol split, and coverage floors pass",
+      "Reset Turn 1 Civ6 match with rebuilt AlphaZeroAI mod and run GM-B11 census cleanly without mixed-mod logs",
+      "Execute WS-0 main cut-over and resume GM-B9/combat live verification checklist"
     ]
   },
   "context_files": [
