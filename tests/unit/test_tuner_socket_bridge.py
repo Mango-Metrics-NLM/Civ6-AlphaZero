@@ -11,6 +11,7 @@ from __future__ import annotations
 import socket
 import struct
 import threading
+import time
 
 import pytest
 
@@ -72,8 +73,20 @@ class MockTunerServer:
     returns an ``ERR:`` frame. Records every command payload it receives.
     """
 
-    def __init__(self, error_on_cmd: bool = False) -> None:
+    def __init__(
+        self,
+        error_on_cmd: bool = False,
+        *,
+        chatter_interval_s: float | None = None,
+        split_lsq: bool = False,
+        omit_cmd_completion: bool = False,
+    ) -> None:
         self._error_on_cmd = error_on_cmd
+        self._chatter_interval_s = chatter_interval_s
+        self._split_lsq = split_lsq
+        self._omit_cmd_completion = omit_cmd_completion
+        self._stop = threading.Event()
+        self._send_lock = threading.Lock()
         self.received_cmds: list[str] = []
         self._srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -106,31 +119,69 @@ class MockTunerServer:
             buf += chunk
         return bytes(buf)
 
+    def _send_bytes(self, conn: socket.socket, data: bytes) -> None:
+        with self._send_lock:
+            conn.sendall(data)
+
+    def _emit_chatter(self, conn: socket.socket) -> None:
+        assert self._chatter_interval_s is not None
+        toggle = False
+        while not self._stop.is_set():
+            try:
+                msg = (
+                    'O\x00AlphaZeroMain: AZ_HB:{"lua_alive":true,"turn":1}'
+                    if not toggle
+                    else "O\x00AlphaZeroMain: spurious\x00part"
+                )
+                toggle = not toggle
+                self._send_bytes(conn, _frame(TAG_OUTPUT, msg))
+            except OSError:
+                return
+            self._stop.wait(self._chatter_interval_s)
+
     def _serve(self) -> None:
         try:
             conn, _ = self._srv.accept()
         except OSError:
             return
+        chatter_thread: threading.Thread | None = None
+        if self._chatter_interval_s is not None:
+            chatter_thread = threading.Thread(target=self._emit_chatter, args=(conn,), daemon=True)
+            chatter_thread.start()
         with conn:
-            while True:
+            while not self._stop.is_set():
                 frame = self._recv_frame(conn)
                 if frame is None:
+                    self._stop.set()
                     return
                 _tag, body = frame
                 text = body.rstrip(b"\x00").decode("utf-8", "replace")
                 if text.startswith("APP:"):
-                    conn.sendall(_frame(TAG_QUERY, "Civ6"))
+                    self._send_bytes(conn, _frame(TAG_QUERY, "Civ6"))
                 elif text.startswith("LSQ:"):
-                    conn.sendall(_LSQ_PAIRS)
+                    if self._split_lsq:
+                        # Split LSQ payload across two TAG_QUERY frames with
+                        # non-query frames interleaved to simulate slow LSQ.
+                        p1 = b"0\x00Main State\x002\x00GameCore_Tuner\x00"
+                        p2 = b"96\x00InGame\x0097\x00AdvisorPopup\x00"
+                        self._send_bytes(conn, _frame_raw(TAG_QUERY, p1))
+                        self._send_bytes(
+                            conn, _frame(TAG_OUTPUT, "O\x00AlphaZeroMain: interleaved")
+                        )
+                        self._send_bytes(conn, _frame_raw(TAG_QUERY, p2))
+                    else:
+                        self._send_bytes(conn, _LSQ_PAIRS)
                 elif text.startswith("CMD:"):
                     self.received_cmds.append(text)
                     if self._error_on_cmd:
-                        conn.sendall(_frame(TAG_OUTPUT, "ERR: boom"))
+                        self._send_bytes(conn, _frame(TAG_OUTPUT, "ERR: boom"))
                     else:
-                        conn.sendall(_frame(TAG_OUTPUT, "O\x00GameCore_Tuner: ok"))
-                    conn.sendall(_frame_raw(TAG_COMMAND, b"\x00"))  # completion
+                        self._send_bytes(conn, _frame(TAG_OUTPUT, "O\x00GameCore_Tuner: ok"))
+                    if not self._omit_cmd_completion:
+                        self._send_bytes(conn, _frame_raw(TAG_COMMAND, b"\x00"))  # completion
 
     def close(self) -> None:
+        self._stop.set()
         try:
             self._srv.close()
         except OSError:
@@ -292,6 +343,60 @@ class TestFireTunerClientLive:
         with pytest.raises(FireTunerError, match="handshake exploded"):
             client.connect()
         assert client.connected is False  # socket was closed, not leaked
+
+    def test_connect_not_starved_by_continuous_output_chatter(self) -> None:
+        # Output frames faster than handshake_quiet (0.03s < 0.15s) used to reset
+        # _drain() indefinitely and corrupt LSQ parsing; handshake must finish
+        # quickly and resolve exact states.
+        srv = MockTunerServer(chatter_interval_s=0.03)
+        try:
+            started = time.monotonic()
+            with _client_for(srv) as client:
+                elapsed = time.monotonic() - started
+                assert elapsed < 1.5
+                assert client.states["GameCore_Tuner"] == 2
+                assert client.states["InGame"] == 96
+                out = client.run_lua('print("ok")', context="GameCore_Tuner")
+                assert "ok" in out
+        finally:
+            srv.close()
+
+    def test_split_lsq_ignores_interleaved_output_frames(self) -> None:
+        srv = MockTunerServer(split_lsq=True)
+        try:
+            with _client_for(srv) as client:
+                assert client.states == {
+                    "Main State": 0,
+                    "GameCore_Tuner": 2,
+                    "InGame": 96,
+                    "AdvisorPopup": 97,
+                }
+        finally:
+            srv.close()
+
+    def test_drain_respects_max_duration_under_chatter(self) -> None:
+        srv = MockTunerServer(chatter_interval_s=0.03)
+        try:
+            with _client_for(srv) as client:
+                started = time.monotonic()
+                frames = client._drain(quiet=0.5, max_duration=0.15)
+                elapsed = time.monotonic() - started
+                assert elapsed < 0.6
+                assert len(frames) >= 1
+        finally:
+            srv.close()
+
+    def test_run_lua_respects_total_timeout_under_chatter(self) -> None:
+        srv = MockTunerServer(chatter_interval_s=0.03, omit_cmd_completion=True)
+        try:
+            with _client_for(srv) as client:
+                started = time.monotonic()
+                out = client.run_lua("local x = 1", context="GameCore_Tuner", timeout=0.25)
+                elapsed = time.monotonic() - started
+                assert elapsed < 0.8
+                assert "ok" in out
+        finally:
+            srv.close()
 
 
 # --- SocketTunerBridge async surface -----------------------------------------

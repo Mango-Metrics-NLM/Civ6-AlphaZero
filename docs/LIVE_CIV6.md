@@ -2,16 +2,23 @@
 
 > **Status: demo-grade.** The bridge reaches a running, unmodified
 > Civilization VI over FireTuner (`127.0.0.1:4318`) and reads schema-2 game states back.
-> Live verification on 2026-11-21 verified FireTuner `LSQ:`/`CMD:` connectivity,
-> 6-table `AZ_GAMEINFO` extraction + rules import (`import-gameinfo`), schema-2 exports,
-> `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city`, and
-> `city_produce` (`UNIT_WARRIOR`) acknowledgements against a live Turn 1–7 session, and
-> fixed five live Lua engine discrepancies (LLP64 JSON integer formatting, sole
+> Live verification on 2026-11-25 against the rebuilt mod (`6aaaa65b`, SHA-256 13/13) on a
+> fresh Turn 1 Egypt session verified FireTuner `LSQ:`/`CMD:` connectivity (including
+> mid-turn handshake under 1 Hz `AZ_HB:` heartbeats after fixing heartbeat chatter
+> starvation), 6-table `AZ_GAMEINFO` extraction + rules import, schema-2 export, fail-closed
+> `unit_delete` refusal (`ALLOW_UNIT_DELETE`), `end_turn` blocker refusal with zero `LF-H1`
+> deactivation, `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`,
+> `unit_found_city`, `city_produce` (including "replaces, not queues", numeric row index,
+> and `NOT_IMPLEMENTED` refusals for districts/wonders), strict refusal of `unit_sleep` on
+> a combat Warrior, native Turn 2 arrival, and Turn 1–5 advances including a 3-turn
+> autonomous `BridgeAgentLoop` advance (Turns 3–5, stopping after Turn 5 when Civ6 AI
+> Player 1 stalled before Turn 6). Previously, live verification on 2026-11-21 fixed five
+> Lua engine discrepancies (LLP64 JSON integer formatting, sole
 > `NotificationManager`/`GetEndTurnBlocker` end-turn guard, two-step `CanProduce` unlock
-> check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys). Four
-> autonomous `END_TURN`s ran on 2026-07-12; a fresh Turn 1 multi-turn soak on the rebuilt
-> bundle remains open, and combat (`unit_attack`, `unit_ranged_attack`), builder/citizen/buy,
-> and trained-policy play are not yet live-verified. Nothing here is evidence that the agent
+> check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys). Combat
+> (`unit_attack`, `unit_ranged_attack`, war check), builder/citizen/buy, `research_civic`,
+> `OBSERVE_ALL_PLAYERS`, `GM-B11` 40-turn census, a full 10-turn exit-0 greedy soak, and
+> trained-policy play remain open or unverified. Nothing here is evidence that the agent
 > plays Civilization VI well. Open issues are listed under *Known limitations*.
 
 This page is a how-to for an outside reader with a Windows machine and a Steam
@@ -36,22 +43,22 @@ This table is the one place that says what state each part is in. `README.md`,
 
 | Capability | Built | Stand-in | Seen live |
 |---|---|---|---|
-| Socket connection, schema-2 state export | yes | yes | yes, 2026-11-21 |
-| GameInfo capture (six tables) and rules import | yes | yes | yes, 2026-11-21 |
-| `research_tech` | yes | yes | answer seen, 2026-11-21 |
+| Socket connection (incl. mid-turn 1 Hz heartbeat chatter), schema-2 state export | yes | yes | yes, 2026-11-25 (`AZ_ACK` + `state_diff` on Turns 1–5; Turn 1–7 on 2026-11-21) |
+| GameInfo capture (six tables) and rules import | yes | yes | yes, 2026-11-25 (68 techs, 51 civics, 98 units, 82 buildings, 90/69 prereqs) |
+| `research_tech` | yes | yes | yes, 2026-11-25 (`TECH_POTTERY`, `AZ_ACK` + `state_diff`) |
 | `research_civic` | yes | yes | no |
-| `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | answer seen, 2026-11-21 |
-| `city_produce` | yes | yes | answer seen for `UNIT_WARRIOR`, 2026-11-21 |
-| `unit_sleep` | yes | yes | no |
+| `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | yes, 2026-11-25 (`AZ_ACK` + `state_diff`) |
+| `city_produce` | yes | yes | yes, 2026-11-25 (name, replacement, row index 21, district/wonder `NOT_IMPLEMENTED`) |
+| `unit_sleep` | yes | yes | partial, 2026-11-25 (`OPERATION_REFUSED` on combat Warrior; accepted civilian sleep open) |
 | `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | no |
 | The make-peace and denounce gates (`ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`) | yes, off by default | yes | no |
 | `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | yes (Lua 5.1 dispatch/stub execution; Civ6 API unverified live) | no; expect them not to work (`SetCitizenLocked` is void under `pcall`) |
-| `unit_delete` (`ALLOW_UNIT_DELETE`) | yes, off by default (fail-closed until live-verified) | yes | no |
-| `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | the cause was found live on 2026-11-21 and fixed; the fix has not had a multi-turn run. "Cannot be asked": no |
-| The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | found live; the rebuilt mod has not been run since |
-| A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | no |
-| Offered actions are what the mod will carry out (GM-B7b) | yes | yes | no |
-| The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | no. The four `END_TURN`s of 2026-07-12 predate all of the above |
+| `unit_delete` (`ALLOW_UNIT_DELETE`) | yes, off by default (fail-closed until live-verified) | yes | yes, 2026-11-25 (fail-closed `OPERATION_REFUSED` verified) |
+| `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | yes for blocker refusal (`END_TURN_BLOCKED`, zero `LF-H1` deactivation) & Turn 1–5 advances, 2026-11-25; "cannot be asked": no |
+| The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | yes, 2026-11-25 (rebuilt bundle live-verified across Turns 1–5) |
+| A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | yes, 2026-11-25 (`0.36–1.05s` post-command state delivery) |
+| Offered actions are what the mod will carry out (GM-B7b) | yes | yes | partial, 2026-11-25 (all offered moves/techs/builds accepted; Civ6 `CanProduce` still offers active build item, suppressed by `turn_ledger`) |
+| The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | partial, 2026-11-25 (`BridgeAgentLoop` ran 3 autonomous turns Turns 3–5, 8 commands, 0 ack_failures/reconnects, before Turn 5 AI Player 1 Civ6 stall; full 10-turn exit-0 soak open) |
 | Other players in the export (GM-B8a) | yes, off by default | yes | no |
 | Search in the simulator answering with live commands (GM-B6, GM-B8b) | yes, refused at start-up | yes | no |
 | A trained policy | no | n/a | no |
@@ -85,21 +92,21 @@ the record of 2026-11-21 supports; the maintainer ticks an item when its effect 
 
 | Items | About | Status |
 |---|---|---|
-| 1 | a schema-2 state with research and districts filled | export seen 2026-11-21; the named fields not recorded |
-| 2, 4 | `end_turn` blocked, then ending the turn | open (the blocker check changed after the session) |
-| 3 | `research_tech` takes effect and clears its blocker | answer seen 2026-11-21 |
-| 5 | fields that stay empty, calls that fail | five recorded and fixed (PR #166); open for the rest |
-| 6 | GameInfo capture | seen 2026-11-21 |
-| 7 | `unit_move` to a free neighbour | answer seen 2026-11-21 |
-| 8 | skip, fortify, sleep clear "unit needs orders" | answer seen for skip and fortify; sleep open |
-| 9 | `city_produce` replaces the current build | answer seen for a warrior; "replaces, not queues" open |
-| 10 | frames between a request and the state that shows it | open |
+| 1 | a schema-2 state with research and districts filled | seen 2026-11-25 (`schema_version=2`, `techs_researched`, `research_status`, `DISTRICT_CITY_CENTER`, `BUILDING_PALACE` recorded) |
+| 2, 4 | `end_turn` blocked, then ending the turn | seen 2026-11-25 (`ENDTURN_BLOCKING_PRODUCTION`/`UNITS` refused cleanly; Turns 1–5 ended & native Turn 2 arrived) |
+| 3 | `research_tech` takes effect and clears its blocker | seen 2026-11-25 (`TECH_POTTERY` -> `current_research` & `research_status` updated; blocker checked independently) |
+| 5 | fields that stay empty, calls that fail | five recorded and fixed (PR #166) & verified rebuilt 2026-11-25; open for remaining secondary commands |
+| 6 | GameInfo capture | seen 2026-11-21 and repeated 2026-11-25 (all 6 tables captured & imported) |
+| 7 | `unit_move` to a free neighbour | seen 2026-11-25 (`(50,19)->(49,19)`, moves `2->1`) |
+| 8 | skip, fortify, sleep clear "unit needs orders" | seen for `unit_skip` and `unit_fortify` (`ENDTURN_BLOCKING_UNITS -> None`), 2026-11-25; `unit_sleep` refused on Warrior (`OPERATION_REFUSED`), accepted civilian sleep open |
+| 9 | `city_produce` replaces the current build | seen 2026-11-25 (`UNIT_WARRIOR -> UNIT_BUILDER -> UNIT_WARRIOR` replaced, not queued) |
+| 10 | frames between a request and the state that shows it | seen 2026-11-25 (`0.36–1.05s` post-command state arrival) |
 | 11, 12 | no war is started; a move never becomes an attack; an attack fights | **open, and first in the next session**: a wrong answer here acts in the game |
-| 13 to 20 | far moves, ranged attack, wonders, refusal text, offers, greedy run, export time | open (`unit_found_city` in 14: answer seen) |
+| 13 to 20 | far moves, ranged attack, wonders, refusal text, offers, greedy run, export time | partial 2026-11-25: 14 (`unit_found_city` & row-index `city_produce`), 15 (`DISTRICT_CAMPUS`/`BUILDING_STONEHENGE` `NOT_IMPLEMENTED`), 16, 17, partial 18 (Turns 3–5); 13, 14 `unit_ranged_attack`, 19, 20 open |
 | 21 to 27 | other players (`OBSERVE_ALL_PLAYERS`) | open |
-| 28 | a state arrives within a second or two of a command | open |
-| 29 | ten turns end by themselves | open |
-| 30 | the bridge plays the right player | open |
+| 28 | a state arrives within a second or two of a command | seen 2026-11-25 (`0.36–1.05s` across 8+ probes) |
+| 29 | ten turns end by themselves | open (partial 3-turn soak Turns 3–5 ran cleanly; stopped after Turn 5 AI Player 1 Civ6 stall) |
+| 30 | the bridge plays the right player | seen 2026-11-25 (`AI player 0: the game's local player`) |
 | 31, 32 | making peace and denouncing with their settings on | open |
 
 ## What exists

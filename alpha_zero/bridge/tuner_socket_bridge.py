@@ -36,6 +36,7 @@ import asyncio
 import logging
 import socket
 import struct
+import time
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -229,14 +230,22 @@ class FireTunerClient:
         ctx_split = after_nul.split(": ", 1)
         return ctx_split[1] if len(ctx_split) > 1 else after_nul
 
-    def _drain(self, quiet: float = 0.4) -> list[tuple[int, bytes]]:
-        """Read and return any pending frames until a short quiet timeout."""
+    def _drain(
+        self, quiet: float = 0.4, max_duration: float | None = None
+    ) -> list[tuple[int, bytes]]:
+        """Read and return any pending frames until a short quiet timeout or cap."""
         assert self._sock is not None
         prev = self._sock.gettimeout()
+        hard_deadline = (time.monotonic() + max_duration) if max_duration is not None else None
         self._sock.settimeout(quiet)
         frames: list[tuple[int, bytes]] = []
         try:
             while True:
+                if hard_deadline is not None:
+                    remaining = hard_deadline - time.monotonic()
+                    if remaining <= 0:
+                        break
+                    self._sock.settimeout(min(quiet, remaining))
                 frames.append(self._recv_frame())
         except (TimeoutError, FireTunerError, OSError):
             pass
@@ -244,28 +253,84 @@ class FireTunerClient:
             self._sock.settimeout(prev)
         return frames
 
+    def _recv_query_frames(
+        self,
+        *,
+        wait_first: float,
+        quiet_after: float,
+        max_duration: float,
+    ) -> list[bytes]:
+        """Collect ``TAG_QUERY`` reply frames without being starved by output chatter.
+
+        Live Civ6 games emit 1 Hz ``AZ_HB:`` heartbeats (and Lua ``print()`` lines)
+        as ``TAG_OUTPUT`` (``tag=-1``) frames on FireTuner. Only ``TAG_QUERY`` frames
+        are collected and allowed to advance the post-reply quiet window; non-query
+        frames are skipped without extending any deadline, and a hard monotonic cap
+        bounds total wait time.
+        """
+        assert self._sock is not None
+        prev = self._sock.gettimeout()
+        start = time.monotonic()
+        hard_deadline = start + max_duration
+        idle_deadline = start + wait_first
+        replies: list[bytes] = []
+        skipped = 0
+        try:
+            while True:
+                remaining = min(hard_deadline, idle_deadline) - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._sock.settimeout(remaining)
+                try:
+                    tag, frame = self._recv_frame()
+                except (TimeoutError, OSError):
+                    break
+                if tag == TAG_QUERY:
+                    replies.append(frame)
+                    idle_deadline = time.monotonic() + quiet_after
+                else:
+                    skipped += 1
+        finally:
+            self._sock.settimeout(prev)
+            if skipped > 0:
+                logger.debug("Ignored %d non-query FireTuner frame(s) during handshake", skipped)
+        return replies
+
     # --- handshake / discovery ----------------------------------------------
 
     def _handshake(self) -> None:
         """Identify to the game and discover Lua state indices via ``LSQ:``."""
-        self._drain(quiet=self._handshake_quiet)
+        started = time.monotonic()
+        self._drain(
+            quiet=min(self._handshake_quiet, 0.2),
+            max_duration=min(self._handshake_quiet, 0.25),
+        )
         self._send(TAG_QUERY, "APP:alphazero")
-        self._drain(quiet=self._handshake_quiet)  # identity string; unused
+        self._recv_query_frames(
+            wait_first=max(self._handshake_quiet, min(self.timeout, 2.0)),
+            quiet_after=min(self._handshake_quiet, 0.15),
+            max_duration=max(self._handshake_quiet * 2.0, min(self.timeout, 3.0)),
+        )
 
         self._send(TAG_QUERY, "LSQ:")
-        raw = b""
-        for _tag, frame in self._drain(quiet=self._handshake_quiet * 1.5):
-            raw += frame
+        frames = self._recv_query_frames(
+            wait_first=max(self._handshake_quiet * 1.5, min(self.timeout, 2.5)),
+            quiet_after=min(self._handshake_quiet, 0.25),
+            max_duration=max(self._handshake_quiet * 3.0, min(self.timeout, 5.0)),
+        )
+        raw = b"".join(frames)
         self.states = self._parse_states(raw)
+        elapsed_ms = (time.monotonic() - started) * 1000.0
         if self.states:
             logger.info(
-                "FireTuner connected; %d Lua states (GameCore_Tuner=%s, InGame=%s)",
+                "FireTuner connected in %.0fms; %d Lua states (GameCore_Tuner=%s, InGame=%s)",
+                elapsed_ms,
                 len(self.states),
                 self.states.get("GameCore_Tuner"),
                 self.states.get("InGame"),
             )
         else:
-            logger.warning("FireTuner LSQ returned no parseable states")
+            logger.warning("FireTuner LSQ returned no parseable states after %.0fms", elapsed_ms)
 
     @staticmethod
     def _parse_states(raw: bytes) -> dict[str, int]:
@@ -331,11 +396,15 @@ class FireTunerClient:
             raise FireTunerError("FireTunerClient is not connected")
         idx = self.resolve_index(context)
         prev = self._sock.gettimeout()
-        self._sock.settimeout(timeout)
+        deadline = time.monotonic() + timeout
         outputs: list[str] = []
         try:
             self._send(TAG_COMMAND, f"CMD:{idx}:{code}")
             while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                self._sock.settimeout(remaining)
                 try:
                     tag, frame = self._recv_frame()
                 except TimeoutError:
