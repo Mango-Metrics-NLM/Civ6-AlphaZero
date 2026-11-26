@@ -1,0 +1,25 @@
+{
+  "args": {
+    "approval_ref": null,
+    "board_size": 8,
+    "device": "cpu",
+    "games": 4,
+    "k": 8,
+    "max_games": 4,
+    "max_turns": 60,
+    "mcts": "gumbel",
+    "n": 24,
+    "out": "E:\\civ6az-data\\runs\\t0b-20261112\\calibration\\throughput_cpu.json",
+    "seed": 1001
+  },
+  "device": "cpu",
+  "harness": "calibrate_throughput",
+  "results": {
+    "actions_per_game": 413.0,
+    "ms_per_eval": 2.3360926022760498,
+    "s_per_game": 18.986592624998593,
+    "total_actions": 1652.0,
+    "total_evals": 32510.0,
+    "total_seconds": 75.94637049999437
+  }
+}

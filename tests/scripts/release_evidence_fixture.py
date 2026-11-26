@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shlex
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -68,9 +69,10 @@ JUDGED_ARMS = ("primary", "symmetry", "positive_control")
 
 
 def evaluation_text(branch: str = "40") -> str:
-    """The real ``docs/EVALUATION.md`` with T0b's branch slot filled."""
-    assert REAL_EVALUATION.count(PENDING) == 1
-    return REAL_EVALUATION.replace(PENDING, f"**Branch in force: {branch}.**")
+    """The real ``docs/EVALUATION.md`` with T0b's branch slot set to ``branch``."""
+    pattern = re.compile(r"\*\*Branch in force: [^*]+?\.\*\*")
+    assert len(pattern.findall(REAL_EVALUATION)) == 1
+    return pattern.sub(f"**Branch in force: {branch}.**", REAL_EVALUATION, count=1)
 
 
 EVALUATION_TEXT = evaluation_text()

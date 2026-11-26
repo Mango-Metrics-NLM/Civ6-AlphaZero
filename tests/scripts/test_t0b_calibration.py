@@ -18,6 +18,7 @@ filled from an ad-hoc snippet. These tests hold:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -65,9 +66,13 @@ def _registered_files(pairs: list[tuple[str, str]]) -> list[dict[str, Any]]:
 
 
 def test_the_slots_the_command_prints_are_verbatim_in_section_7_1() -> None:
+    from alpha_zero.evaluation.a1_registration import branch_in_force
+
     section = ap.registered_protocol(EVALUATION)
-    assert section.count(ap.REFERENCE_SLOT) == 1
-    assert section.count(ap.BRANCH_SLOT) == 1
+    assert ap.REFERENCE_SLOT not in section
+    assert ap.BRANCH_SLOT not in section
+    assert "**Measured reference** (T0b," in section
+    assert branch_in_force(section) in (40, 60)
 
 
 def test_t0b_card_prices_under_the_cap_per_invocation_and_in_total() -> None:
@@ -277,7 +282,12 @@ def test_slot_text_states_every_number_section_7_1_asks_for() -> None:
     # The filled branch slot is what a1_registration reads.
     from alpha_zero.evaluation.a1_registration import branch_in_force
 
-    filled = ap.registered_protocol(EVALUATION).replace(ap.BRANCH_SLOT, branch)
+    filled = re.sub(
+        r"\*\*Branch in force: [^*]+?\.\*\*",
+        branch,
+        ap.registered_protocol(EVALUATION),
+        count=1,
+    )
     assert branch_in_force(filled) == 40
 
 

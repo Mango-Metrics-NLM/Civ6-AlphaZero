@@ -427,16 +427,18 @@ def test_iid_calibration_rejects_bad_probabilities(p_win: float, p_draw: float) 
 
 
 def _with_branch(section: str, value: str) -> str:
-    old = "**Branch in force: pending T0b.**"
-    assert section.count(old) == 1
-    return section.replace(old, f"**Branch in force: {value}.**")
+    pattern = re.compile(r"\*\*Branch in force: [^*]+?\.\*\*")
+    assert len(pattern.findall(section)) == 1
+    return pattern.sub(f"**Branch in force: {value}.**", section, count=1)
 
 
 def test_the_branch_is_pending_until_t0b(section: str) -> None:
+    assert branch_in_force(section) == 40
+    pending = _with_branch(section, "pending T0b")
     with pytest.raises(RegistrationError, match="not registered yet"):
-        branch_in_force(section)
+        branch_in_force(pending)
     with pytest.raises(RegistrationError):
-        registered_invocations(section, card_id="a1-20261111", seed=20261111)
+        registered_invocations(pending, card_id="a1-20261111", seed=20261111)
 
 
 @pytest.mark.parametrize("value", ["40", "60"])

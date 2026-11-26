@@ -1,24 +1,24 @@
 {
   "context_files": [
+    "docs/evidence/t0b_calibration/README.md",
+    "docs/EVALUATION.md",
+    "alpha_zero/evaluation/a1_registration.py",
     "docs/evidence/live_civ6_baseline/README.md",
-    "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
-    "docs/LIVE_CIV6.md",
-    "kb/specs/20261119-game-mechanics-gap-register.md",
-    "openspec/specs/civ6-bridge/spec.md",
+    "docs/runbooks/branching-and-release.md",
     "CLAUDE.md"
   ],
-  "current_focus": "PR #180 merged cleanly (a3905895). Phase 1 live Steam Civ6 soak/probes (Item 29 exit-0 Turns 9->19, Item 11/12a WOULD_START_WAR, Item 13, research_civic) and 41-turn GM-B11 census (verdict: stop, E1=0.2667) committed on fix/ws1-live-soak-and-evidence with harden-governance-gates archived.",
+  "current_focus": "WS-0 cut-over complete (dev/qa/main active) and T0b 660-game dual-GPU calibration COMPLETE (REPRODUCED determinism, Branch in force: 40, 6.1 h ETA). Section 7.1 slot fill-in + T0b evidence PR ready on chore/t0b-section7-registration -> dev.",
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T15:40:00Z",
+  "last_timestamp": "2026-11-26T18:20:00Z",
   "resume_pointers": {
     "blocked_on": [
-      "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh)",
-      "Maintainer: T0b, A1, and A1-R on quiet dual GPUs after closing Steam Civ6"
+      "Maintainer: review & merge chore/t0b-section7-registration PR into dev",
+      "Maintainer: promote dev -> qa & tag v2.1.0-rc.1 before running A1 (980g) and A1-R (980g)"
     ],
-    "current_task": "Review and merge fix/ws1-live-soak-and-evidence PR, then proceed to WS-0 cut-over and quiet-GPU T0b/A1/A1-R",
+    "current_task": "Merge chore/t0b-section7-registration PR into dev, then promote to qa / tag v2.1.0-rc.1 and execute A1 & A1-R",
     "next_steps": [
-      "Review and merge fix/ws1-live-soak-and-evidence PR (live baseline evidence + harden-governance-gates archive)",
-      "Execute WS-0 cut-over (v2.0.0, dev/qa/main), close Steam Civ6, and run T0b -> A1 -> A1-R"
+      "Merge chore/t0b-section7-registration PR into dev",
+      "Release prep -> promote dev -> qa -> tag v2.1.0-rc.1 -> run A1 -> run A1-R -> build release bundle"
     ]
   }
 }

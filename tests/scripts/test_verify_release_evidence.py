@@ -600,7 +600,9 @@ class TestRegistration:
 
     def test_a_pending_branch_fails(self, tmp_path: Path) -> None:
         """A card run while section 7.1 still said "pending T0b" ran no registered card."""
-        release = fx.make_release(tmp_path, code={"docs/EVALUATION.md": fx.REAL_EVALUATION})
+        release = fx.make_release(
+            tmp_path, code={"docs/EVALUATION.md": fx.evaluation_text("pending T0b")}
+        )
         code, out = verify(release)
         assert code == vre.EXIT_FAIL
         assert "not registered yet" in out

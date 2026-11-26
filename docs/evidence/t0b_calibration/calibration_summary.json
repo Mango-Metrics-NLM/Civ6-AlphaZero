@@ -1,0 +1,87 @@
+{
+  "calibration": {
+    "a1_eta_hours": 6.1,
+    "branch_in_force": 40,
+    "draws": 255,
+    "games_per_seed": [
+      200,
+      200,
+      200
+    ],
+    "iid_p40": 0.0215,
+    "losses": 42,
+    "p40": 0.0166,
+    "p40_ci95": [
+      0.003,
+      0.0493
+    ],
+    "p60": 0.001,
+    "pooled_pairs": 300,
+    "score": 0.7175,
+    "score_hull95": [
+      0.6912,
+      0.7421
+    ],
+    "seeds": [
+      1001,
+      1002,
+      1003
+    ],
+    "wins": 303
+  },
+  "determinism": {
+    "arena_device": "cuda:1",
+    "components_compared": {
+      "arenas": 1,
+      "checkpoints": 3,
+      "iterations": 2
+    },
+    "games_priced": 48,
+    "status": "REPRODUCED",
+    "train_device": "cuda:0"
+  },
+  "evidence": {
+    "claims": [
+      "Dual-process GPU determinism REPRODUCED on cuda:0 (RTX 5060 Ti) and cuda:1 (RTX 5060) under torch==2.11.0+cu128",
+      "Post-2026-09-04 heuristic vs random positive-control reference (600 games across seeds 1001-1003) and Section 7.1 branch-in-force = 40 calibration",
+      "Wall-clock throughput calibration on cuda:0, cuda:1, and cpu (6.1 h one-card A1 ETA)"
+    ],
+    "command": "python scripts/run_card.py t0b.yaml --data_root E:\\civ6az-data && python -m alpha_zero.evaluation.a1_protocol calibrate E:\\civ6az-data\\runs\\t0b-20261112\\arena\\seed_1001 E:\\civ6az-data\\runs\\t0b-20261112\\arena\\seed_1002 E:\\civ6az-data\\runs\\t0b-20261112\\arena\\seed_1003 --throughput E:\\civ6az-data\\runs\\t0b-20261112\\calibration\\throughput.json --arena-throughput E:\\civ6az-data\\runs\\t0b-20261112\\calibration\\throughput_cuda1.json",
+    "games_total": 660,
+    "generated_utc": "2026-11-26T18:14:01Z",
+    "git_sha": "5138af23eb906f8bf697584351cf9bcf85573576",
+    "hardware": {
+      "cpu_model": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "gpu_model": "cuda:0 NVIDIA GeForce RTX 5060 Ti; cuda:1 NVIDIA GeForce RTX 5060",
+      "logical_cores": 24,
+      "omp_num_threads": null
+    },
+    "non_claims": [
+      "T0b is not an A1-family learning run and makes no claim about trained Civ6 or MicroCiv policy strength",
+      "CPU throughput measurement is informational only"
+    ],
+    "numpy": "1.26.4",
+    "python": "3.11.9",
+    "schema_version": 1,
+    "search_epoch": "post-2026-09-04",
+    "seed": 1001,
+    "torch": "2.11.0+cu128"
+  },
+  "throughput": {
+    "cpu": {
+      "ms_per_eval": 2.3360926022760498,
+      "s_per_game": 18.986592624998593,
+      "total_seconds": 75.94637049999437
+    },
+    "cuda:0": {
+      "ms_per_eval": 2.974095547211995,
+      "s_per_game": 23.96154430000024,
+      "total_seconds": 95.84617720000097
+    },
+    "cuda:1": {
+      "ms_per_eval": 2.820822748006224,
+      "s_per_game": 22.726663674999145,
+      "total_seconds": 90.90665469999658
+    }
+  }
+}
