@@ -1,0 +1,578 @@
+{
+  "aggregates": {
+    "16": {
+      "E1": {
+        "after_turn_30": {
+          "median": 0.15384615384615385,
+          "median_ci95": [
+            0.0,
+            0.25
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.09632034632034632,
+          "q75": 0.25,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.26666666666666666,
+          "median_ci95": [
+            0.25,
+            0.2692307692307692
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.25,
+          "q75": 0.3125,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.26666666666666666
+        }
+      },
+      "E1_by_kind_pooled": {
+        "city_produce": {
+          "denominator": 240,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "fortify": {
+          "denominator": 18,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "research_civic": {
+          "denominator": 26,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "research_tech": {
+          "denominator": 160,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "unit_found_city": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "unit_move": {
+          "denominator": 426,
+          "numerator": 209,
+          "value": 0.49061032863849763
+        },
+        "unit_skip": {
+          "denominator": 43,
+          "numerator": 8,
+          "value": 0.18604651162790697
+        }
+      },
+      "E2": {
+        "after_turn_30": {
+          "median": 0.5,
+          "median_ci95": [
+            0.0,
+            0.6666666666666666
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.5,
+          "q75": 0.6666666666666666,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.6666666666666666,
+          "median_ci95": [
+            0.6666666666666666,
+            1.0
+          ],
+          "median_ci95_ranks": [
+            13,
+            27
+          ],
+          "q25": 0.6666666666666666,
+          "q75": 1.0,
+          "states_excluded": 2,
+          "states_with_value": 39
+        },
+        "per_source_median": {
+          "0": 0.6666666666666666
+        }
+      },
+      "E3": {
+        "after_turn_30": {
+          "median": 0.4,
+          "median_ci95": [
+            0.4,
+            0.5
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.4,
+          "q75": 0.5,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.6666666666666666,
+          "median_ci95": [
+            0.5,
+            0.6666666666666666
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.4,
+          "q75": 0.6666666666666666,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.6666666666666666
+        }
+      },
+      "E4": {
+        "after_turn_30": {
+          "median": 0.5,
+          "median_ci95": [
+            0.3333333333333333,
+            0.5
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.3333333333333333,
+          "q75": 0.5,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.3333333333333333,
+          "median_ci95": [
+            0.0,
+            0.3333333333333333
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.0,
+          "q75": 0.3333333333333333,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.3333333333333333
+        }
+      },
+      "U": {
+        "after_turn_30": {
+          "median": 0.75,
+          "median_ci95": [
+            0.6923076923076923,
+            0.8064516129032258
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.7089947089947091,
+          "q75": 0.75,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.7142857142857143,
+          "median_ci95": [
+            0.6666666666666666,
+            0.75
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.6666666666666666,
+          "q75": 0.7692307692307693,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.7142857142857143
+        }
+      },
+      "states": 41,
+      "states_void": 0
+    },
+    "8": {
+      "E1": {
+        "after_turn_30": {
+          "median": 0.24242424242424243,
+          "median_ci95": [
+            0.0,
+            0.25
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.14835164835164835,
+          "q75": 0.25,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.26666666666666666,
+          "median_ci95": [
+            0.25,
+            0.2692307692307692
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.25,
+          "q75": 0.3125,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.26666666666666666
+        }
+      },
+      "E1_by_kind_pooled": {
+        "city_produce": {
+          "denominator": 240,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "fortify": {
+          "denominator": 18,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "research_civic": {
+          "denominator": 26,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "research_tech": {
+          "denominator": 160,
+          "numerator": 0,
+          "value": 0.0
+        },
+        "unit_found_city": {
+          "denominator": 1,
+          "numerator": 1,
+          "value": 1.0
+        },
+        "unit_move": {
+          "denominator": 426,
+          "numerator": 220,
+          "value": 0.5164319248826291
+        },
+        "unit_skip": {
+          "denominator": 43,
+          "numerator": 8,
+          "value": 0.18604651162790697
+        }
+      },
+      "E2": {
+        "after_turn_30": {
+          "median": 0.5,
+          "median_ci95": [
+            0.0,
+            0.6666666666666666
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.5,
+          "q75": 0.6666666666666666,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.6666666666666666,
+          "median_ci95": [
+            0.6666666666666666,
+            1.0
+          ],
+          "median_ci95_ranks": [
+            13,
+            27
+          ],
+          "q25": 0.6666666666666666,
+          "q75": 1.0,
+          "states_excluded": 2,
+          "states_with_value": 39
+        },
+        "per_source_median": {
+          "0": 0.6666666666666666
+        }
+      },
+      "E3": {
+        "after_turn_30": {
+          "median": 0.25,
+          "median_ci95": [
+            0.25,
+            0.25
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.25,
+          "q75": 0.25,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.3333333333333333,
+          "median_ci95": [
+            0.25,
+            0.3333333333333333
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.25,
+          "q75": 0.3333333333333333,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.3333333333333333
+        }
+      },
+      "E4": {
+        "after_turn_30": {
+          "median": 0.5,
+          "median_ci95": [
+            0.3333333333333333,
+            0.5
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.3333333333333333,
+          "q75": 0.5,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.3333333333333333,
+          "median_ci95": [
+            0.0,
+            0.3333333333333333
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.0,
+          "q75": 0.3333333333333333,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.3333333333333333
+        }
+      },
+      "U": {
+        "after_turn_30": {
+          "median": 0.75,
+          "median_ci95": [
+            0.6923076923076923,
+            0.8064516129032258
+          ],
+          "median_ci95_ranks": [
+            2,
+            10
+          ],
+          "q25": 0.7089947089947091,
+          "q75": 0.75,
+          "states_excluded": 0,
+          "states_with_value": 11
+        },
+        "all": {
+          "median": 0.7142857142857143,
+          "median_ci95": [
+            0.6666666666666666,
+            0.75
+          ],
+          "median_ci95_ranks": [
+            14,
+            28
+          ],
+          "q25": 0.6666666666666666,
+          "q75": 0.7692307692307693,
+          "states_excluded": 0,
+          "states_with_value": 41
+        },
+        "per_source_median": {
+          "0": 0.7142857142857143
+        }
+      },
+      "states": 41,
+      "states_void": 0
+    }
+  },
+  "evidence": {
+    "claims": [
+      "expressivity (E1..E4) of search-in-the-simulator, as registered in kb/specs/20261123-expressivity-census-preregistration.md"
+    ],
+    "command": "python scripts/census_search_expressivity.py --log 'E:\\civ6az-data\\census_20261126\\japan_lua.log' --out 'E:\\civ6az-data\\census_20261126\\out' --boards 8 16 --mod-version 1.1.0-a3905895 --played-by ianshank",
+    "games_total": 0,
+    "generated_utc": "2026-11-26T15:38:43Z",
+    "git_sha": "a3905895a0b9014a98fcdb07e1f36adb786c7596",
+    "hardware": {
+      "cpu_model": "AMD64 Family 26 Model 68 Stepping 0, AuthenticAMD",
+      "gpu_model": null,
+      "logical_cores": 24,
+      "omp_num_threads": "12"
+    },
+    "non_claims": [
+      "not evidence of playing strength or of learning; no game, network or search",
+      "expressivity is necessary, not sufficient: it says nothing about move quality",
+      "bound to this commit: a change to the converter, proxy or translator needs a re-run",
+      "the exploratory block is not part of the registered census and has no verdict"
+    ],
+    "numpy": "1.26.4",
+    "python": "3.11.9",
+    "schema_version": 1,
+    "search_epoch": "post-2026-09-04",
+    "seed": 0,
+    "torch": "2.11.0+cu128"
+  },
+  "exploratory": {
+    "board": 8,
+    "loss_can_fire": {
+      "after_turn_30": {
+        "denominator": 11,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "turn_11_to_30": {
+        "denominator": 20,
+        "numerator": 0,
+        "value": 0.0
+      },
+      "up_to_turn_10": {
+        "denominator": 10,
+        "numerator": 1,
+        "value": 0.1
+      }
+    },
+    "not_part_of_the_registered_census": true,
+    "what": "states where the losing ending can fire at all (the player has no city and no own unit is left out of the stand-in), by turn band; no verdict"
+  },
+  "input": {
+    "boards": [
+      8,
+      16
+    ],
+    "input_kind": "lua_log",
+    "is_census_result": true,
+    "meets_registered_minimum": true,
+    "not_a_census_reasons": [],
+    "registered_minimum": {
+      "after_turn_30": 10,
+      "states": 40
+    },
+    "sampling": "first complete state of each game turn, per source",
+    "states_after_turn_30": 11,
+    "states_dropped_missing_piece": 0,
+    "states_measured": 41,
+    "states_not_from_the_current_mod": 0,
+    "states_sampled": 41,
+    "states_unreadable": 0,
+    "states_void": 0,
+    "states_void_parser_dropped": 0,
+    "tiles_revealed_share": {
+      "median": 1.0,
+      "median_ci95": [
+        1.0,
+        1.0
+      ],
+      "median_ci95_ranks": [
+        14,
+        28
+      ],
+      "q25": 1.0,
+      "q75": 1.0,
+      "states_excluded": 0,
+      "states_with_value": 41
+    },
+    "turn_went_back": 0
+  },
+  "recorded": {
+    "civilizations": [
+      "CIVILIZATION_JAPAN"
+    ],
+    "map_sizes": [
+      [
+        74,
+        46
+      ]
+    ],
+    "mod_version": "1.1.0-a3905895",
+    "played_by": "ianshank"
+  },
+  "sources": [
+    {
+      "kind": "lua_log",
+      "path": "japan_lua.log",
+      "source": 0,
+      "states_dropped_missing_piece": 0,
+      "states_read": 561,
+      "states_unreadable": 0,
+      "states_without_turn": 0,
+      "turn_went_back": 0
+    }
+  ],
+  "specification": "kb/specs/20261123-expressivity-census-preregistration.md",
+  "stop_rule": {
+    "E1": {
+      "borderline": false,
+      "fires": true,
+      "median": 0.26666666666666666,
+      "median_ci95": [
+        0.25,
+        0.2692307692307692
+      ],
+      "threshold": 0.3
+    },
+    "E2": {
+      "borderline": false,
+      "fires": false,
+      "median": 0.6666666666666666,
+      "median_ci95": [
+        0.6666666666666666,
+        1.0
+      ],
+      "threshold": 0.5
+    },
+    "board": 8,
+    "borderline": false,
+    "decided_by_this_input": true,
+    "e1_fires_from_the_offer_mix_alone": false,
+    "median_u": 0.7142857142857143,
+    "verdict": "stop"
+  }
+}

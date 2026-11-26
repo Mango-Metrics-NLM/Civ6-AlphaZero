@@ -16,4 +16,4 @@
 
 ## 3. Verification
 - [x] 3.1 Independent review; planted defects; Lua and bridge suites with `CIV6AZ_REQUIRE_LUA=1`; empty play-path diff
-- [ ] 3.2 Maintainer, on the real game: checklist items 11 and 12 first (`docs/LIVE_CIV6.md`)
+- [ ] 3.2 Maintainer, on the real game: checklist items 11 and 12 first (`docs/LIVE_CIV6.md`) *(Partial 2026-11-26: Item 11 `unit_attack` vs peaceful `p10` -> `REFUSED [WOULD_START_WAR]` & `WAR_WITH_10=false`, and Item 12a full-movement occupied-peaceful `unit_move` -> `REFUSED [WOULD_START_WAR]`, passed live on Japan Turn 36/37; hostile melee combat vs an active war target remains open.)*

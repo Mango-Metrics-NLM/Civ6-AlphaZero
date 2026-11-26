@@ -43,7 +43,7 @@ walkthrough is a welcome contribution.
 
 | Doc | What it helps you do | Audience | Status | Last verified |
 |-----|----------------------|----------|--------|---------------|
-| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: FireTuner socket transport, 6-table `GameInfo` capture, `research_tech`, basic unit actions, and `city_produce` exercised live; 5 live Lua parity fixes landed; fresh Turn 1 soak open). | user | Current | 2026-11-21 |
+| [`LIVE_CIV6.md`](LIVE_CIV6.md) | Drive a running Civilization VI from the agent (demo-grade: socket transport, 6-table `GameInfo` capture, 41-turn Japan session, Item 29 10-turn exit-0 soak, Item 11/12a/13 probes, `research_civic`, and `GM-B11` `stop` census). | user | Current | 2026-11-26 |
 | [`HF_PUBLISHING.md`](HF_PUBLISHING.md) | Stage and publish the hex-crystalline encoder to the Hugging Face Hub. | contributor | Current | 2026-08-11 |
 | [`INFERENCE_SERVICE.md`](INFERENCE_SERVICE.md) | Run and call the FastAPI inference server. | operator | Current | 2026-08-11 |
 | [`GCP_INFRA.md`](GCP_INFRA.md) | Stand up the Vertex AI / GCS training infrastructure. | operator | Current | 2026-09-02 |
@@ -104,6 +104,7 @@ below marked *before* was measured on **pre-fix** code.
 | [`evidence/hexcrystal_ab/summary_table.md`](evidence/hexcrystal_ab/summary_table.md) | The A/B counts and Wilson interval, as a table. | before |
 | [`evidence/windows_baseline_20261111/README.md`](evidence/windows_baseline_20261111/README.md) | Machine snapshot (CPU, RAM, GPUs, Windows Update policy) and a calibration-harness smoke; no throughput or ETA claim. | after |
 | [`evidence/target_sharpness_probe/report.md`](evidence/target_sharpness_probe/report.md) | Gumbel policy-target sharpness for untrained networks at A1's budget: current settings vs Danihelka et al. (2022) under two normalisation readings and `mctx`'s defaults; 0 games. | after |
+| [`evidence/live_civ6_baseline/README.md`](evidence/live_civ6_baseline/README.md) | Live Steam Civ6 Turns 1–41 bridge baseline (Item 29 10-turn exit-0 soak, Item 11/12a/13, `research_civic`) and `GM-B11` MicroCiv expressivity census (`verdict: stop`, `E1=0.2667` at board 8; 0 games). | after |
 
 ### Architecture decision records
 

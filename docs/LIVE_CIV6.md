@@ -2,24 +2,11 @@
 
 > **Status: demo-grade.** The bridge reaches a running, unmodified
 > Civilization VI over FireTuner (`127.0.0.1:4318`) and reads schema-2 game states back.
-> Live verification on 2026-11-25 against the rebuilt mod (`6aaaa65b`, SHA-256 13/13) on a
-> fresh Turn 1 Egypt session verified FireTuner `LSQ:`/`CMD:` connectivity (including
-> mid-turn handshake under 1 Hz `AZ_HB:` heartbeats after fixing heartbeat chatter
-> starvation), 6-table `AZ_GAMEINFO` extraction + rules import, schema-2 export, fail-closed
-> `unit_delete` refusal (`ALLOW_UNIT_DELETE`), `end_turn` blocker refusal with zero `LF-H1`
-> deactivation, `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`,
-> `unit_found_city`, `city_produce` (including "replaces, not queues", numeric row index,
-> and `NOT_IMPLEMENTED` refusals for districts/wonders), strict refusal of `unit_sleep` on
-> a combat Warrior, native Turn 2 arrival, and Turn 1–5 advances including a 3-turn
-> autonomous `BridgeAgentLoop` advance (Turns 3–5, stopping after Turn 5 when Civ6 AI
-> Player 1 stalled before Turn 6). Previously, live verification on 2026-11-21 fixed five
-> Lua engine discrepancies (LLP64 JSON integer formatting, sole
-> `NotificationManager`/`GetEndTurnBlocker` end-turn guard, two-step `CanProduce` unlock
-> check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys). Combat
-> (`unit_attack`, `unit_ranged_attack`, war check), builder/citizen/buy, `research_civic`,
-> `OBSERVE_ALL_PLAYERS`, `GM-B11` 40-turn census, a full 10-turn exit-0 greedy soak, and
-> trained-policy play remain open or unverified. Nothing here is evidence that the agent
-> plays Civilization VI well. Open issues are listed under *Known limitations*.
+> Live verification on 2026-11-26 (`a3905895`, `AlphaZeroAI` `1.1.0` 13/13 SHA-256) across a
+> 41-turn Steam DX12 Japan session (continuing the 2026-11-25 Egypt probes) verified
+> **Item 29** (a full 10-turn autonomous `BridgeAgentLoop` `--mode civ6` soak across Turns `9 → 19`,
+> `234` commands/acks, `0` errors, exit `0`, plus Turns `19 → 35`), **Item 13** (multi-turn `unit_move`),
+> **`research_civic`** (`CIVIC_FOREIGN_TRADE`), **Item 11** (`unit_attack` vs peaceful neighbor `REFUSED [WOULD_START_WAR]` with zero war declared), and **Item 12a** (`unit_move` onto a peaceful occupied tile with full movement `REFUSED [WOULD_START_WAR]`), plus honest empirical outcomes for `city_citizen`, `city_buy`, `unit_build`, and civilian `unit_sleep`, and a passing **`GM-B11` expressivity census** (`41` non-void states, `11` after turn 30; registered `stop` verdict at board `8` with `E1=0.2667 < 0.30`). Full metrics and `AZ_ACK` records live in [`evidence/live_civ6_baseline/README.md`](evidence/live_civ6_baseline/README.md). Previously, 2026-11-21/25 live verification fixed five Lua engine discrepancies (`%.0f` Win64 JSON integers, sole `NotificationManager`/`GetEndTurnBlocker` end-turn guard, two-step `CanProduce`, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys) and verified `unit_delete` fail-closed refusal, `research_tech`, `unit_found_city`, and `city_produce`. Hostile melee/ranged combat against an active war target, `unit_promote`, `OBSERVE_ALL_PLAYERS`, `ALLOW_MAKE_PEACE`/`ALLOW_DENOUNCE`, and trained-policy play remain open or unverified. Nothing here is evidence that the agent plays Civilization VI well. Open issues are listed under *Known limitations*.
 
 This page is a how-to for an outside reader with a Windows machine and a Steam
 copy of the game. The engineering history (why the file transport was replaced,
@@ -46,19 +33,19 @@ This table is the one place that says what state each part is in. `README.md`,
 | Socket connection (incl. mid-turn 1 Hz heartbeat chatter), schema-2 state export | yes | yes | yes, 2026-11-25 (`AZ_ACK` + `state_diff` on Turns 1–5; Turn 1–7 on 2026-11-21) |
 | GameInfo capture (six tables) and rules import | yes | yes | yes, 2026-11-25 (68 techs, 51 civics, 98 units, 82 buildings, 90/69 prereqs) |
 | `research_tech` | yes | yes | yes, 2026-11-25 (`TECH_POTTERY`, `AZ_ACK` + `state_diff`) |
-| `research_civic` | yes | yes | no |
-| `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | yes, 2026-11-25 (`AZ_ACK` + `state_diff`) |
+| `research_civic` | yes | yes | yes, 2026-11-26 (`CIVIC_FOREIGN_TRADE`, `AZ_ACK` + `state_diff`; autonomous Turn 15 completion) |
+| `unit_move`, `unit_skip`, `unit_fortify`, `unit_found_city` | yes | yes | yes, 2026-11-25/26 (`AZ_ACK` + `state_diff`; multi-turn Item 13 verified; `TurnLedger` throttles `unit_skip` after no move-count diff) |
 | `city_produce` | yes | yes | yes, 2026-11-25 (name, replacement, row index 21, district/wonder `NOT_IMPLEMENTED`) |
-| `unit_sleep` | yes | yes | partial, 2026-11-25 (`OPERATION_REFUSED` on combat Warrior; accepted civilian sleep open) |
-| `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | no |
+| `unit_sleep` | yes | yes | partial, 2026-11-25/26 (`OPERATION_REFUSED` on both combat Warrior and Builder `262146`) |
+| `unit_attack`, `unit_ranged_attack`, the war check, the declare-war gate (GM-B9) | yes | yes | partial, 2026-11-26 (Item 11 `unit_attack` vs peaceful `p10` -> `REFUSED [WOULD_START_WAR]` & zero war; Item 12a occupied-peaceful `unit_move` -> `REFUSED [WOULD_START_WAR]`; hostile war combat & `unit_ranged_attack` open) |
 | The make-peace and denounce gates (`ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`) | yes, off by default | yes | no |
-| `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | yes (Lua 5.1 dispatch/stub execution; Civ6 API unverified live) | no; expect them not to work (`SetCitizenLocked` is void under `pcall`) |
+| `unit_build`, `unit_promote`, `city_buy`, `city_citizen` | written from memory | yes (Lua 5.1 dispatch/stub execution; Civ6 API unverified live) | probed 2026-11-26 and confirmed failing/no-op as expected (`city_buy` `EXECUTION_FAILED`, `city_citizen` `INVALID_COMMAND`/`EXECUTION_FAILED`, `unit_build` item 0 `accepted` with `changed: nothing`; `unit_promote` open) |
 | `unit_delete` (`ALLOW_UNIT_DELETE`) | yes, off by default (fail-closed until live-verified) | yes | yes, 2026-11-25 (fail-closed `OPERATION_REFUSED` verified) |
-| `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | yes for blocker refusal (`END_TURN_BLOCKED`, zero `LF-H1` deactivation) & Turn 1–5 advances, 2026-11-25; "cannot be asked": no |
-| The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | yes, 2026-11-25 (rebuilt bundle live-verified across Turns 1–5) |
-| A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | yes, 2026-11-25 (`0.36–1.05s` post-command state delivery) |
-| Offered actions are what the mod will carry out (GM-B7b) | yes | yes | partial, 2026-11-25 (all offered moves/techs/builds accepted; Civ6 `CanProduce` still offers active build item, suppressed by `turn_ledger`) |
-| The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | partial, 2026-11-25 (`BridgeAgentLoop` ran 3 autonomous turns Turns 3–5, 8 commands, 0 ack_failures/reconnects, before Turn 5 AI Player 1 Civ6 stall; full 10-turn exit-0 soak open) |
+| `end_turn` refused while the game reports a blocker, or cannot be asked (GM-B9) | yes | yes | yes for blocker refusal (`END_TURN_BLOCKED`, zero `LF-H1` deactivation) across Turns `1–41`, 2026-11-25/26; "cannot be asked": no |
+| The five fixes from the live session (below) | yes | yes; since GM-B10 the stand-in models the live behaviour by default | yes, 2026-11-25/26 (rebuilt bundle live-verified across Turns `1–41`) |
+| A state reaches the agent together with the answer before it (GM-B7c-1) | yes | yes | yes, 2026-11-25/26 (`0.31–1.08s` post-command state delivery) |
+| Offered actions are what the mod will carry out (GM-B7b) | yes | yes | partial, 2026-11-25/26 (all offered moves/techs/civics/builds accepted; Civ6 `CanProduce` still offers active build item, suppressed by `turn_ledger`) |
+| The greedy agent playing several turns by itself (GM-B7c-2) | yes | yes | yes, 2026-11-26 (Item 29 **PASS**: `Turns 9–19`, `234` steps, `0` errors, exit `0`; plus `Turns 19–35` & socket `Turns 37–41`) |
 | Other players in the export (GM-B8a) | yes, off by default | yes | no |
 | Search in the simulator answering with live commands (GM-B6, GM-B8b) | yes, refused at start-up | yes | no |
 | A trained policy | no | n/a | no |
@@ -98,14 +85,14 @@ the record of 2026-11-21 supports; the maintainer ticks an item when its effect 
 | 5 | fields that stay empty, calls that fail | five recorded and fixed (PR #166) & verified rebuilt 2026-11-25; open for remaining secondary commands |
 | 6 | GameInfo capture | seen 2026-11-21 and repeated 2026-11-25 (all 6 tables captured & imported) |
 | 7 | `unit_move` to a free neighbour | seen 2026-11-25 (`(50,19)->(49,19)`, moves `2->1`) |
-| 8 | skip, fortify, sleep clear "unit needs orders" | seen for `unit_skip` and `unit_fortify` (`ENDTURN_BLOCKING_UNITS -> None`), 2026-11-25; `unit_sleep` refused on Warrior (`OPERATION_REFUSED`), accepted civilian sleep open |
+| 8 | skip, fortify, sleep clear "unit needs orders" | seen for `unit_skip` and `unit_fortify` (`ENDTURN_BLOCKING_UNITS -> None`), 2026-11-25/26; `unit_sleep` refused (`OPERATION_REFUSED`) on both combat Warrior and Builder `262146` |
 | 9 | `city_produce` replaces the current build | seen 2026-11-25 (`UNIT_WARRIOR -> UNIT_BUILDER -> UNIT_WARRIOR` replaced, not queued) |
 | 10 | frames between a request and the state that shows it | seen 2026-11-25 (`0.36–1.05s` post-command state arrival) |
-| 11, 12 | no war is started; a move never becomes an attack; an attack fights | **open, and first in the next session**: a wrong answer here acts in the game |
-| 13 to 20 | far moves, ranged attack, wonders, refusal text, offers, greedy run, export time | partial 2026-11-25: 14 (`unit_found_city` & row-index `city_produce`), 15 (`DISTRICT_CAMPUS`/`BUILDING_STONEHENGE` `NOT_IMPLEMENTED`), 16, 17, partial 18 (Turns 3–5); 13, 14 `unit_ranged_attack`, 19, 20 open |
+| 11, 12 | no war is started; a move never becomes an attack; an attack fights | partial 2026-11-26: Item 11 (`unit_attack` vs peaceful `p10` -> `REFUSED [WOULD_START_WAR]`, `WAR_WITH_10=false`) and Item 12a (full-move occupied-peaceful `unit_move` -> `REFUSED [WOULD_START_WAR]`) passed live; hostile combat vs war target remains open |
+| 13 to 20 | far moves, ranged attack, wonders, refusal text, offers, greedy run, export time | partial 2026-11-25/26: 13 (`unit_move` multi-turn `(43,16)->(41,15)`), 14 (`unit_found_city` & row-index `city_produce`), 15 (`DISTRICT_CAMPUS`/`BUILDING_STONEHENGE` `NOT_IMPLEMENTED`), 16, 17, 18 (Turns `9–19` & `19–35`), `research_civic`; `unit_ranged_attack`, 19, 20 open |
 | 21 to 27 | other players (`OBSERVE_ALL_PLAYERS`) | open |
-| 28 | a state arrives within a second or two of a command | seen 2026-11-25 (`0.36–1.05s` across 8+ probes) |
-| 29 | ten turns end by themselves | open (partial 3-turn soak Turns 3–5 ran cleanly; stopped after Turn 5 AI Player 1 Civ6 stall) |
+| 28 | a state arrives within a second or two of a command | seen 2026-11-25/26 (`0.31–1.08s` across live probes) |
+| 29 | ten turns end by themselves | seen 2026-11-26 (**PASS**: `--mode civ6` ran `Turns 9–19`, `234` steps, `0` errors, exit `0`) |
 | 30 | the bridge plays the right player | seen 2026-11-25 (`AI player 0: the game's local player`) |
 | 31, 32 | making peace and denouncing with their settings on | open |
 
@@ -675,19 +662,22 @@ For the checklist:
   the search. Separately, with the mod's default settings
   (`OBSERVE_ALL_PLAYERS` off) only your own units and cities are exported, so the search's
   simulator never contains another player (GM-B8, a mod change).
-- **Turn-cycle stall (LF-H1: leading cause seen once, 2026-11-21; the fix is unconfirmed).** Calling `ACTION_ENDTURN`
+- **Turn-cycle durability & modal popups (`Turns 1–41` verified 2026-11-26).** Calling `ACTION_ENDTURN`
   while a turn-blocking notification is active deactivates the local player seat (`TURN_ACTIVE`
-  becomes `false`) without advancing the turn counter. Because the live game's `UI.CanEndTurn()`
-  returns `true` even when blockers exist, the old `ActionExecutor.lua` override allowed bad
-  `end_turn` calls through. That override was removed so `NotificationManager` /
-  `GetEndTurnBlocker` is the sole authority; a sustained fresh Turn 1 run on the rebuilt bundle
-  is still needed to confirm no other blocker path stalls the cycle.
-- **Partial live command coverage.** Live 2026-11-21 verification exercised schema-2 export,
-  6-table `GameInfo` capture, `research_tech`, `unit_move`, `unit_skip`, `unit_fortify`,
-  `unit_found_city`, and `city_produce` (`UNIT_WARRIOR`) with live fixes for two-step
-  `CanProduce`, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` keys.
-  `unit_attack`, `unit_ranged_attack`, `unit_build`, `unit_promote`, `city_buy`, `city_citizen`,
-  and a fresh-game `BridgeAgentLoop` multi-turn soak remain open.
+  becomes `false`) without advancing the turn counter; removing the `UI.CanEndTurn()` override
+  kept `LF-H1` at zero across all `41` live Japan turns (`10`-turn autonomous exit-`0` soak
+  `Turns 9–19`, follow-up `Turns 19–35`, and socket advance `Turns 37–41`). Separately, first-contact /
+  tutorial modal overlays (`AdvisorPopup`, `TutorialUIRoot`, `hidden=false` in their own Lua
+  contexts without registering in `NotificationManager`) pause Civ6 AI turn processing
+  (`Players[1]:IsTurnActive() == true`) until dismissed in the UI (`Turn 8`, `Turn 36`).
+- **Partial live command coverage.** Live 2026-11-25/26 verification exercised schema-2 export,
+  6-table `GameInfo` capture, `research_tech`, `research_civic`, `unit_move` (incl. Item 13
+  multi-turn), `unit_skip`, `unit_fortify`, `unit_found_city`, `city_produce` (`UNIT_WARRIOR`),
+  Item 11 (`unit_attack` vs peaceful neighbor -> `WOULD_START_WAR`), Item 12a (full-move
+  occupied-peaceful `unit_move` -> `WOULD_START_WAR`), and secondary command probes (`unit_sleep`,
+  `city_buy`, `unit_build`, `city_citizen`). Hostile war combat (`unit_attack` vs active war
+  target, `unit_ranged_attack`) and `unit_promote` remain open; see
+  [`evidence/live_civ6_baseline/README.md`](evidence/live_civ6_baseline/README.md).
 - **Random weights.** No checkpoint trained on the full-game encoder exists.
   The MicroCiv checkpoints are not usable here, and the project's own training
   evidence is not yet a learning signal (see the Validation column in

@@ -1,24 +1,24 @@
 {
   "context_files": [
+    "docs/evidence/live_civ6_baseline/README.md",
     "kb/handoffs/20261123-planning-to-devsqe-bridge-closeout.md",
     "docs/LIVE_CIV6.md",
     "kb/specs/20261119-game-mechanics-gap-register.md",
     "openspec/specs/civ6-bridge/spec.md",
     "CLAUDE.md"
   ],
-  "current_focus": "PR #179 merged cleanly (920fe282). Preparing off-play-path PLR0915 burndown PR (vertex_orchestrator.main & training_worker.main decomposed) ahead of Phase 1 live Civ6 and Phase 2 WS-0 cut-over.",
+  "current_focus": "PR #180 merged cleanly (a3905895). Phase 1 live Steam Civ6 soak/probes (Item 29 exit-0 Turns 9->19, Item 11/12a WOULD_START_WAR, Item 13, research_civic) and 41-turn GM-B11 census (verdict: stop, E1=0.2667) committed on fix/ws1-live-soak-and-evidence with harden-governance-gates archived.",
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T05:00:00Z",
+  "last_timestamp": "2026-11-26T15:40:00Z",
   "resume_pointers": {
     "blocked_on": [
-      "Maintainer: start fresh Turn 1 Civ6 match or load enemy-adjacent save (PID 57372 stalled at Turn 5 P1_ACT=true)",
       "Maintainer: WS-0 cut-over (W&B key rotation, v2.0.0 tag on c214daaa, branch_cutover.sh)",
       "Maintainer: T0b, A1, and A1-R on quiet dual GPUs after closing Steam Civ6"
     ],
-    "current_task": "Review and merge off-play-path PLR0915 burndown PR (functions_over_max_statements -> 0)",
+    "current_task": "Review and merge fix/ws1-live-soak-and-evidence PR, then proceed to WS-0 cut-over and quiet-GPU T0b/A1/A1-R",
     "next_steps": [
-      "Confirm PLR0915 burndown PR CI passes across Python 3.11/3.12/3.13, debt ratchet, and cloud coverage floors",
-      "Execute Phase 1 live Civ6 combat/soak/census PR and archive fix-bridge-fail-closed"
+      "Review and merge fix/ws1-live-soak-and-evidence PR (live baseline evidence + harden-governance-gates archive)",
+      "Execute WS-0 cut-over (v2.0.0, dev/qa/main), close Steam Civ6, and run T0b -> A1 -> A1-R"
     ]
   }
 }
