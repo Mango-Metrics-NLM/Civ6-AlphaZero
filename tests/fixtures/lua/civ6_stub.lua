@@ -215,6 +215,7 @@ local function makeUnit(spec)
     function unit:GetRange() return spec.range or 0 end
     function unit:GetAttacksRemaining() return spec.attacks or 0 end
     function unit:IsCivilian() return spec.unitType == 0 end
+    function unit:CanPromote() return spec.canPromote == true end
     -- The game's UI skips a unit that is dead or about to die (GM-B8a).
     function unit:IsDead() return spec.dead == true end
     function unit:IsDelayedDeath() return spec.delayedDeath == true end
@@ -369,6 +370,31 @@ local function makeCity(spec)
     function city:GetX() return spec.x end
     function city:GetY() return spec.y end
     function city:GetPopulation() return spec.population end
+    function queue:PurchaseProduction(itemType, itemId)
+        Civ6Stub.fallbackPurchases = Civ6Stub.fallbackPurchases or {}
+        table.insert(Civ6Stub.fallbackPurchases, {
+            cityId = spec.id,
+            itemType = itemType,
+            itemId = itemId,
+        })
+        return Civ6Stub.fallbackPurchaseResult ~= false
+    end
+    function city:GetCitizens()
+        if Civ6Stub.citizensUnavailable == true then return nil end
+        local citizens = {}
+        function citizens:SetCitizenLocked(plotIndex, lock)
+            if Civ6Stub.citizenLockRaises == true then
+                error("citizen lock failed")
+            end
+            Civ6Stub.citizenLocks = Civ6Stub.citizenLocks or {}
+            table.insert(Civ6Stub.citizenLocks, {
+                cityId = spec.id,
+                plotIndex = plotIndex,
+                lock = lock,
+            })
+        end
+        return citizens
+    end
     function city:IsCapital() return true end
     function city:GetStrengthValue() return 10 end
     function city:GetBuildQueue() return queue end

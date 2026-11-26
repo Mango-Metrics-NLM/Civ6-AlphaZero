@@ -212,7 +212,12 @@ def test_negative_control_end_to_end_exit_code(tmp_path, monkeypatch, capsys) ->
 def test_live_civ6_and_gpu_verify_skills_pass_single_file_validation_cleanly() -> None:
     """Operational verification and release audit skills must pass validate_skills cleanly."""
     gate = vs._coverage_gate()
-    for skill_name in ("live-civ6-verify", "gpu-verify", "public-release-audit"):
+    for skill_name in (
+        "live-civ6-verify",
+        "gpu-verify",
+        "public-release-audit",
+        "run-card-evidence",
+    ):
         skill_md = REPO_ROOT / ".claude" / "skills" / skill_name / "SKILL.md"
         assert skill_md.is_file(), f"missing skill: {skill_md}"
         issues: list[vs.Issue] = []

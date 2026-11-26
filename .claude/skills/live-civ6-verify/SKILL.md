@@ -83,6 +83,24 @@ python -m alpha_zero.rules import-gameinfo <snapshot.json> --out <output-ruleset
 Keep captured snapshots and imported rule sets under `$CIV6AZ_DATA_ROOT`, never inside
 the repository.
 
+### 6. Probe war checks, run GM-B11 census, and verify play-path isolation
+
+```bash
+python scripts/live_command_check.py --action unit_attack --unit-id <ID> --x <X> --y <Y> --verbose
+python scripts/live_command_check.py --action unit_ranged_attack --unit-id <ID> --x <X> --y <Y> --verbose
+python scripts/census_search_expressivity.py --log <path-to-Lua.log> --out <output-dir> --boards 8 16 --mod-version <ver> --played-by <who>
+```
+
+- Run `unit_attack` (Items 11–12) on peaceful targets first to confirm `WOULD_START_WAR`
+  refusal before testing combat against an active enemy.
+- `census_search_expressivity.py` plays zero games and enforces the pre-registered `GM-B11`
+  stop rule on `Lua.log` (`N >= 40` non-void states, `N_late >= 10` after turn 30; halts
+  simulator-tied search if `median(E1) < 0.30` or `median(E2) < 0.50` at board 8).
+- Before opening any off-play-path bridge PR, verify `git diff` against all pathspecs in
+  `scripts/release_play_path.txt` is empty, and ensure `mod/AlphaZeroAI/Scripts/Config.lua`
+  resets `OBSERVE_ALL_PLAYERS`, `ALLOW_DECLARE_WAR`, `ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`,
+  and `ALLOW_UNIT_DELETE` to `false`.
+
 ## Honesty and Evidence Rules
 
 1. Distinguish offline `lupa` + `civ6_stub.lua` parity from live Civilization VI execution.
