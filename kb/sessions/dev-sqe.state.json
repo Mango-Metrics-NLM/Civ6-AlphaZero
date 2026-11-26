@@ -1,17 +1,17 @@
 {
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-26T18:20:00Z",
-  "current_focus": "WS-0 branch cut-over complete (dev @ 5138af23, qa & main @ c214daaa / v2.0.0) and T0b 660-game dual-GPU calibration COMPLETE (REPRODUCED determinism on cuda:0 RTX 5060 Ti / cuda:1 RTX 5060, positive control 303/255/42 = 0.7175, P(40)=0.0166 [0.0030, 0.0493], Branch in force: 40, 6.1 h ETA). Opening Section 7.1 registration PR into dev.",
+  "last_timestamp": "2026-11-26T18:59:00Z",
+  "current_focus": "PR #182 merged into dev (6348548b). Release prep chore/release-v2.1.0 open for dev ahead of dev -> qa promotion, v2.1.0-rc.1 tag, and A1 (980g) / A1-R (980g) confirmation runs on quiet dual GPUs.",
   "resume_pointers": {
-    "current_task": "Merge chore/t0b-section7-registration PR into dev, then promote dev -> qa, tag v2.1.0-rc.1, and execute A1 (980g) and A1-R (980g) on quiet dual GPUs",
+    "current_task": "Merge chore/release-v2.1.0 PR into dev, promote dev -> qa, tag v2.1.0-rc.1, and run A1 / A1-R",
     "blocked_on": [
-      "Maintainer: review & merge chore/t0b-section7-registration PR into dev",
-      "Maintainer: provision civ6az-agent machine user & run 4 identity verification checks",
-      "Maintainer: promote dev -> qa and run tag_release v2.1.0-rc.1 --execute before A1 / A1-R"
+      "Maintainer: review & merge chore/release-v2.1.0 PR into dev",
+      "Maintainer: promote dev -> qa (merge commit) and run python -m scripts.maintainer.tag_release v2.1.0-rc.1 --execute",
+      "Maintainer: provision civ6az-agent machine user & run 4 identity verification checks"
     ],
     "next_steps": [
-      "Merge chore/t0b-section7-registration PR into dev",
-      "Run Release Prep -> promote dev to qa -> tag v2.1.0-rc.1",
+      "Merge chore/release-v2.1.0 into dev",
+      "Promote dev -> qa and tag v2.1.0-rc.1",
       "Run a1.yaml (980g) -> a1r.yaml (980g) on quiet dual GPUs, build release bundle, and verify release evidence"
     ]
   },
