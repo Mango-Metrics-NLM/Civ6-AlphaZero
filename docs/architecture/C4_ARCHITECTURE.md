@@ -128,7 +128,7 @@ flowchart TB
 | MLflow Monitoring Layer | — (local) | Python / MLflow / SQLite | Experiment tracking (sole tracker) |
 | Web UI | — (local) | FastAPI + WebSocket | Human-vs-AI browser interface |
 | Game Rules Kernel | — (local/leaf) | Python / PyYAML | Frozen integer-only rule sets, sha256 canonical hashing, pacing & GameInfo import (`alpha_zero/rules/`) |
-| Civ6 Bridge & Lua Mod | — (local/CI) | Python / Lua 5.1 (`lupa` test harness) | File IPC or headless FireTuner socket; research registry, GameInfo capture, `--mcts` refusal (pending GM-B6), schema-2 exporter, generated `AlphaZeroMain.lua` bundle |
+| Civ6 Bridge & Lua Mod | — (local/CI) | Python / Lua 5.1 (`lupa` test harness) | File IPC or headless FireTuner socket (`FireTunerTimingConfig`, `_require_socket()`); research registry, 6-table `GameInfo` capture, `--mcts` refusal (pending GM-B6), schema-2 exporter, `<1k` LOC `protocol.py` split (`protocol_validation` + `protocol_entities`), generated `AlphaZeroMain.lua` bundle |
 | Local training loop | — (local) | Python / PyTorch | Single-process self-play → train → evaluate; `--seed` determines the whole run |
 
 **Shared search internals.** The self-play worker, the arena inside the evaluation worker and
@@ -534,7 +534,7 @@ reported `REPRODUCED`, while formal single-use T0b/A1 run-card execution via
 **Governance & AST Debt Auditing.** Static governance and hygiene checks (`scripts/validate_*.py`,
 `scripts/check_doc_sync.py`, `scripts/check_release_readiness.py`, `scripts/audit_import_graph.py`, `scripts/measure_debt.py`) share
 canonical sorted `--json` (`sort_keys=True`) and `--verbose` structured stderr logging across the
-governance and readiness validators (eleven vetted checkers exposed via `readonly_shell_guard.sh`, fourteen skills incl. `public-release-audit`, and synced `posttooluse_governance.sh` doc-sync globs), plus single-source tree discovery (`audit_import_graph.iter_python_files`,
+governance and readiness validators (eleven vetted checkers exposed via `readonly_shell_guard.sh`, sixteen skills incl. `public-release-audit` and `branch-hygiene-audit`, and synced `posttooluse_governance.sh` doc-sync globs), plus single-source tree discovery (`audit_import_graph.iter_python_files`,
 pruning PEP 405 virtual environments via `pyvenv.cfg` and linked git worktrees). Lua mod bundle
 parity (`scripts/build_lua_bundle.py --check`) is enforced across `make validate`, pre-commit,
 and `posttooluse_governance.sh`.
@@ -559,12 +559,12 @@ flowchart LR
         Registry["registry.py + pacing.py + gameinfo.py\nvalidate | hash | pace | import-gameinfo"]:::leaf
     end
 
-    subgraph BridgePy["alpha_zero/bridge/ (23 modules)"]
+    subgraph BridgePy["alpha_zero/bridge/ (29 modules)"]
         ConfigPy["config.py (torch-free paths & BridgeConfig.from_live_env)\n+ local/gameplay_config.py (Civ6LocalConfig)"]:::bridge
         TechReg["tech_registry.py + gameinfo_capture.py\nfrom_ruleset() + GameInfo snapshot CLI"]:::bridge
         Converters["state_converter.py + action_converter.py\nencoder tech/civic slots + offer mask"]:::bridge
         ProxyRefusal["microciv_proxy.py + mcts_policy.py\nMicroCiv proxy (--mcts refused until GM-B6)"]:::bridge
-        Proto["protocol.py + tuner_socket_bridge.py + turn_ledger.py\nschema_version 2 + end_turn_blocking + TurnLedger"]:::bridge
+        Proto["protocol_validation.py + protocol_entities.py + protocol.py (<1k facade)\n+ tuner_socket_bridge.py (FireTunerTimingConfig) + turn_ledger.py"]:::bridge
     end
 
     subgraph ModLua["mod/AlphaZeroAI/Scripts/"]
@@ -584,7 +584,7 @@ flowchart LR
 
 ---
 
-*Last revised: 2026-11-25 — extracted `alpha_zero/monitoring/wandb_compat.py` from `mlflow_logger.py` (`<1k` lines), decomposed `scripts/run_enhanced_training.py` (`PLR0915` removed), hardened `scripts/local_muzero_launcher.py` (`shell=False`), added `scripts/check_release_readiness.py` + `public-release-audit` skill (eleven vetted checkers, synced `posttooluse_governance.sh`), and ratcheted `alpha_zero/cloud` coverage floor `58% -> 59%`.*
+*Last revised: 2026-11-26 — hardened `FireTunerClient` handshake/LSQ under 1 Hz `AZ_HB:` chatter (`FireTunerTimingConfig`, `_require_socket()`, narrowed timeouts), decomposed `alpha_zero/bridge/protocol.py` (`2,013` LOC -> `protocol_validation.py` + `protocol_entities.py` + `protocol.py` facade), added `.claude/skills/branch-hygiene-audit`, synced harness/gitleaks/doc inventories, and ratcheted `docs/evidence/tech_debt_baseline/baseline.json`.*
 *Previously 2026-11-21 — extracted `alpha_zero/local/gameplay_config.py` from `civ6_local.py`, unified live bridge config/path helpers (`bridge/config.py`), updated Lua mod/bridge component diagram to reflect all 23 bridge modules, SHA-256 mod install parity (`install_civ6_mod.py --check`), and live Civ 6 parity fixes.*
 *Previously 2026-11-20 — added Game Rules Kernel (`alpha_zero/rules/`) and GM-B0..B5 Live Bridge
 component view, recorded `selfplay_worker.py` `SeedStream.SELF_PLAY_SEARCH` seeding, and unified

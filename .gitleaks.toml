@@ -67,6 +67,10 @@ paths = [
     '''^\.claude/worktrees/''',
     '''^cutover/''',
     '''^mypy_output\.txt$''',
+    '''^mypy_.*\.txt$''',
+    '''^pytest_.*\.txt$''',
+    '''^gameinfo\.json$''',
+    '''^junit.*\.xml$''',
     '''^\.worktrees/''',
     '''^worktrees/''',
 ]

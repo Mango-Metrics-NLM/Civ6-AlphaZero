@@ -6,18 +6,19 @@
     "openspec/specs/civ6-bridge/spec.md",
     "CLAUDE.md"
   ],
-  "current_focus": "No PR is waiting. The post-merge AQA PR (#156) and the bridge PRs through #166 are merged.",
+  "current_focus": "PR #179 open on fix/ws1-firetuner-handshake-chatter: FireTuner handshake fix, 6-table GameInfo capture, protocol.py 3-layer split, bridge hardening, and debt baseline ratchet.",
   "last_session_id": "session_01CXusP9Ct9R7eg25YLcY7R7",
-  "last_timestamp": "2026-11-23T08:00:00Z",
+  "last_timestamp": "2026-11-26T02:55:00Z",
   "resume_pointers": {
     "blocked_on": [
       "Maintainer: T0b, then A1 and A1-R on the GPU machine (v2.1; the release gate)",
-      "Maintainer: the live checklist in docs/LIVE_CIV6.md; attacks and the war check first, after B9",
-      "Maintainer: cut-over, civ6az-agent, W&B key revocation; deleting merged remote branches"
+      "Maintainer: fresh Turn 1 soak, live combat/attack and diplomacy probes in docs/LIVE_CIV6.md",
+      "Maintainer: cut-over (WS-0 creating origin/main), civ6az-agent, W&B key revocation; deleting merged remote branches"
     ],
-    "current_task": "None",
+    "current_task": "PR #179 awaiting CI and maintainer review/merge on fix/ws1-firetuner-handshake-chatter",
     "next_steps": [
-      "Review the bridge close-out PR (docs, kb, OpenSpec only) when it opens"
+      "Confirm PR #179 CI passes across Python 3.11/3.12/3.13, debt ratchet, and coverage floors",
+      "Merge PR #179 into claude/civ6-alphazero-implementation-vMnun before WS-0 main cut-over"
     ]
   }
 }

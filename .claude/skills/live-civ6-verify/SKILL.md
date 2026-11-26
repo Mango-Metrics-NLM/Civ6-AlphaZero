@@ -73,6 +73,13 @@ Read stdout (`state:`, `sending:`, `answer:`, `changed:`, `expected effect:`) an
 stderr debug diagnostics when diagnosing `END_TURN_BLOCKED`, `OPERATION_REFUSED`, or
 timeout behavior.
 
+If a Turn 1 session was hot-reloaded or a previous `COMMAND_TIMEOUT` (30s) expired
+mid-turn, clear `ExposedMembers.AlphaZeroCommand = nil` in `GameCore_Tuner` and run
+`AlphaZeroBridge.OnTurnEnd(0); AlphaZeroBridge.OnTurnStart(0)` in `AlphaZeroMain`
+(`Main.lua`'s re-entrance guard ignores a bare `OnTurnStart(0)` while `isMyTurn=true`).
+Note that exported production legal actions use `"action": "produce"` with `items`
+(type-name list) and `item_types` (dict mapping item name to category).
+
 ### 5. Capture and import live GameInfo tables (optional, per game load)
 
 ```bash
@@ -96,6 +103,8 @@ python scripts/census_search_expressivity.py --log <path-to-Lua.log> --out <outp
 - `census_search_expressivity.py` plays zero games and enforces the pre-registered `GM-B11`
   stop rule on `Lua.log` (`N >= 40` non-void states, `N_late >= 10` after turn 30; halts
   simulator-tied search if `median(E1) < 0.30` or `median(E2) < 0.50` at board 8).
+  Rotate or clear older-mod entries in `Lua.log` before a census session so pre-`GM-B8a`
+  states do not render the stop rule `NOT DECIDED`.
 - Before opening any off-play-path bridge PR, verify `git diff` against all pathspecs in
   `scripts/release_play_path.txt` is empty, and ensure `mod/AlphaZeroAI/Scripts/Config.lua`
   resets `OBSERVE_ALL_PLAYERS`, `ALLOW_DECLARE_WAR`, `ALLOW_MAKE_PEACE`, `ALLOW_DENOUNCE`,

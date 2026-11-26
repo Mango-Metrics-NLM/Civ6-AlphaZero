@@ -45,7 +45,9 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | File | Responsibility |
 |------|---------------|
 | `config.py` | `BridgeConfig` (including `BridgeConfig.from_live_env()`), `MapSizeConfig`, `MAP_SIZES`, coordinate scaling, `get_default_comm_dir()`, `get_default_civ6_log_path()`, and single-source transport constants (`DEFAULT_COMMAND_TRANSPORT`, `DEFAULT_TUNER_HOST`, `DEFAULT_TUNER_PORT`) |
-| `protocol.py` | Full typed JSON schema: StateMessage, CommandMessage, AckMessage, ErrorMessage, action/message types |
+| `protocol.py` | Layer 2 facade: `GameStateData`, `StateMessage`, `CommandMessage`, `AckMessage`, `ErrorMessage`, `validate_state_json`, `create_*_command`, plus backwards-compatible re-exports from Layers 0–1 |
+| `protocol_entities.py` | Layer 1 entities: `Position`, `LuaCommand`, `TileData`, `UnitData`, `CityData`, `ResearchStatus`, `PlayerData`, `LegalAction`, `MapData` |
+| `protocol_validation.py` | Layer 0 validation primitives, enums (`MessageType`, `ActionType`, `ErrorCode`), schema constants (`END_TURN_BLOCKED`, `ERA_NAME_TO_INDEX`) |
 | `file_bridge.py` | FileBridge (async polling, retry, heartbeat), MockFileBridge (testing) |
 | `live_bridge.py` | LiveBridge — composes LogTailer (state) + a command transport (TunerBridge or SocketTunerBridge) selected by `command_transport` |
 | `log_tailer.py` | LogTailer — reads state/heartbeat/ack from the Civ6 `Lua.log` (state IN) |
@@ -56,7 +58,7 @@ This module provides IPC for real Civ6 game communication over two selectable co
 | `state_diff.py` | Human-readable state delta and expected-effect verification used by `scripts/live_command_check.py` |
 | `eval_harness.py` | `BridgeEvalHarness` — optional MLflow per-turn telemetry logger for live play sessions |
 | `tuner_bridge.py` | TunerBridge — `command_transport="file"` command writer (`commands.json` for the FireTuner `.ltp` panel relay) |
-| `tuner_socket_bridge.py` | FireTunerClient (raw FireTuner TCP wire protocol), SocketTunerBridge (headless `command_transport="socket"` drop-in for TunerBridge), `lua_longstring()` helper |
+| `tuner_socket_bridge.py` | `FireTunerClient` (raw FireTuner TCP wire protocol + tag-filtered handshake), `FireTunerTimingConfig`, `SocketTunerBridge` (`command_transport="socket"`), `lua_longstring()` helper |
 | `state_converter.py` | GameStateData → Civ6StateEncoder tensor conversion, terrain/unit mapping |
 | `action_converter.py` | Action index ↔ LuaCommand bidirectional conversion, action mask generation |
 | `gameinfo_capture.py` | Files the mod's GameInfo snapshot (from `Lua.log` or `gameinfo.json`) under `CIV6AZ_DATA_ROOT` after the rules importer accepts it; CLI `python -m alpha_zero.bridge.gameinfo_capture` |
@@ -139,8 +141,10 @@ Select the transport via `BridgeConfig.command_transport` or the env vars consum
 7. `SocketTunerBridge` preserves the same async `start`/`stop`/`send_command`/`stats` surface as `TunerBridge`, so `LiveBridge` can swap transports via config alone
 8. `BridgeConfig.command_transport` only accepts `"file"` or `"socket"`; construction raises `ValueError` otherwise
 9. `FireTunerClient` always resolves the `GameCore_Tuner` state index via `LSQ:` before sending `CMD:` — the index is not assumed to be stable across game sessions
-10. `alpha_zero/bridge/config.py` stays free of heavyweight `torch`/`numpy` imports so `scripts/live_command_check.py` and `--dry-run` config resolution stay fast and self-contained
-11. Live Lua parity invariants enforced in `mod/AlphaZeroAI/Scripts/`: LLP64-safe integer formatting (`%.0f` + `-0.0 -> "0"`), sole end-turn blocker authority (`NotificationManager` / `GetEndTurnBlocker` without `UI.CanEndTurn()` bypass), two-step `CanProduce(hash, true)` + `CanProduce(hash, false, true)` check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` / `GameInfo.Yields` yield resolution
+10. `FireTunerClient._recv_query_frames()` filters handshake replies to `TAG_QUERY` frames under `FireTunerTimingConfig` monotonic deadlines so 1 Hz `TAG_OUTPUT` (`AZ_HB:`) chatter cannot starve mid-turn connects or corrupt `LSQ:` state parsing, and `_require_socket()` raises `FireTunerError` (never `assert`) when disconnected
+11. `alpha_zero/bridge/config.py` stays free of heavyweight `torch`/`numpy` imports so `scripts/live_command_check.py` and `--dry-run` config resolution stay fast and self-contained
+12. `protocol_validation.py` (Layer 0) -> `protocol_entities.py` (Layer 1) -> `protocol.py` (Layer 2) stays strictly acyclic and `< 1,000` lines per module with identical re-exports
+13. Live Lua parity invariants enforced in `mod/AlphaZeroAI/Scripts/`: LLP64-safe integer formatting (`%.0f` + `-0.0 -> "0"`), sole end-turn blocker authority (`NotificationManager` / `GetEndTurnBlocker` without `UI.CanEndTurn()` bypass), two-step `CanProduce(hash, true)` + `CanProduce(hash, false, true)` check, `GetCurrentProductionTypeHash()` fallback, and short `YieldTypes` / `GameInfo.Yields` yield resolution
 
 ---
 

@@ -217,6 +217,7 @@ def test_live_civ6_and_gpu_verify_skills_pass_single_file_validation_cleanly() -
         "gpu-verify",
         "public-release-audit",
         "run-card-evidence",
+        "branch-hygiene-audit",
     ):
         skill_md = REPO_ROOT / ".claude" / "skills" / skill_name / "SKILL.md"
         assert skill_md.is_file(), f"missing skill: {skill_md}"
